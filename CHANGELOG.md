@@ -8,6 +8,17 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.1.1] - 2026-03-07
+
+### Fixed
+
+- Renamed service endpoint contribution types to be globally unique in the VS Marketplace (`SBAWSServiceEndpoint`, `SBGoogleCloudServiceEndpoint`, `SBOCIServiceEndpoint`) — the original names were already claimed by the upstream `ms-devlabs` extension
+- Added `workflow_call:` trigger to CI workflow so the release workflow can call it as a reusable workflow
+- Added `NODE_OPTIONS=--openssl-legacy-provider` to release build step for webpack 4 compatibility with Node 18 OpenSSL 3
+- Removed nonexistent `marketplace` environment gate from release workflow
+
+---
+
 ## [0.1.0] - 2026-03-06
 
 First published release of the `sethbacon.pipeline-tasks-terraform` fork.
