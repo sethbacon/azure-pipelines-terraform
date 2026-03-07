@@ -46,6 +46,8 @@ jobs:
         run: npm install --include=dev
       - name: Build release
         run: npm run build:release
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -82,7 +84,6 @@ jobs:
     name: Publish to VS Marketplace
     needs: package
     runs-on: ubuntu-latest
-    environment: marketplace
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
