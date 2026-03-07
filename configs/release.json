@@ -1,4 +1,7 @@
 {
+    "id": "pipeline-tasks-terraform",
+    "name": "Pipeline Tasks for Terraform",
+    "publisher": "sethbacon",
     "galleryFlags": [
         "Public"
     ],

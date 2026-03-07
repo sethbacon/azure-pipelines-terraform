@@ -18,7 +18,8 @@
         "compile": "npm run compile:inst && npm run compile:tasks",
         "compile:tasks": "glob-exec \"Tasks/TerraformTask/*/tsconfig.json\" -- \"tsc -b {{files.join(' ')}}\"",
         "compile:inst": "glob-exec \"Tasks/TerraformInstaller/*/tsconfig.json\" -- \"tsc -b {{files.join(' ')}}\"",
-        "webpack": "webpack --config webpack.config.js --progress"
+        "webpack": "webpack --config webpack.config.js --progress",
+        "test:all": "cd Tasks/TerraformTask/TerraformTaskV5 && npm test"
     },
     "devDependencies": {
         "azure-pipelines-task-lib": "^4.1.0",
@@ -26,7 +27,7 @@
         "azure-devops-node-api": "^12.0.0",
         "copy-webpack-plugin": "^6.3.2",
         "glob-exec": "^0.1.1",
-        "tfx-cli": "0.16.0",
+        "tfx-cli": "0.23.1",
         "ts-loader": "^5.2.2",
         "webpack": "^4.46.0",
         "webpack-cli": "^4.9.2",

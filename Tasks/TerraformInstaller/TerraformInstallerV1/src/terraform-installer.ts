@@ -3,6 +3,7 @@ import tools = require('azure-pipelines-tool-lib/tool');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
+import crypto = require('crypto');
 
 const uuidV4 = require('uuid/v4');
 const fetch = require('node-fetch');
@@ -11,61 +12,61 @@ const HttpsProxyAgent = require('https-proxy-agent');
 const terraformToolName = "terraform";
 const isWindows = os.type().match(/^Win/);
 const proxy = tasks.getHttpProxyConfiguration();
+
 export async function downloadTerraform(inputVersion: string): Promise<string> {
-    var latestVersion: string = "";
-    if(inputVersion.toLowerCase() === 'latest') {
-        console.log(tasks.loc("GettingLatestTerraformVersion"));
-        if(proxy == null){
-            await fetch('https://checkpoint-api.hashicorp.com/v1/check/terraform')
-            .then((response: { json: () => any; }) => response.json())
-            .then((data: { [x: string]: any; }) => {
-                latestVersion = data.current_version;
-            })
-            .catch((exception: any) => {
-                console.warn(tasks.loc("TerraformVersionNotFound"));
+    const downloadSource = tasks.getInput("downloadSource") || "hashicorp";
 
-                latestVersion = '1.9.8';
-            })
+    // Step 1: Resolve version string (may require an API call for 'latest')
+    let resolvedVersion: string;
+    switch (downloadSource) {
+        case "registry": {
+            const registryUrl = tasks.getInput("registryUrl", true);
+            const mirrorName = tasks.getInput("registryMirrorName", true) || "terraform";
+            resolvedVersion = await resolveVersionFromRegistry(inputVersion, registryUrl, mirrorName);
+            break;
         }
-        else
-        {
-
-            var proxyUrl = proxy.proxyUsername !="" ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':' + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]:proxy.proxyUrl;
-            var proxyAgent = new HttpsProxyAgent(proxyUrl);
-            await fetch('https://checkpoint-api.hashicorp.com/v1/check/terraform', { agent: proxyAgent})
-            .then((response: { json: () => any; }) => response.json())
-            .then((data: { [x: string]: any; }) => {
-                latestVersion = data.current_version;
-            })
-            .catch((exception: any) => {
-                console.warn(tasks.loc("TerraformVersionNotFound"));
-                latestVersion = '1.9.8';
-            })
-        }
+        default: // "hashicorp" and "mirror" both use HashiCorp checkpoint for 'latest'
+            resolvedVersion = await resolveVersionFromHashiCorp(inputVersion);
     }
-    var version = latestVersion != "" ? tools.cleanVersion(latestVersion) : tools.cleanVersion(inputVersion);
 
+    const version = tools.cleanVersion(resolvedVersion);
     if (!version) {
-        throw new Error(tasks.loc("InputVersionNotValidSemanticVersion", inputVersion));
+        throw new Error(tasks.loc("InputVersionNotValidSemanticVersion", resolvedVersion));
     }
 
+    // Step 2: Check tool cache — skip download entirely if already present
     let cachedToolPath = tools.findLocalTool(terraformToolName, version);
-    if (!cachedToolPath) {
-        let terraformDownloadUrl = getTerraformDownloadUrl(version);
-        let fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
-        let terraformDownloadPath;
 
-        try {
-            terraformDownloadPath = await tools.downloadTool(terraformDownloadUrl, fileName);
-        } catch (exception) {
-            throw new Error(tasks.loc("TerraformDownloadFailed", terraformDownloadUrl, exception));
+    // Step 3: Download, extract, and cache if not found
+    if (!cachedToolPath) {
+        let zipPath: string;
+        switch (downloadSource) {
+            case "registry": {
+                const registryUrl = tasks.getInput("registryUrl", true);
+                const mirrorName = tasks.getInput("registryMirrorName", true) || "terraform";
+                zipPath = await downloadZipFromRegistry(version, registryUrl, mirrorName);
+                tasks.setVariable('terraformDownloadedFrom', `registry:${registryUrl}`);
+                break;
+            }
+            case "mirror": {
+                const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true);
+                zipPath = await downloadZipFromMirror(version, mirrorBaseUrl);
+                tasks.setVariable('terraformDownloadedFrom', `mirror:${mirrorBaseUrl}`);
+                break;
+            }
+            default: { // "hashicorp"
+                zipPath = await downloadZipFromHashiCorp(version);
+                tasks.setVariable('terraformDownloadedFrom', 'hashicorp');
+            }
         }
 
-        let terraformUnzippedPath = await tools.extractZip(terraformDownloadPath);
+        const terraformUnzippedPath = await tools.extractZip(zipPath);
         cachedToolPath = await tools.cacheDir(terraformUnzippedPath, terraformToolName, version);
+    } else {
+        tasks.setVariable('terraformDownloadedFrom', 'cache');
     }
 
-    let terraformPath = findTerraformExecutable(cachedToolPath);
+    const terraformPath = findTerraformExecutable(cachedToolPath);
     if (!terraformPath) {
         throw new Error(tasks.loc("TerraformNotFoundInFolder", cachedToolPath));
     }
@@ -75,59 +76,145 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
     }
 
     tasks.setVariable('terraformLocation', terraformPath);
-
     return terraformPath;
 }
 
-function getTerraformDownloadUrl(version: string): string {
-    let platform: string;
-    let architecture: string;
+// --- Version resolution ---
 
-    switch(os.type()) {
-        case "Darwin":
-            platform = "darwin";
-            break;
-        
-        case "Linux":
-            platform = "linux";
-            break;
-        
-        case "Windows_NT":
-            platform = "windows";
-            break;
-        
-        default:
-            throw new Error(tasks.loc("OperatingSystemNotSupported", os.type()));
+async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string> {
+    if (inputVersion.toLowerCase() !== 'latest') {
+        return inputVersion;
+    }
+    console.log(tasks.loc("GettingLatestTerraformVersion"));
+    try {
+        const data = await fetchJson('https://checkpoint-api.hashicorp.com/v1/check/terraform');
+        return data.current_version;
+    } catch {
+        console.warn(tasks.loc("TerraformVersionNotFound"));
+        return '1.9.8';
+    }
+}
+
+async function resolveVersionFromRegistry(inputVersion: string, registryUrl: string, mirrorName: string): Promise<string> {
+    if (inputVersion.toLowerCase() !== 'latest') {
+        return inputVersion;
+    }
+    console.log(tasks.loc("ResolvingLatestFromRegistry", registryUrl));
+    const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
+    const data = await fetchJson(latestUrl);
+    console.log(`Resolved latest version from registry: ${data.version}`);
+    return data.version;
+}
+
+// --- Download strategies ---
+
+async function downloadZipFromHashiCorp(version: string): Promise<string> {
+    const downloadUrl = getHashiCorpDownloadUrl(version);
+    const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    try {
+        return await tools.downloadTool(downloadUrl, fileName);
+    } catch (exception) {
+        throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
+    }
+}
+
+async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<string> {
+    const osPlatform = getPlatformString();
+    const arch = getArchString();
+    const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
+
+    const data = await fetchJson(infoUrl);
+    // data.download_url = pre-signed storage URL (15-minute TTL)
+    // data.sha256       = hex SHA256 of the zip
+
+    const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    let zipPath: string;
+    try {
+        zipPath = await tools.downloadTool(data.download_url, fileName);
+    } catch (exception) {
+        throw new Error(tasks.loc("TerraformDownloadFailed", data.download_url, exception));
     }
 
-    switch(os.arch()) {
-        case "x64":
-            architecture = "amd64";
-            break;
-        
-        case "x32":
-            architecture = "386";
-            break;
+    await verifySha256(zipPath, data.sha256);
+    return zipPath;
+}
 
-        case "arm64":
-                architecture = "arm64";
-            break;
+async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<string> {
+    if (!mirrorBaseUrl.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
+    }
+    const osPlatform = getPlatformString();
+    const arch = getArchString();
+    // Mirror must serve files at the same path structure as releases.hashicorp.com/terraform
+    const downloadUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_${osPlatform}_${arch}.zip`;
 
-        case "arm":
-                architecture = "arm";
-            break;
+    const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    try {
+        return await tools.downloadTool(downloadUrl, fileName);
+    } catch (exception) {
+        throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
+    }
+}
 
-        default:
-            throw new Error(tasks.loc("ArchitectureNotSupported", os.arch()));
+// --- Helpers ---
+
+async function fetchJson(url: string): Promise<any> {
+    if (!url.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
-    return `https://releases.hashicorp.com/terraform/${version}/terraform_${version}_${platform}_${architecture}.zip`;
+    const options: any = {};
+    if (proxy != null) {
+        const proxyUrl = proxy.proxyUsername != ""
+            ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':'
+              + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
+            : proxy.proxyUrl;
+        options.agent = new HttpsProxyAgent(proxyUrl);
+    }
+
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(tasks.loc("RegistryRequestFailed", url, response.status));
+    }
+    return response.json();
+}
+
+async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
+    const fileBuffer = fs.readFileSync(filePath);
+    const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
+        throw new Error(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
+    }
+    tasks.debug(`SHA256 verification passed: ${actualHash}`);
+}
+
+function getPlatformString(): string {
+    switch (os.type()) {
+        case "Darwin":     return "darwin";
+        case "Linux":      return "linux";
+        case "Windows_NT": return "windows";
+        default: throw new Error(tasks.loc("OperatingSystemNotSupported", os.type()));
+    }
+}
+
+function getArchString(): string {
+    switch (os.arch()) {
+        case "x64":   return "amd64";
+        case "x32":   return "386";
+        case "arm64": return "arm64";
+        case "arm":   return "arm";
+        default: throw new Error(tasks.loc("ArchitectureNotSupported", os.arch()));
+    }
+}
+
+function getHashiCorpDownloadUrl(version: string): string {
+    return `https://releases.hashicorp.com/terraform/${version}/terraform_${version}_${getPlatformString()}_${getArchString()}.zip`;
 }
 
 function findTerraformExecutable(rootFolder: string): string {
-    let terraformPath = path.join(rootFolder, terraformToolName + getExecutableExtension());
-    var allPaths = tasks.find(rootFolder);
-    var matchingResultFiles = tasks.match(allPaths, terraformPath, rootFolder);
+    const terraformPath = path.join(rootFolder, terraformToolName + getExecutableExtension());
+    const allPaths = tasks.find(rootFolder);
+    const matchingResultFiles = tasks.match(allPaths, terraformPath, rootFolder);
     return matchingResultFiles[0];
 }
 
@@ -135,7 +222,5 @@ function getExecutableExtension(): string {
     if (isWindows) {
         return ".exe";
     }
-
     return "";
-
 }
