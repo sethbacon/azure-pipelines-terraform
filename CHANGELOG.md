@@ -8,18 +8,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.1.1] - 2026-03-07
-
-### Fixed
-
-- Renamed service endpoint contribution types to be globally unique in the VS Marketplace (`SBAWSServiceEndpoint`, `SBGoogleCloudServiceEndpoint`, `SBOCIServiceEndpoint`) — the original names were already claimed by the upstream `ms-devlabs` extension
-- Added `workflow_call:` trigger to CI workflow so the release workflow can call it as a reusable workflow
-- Added `NODE_OPTIONS=--openssl-legacy-provider` to release build step for webpack 4 compatibility with Node 18 OpenSSL 3
-- Removed nonexistent `marketplace` environment gate from release workflow
-
----
-
-## [0.1.0] - 2026-03-06
+## [0.1.0] - 2026-03-07
 
 First published release of the `sethbacon.pipeline-tasks-terraform` fork.
 
@@ -54,10 +43,12 @@ First published release of the `sethbacon.pipeline-tasks-terraform` fork.
 
 ### Changed
 
-- Extension manifest: publisher `sethbacon`, id `pipeline-tasks-terraform`, name `Pipeline Tasks for Terraform`; version reset to `0.1.0` for fork's first release
+- Extension manifest: publisher `sethbacon`, id `pipeline-tasks-terraform`, name `Pipeline Tasks for Terraform`
+- Service endpoint type names made globally unique: `SBAWSServiceEndpoint`, `SBGoogleCloudServiceEndpoint`, `SBOCIServiceEndpoint`
 - Upgraded `tfx-cli` from `0.16.0` to `0.23.1`
 - `parent-handler.ts`: routing decoupled for init (backend) vs. other commands (provider); added Generic/Local handler
 - TerraformTaskV5 mocha upgraded to `^11.2.0` for Node 25 compatibility
+- `visibleRule` expressions simplified to supported syntax (no `||` or parentheses)
 
 ---
 
