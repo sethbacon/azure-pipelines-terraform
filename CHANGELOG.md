@@ -6,6 +6,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-07
+
+### Fixed
+
+- Simplified  expressions in  to use only supported syntax (no  or parentheses — Marketplace validator requires  /  and  chains only)
+
 ---
 
 ## [0.1.1] - 2026-03-07
