@@ -34,7 +34,7 @@
             "name": "backendAzureRm",
             "displayName": "AzureRM backend configuration",
             "isExpanded": true,
-            "visibleRule": "(provider = azurerm || backendType = azurerm) && command = init"
+            "visibleRule": "provider = azurerm && command = init"
         },
         {
             "name": "providerAzureRm",
@@ -46,19 +46,19 @@
             "name": "backendAWS",
             "displayName": "Amazon Web Services(AWS) S3 backend configuration",
             "isExpanded": true,
-            "visibleRule": "(provider = aws || backendType = s3) && command = init"
+            "visibleRule": "provider = aws && command = init"
         },
         {
             "name": "backendGCP",
             "displayName": "Google Cloud Platform(GCP) GCS backend configuration",
             "isExpanded": true,
-            "visibleRule": "(provider = gcp || backendType = gcs) && command = init"
+            "visibleRule": "provider = gcp && command = init"
         },
         {
             "name": "backendOCI",
             "displayName": "Oracle Cloud Infrastructure(OCI) backend configuration",
             "isExpanded": true,
-            "visibleRule": "(provider = oci || backendType = oci) && command = init"
+            "visibleRule": "provider = oci && command = init"
         },
         {
             "name": "backendGeneric",
@@ -150,7 +150,7 @@
             "name": "replaceAddress",
             "type": "string",
             "label": "Replace resource address",
-            "visibleRule": "command = plan || command = apply",
+            "visibleRule": "command = plan",
             "required": false,
             "helpMarkDown": "Force replacement of a specific resource. Passed as -replace=ADDRESS to terraform plan or apply. Requires Terraform 1.0+."
         },
@@ -173,8 +173,8 @@
             "name": "workspaceName",
             "type": "string",
             "label": "Workspace name",
-            "visibleRule": "command = workspace && (workspaceSubCommand = new || workspaceSubCommand = select || workspaceSubCommand = delete)",
-            "required": true,
+            "visibleRule": "command = workspace",
+            "required": false,
             "helpMarkDown": "The name of the workspace to create, select, or delete."
         },
         {
@@ -224,7 +224,7 @@
             "type": "pickList",
             "label": "Output to",
             "defaultValue": "console",
-            "visibleRule": "command = show || command = custom",
+            "visibleRule": "command = show",
             "helpMarkDown": "choose output to file or console. ",
             "options": {
                 "file": "file",
