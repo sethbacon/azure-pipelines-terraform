@@ -1,34 +1,44 @@
 ---
-name: Unit Testing for TerraformTaskV4
+name: CI
+
 on:
   pull_request:
     branches:
       - main
+      - development
   push:
     branches:
-    - main
+      - main
+      - development
   workflow_dispatch:
 
 jobs:
-  unit-test-v4:
-    name: Unit Test V4 Task
+  build-and-test-v5:
+    name: Build and Test V5
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Run Unit Tests
-      run: |
-        cd Tasks/TerraformTask/TerraformTaskV4
-        npm install -include=dev
-        npm test
-  unit-test-v5:
-    name: Unit Test V5 Task
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm install --include=dev
+      - name: Compile TypeScript
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run compile
+      - name: Run unit tests
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm test
+
+  build-and-test-installer-v1:
+    name: Build and Test Installer V1
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Run Unit Tests
-      run: |
-        cd Tasks/TerraformTask/TerraformTaskV5
-        npm install -include=dev
-        npm test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm install --include=dev
+      - name: Compile TypeScript
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm run compile
+      - name: Run unit tests
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm test

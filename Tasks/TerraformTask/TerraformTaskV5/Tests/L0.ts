@@ -1190,6 +1190,217 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* terraform workspace tests */
+
+    it('workspace select should succeed', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceSelectSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('WorkspaceSelectSuccessL0 should have succeeded.'), 'Should have printed: WorkspaceSelectSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('workspace list should succeed', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceListSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('WorkspaceListSuccessL0 should have succeeded.'), 'Should have printed: WorkspaceListSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('workspace select should fail for nonexistent workspace', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceFail.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+        }, tr);
+    });
+
+    /* terraform state tests */
+
+    it('state list should succeed', async () => {
+        let tp = path.join(__dirname, './StateTests/StateListSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('StateListSuccessL0 should have succeeded.'), 'Should have printed: StateListSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('state push should succeed and emit warning', async () => {
+        let tp = path.join(__dirname, './StateTests/StatePushWarning.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length >= 1, 'should have at least one warning');
+        }, tr);
+    });
+
+    /* terraform fmt tests */
+
+    it('fmt check should succeed when all files are formatted', async () => {
+        let tp = path.join(__dirname, './FmtTests/FmtCheckSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('FmtCheckSuccessL0 should have succeeded.'), 'Should have printed: FmtCheckSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('fmt check should fail when files need formatting', async () => {
+        let tp = path.join(__dirname, './FmtTests/FmtFail.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+        }, tr);
+    });
+
+    /* terraform get tests */
+
+    it('get should succeed', async () => {
+        let tp = path.join(__dirname, './GetTests/GetSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('GetSuccessL0 should have succeeded.'), 'Should have printed: GetSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('get should fail when module download fails', async () => {
+        let tp = path.join(__dirname, './GetTests/GetFail.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+        }, tr);
+    });
+
+    /* generic backend init tests */
+
+    it('generic backend init should succeed with key=value config args', async () => {
+        let tp = path.join(__dirname, './InitTests/Generic/GenericInitSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GenericInitSuccessL0 should have succeeded.'), 'Should have printed: GenericInitSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* aws workload identity federation tests */
+
+    it('aws plan should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './PlanTests/AWS/AWSPlanWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSPlanWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* gcp workload identity federation tests */
+
+    it('gcp plan should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './PlanTests/GCP/GCPPlanWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPPlanWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* terraform plan/apply -replace flag tests */
+
+    it('azure plan should succeed with -replace flag', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanWithReplaceAddress.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanWithReplaceAddressL0 should have succeeded.'), 'Should have printed: AzurePlanWithReplaceAddressL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('azure apply should succeed with -replace flag', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyWithReplaceAddress.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplyWithReplaceAddressL0 should have succeeded.'), 'Should have printed: AzureApplyWithReplaceAddressL0 should have succeeded.');
+        }, tr);
+    });
+
     /* test for compareVersions method of BaseTerraformCommandHandler class */
 
     it('compareVersions should compare two versions correctly', async () => {

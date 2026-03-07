@@ -14,8 +14,8 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "257",
-        "Patch": "1"
+        "Minor": "259",
+        "Patch": "0"
     },
     "instanceNameFormat": "Terraform : $(provider)",
     "execution": {
@@ -34,7 +34,7 @@
             "name": "backendAzureRm",
             "displayName": "AzureRM backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = azurerm && command = init"
+            "visibleRule": "(provider = azurerm || backendType = azurerm) && command = init"
         },
         {
             "name": "providerAzureRm",
@@ -44,21 +44,27 @@
         },
         {
             "name": "backendAWS",
-            "displayName": "Amazon Web Services(AWS) backend configuration",
+            "displayName": "Amazon Web Services(AWS) S3 backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = aws && command = init"
+            "visibleRule": "(provider = aws || backendType = s3) && command = init"
         },
         {
             "name": "backendGCP",
-            "displayName": "Google Cloud Platform(GCP) backend configuration",
+            "displayName": "Google Cloud Platform(GCP) GCS backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = gcp && command = init"
+            "visibleRule": "(provider = gcp || backendType = gcs) && command = init"
         },
         {
             "name": "backendOCI",
             "displayName": "Oracle Cloud Infrastructure(OCI) backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = oci && command = init"
+            "visibleRule": "(provider = oci || backendType = oci) && command = init"
+        },
+        {
+            "name": "backendGeneric",
+            "displayName": "Generic backend configuration",
+            "isExpanded": true,
+            "visibleRule": "backendType = generic && command = init"
         }
     ],
     "inputs": [
@@ -94,7 +100,32 @@
                 "apply": "apply",
                 "output": "output",
                 "destroy": "destroy",
+                "workspace": "workspace",
+                "state": "state",
+                "fmt": "fmt",
+                "test": "test",
+                "get": "get",
                 "custom": "custom"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
+            "name": "backendType",
+            "type": "pickList",
+            "label": "State backend type",
+            "defaultValue": "azurerm",
+            "required": false,
+            "visibleRule": "command = init",
+            "helpMarkDown": "Where Terraform remote state is stored. Independent of the deployment provider above. Defaults to azurerm for backwards compatibility. Use 'Generic / Other' for any backend not listed (http, PostgreSQL, Consul, Kubernetes, etc.).",
+            "options": {
+                "azurerm": "Azure Blob Storage (azurerm)",
+                "s3": "Amazon S3 (s3)",
+                "gcs": "Google Cloud Storage (gcs)",
+                "oci": "Oracle Cloud Infrastructure (oci)",
+                "generic": "Generic / Other (http, pg, consul, kubernetes, ...)",
+                "local": "Local filesystem (no remote state)"
             },
             "properties": {
                 "EditableOptions": "False"
@@ -114,6 +145,79 @@
             "label": "Additional command arguments",
             "helpMarkDown": "Any additional arguments for the selected command such as '-option=value' or '-flag'. Multiple options can also be provided delimited by spaces.<br><br>Examples:<br>-out=tfplan (for terraform plan)<br>tfplan -auto-approve (for terraform apply)",
             "required": false
+        },
+        {
+            "name": "replaceAddress",
+            "type": "string",
+            "label": "Replace resource address",
+            "visibleRule": "command = plan || command = apply",
+            "required": false,
+            "helpMarkDown": "Force replacement of a specific resource. Passed as -replace=ADDRESS to terraform plan or apply. Requires Terraform 1.0+."
+        },
+        {
+            "name": "workspaceSubCommand",
+            "type": "pickList",
+            "label": "Workspace sub-command",
+            "visibleRule": "command = workspace",
+            "required": true,
+            "helpMarkDown": "The workspace sub-command to run.",
+            "options": {
+                "new": "new",
+                "select": "select",
+                "list": "list",
+                "delete": "delete",
+                "show": "show"
+            }
+        },
+        {
+            "name": "workspaceName",
+            "type": "string",
+            "label": "Workspace name",
+            "visibleRule": "command = workspace && (workspaceSubCommand = new || workspaceSubCommand = select || workspaceSubCommand = delete)",
+            "required": true,
+            "helpMarkDown": "The name of the workspace to create, select, or delete."
+        },
+        {
+            "name": "stateSubCommand",
+            "type": "pickList",
+            "label": "State sub-command",
+            "visibleRule": "command = state",
+            "required": true,
+            "helpMarkDown": "The state sub-command to run.",
+            "options": {
+                "list": "list",
+                "pull": "pull",
+                "push": "push",
+                "mv": "mv",
+                "rm": "rm",
+                "show": "show"
+            }
+        },
+        {
+            "name": "stateAddress",
+            "type": "string",
+            "label": "State address / arguments",
+            "visibleRule": "command = state",
+            "required": false,
+            "helpMarkDown": "Resource address(es) for the state sub-command. For mv: 'SOURCE DESTINATION'. For rm/show/list: 'ADDRESS'. For push: path to a local state file."
+        },
+        {
+            "name": "fmtCheck",
+            "type": "boolean",
+            "label": "Check mode (fail if formatting needed)",
+            "visibleRule": "command = fmt",
+            "defaultValue": "true",
+            "required": false,
+            "helpMarkDown": "If true, runs terraform fmt -check and fails if any files need reformatting. Useful for CI enforcement."
+        },
+        {
+            "name": "fmtRecursive",
+            "type": "boolean",
+            "label": "Recursive",
+            "visibleRule": "command = fmt",
+            "defaultValue": "true",
+            "required": false,
+            "helpMarkDown": "If true, runs terraform fmt -recursive to format files in subdirectories."
         },
         {
             "name": "outputTo",
@@ -162,7 +266,7 @@
             "type": "connectedService:AzureRM",
             "label": "Azure Provider Service Connection",
             "required": true,
-            "visibleRule": "provider = azurerm && command != init && command != validate",
+            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
             "helpMarkDown": "Select an Azure Resource Manager Service Connection for the Azure providers",
             "groupName": "providerAzureRm"
         },
@@ -171,7 +275,7 @@
             "type": "string",
             "label": "Subscription ID Override",
             "required": false,
-            "visibleRule": "provider = azurerm && command != init && command != validate",
+            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
             "helpMarkDown": "Used to override the subscription ID that the provider will target by default. This is set to the ARM_SUBSCRIPTION_ID environment variable. It will use the service connection subscription ID by default.",
             "groupName": "providerAzureRm"
         },
@@ -188,23 +292,112 @@
             "type": "connectedService:AWSServiceEndpoint",
             "label": "Amazon Web Services connection",
             "required": true,
-            "visibleRule": "provider = aws && command != init && command != validate",
+            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
             "helpMarkDown": "Select an Amazon Web Services connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup an Amazon Web Services service connection using the 'Add' or 'Manage' button."
+        },
+        {
+            "name": "environmentAuthSchemeAWS",
+            "type": "pickList",
+            "label": "Authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "Select how to authenticate with AWS. 'Service connection' uses static credentials from the service connection. 'Workload Identity Federation' uses OIDC to assume an IAM role without static credentials.",
+            "options": {
+                "ServiceConnection": "Service connection (static credentials)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
+            "name": "awsRoleArn",
+            "type": "string",
+            "label": "IAM Role ARN",
+            "required": true,
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "ARN of the AWS IAM role to assume via OIDC. E.g. arn:aws:iam::123456789012:role/MyTerraformRole"
+        },
+        {
+            "name": "awsRegion",
+            "type": "string",
+            "label": "AWS Region",
+            "required": true,
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "AWS region for the provider. E.g. us-east-1"
+        },
+        {
+            "name": "awsSessionName",
+            "type": "string",
+            "label": "Session name",
+            "required": false,
+            "defaultValue": "AzureDevOps-Terraform",
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "Name for the assumed role session. Defaults to 'AzureDevOps-Terraform'."
         },
         {
             "name": "environmentServiceNameGCP",
             "type": "connectedService:GoogleCloudServiceEndpoint",
             "label": "Google Cloud Platform connection",
             "required": true,
-            "visibleRule": "provider = gcp && command != init && command != validate",
+            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
             "helpMarkDown": "Select a Google Cloud Platform connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Google Cloud Platform service connection using the 'Add' or 'Manage' button."
+        },
+        {
+            "name": "environmentAuthSchemeGCP",
+            "type": "pickList",
+            "label": "Authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "Select how to authenticate with GCP. 'Service connection' uses a service account key. 'Workload Identity Federation' uses OIDC without static credentials.",
+            "options": {
+                "ServiceConnection": "Service connection (service account key)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
+            "name": "gcpProjectNumber",
+            "type": "string",
+            "label": "GCP Project Number",
+            "required": true,
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "Numeric GCP project number where the Workload Identity Pool lives."
+        },
+        {
+            "name": "gcpWorkloadIdentityPoolId",
+            "type": "string",
+            "label": "Workload Identity Pool ID",
+            "required": true,
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "ID of the Workload Identity Pool configured to trust Azure DevOps."
+        },
+        {
+            "name": "gcpWorkloadIdentityProviderId",
+            "type": "string",
+            "label": "Workload Identity Provider ID",
+            "required": true,
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "ID of the OIDC provider within the Workload Identity Pool."
+        },
+        {
+            "name": "gcpServiceAccountEmail",
+            "type": "string",
+            "label": "Service Account Email",
+            "required": true,
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "helpMarkDown": "Email of the GCP service account to impersonate. E.g. terraform@my-project.iam.gserviceaccount.com"
         },
         {
             "name": "environmentServiceNameOCI",
             "type": "connectedService:OracleCloudInfrastructureServiceEndpoint",
             "label": "Oracle Cloud Platform connection",
             "required": true,
-            "visibleRule": "provider = oci && command != init && command != validate",
+            "visibleRule": "provider = oci && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
             "helpMarkDown": "Select a Oracle Cloud Platform connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button."
         },
         {
@@ -344,6 +537,22 @@
             "required": false,
             "helpMarkDown": "The relative path to the state file inside the GCP bucket. For example, if you give the input as 'terraform', then the state file, named default.tfstate, will be stored inside an object called terraform.",
             "groupName": "backendGCP"
+        },
+        {
+            "name": "backendConfigFile",
+            "type": "filePath",
+            "label": "Backend config file (.tfbackend)",
+            "required": false,
+            "helpMarkDown": "Path to a Terraform backend configuration file (.tfbackend). Passed as -backend-config=<file> to terraform init. Can be used alone or together with the key=value pairs below.",
+            "groupName": "backendGeneric"
+        },
+        {
+            "name": "backendConfigArgs",
+            "type": "multiLine",
+            "label": "Backend configuration (key=value pairs)",
+            "required": false,
+            "helpMarkDown": "One backend-config argument per line in key=value format. Each line is passed as a separate -backend-config flag to terraform init. Lines starting with # are ignored as comments.\n\nExamples:\n  HTTP backend:   address=https://my-server/state\n  PostgreSQL:     conn_str=postgres://user:pass@host/db?sslmode=disable",
+            "groupName": "backendGeneric"
         },
         {
             "name": "backendServiceOCI",

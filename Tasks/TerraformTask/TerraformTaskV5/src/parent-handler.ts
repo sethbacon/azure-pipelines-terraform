@@ -1,8 +1,10 @@
+import tasks = require('azure-pipelines-task-lib/task');
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { TerraformCommandHandlerAzureRM } from './azure-terraform-command-handler';
 import { TerraformCommandHandlerAWS } from './aws-terraform-command-handler';
 import { TerraformCommandHandlerGCP } from './gcp-terraform-command-handler';
 import { TerraformCommandHandlerOCI } from './oci-terraform-command-handler';
+import { TerraformCommandHandlerGeneric } from './generic-terraform-command-handler';
 
 export interface IParentCommandHandler {
     execute(providerName: string, command: string): Promise<number>;
@@ -10,28 +12,31 @@ export interface IParentCommandHandler {
 
 export class ParentCommandHandler implements IParentCommandHandler {
     public async execute(providerName: string, command: string): Promise<number> {
-        // Create corresponding command handler according to provider name
-        let provider: BaseTerraformCommandHandler;
+        let handler: BaseTerraformCommandHandler;
 
-        switch(providerName) {
-            case "azurerm":
-                provider = new TerraformCommandHandlerAzureRM();
-                break;
-            
-            case "aws":
-                provider = new TerraformCommandHandlerAWS();
-                break;
-            
-            case "gcp":
-                provider = new TerraformCommandHandlerGCP();
-                break;
-            
-            case "oci":
-                provider = new TerraformCommandHandlerOCI();
-                break;
+        if (command === 'init') {
+            // For init: backendType drives handler selection (falls back to providerName for backwards compat)
+            const backendType = tasks.getInput("backendType", false) || providerName;
+            handler = this.createHandler(backendType);
+        } else {
+            // For all other commands: provider drives handler selection
+            handler = this.createHandler(providerName);
         }
 
-        // Run the corrresponding command according to command name
-        return await provider[command]();
+        return await handler[command]();
+    }
+
+    private createHandler(name: string): BaseTerraformCommandHandler {
+        switch(name) {
+            case "azurerm": return new TerraformCommandHandlerAzureRM();
+            case "aws":     // provider name fallback
+            case "s3":      return new TerraformCommandHandlerAWS();
+            case "gcp":     // provider name fallback
+            case "gcs":     return new TerraformCommandHandlerGCP();
+            case "oci":     return new TerraformCommandHandlerOCI();
+            case "generic":
+            case "local":   return new TerraformCommandHandlerGeneric();
+            default:        throw new Error(`Unknown backend/provider type: ${name}`);
+        }
     }
 }

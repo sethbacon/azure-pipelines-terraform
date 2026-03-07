@@ -2,6 +2,8 @@ import tasks = require('azure-pipelines-task-lib/task');
 import {ToolRunner} from 'azure-pipelines-task-lib/toolrunner';
 import {TerraformAuthorizationCommandInitializer} from './terraform-commands';
 import {BaseTerraformCommandHandler} from './base-terraform-command-handler';
+import {EnvironmentVariableHelper} from './environment-variables';
+import {generateIdToken} from './id-token-generator';
 import path = require('path');
 import * as uuidV4 from 'uuid/v4';
 
@@ -47,11 +49,47 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
-        if (command.serviceProvidername) {
-            let jsonKeyFilePath = this.getJsonKeyFilePath(command.serviceProvidername);
+        const authScheme = tasks.getInput("environmentAuthSchemeGCP", false) || "ServiceConnection";
 
-            process.env['GOOGLE_CREDENTIALS']  = `${jsonKeyFilePath}`;
-            process.env['GOOGLE_PROJECT']  = tasks.getEndpointDataParameter(command.serviceProvidername, "project", false);            
+        if (authScheme === "WorkloadIdentityFederation") {
+            await this.handleProviderWIF(command);
+        } else {
+            if (command.serviceProvidername) {
+                let jsonKeyFilePath = this.getJsonKeyFilePath(command.serviceProvidername);
+
+                process.env['GOOGLE_CREDENTIALS']  = `${jsonKeyFilePath}`;
+                process.env['GOOGLE_PROJECT']  = tasks.getEndpointDataParameter(command.serviceProvidername, "project", false);
+            }
         }
+    }
+
+    private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
+        const oidcToken = await generateIdToken(command.serviceProvidername);
+        tasks.setSecret(oidcToken);
+
+        const tokenFilePath = path.resolve(`gcp-oidc-token-${uuidV4()}.jwt`);
+        tasks.writeFile(tokenFilePath, oidcToken);
+
+        const projectNumber = tasks.getInput("gcpProjectNumber", true);
+        const poolId = tasks.getInput("gcpWorkloadIdentityPoolId", true);
+        const providerId = tasks.getInput("gcpWorkloadIdentityProviderId", true);
+        const serviceAccountEmail = tasks.getInput("gcpServiceAccountEmail", true);
+
+        const audience = `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
+
+        const credentials = {
+            type: "external_account",
+            audience: audience,
+            subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+            token_url: "https://sts.googleapis.com/v1/token",
+            credential_source: { file: tokenFilePath },
+            service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccountEmail}:generateAccessToken`
+        };
+
+        const credentialsFilePath = path.resolve(`gcp-wif-credentials-${uuidV4()}.json`);
+        tasks.writeFile(credentialsFilePath, JSON.stringify(credentials));
+
+        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);
     }
 }

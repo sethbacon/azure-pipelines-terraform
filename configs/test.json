@@ -1,6 +1,6 @@
 {
-    "id": "custom-terraform-tasks-test",
-    "name": "Terraform (test)",
+    "id": "pipeline-tasks-terraform-test",
+    "name": "Pipeline Tasks for Terraform (Test)",
     "public": false,
-    "publisher": "solidify-labs"
+    "publisher": "sethbacon"
 }

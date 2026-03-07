@@ -2,6 +2,10 @@ import tasks = require('azure-pipelines-task-lib/task');
 import {ToolRunner} from 'azure-pipelines-task-lib/toolrunner';
 import {TerraformAuthorizationCommandInitializer} from './terraform-commands';
 import {BaseTerraformCommandHandler} from './base-terraform-command-handler';
+import {EnvironmentVariableHelper} from './environment-variables';
+import {generateIdToken} from './id-token-generator';
+import path = require('path');
+import * as uuidV4 from 'uuid/v4';
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     constructor() {
@@ -27,9 +31,30 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
-        if (command.serviceProvidername) {
-            process.env['AWS_ACCESS_KEY_ID']  = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "username", false);
-            process.env['AWS_SECRET_ACCESS_KEY']  = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "password", false);            
+        const authScheme = tasks.getInput("environmentAuthSchemeAWS", false) || "ServiceConnection";
+
+        if (authScheme === "WorkloadIdentityFederation") {
+            await this.handleProviderWIF(command);
+        } else {
+            if (command.serviceProvidername) {
+                process.env['AWS_ACCESS_KEY_ID']  = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "username", false);
+                process.env['AWS_SECRET_ACCESS_KEY']  = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "password", false);
+            }
         }
+    }
+
+    private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
+        const oidcToken = await generateIdToken(command.serviceProvidername);
+        tasks.setSecret(oidcToken);
+
+        const tokenFilePath = path.resolve(`aws-oidc-token-${uuidV4()}.jwt`);
+        tasks.writeFile(tokenFilePath, oidcToken);
+
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true));
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", tasks.getInput("awsRegion", true));
+
+        const sessionName = tasks.getInput("awsSessionName", false) || "AzureDevOps-Terraform";
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", sessionName);
     }
 }

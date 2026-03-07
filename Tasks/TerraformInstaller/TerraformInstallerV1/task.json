@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "216",
+        "Minor": "217",
         "Patch": "0"
     },
     "instanceNameFormat": "Install Terraform $(terraformVersion)",
@@ -24,7 +24,47 @@
             "label": "Version",
             "defaultValue": "latest",
             "required": true,
-            "helpMarkDown": "The version of Terraform which should be installed on the agent if not already present"
+            "helpMarkDown": "The version of Terraform to install. Use 'latest' to install the current latest release."
+        },
+        {
+            "name": "downloadSource",
+            "type": "pickList",
+            "label": "Download source",
+            "defaultValue": "hashicorp",
+            "required": true,
+            "helpMarkDown": "Where to download the Terraform binary from.",
+            "options": {
+                "hashicorp": "HashiCorp official releases (releases.hashicorp.com)",
+                "registry": "Private registry (terraform-registry-backend)",
+                "mirror": "Custom mirror URL"
+            }
+        },
+        {
+            "name": "registryUrl",
+            "type": "string",
+            "label": "Registry base URL",
+            "defaultValue": "",
+            "required": true,
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "Base URL of your terraform-registry-backend instance. Must use HTTPS. Example: https://registry.example.com"
+        },
+        {
+            "name": "registryMirrorName",
+            "type": "string",
+            "label": "Mirror configuration name",
+            "defaultValue": "terraform",
+            "required": true,
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/..."
+        },
+        {
+            "name": "mirrorBaseUrl",
+            "type": "string",
+            "label": "Mirror base URL",
+            "defaultValue": "",
+            "required": true,
+            "visibleRule": "downloadSource = mirror",
+            "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as releases.hashicorp.com/terraform. Example: https://artifacts.example.com/hashicorp/terraform"
         }
     ],
     "execution": {
@@ -40,6 +80,10 @@
         {
             "name": "terraformLocation",
             "description": "The location of the terraform binary that was installed on the agent."
+        },
+        {
+            "name": "terraformDownloadedFrom",
+            "description": "The source from which terraform was downloaded: 'hashicorp', 'registry:<url>', or 'mirror:<url>'."
         }
     ],
     "messages": {
@@ -48,8 +92,12 @@
         "TerraformNotFoundInFolder": "Terraform executable not found in path %s",
         "OperatingSystemNotSupported": "Operating system %s is not supported",
         "ArchitectureNotSupported": "Architecture %s is not supported",
-        "TerraformDownloadFailed": "Failed to download Terraform from url %s. Error %s",
-        "TerraformVersionNotFound": "Unable to get latest version: %s defaulting to 1.0.8",
-        "GettingLatestTerraformVersion": "Getting latest Terraform version."
+        "TerraformDownloadFailed": "Failed to download Terraform from url %s. Error: %s",
+        "TerraformVersionNotFound": "Unable to get latest version from source, defaulting to 1.9.8",
+        "GettingLatestTerraformVersion": "Getting latest Terraform version.",
+        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+        "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
+        "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
+        "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s"
     }
 }
