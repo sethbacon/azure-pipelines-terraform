@@ -102,7 +102,7 @@
     },
     {
       "name": "environmentServiceNameAWS",
-      "type": "connectedService:AWSServiceEndpoint",
+      "type": "connectedService:SBAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameAWS",
       "required": true,
       "visibleRule": "provider = aws && command != init && command != validate",
@@ -110,7 +110,7 @@
     },
     {
       "name": "environmentServiceNameGCP",
-      "type": "connectedService:GoogleCloudServiceEndpoint",
+      "type": "connectedService:SBGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameGCP",
       "required": true,
       "visibleRule": "provider = gcp && command != init && command != validate",
@@ -167,7 +167,7 @@
     },
     {
       "name": "backendServiceAWS",
-      "type": "connectedService:AWSServiceEndpoint",
+      "type": "connectedService:SBAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceAWS",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceAWS",
@@ -194,7 +194,7 @@
     },
     {
       "name": "backendServiceGCP",
-      "type": "connectedService:GoogleCloudServiceEndpoint",
+      "type": "connectedService:SBGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceGCP",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceGCP",
