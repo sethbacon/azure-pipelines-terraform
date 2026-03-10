@@ -61,6 +61,12 @@
             "visibleRule": "provider = oci && command = init"
         },
         {
+            "name": "backendHCP",
+            "displayName": "HCP Terraform / Terraform Cloud backend configuration",
+            "isExpanded": true,
+            "visibleRule": "backendType = hcp && command = init"
+        },
+        {
             "name": "backendGeneric",
             "displayName": "Generic backend configuration",
             "isExpanded": true,
@@ -124,6 +130,7 @@
                 "s3": "Amazon S3 (s3)",
                 "gcs": "Google Cloud Storage (gcs)",
                 "oci": "Oracle Cloud Infrastructure (oci)",
+                "hcp": "HCP Terraform / Terraform Cloud (cloud)",
                 "generic": "Generic / Other (http, pg, consul, kubernetes, ...)",
                 "local": "Local filesystem (no remote state)"
             },
@@ -537,6 +544,30 @@
             "required": false,
             "helpMarkDown": "The relative path to the state file inside the GCP bucket. For example, if you give the input as 'terraform', then the state file, named default.tfstate, will be stored inside an object called terraform.",
             "groupName": "backendGCP"
+        },
+        {
+            "name": "backendHCPToken",
+            "type": "string",
+            "label": "HCP Terraform token",
+            "required": true,
+            "helpMarkDown": "API token for HCP Terraform / Terraform Cloud. Generate at app.terraform.io → User Settings → Tokens. This sets the TF_TOKEN_app_terraform_io environment variable.",
+            "groupName": "backendHCP"
+        },
+        {
+            "name": "backendHCPOrganization",
+            "type": "string",
+            "label": "Organization name",
+            "required": false,
+            "helpMarkDown": "Optional. HCP Terraform organization name. If not set, Terraform reads the organization from the cloud{} block in your .tf files. Sets TF_CLOUD_ORGANIZATION.",
+            "groupName": "backendHCP"
+        },
+        {
+            "name": "backendHCPWorkspace",
+            "type": "string",
+            "label": "Workspace name",
+            "required": false,
+            "helpMarkDown": "Optional. HCP Terraform workspace name. If not set, Terraform reads the workspace from the cloud{} block in your .tf files. Sets TF_WORKSPACE.",
+            "groupName": "backendHCP"
         },
         {
             "name": "backendConfigFile",

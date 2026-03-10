@@ -1339,6 +1339,22 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* hcp backend init tests */
+
+    it('hcp backend init should succeed with token, organization, and workspace', async () => {
+        let tp = path.join(__dirname, './InitTests/HCP/HCPInitSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('HCPInitSuccessL0 should have succeeded.'), 'Should have printed: HCPInitSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* aws workload identity federation tests */
 
     it('aws plan should succeed with workload identity federation', async () => {

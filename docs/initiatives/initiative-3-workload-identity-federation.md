@@ -6,10 +6,42 @@
 2. Add Workload Identity Federation (OIDC) support for AWS and GCP providers
 3. Support all Terraform backends: first-class for azurerm/s3/gcs/hcp, plus a generic passthrough for all others
 
+## Implementation Status (as of v0.1.2)
+
+| Item | Status |
+|------|--------|
+| `backendType` input (azurerm, s3, gcs, oci, generic, local) | Done |
+| `ParentCommandHandler` routing by `backendType` on init | Done |
+| `TerraformCommandHandlerGeneric` (generic + local) | Done |
+| `environmentAuthSchemeAWS` + AWS WIF provider branch | Done |
+| `environmentAuthSchemeGCP` + GCP WIF provider branch | Done |
+| HCP Terraform Cloud backend (`backendType: hcp`) | NOT YET IMPLEMENTED |
+
+### HCP Backend Gap
+
+The plan below includes `TerraformCommandHandlerHCP`, `backendHCPToken` / `backendHCPOrganization`
+/ `backendHCPWorkspace` inputs, and `hcp` in the `backendType` picklist. None of this was
+implemented in v0.1.2. Specifying `backendType: hcp` would throw `Unknown backend/provider type: hcp`
+at runtime.
+
+**Current workaround** (used in tf-test-hcp integration test): Use `backendType: generic` with
+empty `backendConfigArgs`. Declare the `cloud {}` block in a `backend.tf` file. Terraform handles
+all HCP configuration. Pass the API token via `env: TF_TOKEN_app_terraform_io` on each task step.
+
+**To complete HCP support (target v0.2.0):**
+
+1. Add `"hcp": "HCP Terraform / Terraform Cloud (cloud)"` to `backendType` options in `task.json`
+2. Add inputs (visible when `backendType = hcp && command = init`):
+   `backendHCPToken` (string), `backendHCPOrganization` (optional), `backendHCPWorkspace` (optional)
+3. Create `hcp-terraform-command-handler.ts`: `handleBackend()` sets `TF_TOKEN_app_terraform_io`
+   and optionally `TF_CLOUD_ORGANIZATION` / `TF_WORKSPACE`; `handleProvider()` is a no-op
+4. Add `case "hcp": return new TerraformCommandHandlerHCP()` in `parent-handler.ts`
+5. No new service connection type needed -- HCP uses a plain token input
+
 ## Phase Split
 
-- **Phase 1:** Add `backendType` input and decouple routing in `ParentCommandHandler`. Add HCP, Generic, and Local backend handlers.
-- **Phase 2:** Add WIF (OIDC) support for AWS and GCP providers (plan/apply/destroy).
+- **Phase 1:** `backendType` decoupling + Generic/Local handlers. Complete. HCP handler pending v0.2.0.
+- **Phase 2:** AWS and GCP WIF (OIDC) for plan/apply/destroy. Complete.
 
 ## Background: Backend/Provider Coupling Problem
 

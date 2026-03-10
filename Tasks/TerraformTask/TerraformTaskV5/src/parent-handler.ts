@@ -5,6 +5,7 @@ import { TerraformCommandHandlerAWS } from './aws-terraform-command-handler';
 import { TerraformCommandHandlerGCP } from './gcp-terraform-command-handler';
 import { TerraformCommandHandlerOCI } from './oci-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from './generic-terraform-command-handler';
+import { TerraformCommandHandlerHCP } from './hcp-terraform-command-handler';
 
 export interface IParentCommandHandler {
     execute(providerName: string, command: string): Promise<number>;
@@ -34,6 +35,7 @@ export class ParentCommandHandler implements IParentCommandHandler {
             case "gcp":     // provider name fallback
             case "gcs":     return new TerraformCommandHandlerGCP();
             case "oci":     return new TerraformCommandHandlerOCI();
+            case "hcp":     return new TerraformCommandHandlerHCP();
             case "generic":
             case "local":   return new TerraformCommandHandlerGeneric();
             default:        throw new Error(`Unknown backend/provider type: ${name}`);
