@@ -8,6 +8,14 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.2.1] — 2026-03-18
+
+### Fixed
+- Reverted task GUIDs to original values for marketplace compatibility (marketplace enforces GUID consistency across extension versions)
+- Fixed task name consistency across V1-V4 versions (all now use `PipelineTerraformTask`)
+
+---
+
 ## [0.2.0] - 2026-03-18
 
 ### Breaking Changes
