@@ -1,7 +1,7 @@
 {
-    "id": "981E87CD-B686-4A9E-B09E-B4AFDEDF126B",
-    "name": "TerraformTaskV4",
-    "friendlyName": "Terraform",
+    "id": "6cf47811-e0cd-4e54-b698-a669a0ef9efa",
+    "name": "PipelineTerraformTaskV4",
+    "friendlyName": "Pipeline Terraform",
     "description": "Execute terraform commands to manage resources on AzureRM, Amazon Web Services(AWS), Google Cloud Platform(GCP) and Oracle Cloud Infrastructure(OCI). v4.241.11",
     "author": "Microsoft Corporation",
     "helpMarkDown": "[Learn more about this task](https://aka.ms/devlabs/ado/tf/task/v4)",
@@ -185,7 +185,6 @@
         {
             "name": "environmentServiceNameOCI",
             "type": "connectedService:SBOCIServiceEndpoint",
-
             "label": "Oracle Cloud Platform connection",
             "required": true,
             "visibleRule": "provider = oci && command != init && command != validate",

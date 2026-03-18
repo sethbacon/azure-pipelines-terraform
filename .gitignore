@@ -4,3 +4,4 @@ Tasks/**/*.js
 .taskkey
 configs/self.json
 *.vsix
+package-lock.json

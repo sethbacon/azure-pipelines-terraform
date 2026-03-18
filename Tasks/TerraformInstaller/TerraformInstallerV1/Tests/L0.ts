@@ -13,7 +13,7 @@ describe('TerraformInstaller Test Suite', function () {
         };
     });
 
-    after(() => {});
+    after(() => { });
 
     function runValidations(validator: () => void, tr: ttm.MockTestRunner) {
         try {
@@ -24,6 +24,8 @@ describe('TerraformInstaller Test Suite', function () {
             throw error;
         }
     }
+
+    // --- HashiCorp download source ---
 
     it('hashicorp latest: should resolve version from checkpoint API and download', () => {
         const tp = path.join(__dirname, 'HashiCorpLatestSuccess.js');
@@ -47,6 +49,21 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // --- Cache hit ---
+
+    it('cached install: should use cached tool and skip download', () => {
+        const tp = path.join(__dirname, 'CachedInstallSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        tr.run();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    // --- Registry download source ---
+
     it('registry specific version: should download from pre-signed URL with SHA256 verification', () => {
         const tp = path.join(__dirname, 'RegistrySpecificVersionSuccess.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -58,6 +75,8 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // --- Mirror download source ---
+
     it('mirror custom URL: should download from mirror at HashiCorp path structure', () => {
         const tp = path.join(__dirname, 'MirrorCustomUrlSuccess.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -68,6 +87,8 @@ describe('TerraformInstaller Test Suite', function () {
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
         }, tr);
     });
+
+    // --- Failure cases ---
 
     it('insecure URL: should reject http:// mirror URL', () => {
         const tp = path.join(__dirname, 'InsecureUrlReject.js');
@@ -82,6 +103,17 @@ describe('TerraformInstaller Test Suite', function () {
 
     it('SHA256 mismatch: should fail when downloaded zip hash does not match registry', () => {
         const tp = path.join(__dirname, 'Sha256VerificationFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        tr.run();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('invalid version: should fail when version string is not valid semver', () => {
+        const tp = path.join(__dirname, 'InvalidVersionFail.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
         tr.run();
 

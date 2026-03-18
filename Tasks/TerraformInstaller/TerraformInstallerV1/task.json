@@ -1,7 +1,7 @@
 {
-    "id": "310afe61-60d3-49bd-b4b8-7abb989a38fc",
-    "name": "TerraformInstaller",
-    "friendlyName": "Terraform tool installer",
+    "id": "ad7bb8d6-5472-4d78-b140-69d5129f5381",
+    "name": "PipelineTerraformInstaller",
+    "friendlyName": "Pipeline Terraform tool installer",
     "description": "Find in cache or download a specific version of Terraform and prepend it to the PATH",
     "author": "Microsoft Corporation",
     "helpMarkDown": "[Learn more about this task](https://aka.ms/AAf1a0p)",
@@ -70,9 +70,11 @@
     "execution": {
         "Node10": {
             "target": "src/index.js"
-        },"Node16": {
+        },
+        "Node16": {
             "target": "src/index.js"
-        },"Node20_1": {
+        },
+        "Node20_1": {
             "target": "src/index.js"
         }
     },

@@ -1,7 +1,7 @@
 {
-    "id": "981E87CD-B686-4A9E-B09E-B4AFDEDF126B",
-    "name": "TerraformTaskV2",
-    "friendlyName": "Terraform",
+    "id": "6cf47811-e0cd-4e54-b698-a669a0ef9efa",
+    "name": "PipelineTerraformTaskV2",
+    "friendlyName": "Pipeline Terraform",
     "description": "Execute terraform commands to manage resources on AzureRM, Amazon Web Services(AWS) and Google Cloud Platform(GCP)",
     "author": "Microsoft Corporation",
     "helpMarkDown": "[Learn more about this task](https://aka.ms/AAf0uqr)",
@@ -42,7 +42,8 @@
             "visibleRule": "provider = gcp && command = init"
         }
     ],
-    "inputs": [{
+    "inputs": [
+        {
             "name": "provider",
             "type": "picklist",
             "label": "Provider",

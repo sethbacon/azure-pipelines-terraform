@@ -12,7 +12,17 @@ export interface IParentCommandHandler {
 }
 
 export class ParentCommandHandler implements IParentCommandHandler {
+    private static readonly VALID_COMMANDS = [
+        'init', 'plan', 'apply', 'destroy', 'validate',
+        'show', 'output', 'custom', 'workspace', 'state',
+        'fmt', 'test', 'get'
+    ];
+
     public async execute(providerName: string, command: string): Promise<number> {
+        if (!ParentCommandHandler.VALID_COMMANDS.includes(command)) {
+            throw new Error(`Invalid command: ${command}. Valid commands: ${ParentCommandHandler.VALID_COMMANDS.join(', ')}`);
+        }
+
         let handler: BaseTerraformCommandHandler;
 
         if (command === 'init') {
@@ -24,21 +34,25 @@ export class ParentCommandHandler implements IParentCommandHandler {
             handler = this.createHandler(providerName);
         }
 
-        return await handler[command]();
+        try {
+            return await (handler as any)[command]();
+        } finally {
+            handler.cleanupTempFiles();
+        }
     }
 
     private createHandler(name: string): BaseTerraformCommandHandler {
-        switch(name) {
+        switch (name) {
             case "azurerm": return new TerraformCommandHandlerAzureRM();
             case "aws":     // provider name fallback
-            case "s3":      return new TerraformCommandHandlerAWS();
+            case "s3": return new TerraformCommandHandlerAWS();
             case "gcp":     // provider name fallback
-            case "gcs":     return new TerraformCommandHandlerGCP();
-            case "oci":     return new TerraformCommandHandlerOCI();
-            case "hcp":     return new TerraformCommandHandlerHCP();
+            case "gcs": return new TerraformCommandHandlerGCP();
+            case "oci": return new TerraformCommandHandlerOCI();
+            case "hcp": return new TerraformCommandHandlerHCP();
             case "generic":
-            case "local":   return new TerraformCommandHandlerGeneric();
-            default:        throw new Error(`Unknown backend/provider type: ${name}`);
+            case "local": return new TerraformCommandHandlerGeneric();
+            default: throw new Error(`Unknown backend/provider type: ${name}`);
         }
     }
 }

@@ -20,8 +20,8 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
     let resolvedVersion: string;
     switch (downloadSource) {
         case "registry": {
-            const registryUrl = tasks.getInput("registryUrl", true);
-            const mirrorName = tasks.getInput("registryMirrorName", true) || "terraform";
+            const registryUrl = tasks.getInput("registryUrl", true)!;
+            const mirrorName = tasks.getInput("registryMirrorName", true)! || "terraform";
             resolvedVersion = await resolveVersionFromRegistry(inputVersion, registryUrl, mirrorName);
             break;
         }
@@ -42,14 +42,14 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         let zipPath: string;
         switch (downloadSource) {
             case "registry": {
-                const registryUrl = tasks.getInput("registryUrl", true);
-                const mirrorName = tasks.getInput("registryMirrorName", true) || "terraform";
+                const registryUrl = tasks.getInput("registryUrl", true)!;
+                const mirrorName = tasks.getInput("registryMirrorName", true)! || "terraform";
                 zipPath = await downloadZipFromRegistry(version, registryUrl, mirrorName);
                 tasks.setVariable('terraformDownloadedFrom', `registry:${registryUrl}`);
                 break;
             }
             case "mirror": {
-                const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true);
+                const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
                 zipPath = await downloadZipFromMirror(version, mirrorBaseUrl);
                 tasks.setVariable('terraformDownloadedFrom', `mirror:${mirrorBaseUrl}`);
                 break;
@@ -72,7 +72,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
     }
 
     if (!isWindows) {
-        fs.chmodSync(terraformPath, "777");
+        fs.chmodSync(terraformPath, "755");
     }
 
     tasks.setVariable('terraformLocation', terraformPath);
@@ -111,11 +111,21 @@ async function resolveVersionFromRegistry(inputVersion: string, registryUrl: str
 async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const downloadUrl = getHashiCorpDownloadUrl(version);
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    let zipPath: string;
     try {
-        return await tools.downloadTool(downloadUrl, fileName);
+        zipPath = await tools.downloadTool(downloadUrl, fileName);
     } catch (exception) {
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
+
+    const osPlatform = getPlatformString();
+    const arch = getArchString();
+    const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
+    const sha256SumsUrl = `https://releases.hashicorp.com/terraform/${version}/terraform_${version}_SHA256SUMS`;
+    const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
+    await verifySha256(zipPath, expectedHash);
+
+    return zipPath;
 }
 
 async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<string> {
@@ -149,11 +159,24 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     const downloadUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_${osPlatform}_${arch}.zip`;
 
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    let zipPath: string;
     try {
-        return await tools.downloadTool(downloadUrl, fileName);
+        zipPath = await tools.downloadTool(downloadUrl, fileName);
     } catch (exception) {
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
+
+    // Attempt SHA256 verification from mirror — don't fail if SHA256SUMS is unavailable
+    const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
+    const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
+    try {
+        const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
+        await verifySha256(zipPath, expectedHash);
+    } catch (error) {
+        console.warn(`SHA256 verification skipped for mirror download: ${error instanceof Error ? error.message : error}`);
+    }
+
+    return zipPath;
 }
 
 // --- Helpers ---
@@ -167,7 +190,7 @@ async function fetchJson(url: string): Promise<any> {
     if (proxy != null) {
         const proxyUrl = proxy.proxyUsername != ""
             ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':'
-              + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
+            + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
             : proxy.proxyUrl;
         options.agent = new HttpsProxyAgent(proxyUrl);
     }
@@ -177,6 +200,42 @@ async function fetchJson(url: string): Promise<any> {
         throw new Error(tasks.loc("RegistryRequestFailed", url, response.status));
     }
     return response.json();
+}
+
+async function fetchText(url: string): Promise<string> {
+    if (!url.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", url));
+    }
+
+    const options: any = {};
+    if (proxy != null) {
+        const proxyUrl = proxy.proxyUsername != ""
+            ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':'
+            + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
+            : proxy.proxyUrl;
+        options.agent = new HttpsProxyAgent(proxyUrl);
+    }
+
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+    }
+    return response.text();
+}
+
+async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): Promise<string> {
+    tasks.debug(`Fetching SHA256SUMS from ${sha256SumsUrl}`);
+    const body = await fetchText(sha256SumsUrl);
+    const lines = body.split('\n');
+    for (const line of lines) {
+        // Format: "<hex-hash>  <filename>" (two spaces between hash and filename)
+        const match = line.match(/^([a-fA-F0-9]{64})\s+(.+)$/);
+        if (match && match[2].trim() === zipFileName) {
+            tasks.debug(`Found SHA256 for ${zipFileName}: ${match[1]}`);
+            return match[1];
+        }
+    }
+    throw new Error(`SHA256 checksum not found for ${zipFileName} in ${sha256SumsUrl}`);
 }
 
 async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
@@ -190,8 +249,8 @@ async function verifySha256(filePath: string, expectedHash: string): Promise<voi
 
 function getPlatformString(): string {
     switch (os.type()) {
-        case "Darwin":     return "darwin";
-        case "Linux":      return "linux";
+        case "Darwin": return "darwin";
+        case "Linux": return "linux";
         case "Windows_NT": return "windows";
         default: throw new Error(tasks.loc("OperatingSystemNotSupported", os.type()));
     }
@@ -199,10 +258,10 @@ function getPlatformString(): string {
 
 function getArchString(): string {
     switch (os.arch()) {
-        case "x64":   return "amd64";
-        case "x32":   return "386";
+        case "x64": return "amd64";
+        case "x32": return "386";
         case "arm64": return "arm64";
-        case "arm":   return "arm";
+        case "arm": return "arm";
         default: throw new Error(tasks.loc("ArchitectureNotSupported", os.arch()));
     }
 }

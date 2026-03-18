@@ -1,8 +1,8 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import {ToolRunner} from 'azure-pipelines-task-lib/toolrunner';
-import {TerraformAuthorizationCommandInitializer} from './terraform-commands';
-import {BaseTerraformCommandHandler} from './base-terraform-command-handler';
-import {EnvironmentVariableHelper} from './environment-variables';
+import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
+import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
+import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
+import { EnvironmentVariableHelper } from './environment-variables';
 
 export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
     constructor() {
@@ -10,8 +10,8 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         this.providerName = "hcp";
     }
 
-    public async handleBackend(terraformToolRunner: ToolRunner) : Promise<void> {
-        const token = tasks.getInput("backendHCPToken", true);
+    public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
+        const token = tasks.getInput("backendHCPToken", true)!;
         EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token);
 
         const organization = tasks.getInput("backendHCPOrganization", false);
@@ -25,7 +25,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         }
     }
 
-    public async handleProvider(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
+    public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
         // No-op: HCP backend does not provide cloud provider credentials for plan/apply
     }
 }

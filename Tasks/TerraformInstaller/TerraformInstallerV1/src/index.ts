@@ -5,7 +5,7 @@ import path = require('path');
 import * as installer from './terraform-installer';
 
 async function configureTerraform() {
-    let inputVersion = tasks.getInput("terraformVersion", true);
+    let inputVersion = tasks.getInput("terraformVersion", true)!;
     let terraformPath = await installer.downloadTerraform(inputVersion);
     let envPath = process.env['PATH'];
 
@@ -18,7 +18,7 @@ async function configureTerraform() {
 async function verifyTerraform() {
     console.log(tasks.loc("VerifyTerraformInstallation"));
     let terraformPath = tasks.which("terraform", true);
-    let terraformTool : ToolRunner = tasks.tool(terraformPath);
+    let terraformTool: ToolRunner = tasks.tool(terraformPath);
     terraformTool.arg("version");
     return terraformTool.exec();
 }
@@ -31,7 +31,7 @@ async function run() {
         await verifyTerraform();
         tasks.setResult(tasks.TaskResult.Succeeded, "");
     } catch (error) {
-        tasks.setResult(tasks.TaskResult.Failed, error);
+        tasks.setResult(tasks.TaskResult.Failed, error instanceof Error ? error.message : String(error));
     }
 }
 

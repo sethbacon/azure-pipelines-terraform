@@ -9,7 +9,7 @@ describe('Terraform Test Suite', function () {
         delete process.env.NODE_OPTIONS
     });
 
-    after(() => {});
+    after(() => { });
 
     /* terraform init tests */
 
@@ -1163,7 +1163,7 @@ describe('Terraform Test Suite', function () {
 
     it('warnIfMultipleProviders should not warn for single provider', async () => {
         let tp = path.join(__dirname, './MultipleProviderTests/SingleProviderNoWarning.js');
-        let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
 
@@ -1177,7 +1177,7 @@ describe('Terraform Test Suite', function () {
 
     it('warnIfMultipleProviders should warn correctly for multiple providers', async () => {
         let tp = path.join(__dirname, './MultipleProviderTests/MultipleProviderWarning.js');
-        let tr : ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
 
@@ -1417,6 +1417,84 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* terraform show tests */
+
+    it('azure show to console should succeed', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowConsoleSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: AzureShowConsoleSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('azure show to file should succeed', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowFileSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowFileSuccessL0 should have succeeded.'), 'Should have printed: AzureShowFileSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* terraform output tests */
+
+    it('azure output should succeed', async () => {
+        let tp = path.join(__dirname, './OutputTests/AzureOutputSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureOutputSuccessL0 should have succeeded.'), 'Should have printed: AzureOutputSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* terraform custom tests */
+
+    it('azure custom command to console should succeed', async () => {
+        let tp = path.join(__dirname, './CustomTests/AzureCustomConsoleSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureCustomConsoleSuccessL0 should have succeeded.'), 'Should have printed: AzureCustomConsoleSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* terraform test command tests */
+
+    it('azure test command should succeed', async () => {
+        let tp = path.join(__dirname, './TestCommandTests/AzureTestSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureTestSuccessL0 should have succeeded.'), 'Should have printed: AzureTestSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* test for compareVersions method of BaseTerraformCommandHandler class */
 
     it('compareVersions should compare two versions correctly', async () => {
@@ -1426,12 +1504,12 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
 
         runValidations(() => {
-            assert(tr.stdOutContained('compareVersions("0.20.7", "0.20.8") should have been -1') , 'Should have printed: compareVersions("0.20.7", "0.20.8") should have been -1'+tr.stdout);
-            assert(tr.stdOutContained('compareVersions("0.20.9", "0.20.8") should have been 1') , 'Should have printed: compareVersions("0.20.9", "0.20.8") should have been 1');
-            assert(tr.stdOutContained('compareVersions("0.2.9", "0.2.9") should have been 0') , 'Should have printed: compareVersions("0.2.9", "0.2.9") should have been 0');
-            assert(tr.stdOutContained('compareVersions("0.20.9", "0.20.09") should have been 0') , 'Should have printed: compareVersions("0.20.9", "0.20.09") should have been 0');
-            assert(tr.stdOutContained('compareVersions("0.21.9", "0.20.9") should have been 1') , 'Should have printed: compareVersions("0.21.9", "0.20.9") should have been 1');
-            assert(tr.stdOutContained('compareVersions("1.20.10", "0.20.11") should have been 1') , 'Should have printed: compareVersions("1.20.10", "0.20.11") should have been 1');
+            assert(tr.stdOutContained('compareVersions("0.20.7", "0.20.8") should have been -1'), 'Should have printed: compareVersions("0.20.7", "0.20.8") should have been -1' + tr.stdout);
+            assert(tr.stdOutContained('compareVersions("0.20.9", "0.20.8") should have been 1'), 'Should have printed: compareVersions("0.20.9", "0.20.8") should have been 1');
+            assert(tr.stdOutContained('compareVersions("0.2.9", "0.2.9") should have been 0'), 'Should have printed: compareVersions("0.2.9", "0.2.9") should have been 0');
+            assert(tr.stdOutContained('compareVersions("0.20.9", "0.20.09") should have been 0'), 'Should have printed: compareVersions("0.20.9", "0.20.09") should have been 0');
+            assert(tr.stdOutContained('compareVersions("0.21.9", "0.20.9") should have been 1'), 'Should have printed: compareVersions("0.21.9", "0.20.9") should have been 1');
+            assert(tr.stdOutContained('compareVersions("1.20.10", "0.20.11") should have been 1'), 'Should have printed: compareVersions("1.20.10", "0.20.11") should have been 1');
         }, tr);
     });
 
