@@ -168,7 +168,7 @@
         },
         {
             "name": "environmentServiceNameAWS",
-            "type": "connectedService:SBAWSServiceEndpoint",
+            "type": "connectedService:PTTAWSServiceEndpoint",
             "label": "Amazon Web Services connection",
             "required": true,
             "visibleRule": "provider = aws && command != init && command != validate",
@@ -176,7 +176,7 @@
         },
         {
             "name": "environmentServiceNameGCP",
-            "type": "connectedService:SBGoogleCloudServiceEndpoint",
+            "type": "connectedService:PTTGoogleCloudServiceEndpoint",
             "label": "Google Cloud Platform connection",
             "required": true,
             "visibleRule": "provider = gcp && command != init && command != validate",
@@ -184,7 +184,7 @@
         },
         {
             "name": "environmentServiceNameOCI",
-            "type": "connectedService:SBOCIServiceEndpoint",
+            "type": "connectedService:PTTOCIServiceEndpoint",
             "label": "Oracle Cloud Platform connection",
             "required": true,
             "visibleRule": "provider = oci && command != init && command != validate",
@@ -261,7 +261,7 @@
         },
         {
             "name": "backendServiceAWS",
-            "type": "connectedService:SBAWSServiceEndpoint",
+            "type": "connectedService:PTTAWSServiceEndpoint",
             "label": "Amazon Web Services connection",
             "required": true,
             "helpMarkDown": "Amazon Web Services connection for the terraform backend configuration.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup an Amazon Web Services service connection using the 'Add' or 'Manage' button.",
@@ -288,7 +288,7 @@
         },
         {
             "name": "backendServiceGCP",
-            "type": "connectedService:SBGoogleCloudServiceEndpoint",
+            "type": "connectedService:PTTGoogleCloudServiceEndpoint",
             "label": "Google Cloud Platform connection",
             "required": true,
             "helpMarkDown": "Google Cloud Platform connection for the terraform backend configuration.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Google Cloud Platform service connection using the 'Add' or 'Manage' button.",
@@ -315,7 +315,7 @@
         },
         {
             "name": "backendServiceOCI",
-            "type": "connectedService:SBOCIServiceEndpoint",
+            "type": "connectedService:PTTOCIServiceEndpoint",
             "label": "Oracle Cloud Infrastructure connection",
             "required": true,
             "helpMarkDown": "Oracle Cloud Infrastructure connection for the terraform backend configuration.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button.",

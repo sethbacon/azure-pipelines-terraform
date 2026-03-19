@@ -102,7 +102,7 @@
     },
     {
       "name": "environmentServiceNameAWS",
-      "type": "connectedService:SBAWSServiceEndpoint",
+      "type": "connectedService:PTTAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameAWS",
       "required": true,
       "visibleRule": "provider = aws && command != init && command != validate",
@@ -110,7 +110,7 @@
     },
     {
       "name": "environmentServiceNameGCP",
-      "type": "connectedService:SBGoogleCloudServiceEndpoint",
+      "type": "connectedService:PTTGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameGCP",
       "required": true,
       "visibleRule": "provider = gcp && command != init && command != validate",
@@ -167,7 +167,7 @@
     },
     {
       "name": "backendServiceAWS",
-      "type": "connectedService:SBAWSServiceEndpoint",
+      "type": "connectedService:PTTAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceAWS",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceAWS",
@@ -194,7 +194,7 @@
     },
     {
       "name": "backendServiceGCP",
-      "type": "connectedService:SBGoogleCloudServiceEndpoint",
+      "type": "connectedService:PTTGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceGCP",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceGCP",
@@ -260,8 +260,8 @@
       "description": "The location of the JSON file which contains the output variables set by the user in the terraform config files.<br><br>Note: This variable will only be set if 'command' input is set to 'apply'."
     },
     {
-        "name": "changesPresent",
-        "description": "A boolean indicating if the terraform plan found any changes to apply."
+      "name": "changesPresent",
+      "description": "A boolean indicating if the terraform plan found any changes to apply."
     }
   ],
   "messages": {

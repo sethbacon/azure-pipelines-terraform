@@ -88,7 +88,7 @@ First published release of the `sethbacon.pipeline-tasks-terraform` fork.
 ### Changed
 
 - Extension manifest: publisher `sethbacon`, id `pipeline-tasks-terraform`, name `Pipeline Tasks for Terraform`
-- Service endpoint type names made globally unique: `SBAWSServiceEndpoint`, `SBGoogleCloudServiceEndpoint`, `SBOCIServiceEndpoint`
+- Service endpoint type names made globally unique: `PTTAWSServiceEndpoint`, `PTTGoogleCloudServiceEndpoint`, `PTTOCIServiceEndpoint`
 - Upgraded `tfx-cli` from `0.16.0` to `0.23.1`
 - `parent-handler.ts`: routing decoupled for init (backend) vs. other commands (provider); added Generic/Local handler
 - TerraformTaskV5 mocha upgraded to `^11.2.0` for Node 25 compatibility
