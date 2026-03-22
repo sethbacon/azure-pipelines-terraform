@@ -8,6 +8,17 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.2.3] — 2026-03-22
+
+### Documentation
+
+- Rewrote README from scratch: fork identity, task reference (`PipelineTerraformInstaller@1`, `PipelineTerraformTask@5`), all 13 commands, all 7 `backendType` options, provider/auth table, service connection types, WIF quick-reference YAML, differences-from-MS-DevLabs comparison table
+- Replaced SECURITY.md with GitHub Security Advisory guidance (removed Microsoft MSRC contact)
+- Updated SUPPORT.md: removed Microsoft references, retained GitHub Issues guidance
+- Replaced CODE_OF_CONDUCT.md with Contributor Covenant v2.1 (removed Microsoft OSS CoC)
+
+---
+
 ## [0.2.1] — 2026-03-18
 
 ### Fixed
