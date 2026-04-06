@@ -9,7 +9,7 @@ WIF support added for AWS and GCP in Initiative 3.
 ## Current State
 
 The `TerraformCommandHandlerOCI` handler currently authenticates using an API key stored in
-an `SBOCIServiceEndpoint` service connection (user OCID + tenancy OCID + private key + fingerprint
+an `PTTOCIServiceEndpoint` service connection (user OCID + tenancy OCID + private key + fingerprint
 + region). These long-lived credentials must be rotated manually and stored in ADO as secrets.
 
 ## Why OCI WIF Is More Complex Than AWS/GCP
@@ -33,13 +33,13 @@ OCI Token Exchange API after validating an external OIDC JWT. However:
 
 ### Potential Paths Forward
 
-| Approach | Feasibility | Notes |
-|----------|-------------|-------|
-| OCI Token Exchange API → UPST → OCI CLI session profile → Terraform | Medium | Requires writing config files to disk, not just env vars. Brittle. |
-| OCI Token Exchange API → UPST → `security_token_file` in provider block | Medium | OCI TF provider *may* accept `security_token_file` in the `provider "oci"` block via `auth = "SecurityToken"`. Needs testing. |
-| OCI Resource Principal / Dynamic Groups | Low | Only works if the ADO agent runs on OCI compute. Not applicable to hosted agents. |
-| OCI API Key via dynamic secrets (Vault) | Low | Not a WIF approach; just moves the secret rotation problem. |
-| OCI Workload Identity with direct JWT auth | Unknown | OCI IAM supports OIDC federation for service resources. Whether the Terraform provider can accept a raw OCI OIDC-validated token is undocumented. |
+| Approach                                                                | Feasibility | Notes                                                                                                                                             |
+| ----------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OCI Token Exchange API → UPST → OCI CLI session profile → Terraform     | Medium      | Requires writing config files to disk, not just env vars. Brittle.                                                                                |
+| OCI Token Exchange API → UPST → `security_token_file` in provider block | Medium      | OCI TF provider *may* accept `security_token_file` in the `provider "oci"` block via `auth = "SecurityToken"`. Needs testing.                     |
+| OCI Resource Principal / Dynamic Groups                                 | Low         | Only works if the ADO agent runs on OCI compute. Not applicable to hosted agents.                                                                 |
+| OCI API Key via dynamic secrets (Vault)                                 | Low         | Not a WIF approach; just moves the secret rotation problem.                                                                                       |
+| OCI Workload Identity with direct JWT auth                              | Unknown     | OCI IAM supports OIDC federation for service resources. Whether the Terraform provider can accept a raw OCI OIDC-validated token is undocumented. |
 
 ## Research Questions
 
@@ -88,12 +88,12 @@ This reads a session token from the OCI CLI config file at the specified profile
 
 The OCI Terraform provider reads several env vars:
 
-| Env Var | Purpose |
-|---------|---------|
-| `OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING` | Suppress config file warnings |
-| `TF_VAR_tenancy_ocid` | Tenancy OCID (via Terraform variable) |
-| `OCI_CONFIG_FILE` | Path to OCI config file |
-| `OCI_CONFIG_PROFILE` | Profile name within the config file |
+| Env Var                                     | Purpose                               |
+| ------------------------------------------- | ------------------------------------- |
+| `OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING` | Suppress config file warnings         |
+| `TF_VAR_tenancy_ocid`                       | Tenancy OCID (via Terraform variable) |
+| `OCI_CONFIG_FILE`                           | Path to OCI config file               |
+| `OCI_CONFIG_PROFILE`                        | Profile name within the config file   |
 
 **Questions:**
 - Does setting `OCI_CONFIG_FILE` to a synthetically generated file containing a `[DEFAULT]`
@@ -188,11 +188,11 @@ This is significantly more complex than AWS/GCP WIF and requires:
 
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `task.json` | Add `environmentAuthSchemeOCI` + WIF inputs |
+| File                               | Change                                               |
+| ---------------------------------- | ---------------------------------------------------- |
+| `task.json`                        | Add `environmentAuthSchemeOCI` + WIF inputs          |
 | `oci-terraform-command-handler.ts` | Add `handleProviderWIF()`, update `handleProvider()` |
-| `docs/setup/oci-wif-setup.md` | New — OCI IAM OIDC provider setup guide |
+| `docs/setup/oci-wif-setup.md`      | New — OCI IAM OIDC provider setup guide              |
 
 ## Recommended Research Steps Before Coding
 

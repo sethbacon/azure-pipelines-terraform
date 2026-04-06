@@ -87,7 +87,8 @@
       "defaultValue": "$(System.DefaultWorkingDirectory)",
       "helpMarkDown": "ms-resource:loc.input.help.workingDirectory",
       "required": false
-    },{
+    },
+    {
       "name": "customCommand",
       "type": "string",
       "visibleRule": "command = custom",
@@ -102,19 +103,18 @@
       "helpMarkDown": "ms-resource:loc.input.help.commandOptions",
       "required": false
     },
-    
     {
-        "name": "outputTo",
-        "type": "pickList",
-        "label": "ms-resource:loc.input.label.outputTo",
-        "defaultValue": "console",
-        "visibleRule": "command = show || command = custom",
-        "helpMarkDown": "ms-resource:loc.input.help.outputTo",
-        "options": {
-            "file": "file",
-            "console": "console"
-        },
-        "required": true
+      "name": "outputTo",
+      "type": "pickList",
+      "label": "ms-resource:loc.input.label.outputTo",
+      "defaultValue": "console",
+      "visibleRule": "command = show || command = custom",
+      "helpMarkDown": "ms-resource:loc.input.help.outputTo",
+      "options": {
+        "file": "file",
+        "console": "console"
+      },
+      "required": true
     },
     {
       "name": "outputFormat",
@@ -124,19 +124,18 @@
       "visibleRule": "command = show",
       "helpMarkDown": "ms-resource:loc.input.help.outputFormat",
       "options": {
-          "json": "json",
-          "default": "default"
+        "json": "json",
+        "default": "default"
       },
       "required": true
-  },
+    },
     {
-        "name": "fileName",
-        "type": "string",
-        "label": "ms-resource:loc.input.label.fileName",
-        "visibleRule": "outputTo = file",
-        "required": true,
-        "helpMarkDown": "ms-resource:loc.input.help.fileName"
-
+      "name": "fileName",
+      "type": "string",
+      "label": "ms-resource:loc.input.label.fileName",
+      "visibleRule": "outputTo = file",
+      "required": true,
+      "helpMarkDown": "ms-resource:loc.input.help.fileName"
     },
     {
       "name": "environmentServiceNameAzureRM",
@@ -148,7 +147,7 @@
     },
     {
       "name": "environmentServiceNameAWS",
-      "type": "connectedService:SBAWSServiceEndpoint",
+      "type": "connectedService:PTTAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameAWS",
       "required": true,
       "visibleRule": "provider = aws && command != init && command != validate",
@@ -156,7 +155,7 @@
     },
     {
       "name": "environmentServiceNameGCP",
-      "type": "connectedService:SBGoogleCloudServiceEndpoint",
+      "type": "connectedService:PTTGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.environmentServiceNameGCP",
       "required": true,
       "visibleRule": "provider = gcp && command != init && command != validate",
@@ -213,7 +212,7 @@
     },
     {
       "name": "backendServiceAWS",
-      "type": "connectedService:SBAWSServiceEndpoint",
+      "type": "connectedService:PTTAWSServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceAWS",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceAWS",
@@ -240,7 +239,7 @@
     },
     {
       "name": "backendServiceGCP",
-      "type": "connectedService:SBGoogleCloudServiceEndpoint",
+      "type": "connectedService:PTTGoogleCloudServiceEndpoint",
       "label": "ms-resource:loc.input.label.backendServiceGCP",
       "required": true,
       "helpMarkDown": "ms-resource:loc.input.help.backendServiceGCP",

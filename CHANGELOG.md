@@ -55,6 +55,17 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.2.3] — 2026-03-22
+
+### Documentation
+
+- Rewrote README from scratch: fork identity, task reference (`PipelineTerraformInstaller@1`, `PipelineTerraformTask@5`), all 13 commands, all 7 `backendType` options, provider/auth table, service connection types, WIF quick-reference YAML, differences-from-MS-DevLabs comparison table
+- Replaced SECURITY.md with GitHub Security Advisory guidance (removed Microsoft MSRC contact)
+- Updated SUPPORT.md: removed Microsoft references, retained GitHub Issues guidance
+- Replaced CODE_OF_CONDUCT.md with Contributor Covenant v2.1 (removed Microsoft OSS CoC)
+
+---
+
 ## [0.2.1] — 2026-03-18
 
 ### Fixed
@@ -135,7 +146,7 @@ First published release of the `sethbacon.pipeline-tasks-terraform` fork.
 ### Changed
 
 - Extension manifest: publisher `sethbacon`, id `pipeline-tasks-terraform`, name `Pipeline Tasks for Terraform`
-- Service endpoint type names made globally unique: `SBAWSServiceEndpoint`, `SBGoogleCloudServiceEndpoint`, `SBOCIServiceEndpoint`
+- Service endpoint type names made globally unique: `PTTAWSServiceEndpoint`, `PTTGoogleCloudServiceEndpoint`, `PTTOCIServiceEndpoint`
 - Upgraded `tfx-cli` from `0.16.0` to `0.23.1`
 - `parent-handler.ts`: routing decoupled for init (backend) vs. other commands (provider); added Generic/Local handler
 - TerraformTaskV5 mocha upgraded to `^11.2.0` for Node 25 compatibility

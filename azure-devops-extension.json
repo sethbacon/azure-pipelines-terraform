@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "0.2.1",
+    "version": "0.2.3",
     "publisher": "sethbacon",
     "targets": [
         {
@@ -138,8 +138,8 @@
                 "ms.vss-endpoint.endpoint-types"
             ],
             "properties": {
-                "name": "SBAWSServiceEndpoint",
-                "displayName": "AWS for Terraform",
+                "name": "PTTAWSServiceEndpoint",
+                "displayName": "Pipeline AWS for Terraform",
                 "url": {
                     "displayName": "Server Url",
                     "helpText": "AWS homepage",
@@ -175,33 +175,33 @@
                             {
                                 "id": "username",
                                 "name": "Access key id",
-                                "description": "The AWS access key id for signing programmatic requests",
+                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
-                                    "isRequired": true,
+                                    "isRequired": false,
                                     "dataType": "string"
                                 }
                             },
                             {
                                 "id": "password",
                                 "name": "Secret access key",
-                                "description": "The AWS secret access key for signing programmatic requests",
+                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
                                 "inputMode": "passwordbox",
                                 "isConfidential": true,
                                 "validation": {
-                                    "isRequired": true,
+                                    "isRequired": false,
                                     "dataType": "string"
                                 }
                             },
                             {
                                 "id": "region",
                                 "name": "Region",
-                                "description": "The region of the AWS S3 bucket to use for storing the state file.<br><br>Example: us-east-1.<br><br>Note: This region value is used for signing the programmatic requests. In the task, you can use the buckets in this region for storing the state file.",
+                                "description": "The AWS region (e.g. us-east-1). Used for signing requests when this connection is the S3 backend. For Workload Identity Federation (OIDC), region is set in the pipeline task via awsRegion.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
-                                    "isRequired": true,
+                                    "isRequired": false,
                                     "dataType": "string"
                                 }
                             }
@@ -218,9 +218,9 @@
                 "ms.vss-endpoint.endpoint-types"
             ],
             "properties": {
-                "name": "SBGoogleCloudServiceEndpoint",
-                "displayName": "GCP for Terraform",
-                "helpMarkDown": "[Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts)",
+                "name": "PTTGoogleCloudServiceEndpoint",
+                "displayName": "Pipeline GCP for Terraform",
+                "helpMarkDown": "For service account key auth: [Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts). For Workload Identity Federation (OIDC): create a placeholder connection — WIF configuration is set in the pipeline task inputs.",
                 "url": {
                     "displayName": "Server Url",
                     "helpText": "GCP homepage",
@@ -241,7 +241,7 @@
                             {
                                 "id": "Issuer",
                                 "name": "Client email",
-                                "description": "The client email field in the JSON key file for creating the JSON Web Token",
+                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
@@ -253,11 +253,11 @@
                             {
                                 "id": "Audience",
                                 "name": "Token uri",
-                                "description": "The token uri field in the JSON key file for creating the JSON Web Token",
+                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
-                                    "isRequired": true,
+                                    "isRequired": false,
                                     "dataType": "string",
                                     "maxLength": 300
                                 }
@@ -269,11 +269,11 @@
                     {
                         "id": "project",
                         "name": "Project id",
-                        "description": "The project id of the GCP project in which your resources will be managed",
+                        "description": "The GCP project id. Required for service account key auth. For Workload Identity Federation (OIDC), this is optional — the project is set in the pipeline task.",
                         "inputMode": "textbox",
                         "isConfidential": false,
                         "validation": {
-                            "isRequired": true,
+                            "isRequired": false,
                             "dataType": "string"
                         }
                     }
@@ -288,8 +288,8 @@
                 "ms.vss-endpoint.endpoint-types"
             ],
             "properties": {
-                "name": "SBOCIServiceEndpoint",
-                "displayName": "OCI for Terraform",
+                "name": "PTTOCIServiceEndpoint",
+                "displayName": "Pipeline OCI for Terraform",
                 "helpMarkDown": "",
                 "url": {
                     "displayName": "Server Url",
