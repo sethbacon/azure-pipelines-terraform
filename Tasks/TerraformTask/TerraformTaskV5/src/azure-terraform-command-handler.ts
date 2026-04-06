@@ -115,6 +115,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 tasks.warning("Client secret authentication is not secure and will be deprecated in the next major version of this task. Please use Workload identity federation authentication instead.");
 
                 var servicePrincipalCredentials = this.getServicePrincipalCredentials(serviceConnectionID);
+                if (servicePrincipalCredentials.servicePrincipalKey) { tasks.setSecret(servicePrincipalCredentials.servicePrincipalKey); }
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId);
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey);
                 break;

@@ -181,17 +181,25 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 
 // --- Helpers ---
 
+function buildProxyUrl(): string | null {
+    if (!proxy) return null;
+    if (proxy.proxyUsername != "") {
+        const url = new URL(proxy.proxyUrl);
+        url.username = proxy.proxyUsername ?? "";
+        url.password = proxy.proxyPassword ?? "";
+        return url.toString();
+    }
+    return proxy.proxyUrl;
+}
+
 async function fetchJson(url: string): Promise<any> {
     if (!url.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
     const options: any = {};
-    if (proxy != null) {
-        const proxyUrl = proxy.proxyUsername != ""
-            ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':'
-            + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
-            : proxy.proxyUrl;
+    const proxyUrl = buildProxyUrl();
+    if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);
     }
 
@@ -208,11 +216,8 @@ async function fetchText(url: string): Promise<string> {
     }
 
     const options: any = {};
-    if (proxy != null) {
-        const proxyUrl = proxy.proxyUsername != ""
-            ? proxy.proxyUrl.split("://")[0] + '://' + proxy.proxyUsername + ':'
-            + proxy.proxyPassword + '@' + proxy.proxyUrl.split("://")[1]
-            : proxy.proxyUrl;
+    const proxyUrl = buildProxyUrl();
+    if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);
     }
 

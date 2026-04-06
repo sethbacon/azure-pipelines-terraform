@@ -15,28 +15,13 @@
 | `TerraformCommandHandlerGeneric` (generic + local) | Done |
 | `environmentAuthSchemeAWS` + AWS WIF provider branch | Done |
 | `environmentAuthSchemeGCP` + GCP WIF provider branch | Done |
-| HCP Terraform Cloud backend (`backendType: hcp`) | NOT YET IMPLEMENTED |
+| HCP Terraform Cloud backend (`backendType: hcp`) | COMPLETED |
 
-### HCP Backend Gap
+### HCP Backend — Implementation Note
 
-The plan below includes `TerraformCommandHandlerHCP`, `backendHCPToken` / `backendHCPOrganization`
-/ `backendHCPWorkspace` inputs, and `hcp` in the `backendType` picklist. None of this was
-implemented in v0.1.2. Specifying `backendType: hcp` would throw `Unknown backend/provider type: hcp`
-at runtime.
-
-**Current workaround** (used in tf-test-hcp integration test): Use `backendType: generic` with
-empty `backendConfigArgs`. Declare the `cloud {}` block in a `backend.tf` file. Terraform handles
-all HCP configuration. Pass the API token via `env: TF_TOKEN_app_terraform_io` on each task step.
-
-**To complete HCP support (target v0.2.0):**
-
-1. Add `"hcp": "HCP Terraform / Terraform Cloud (cloud)"` to `backendType` options in `task.json`
-2. Add inputs (visible when `backendType = hcp && command = init`):
-   `backendHCPToken` (string), `backendHCPOrganization` (optional), `backendHCPWorkspace` (optional)
-3. Create `hcp-terraform-command-handler.ts`: `handleBackend()` sets `TF_TOKEN_app_terraform_io`
-   and optionally `TF_CLOUD_ORGANIZATION` / `TF_WORKSPACE`; `handleProvider()` is a no-op
-4. Add `case "hcp": return new TerraformCommandHandlerHCP()` in `parent-handler.ts`
-5. No new service connection type needed -- HCP uses a plain token input
+HCP Terraform Cloud backend support is now implemented. The `TerraformCommandHandlerHCP` class,
+`backendHCPToken` / `backendHCPOrganization` / `backendHCPWorkspace` inputs, and the `hcp` option
+in the `backendType` picklist are all in place.
 
 ## Phase Split
 
@@ -61,7 +46,7 @@ The current design uses a single `provider` input to control both state backend 
 | `Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.ts` | Extend for non-Azure service connection use |
 | `Tasks/TerraformTask/TerraformTaskV5/src/hcp-terraform-command-handler.ts` | New file |
 | `Tasks/TerraformTask/TerraformTaskV5/src/generic-terraform-command-handler.ts` | New file |
-| `Tasks/TerraformTask/TerraformTaskV5/src/local-terraform-command-handler.ts` | New file |
+| `Tasks/TerraformTask/TerraformTaskV5/src/local-terraform-command-handler.ts` | Not created as a separate file; both "generic" and "local" backends are routed to `TerraformCommandHandlerGeneric` in `parent-handler.ts` |
 | `Tasks/TerraformTask/TerraformTaskV5/Tests/` | Add WIF test cases for AWS and GCP |
 | `docs/setup/aws-wif-setup.md` | New — IAM identity provider setup guide |
 | `docs/setup/gcp-wif-setup.md` | New — GCP WIF pool setup guide |

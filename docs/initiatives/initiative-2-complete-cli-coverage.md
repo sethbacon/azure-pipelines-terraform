@@ -1,5 +1,9 @@
 # Initiative 2: Complete Terraform CLI Command Coverage
 
+## Implementation Status
+
+**Status: COMPLETED** — All commands (workspace, state, fmt, test, get) and the -replace flag are implemented in TerraformTaskV5.
+
 ## Goal
 
 Add all high-value Terraform CLI commands as first-class pipeline steps, and ensure new commands can be added with minimal boilerplate.

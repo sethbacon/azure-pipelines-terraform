@@ -3,8 +3,8 @@
     "name": "PipelineTerraformTask",
     "friendlyName": "Pipeline Terraform",
     "description": "Execute terraform commands to manage resources on Microsoft Azure, Amazon Web Services(AWS), Google Cloud Platform(GCP) and Oracle Cloud Infrastructure(OCI).",
-    "author": "Microsoft Corporation",
-    "helpMarkDown": "[Learn more about this task](https://aka.ms/devlabs/ado/tf/task/v5)",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
     "category": "Deploy",
     "visibility": [
         "Build",
@@ -19,9 +19,6 @@
     },
     "instanceNameFormat": "Terraform : $(provider)",
     "execution": {
-        "Node10": {
-            "target": "src/index.js"
-        },
         "Node16": {
             "target": "src/index.js"
         },
@@ -642,6 +639,7 @@
         }
     ],
     "messages": {
-        "TerraformToolNotFound": "Failed to find terraform tool in paths"
+        "TerraformToolNotFound": "Failed to find terraform tool in paths",
+        "TerraformPlanFailed": "Terraform plan failed with exit code %s"
     }
 }
