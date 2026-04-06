@@ -22,6 +22,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         privateKey = privateKey.replace('_end_', '-----END PRIVATE KEY-----');
         const privateKeyFilePath = path.resolve(`keyfile-${uuidV4()}.pem`);
         tasks.writeFile(privateKeyFilePath, privateKey);
+        this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
     }
 
@@ -42,8 +43,9 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             config = config + " update_method = \"PUT\"\n }\n }\n";
 
             const workingDirectory = tasks.getInput("workingDirectory") || '';
-            const tfConfigyFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
-            tasks.writeFile(tfConfigyFilePath, config);
+            const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
+            tasks.writeFile(tfConfigFilePath, config);
+            this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
         }
     }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a fork of the Microsoft DevLabs Azure DevOps extension that provides Terraform integration for Azure Pipelines. It enables running Terraform commands (init, validate, plan, apply, destroy, show, output, custom) against cloud providers (Azure, AWS, GCP, OCI) within Azure Pipelines build/release pipelines.
+This is a fork of the Microsoft DevLabs Azure DevOps extension that provides Terraform integration for Azure Pipelines. It enables running Terraform commands (init, validate, plan, apply, destroy, show, output, custom, workspace, state, fmt, test, get) against cloud providers (Azure, AWS, GCP, OCI) within Azure Pipelines build/release pipelines.
 
 **Fork:** `https://github.com/sethbacon/azure-pipelines-terraform`
 Local path: `C:\dev\gh\azure-pipelines-terraform`
@@ -35,7 +35,7 @@ Body line: `Closes #<issue-number>`
 
 Example:
 
-```
+```txt
 feat: add registry download strategy to terraform installer
 
 Closes #12
@@ -144,6 +144,11 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 - **`show`** - calls `handleProvider()`, supports `outputTo=console|file` and `outputFormat=json|default`
 - **`output`** - calls `handleProvider()`, always uses `-json`, writes to file, sets `jsonOutputVariablesPath`
 - **`custom`** - calls `handleProvider()`, runs arbitrary command from `customCommand` input
+- **`workspace`** - runs `terraform workspace` with `workspaceSubCommand` (select, new, list, show, delete)
+- **`state`** - runs `terraform state` with `stateSubCommand` (list, show, mv, rm, pull, push)
+- **`fmt`** - runs `terraform fmt -check` for formatting validation
+- **`test`** - runs `terraform test` with optional filter and verbose flags
+- **`get`** - runs `terraform get` to download modules
 
 ### Azure auth schemes (AzureRM handler)
 
@@ -166,7 +171,7 @@ Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.t
 ## task.json Schema Key Points
 
 - `id` is shared across all versions of TerraformTask (`FE504ACC-6115-40CB-89FF-191386B5E7BF`)
-- `execution` targets `Node10`, `Node16`, and `Node20_1` in V5
+- `execution` targets `Node16` and `Node20_1` in V5
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
 - Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `showFilePath`, `customFilePath`
@@ -197,7 +202,7 @@ npm run package:release     # produces .vsix for sethbacon publisher
 ```bash
 cd Tasks/TerraformTask/TerraformTaskV5
 npm test
-# Runs: tsc -b tsconfig.json && mocha --timeout 10000 --require ts-node/register Tests/L0.ts
+# Runs: tsc -b tsconfig.json && tsc -p tsconfig.tests.json && mocha --timeout 10000 --require ts-node/register Tests/L0.ts
 ```
 
 ### Test structure
@@ -207,7 +212,7 @@ Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runn
 - `<Name>.ts` - test data/mock setup (mock runner)
 - `<Name>L0.ts` - the actual mocha test using `MockTestRunner`
 
-Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`.
+Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`, `ValidateTests/`, `WorkspaceTests/`, `StateTests/`, `FmtTests/`, `GetTests/`, `TestCommandTests/`, `ShowTests/`, `OutputTests/`, `CustomTests/`.
 
 ### Personal dev publishing
 

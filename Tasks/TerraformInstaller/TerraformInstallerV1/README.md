@@ -9,7 +9,7 @@ Adding this task before the [Terraform task](https://aka.ms/AAf0uqr) in a build 
 
 ### Contact Information
 
-Please report a problem at [Developer Community Forum](https://developercommunity.visualstudio.com/spaces/21/index.html) if you are facing problems in making this task work. You can also share feedback about the task like, what more functionality should be added to the task, what other tasks you would like to have, at the same place.
+Please report a problem at [GitHub Issues](https://github.com/sethbacon/azure-pipelines-terraform/issues) if you are facing problems in making this task work. You can also share feedback about the task like, what more functionality should be added to the task, what other tasks you would like to have, at the same place.
 
 
 ### Pre-requisites for the task
@@ -19,7 +19,7 @@ The task can run on the following build agent operating systems:
 - MacOS
 - Linux
 
-** Terraform is already installed on hosted Ubuntu build agents. So, this task may be omitted for these agents unless a different vesrion of Terraform is needed.
+**Terraform is already installed on hosted Ubuntu build agents.** So, this task may be omitted for these agents unless a different version of Terraform is needed.
 
 ### Parameters of the task
 

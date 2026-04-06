@@ -1,3 +1,1 @@
-# Terraform Task V5
-
-See our [docs](https://aka.ms/devlabs/tf/task) for usage.
+Terraform task for Azure Pipelines. See [README](https://github.com/sethbacon/azure-pipelines-terraform#readme) for documentation.

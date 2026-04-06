@@ -3,8 +3,8 @@
     "name": "PipelineTerraformInstaller",
     "friendlyName": "Pipeline Terraform tool installer",
     "description": "Find in cache or download a specific version of Terraform and prepend it to the PATH",
-    "author": "Microsoft Corporation",
-    "helpMarkDown": "[Learn more about this task](https://aka.ms/AAf1a0p)",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
     "category": "Tool",
     "visibility": [
         "Build",
@@ -68,9 +68,6 @@
         }
     ],
     "execution": {
-        "Node10": {
-            "target": "src/index.js"
-        },
         "Node16": {
             "target": "src/index.js"
         },

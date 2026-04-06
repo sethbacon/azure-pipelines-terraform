@@ -17,8 +17,13 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         this.backendConfig.set('bucket', tasks.getInput("backendAWSBucketName", true)!);
         this.backendConfig.set('key', tasks.getInput("backendAWSKey", true)!);
         this.backendConfig.set('region', tasks.getEndpointAuthorizationParameter(backendServiceName, "region", true)!);
-        this.backendConfig.set('access_key', tasks.getEndpointAuthorizationParameter(backendServiceName, "username", true)!);
-        this.backendConfig.set('secret_key', tasks.getEndpointAuthorizationParameter(backendServiceName, "password", true)!);
+
+        const accessKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "username", true)!;
+        const secretKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "password", true)!;
+        if (accessKey) { tasks.setSecret(accessKey); }
+        if (secretKey) { tasks.setSecret(secretKey); }
+        this.backendConfig.set('access_key', accessKey);
+        this.backendConfig.set('secret_key', secretKey);
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {

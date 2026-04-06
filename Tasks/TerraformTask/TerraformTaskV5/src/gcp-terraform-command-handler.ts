@@ -36,7 +36,10 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
     private setupBackend(backendServiceName: string) {
         this.backendConfig.set('bucket', tasks.getInput("backendGCPBucketName", true)!);
-        this.backendConfig.set('prefix', tasks.getInput("backendGCPPrefix", false)!);
+        const prefix = tasks.getInput("backendGCPPrefix", false);
+        if (prefix) {
+            this.backendConfig.set('prefix', prefix);
+        }
 
         let jsonKeyFilePath = this.getJsonKeyFilePath(backendServiceName);
 

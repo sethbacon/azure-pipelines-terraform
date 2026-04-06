@@ -3,11 +3,15 @@ const CopyWebpackPlugin = require("copy-webpack-plugin");
 
 module.exports = {
     mode: 'production',
-    entry: {
-        temp: './temp.js',
-    },
+    entry: {},
     output: {
-        path: __dirname + '/build'
+        path: path.resolve(__dirname, 'build')
+    },
+    optimization: {
+        minimize: false
+    },
+    performance: {
+        hints: false
     },
     plugins: [
         new CopyWebpackPlugin({
@@ -21,11 +25,10 @@ module.exports = {
                     globOptions: {
                         dot: true,
                         gitignore: false,
-                        ignore: ["**/Tests/**", "**/*.ts"],
+                        ignore: ["**/Tests/**", "**/*.ts", "**/tsconfig*.json", "**/.eslintrc.json"],
                     },
                     to: "Tasks"
                 },
-
             ]
         })
     ]
