@@ -11,12 +11,15 @@ on:
         description: 'Release tag (e.g. v1.2.3)'
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   guard:
     name: Verify tag is on main
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
       - name: Check tag reachable from main
@@ -38,18 +41,16 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '18'
       - name: Install root dependencies
         run: npm install --include=dev
       - name: Build release
         run: npm run build:release
-        env:
-          NODE_OPTIONS: --openssl-legacy-provider
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: build
           path: build/
@@ -60,21 +61,21 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '18'
       - name: Install root dependencies
         run: npm install --include=dev
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: build
           path: build/
       - name: Package extension
         run: npm run package:release
       - name: Upload vsix artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: vsix
           path: '*.vsix'
@@ -85,37 +86,37 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '18'
       - name: Install root dependencies
         run: npm install --include=dev
       - name: Download vsix artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vsix
       - name: Publish extension
         run: |
           VSIX_FILE=$(ls *.vsix | head -1)
-          npx tfx-cli extension publish --vsix "$VSIX_FILE" --token "${{ secrets.TFX_PAT }}"
+          ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --token "${{ secrets.TFX_PAT }}"
 
   github-release:
     name: Create GitHub Release
     needs: publish-marketplace
-    runs-on: ubuntu-latest
     permissions:
       contents: write
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
       - name: Download vsix artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vsix
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: '*.vsix'
           generate_release_notes: true

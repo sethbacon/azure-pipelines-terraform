@@ -14,7 +14,7 @@
     "categories": [
         "Azure Pipelines"
     ],
-    "Tags": [
+    "tags": [
         "Terraform",
         "Azure",
         "AWS",
@@ -131,7 +131,7 @@
             }
         },
         {
-            "id": "aws-enpoint-type",
+            "id": "aws-endpoint-type",
             "description": "Credentials for task invoking AWS services",
             "type": "ms.vss-endpoint.service-endpoint-type",
             "targets": [

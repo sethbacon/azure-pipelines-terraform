@@ -96,13 +96,16 @@ cd Tasks/TerraformTask/TerraformTaskV5
 npm test
 ```
 
-This runs: `tsc -b tsconfig.json && mocha --timeout 10000 --require ts-node/register Tests/L0.ts`
+This runs: `npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts`
+
+where `compile:all` = `compile` (`tsc -b tsconfig.json`) + `compile:tests` (`tsc -p tsconfig.tests.json`)
 
 ### TerraformInstallerV1
 
 ```bash
 cd Tasks/TerraformInstaller/TerraformInstallerV1
 npm run compile
+npm test
 ```
 
 ### Test structure
