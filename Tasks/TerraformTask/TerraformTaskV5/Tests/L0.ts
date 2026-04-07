@@ -1284,6 +1284,51 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('workspace new should succeed', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceNewSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('WorkspaceNewSuccessL0 should have succeeded.'), 'Should have printed: WorkspaceNewSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('workspace delete should succeed', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceDeleteSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('WorkspaceDeleteSuccessL0 should have succeeded.'), 'Should have printed: WorkspaceDeleteSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('workspace show should succeed', async () => {
+        let tp = path.join(__dirname, './WorkspaceTests/WorkspaceShowSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('WorkspaceShowSuccessL0 should have succeeded.'), 'Should have printed: WorkspaceShowSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* terraform state tests */
 
     it('state list should succeed', async () => {
@@ -1312,6 +1357,66 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length >= 1, 'should have at least one warning');
+        }, tr);
+    });
+
+    it('state show should succeed', async () => {
+        let tp = path.join(__dirname, './StateTests/StateShowSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('StateShowSuccessL0 should have succeeded.'), 'Should have printed: StateShowSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('state mv should succeed', async () => {
+        let tp = path.join(__dirname, './StateTests/StateMvSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('StateMvSuccessL0 should have succeeded.'), 'Should have printed: StateMvSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('state rm should succeed', async () => {
+        let tp = path.join(__dirname, './StateTests/StateRmSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('StateRmSuccessL0 should have succeeded.'), 'Should have printed: StateRmSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('state pull should succeed', async () => {
+        let tp = path.join(__dirname, './StateTests/StatePullSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 0, 'should have no warnings');
+            assert(tr.stdOutContained('StatePullSuccessL0 should have succeeded.'), 'Should have printed: StatePullSuccessL0 should have succeeded.');
         }, tr);
     });
 
@@ -1467,6 +1572,66 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* aws/gcp workload identity federation apply tests */
+
+    it('aws apply should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './ApplyTests/AWS/AWSApplyWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSApplyWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSApplyWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('gcp apply should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './ApplyTests/GCP/GCPApplyWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPApplyWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPApplyWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* aws/gcp workload identity federation destroy tests */
+
+    it('aws destroy should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './DestroyTests/AWS/AWSDestroyWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSDestroyWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSDestroyWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('gcp destroy should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './DestroyTests/GCP/GCPDestroyWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPDestroyWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPDestroyWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* terraform show tests */
 
     it('azure show to console should succeed', async () => {
@@ -1497,6 +1662,34 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('aws show to console should succeed', async () => {
+        let tp = path.join(__dirname, './ShowTests/AWSShowConsoleSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: AWSShowConsoleSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('gcp show to console should succeed', async () => {
+        let tp = path.join(__dirname, './ShowTests/GCPShowConsoleSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: GCPShowConsoleSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* terraform output tests */
 
     it('azure output should succeed', async () => {
@@ -1510,6 +1703,34 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureOutputSuccessL0 should have succeeded.'), 'Should have printed: AzureOutputSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('aws output should succeed', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSOutputSuccessL0 should have succeeded.'), 'Should have printed: AWSOutputSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('gcp output should succeed', async () => {
+        let tp = path.join(__dirname, './OutputTests/GCPOutputSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPOutputSuccessL0 should have succeeded.'), 'Should have printed: GCPOutputSuccessL0 should have succeeded.');
         }, tr);
     });
 
