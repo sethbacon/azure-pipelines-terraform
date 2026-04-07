@@ -1,5 +1,5 @@
 import { TerraformToolHandler, ITerraformToolHandler } from './terraform';
-import { ToolRunner, IExecOptions, IExecSyncOptions } from 'azure-pipelines-task-lib/toolrunner';
+import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
@@ -20,6 +20,17 @@ export abstract class BaseTerraformCommandHandler {
         this.terraformToolHandler = new TerraformToolHandler(tasks);
         this.backendConfig = new Map<string, string>();
         this.tempFiles = [];
+    }
+
+    protected async execWithStdoutCapture(terraformTool: ToolRunner, options: IExecOptions): Promise<{ code: number; stdout: string }> {
+        let stdout = '';
+        terraformTool.on('stdout', (data: string | Buffer) => {
+            stdout += data.toString();
+        });
+
+        const code = await terraformTool.execAsync(options);
+
+        return { code, stdout };
     }
 
     public cleanupTempFiles(): void {
@@ -46,7 +57,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const terraformToolRunner: ToolRunner = tasks.tool(terraformPath);
         terraformToolRunner.arg("providers");
-        const commandOutput = terraformToolRunner.execSync(<IExecSyncOptions>{
+        const commandOutput = await this.execWithStdoutCapture(terraformToolRunner, {
             cwd: tasks.getInput("workingDirectory") || ''
         });
 
@@ -139,7 +150,7 @@ export abstract class BaseTerraformCommandHandler {
             });
         } else if (outputTo === "file") {
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
-            const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+            const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: showCommand.workingDirectory,
             });
 
@@ -165,7 +176,7 @@ export abstract class BaseTerraformCommandHandler {
         await this.handleProvider(outputCommand);
 
         const jsonOutputVariablesFilePath = path.resolve(outputCommand.workingDirectory, `output-${uuidV4()}.json`);
-        const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+        const commandOutput = await this.execWithStdoutCapture(terraformTool, {
             cwd: outputCommand.workingDirectory,
         });
 
@@ -224,7 +235,7 @@ export abstract class BaseTerraformCommandHandler {
             });
         } else if (outputTo === "file") {
             const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
-            const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+            const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: customCommand.workingDirectory
             });
 
