@@ -24,15 +24,15 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         // Setup the optional backend configuration for the storage account blob location with subscription ID and resource group name (set as backend config to ensure it is cached)
         const resourceGroupName = tasks.getInput("backendAzureRmResourceGroupName", false);
-        if (resourceGroupName != null && resourceGroupName != "") {
+        if (resourceGroupName) {
             this.backendConfig.set("resource_group_name", resourceGroupName);
         }
 
         let subscriptionId = tasks.getInput("backendAzureRmOverrideSubscriptionID", false);
-        if (subscriptionId == null || subscriptionId == "") {
+        if (!subscriptionId) {
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
-        if (subscriptionId != null && subscriptionId != "" && resourceGroupName != null && resourceGroupName != "") {
+        if (subscriptionId && resourceGroupName) {
             this.backendConfig.set("subscription_id", subscriptionId);
         }
 
@@ -62,10 +62,10 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         // Setup required provider configuration for subscription ID
         let subscriptionId = tasks.getInput("environmentAzureRmOverrideSubscriptionID", false);
-        if (subscriptionId == null || subscriptionId == "") {
+        if (!subscriptionId) {
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
-        if (subscriptionId != null && subscriptionId != "") {
+        if (subscriptionId) {
             EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
         }
 
@@ -144,20 +144,20 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private mapAuthorizationScheme(authorizationScheme: string): AuthorizationScheme {
-        if (authorizationScheme == undefined) {
+        if (authorizationScheme === undefined) {
             tasks.warning("The authorization scheme could not be found for your Service Connection, using Workload identity federation by default, but this could cause issues.");
             return AuthorizationScheme.WorkloadIdentityFederation;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.ServicePrincipal) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.ServicePrincipal) {
             return AuthorizationScheme.ServicePrincipal;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.ManagedServiceIdentity) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.ManagedServiceIdentity) {
             return AuthorizationScheme.ManagedServiceIdentity;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.WorkloadIdentityFederation) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.WorkloadIdentityFederation) {
             return AuthorizationScheme.WorkloadIdentityFederation;
         }
 
