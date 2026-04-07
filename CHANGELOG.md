@@ -4,6 +4,30 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.4.0] — 2026-04-07
+
+### Security
+
+- Mask GCP private key with `tasks.setSecret()` for log masking parity with OCI/AWS/HCP (#60)
+- Validate OCI PAR URL: require HTTPS scheme, reject HCL interpolation sequences `${` / `%{` (#61)
+- Set file permissions `0o600` on all credential temp files — PEM keys, JSON credentials, JWT tokens (#62)
+- Throw error on unrecognized Azure auth scheme instead of silent ServicePrincipal fallback (#63)
+
+### Changed
+
+- Drop Node16 execution target from both tasks; Node20 is now the sole target (#67)
+
+### Fixed
+
+- Add `showFilePath` and `customFilePath` to `task.json` `outputVariables` for ADO UI discoverability (#65)
+
+### Added
+
+- `npm audit --audit-level=high` CI step for dependency vulnerability scanning (#64)
+- Version consistency check script (`scripts/check-versions.js`) and CI job (#68)
+- Test command coverage for AWS, GCP, OCI providers; custom command coverage for AWS (#66)
+- Document standard test helper pattern in CONTRIBUTING.md (#69)
+
 ## [0.3.3] — 2026-04-07
 
 ### Fixed
