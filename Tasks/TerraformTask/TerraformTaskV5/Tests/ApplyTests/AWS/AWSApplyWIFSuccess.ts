@@ -21,7 +21,7 @@ tr.registerMock('./id-token-generator', {
     }
 });
 
-tr.registerMock('uuid/v4', () => 'test-uuid-1234');
+tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": { "terraform": "terraform" },

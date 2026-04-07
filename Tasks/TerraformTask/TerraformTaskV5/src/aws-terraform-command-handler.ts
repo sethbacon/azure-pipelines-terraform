@@ -5,7 +5,7 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import path = require('path');
-import * as uuidV4 from 'uuid/v4';
+import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     constructor() {
