@@ -1780,4 +1780,42 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* OCI expanded coverage tests */
+
+    it('oci validate should succeed', async () => {
+        let tp = path.join(__dirname, './ValidateTests/OCI/OCIValidateSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIValidateSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('oci show to console should succeed', async () => {
+        let tp = path.join(__dirname, './ShowTests/OCIShowConsoleSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIShowConsoleSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('oci output should succeed', async () => {
+        let tp = path.join(__dirname, './OutputTests/OCIOutputSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIOutputSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
 });
