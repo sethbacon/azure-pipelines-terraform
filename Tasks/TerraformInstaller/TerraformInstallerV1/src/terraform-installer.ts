@@ -87,7 +87,7 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
     }
     console.log(tasks.loc("GettingLatestTerraformVersion"));
     try {
-        const data = await fetchJson('https://checkpoint-api.hashicorp.com/v1/check/terraform');
+        const data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/terraform');
         return data.current_version;
     } catch {
         console.warn(tasks.loc("TerraformVersionNotFound"));
@@ -101,7 +101,7 @@ async function resolveVersionFromRegistry(inputVersion: string, registryUrl: str
     }
     console.log(tasks.loc("ResolvingLatestFromRegistry", registryUrl));
     const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
-    const data = await fetchJson(latestUrl);
+    const data = await fetchJson<{ version: string }>(latestUrl);
     console.log(`Resolved latest version from registry: ${data.version}`);
     return data.version;
 }
@@ -192,12 +192,12 @@ function buildProxyUrl(): string | null {
     return proxy.proxyUrl;
 }
 
-async function fetchJson(url: string): Promise<any> {
+async function fetchJson<T>(url: string): Promise<T> {
     if (!url.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
-    const options: any = {};
+    const options: { agent?: object } = {};
     const proxyUrl = buildProxyUrl();
     if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);
@@ -215,7 +215,7 @@ async function fetchText(url: string): Promise<string> {
         throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
-    const options: any = {};
+    const options: { agent?: object } = {};
     const proxyUrl = buildProxyUrl();
     if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);
