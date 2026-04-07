@@ -30,6 +30,15 @@ jobs:
             echo "Tag ${TAG} is not reachable from origin/main. Releases must be tagged on main." >&2
             exit 1
           fi
+      - name: Verify extension version matches tag
+        run: |
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
+          TAG_VERSION="${TAG#v}"
+          EXT_VERSION=$(node -p "require('./azure-devops-extension.json').version")
+          if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
+            echo "::error::Tag version (${TAG_VERSION}) does not match azure-devops-extension.json version (${EXT_VERSION}). Update the extension manifest before tagging."
+            exit 1
+          fi
 
   ci:
     name: CI (build + test)
