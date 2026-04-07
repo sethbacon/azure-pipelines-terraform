@@ -5,13 +5,15 @@ import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
 
-const uuidV4 = require('uuid/v4');
+import { v4 as uuidV4 } from 'uuid';
 const fetch = require('node-fetch');
 const HttpsProxyAgent = require('https-proxy-agent');
 
 const terraformToolName = "terraform";
 const isWindows = os.type().match(/^Win/);
-const proxy = tasks.getHttpProxyConfiguration();
+
+/** Fallback version used when the HashiCorp checkpoint API is unreachable. Update periodically. */
+const FALLBACK_TERRAFORM_VERSION = '1.9.8';
 
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const downloadSource = tasks.getInput("downloadSource") || "hashicorp";
@@ -87,11 +89,14 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
     }
     console.log(tasks.loc("GettingLatestTerraformVersion"));
     try {
-        const data = await fetchJson('https://checkpoint-api.hashicorp.com/v1/check/terraform');
+        const data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/terraform');
+        if (!data.current_version) {
+            throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
+        }
         return data.current_version;
     } catch {
         console.warn(tasks.loc("TerraformVersionNotFound"));
-        return '1.9.8';
+        return FALLBACK_TERRAFORM_VERSION;
     }
 }
 
@@ -101,8 +106,11 @@ async function resolveVersionFromRegistry(inputVersion: string, registryUrl: str
     }
     console.log(tasks.loc("ResolvingLatestFromRegistry", registryUrl));
     const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
-    const data = await fetchJson(latestUrl);
-    console.log(`Resolved latest version from registry: ${data.version}`);
+    const data = await fetchJson<{ version: string }>(latestUrl);
+    if (!data.version) {
+        throw new Error(`Registry API returned invalid response: missing version field from ${latestUrl}`);
+    }
+    console.log(tasks.loc("ResolvedVersionFromRegistry", data.version));
     return data.version;
 }
 
@@ -133,7 +141,10 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
-    const data = await fetchJson(infoUrl);
+    const data = await fetchJson<{ download_url: string; sha256: string }>(infoUrl);
+    if (!data.download_url || !data.sha256) {
+        throw new Error(`Registry API returned invalid response: missing download_url or sha256 from ${infoUrl}`);
+    }
     // data.download_url = pre-signed storage URL (15-minute TTL)
     // data.sha256       = hex SHA256 of the zip
 
@@ -173,7 +184,7 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
         const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
         await verifySha256(zipPath, expectedHash);
     } catch (error) {
-        console.warn(`SHA256 verification skipped for mirror download: ${error instanceof Error ? error.message : error}`);
+        tasks.warning(`SHA256 verification skipped for mirror download: ${error instanceof Error ? error.message : error}`);
     }
 
     return zipPath;
@@ -182,8 +193,9 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 // --- Helpers ---
 
 function buildProxyUrl(): string | null {
+    const proxy = tasks.getHttpProxyConfiguration();
     if (!proxy) return null;
-    if (proxy.proxyUsername != "") {
+    if (proxy.proxyUsername !== "") {
         const url = new URL(proxy.proxyUrl);
         url.username = proxy.proxyUsername ?? "";
         url.password = proxy.proxyPassword ?? "";
@@ -192,12 +204,12 @@ function buildProxyUrl(): string | null {
     return proxy.proxyUrl;
 }
 
-async function fetchJson(url: string): Promise<any> {
+async function fetchJson<T>(url: string): Promise<T> {
     if (!url.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
-    const options: any = {};
+    const options: { agent?: object } = {};
     const proxyUrl = buildProxyUrl();
     if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);
@@ -215,7 +227,7 @@ async function fetchText(url: string): Promise<string> {
         throw new Error(tasks.loc("InsecureUrlRejected", url));
     }
 
-    const options: any = {};
+    const options: { agent?: object } = {};
     const proxyUrl = buildProxyUrl();
     if (proxyUrl) {
         options.agent = new HttpsProxyAgent(proxyUrl);

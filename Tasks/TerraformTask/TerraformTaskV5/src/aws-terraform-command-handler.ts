@@ -5,7 +5,7 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import path = require('path');
-import * as uuidV4 from 'uuid/v4';
+import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     constructor() {
@@ -27,12 +27,9 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        let backendServiceName = tasks.getInput("backendServiceAWS", true)!;
+        const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
         this.setupBackend(backendServiceName);
-
-        for (let [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {

@@ -4,7 +4,7 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import path = require('path');
-import * as uuidV4 from 'uuid/v4';
+import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     constructor() {
@@ -13,6 +13,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     private getPrivateKeyFilePath(privateKey: string) {
+        tasks.setSecret(privateKey);
         // This is a bit of a hack but spaces need to be converted to line breaks to make it work
         privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '_begin_');
         privateKey = privateKey.replace('-----END PRIVATE KEY-----', '_end_');
@@ -27,7 +28,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         return privateKeyFilePath;
     }
 
-    private setupBackend(backendServiceName: string) {
+    private setupBackend(_backendServiceName: string) {
         // Unfortunately this seems not to work with OCI provider for the tf statefile
         // https://developer.hashicorp.com/terraform/language/settings/backends/configuration#command-line-key-value-pairs
         //this.backendConfig.set('address', tasks.getInput("PAR url", true));
@@ -36,11 +37,12 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         //PAR = OCI Object Storage preauthenticated request (for the statefile bucket)
 
         // Instead, will create a backend.tf config file for it in-flight when generate option was selected 'yes' (the default setting)
-        if (tasks.getInput("backendOCIConfigGenerate", true) == 'yes') {
+        if (tasks.getInput("backendOCIConfigGenerate", true) === 'yes') {
             tasks.debug('Generating backend tf statefile config.');
-            var config = "";
+            const parUrl = (tasks.getInput("backendOCIPar", true) || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            let config = "";
             config = config + "terraform {\n backend \"http\" {\n";
-            config = config + " address = \"" + tasks.getInput("backendOCIPar", true) + "\"\n";
+            config = config + " address = \"" + parUrl + "\"\n";
             config = config + " update_method = \"PUT\"\n }\n }\n";
 
             const workingDirectory = tasks.getInput("workingDirectory") || '';
@@ -52,17 +54,14 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        let backendServiceName = tasks.getInput("backendServiceOCI", true)!;
+        const backendServiceName = tasks.getInput("backendServiceOCI", true)!;
         this.setupBackend(backendServiceName);
-
-        for (let [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
         if (command.serviceProvidername) {
-            let privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProvidername, "privateKey", false)!);
+            const privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProvidername, "privateKey", false)!);
             EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "tenancy", false) || '');
             EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "user", false) || '');
             EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProvidername, "region", false) || '');

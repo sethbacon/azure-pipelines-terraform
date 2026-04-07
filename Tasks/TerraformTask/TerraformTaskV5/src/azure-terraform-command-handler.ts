@@ -12,7 +12,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        let serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
+        const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
 
         tasks.debug("Setting up backend for authorization scheme: " + authorizationScheme + ".");
@@ -24,15 +24,15 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         // Setup the optional backend configuration for the storage account blob location with subscription ID and resource group name (set as backend config to ensure it is cached)
         const resourceGroupName = tasks.getInput("backendAzureRmResourceGroupName", false);
-        if (resourceGroupName != null && resourceGroupName != "") {
+        if (resourceGroupName) {
             this.backendConfig.set("resource_group_name", resourceGroupName);
         }
 
         let subscriptionId = tasks.getInput("backendAzureRmOverrideSubscriptionID", false);
-        if (subscriptionId == null || subscriptionId == "") {
+        if (!subscriptionId) {
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
-        if (subscriptionId != null && subscriptionId != "" && resourceGroupName != null && resourceGroupName != "") {
+        if (subscriptionId && resourceGroupName) {
             this.backendConfig.set("subscription_id", subscriptionId);
         }
 
@@ -42,34 +42,32 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             this.backendConfig.set("use_azuread_auth", "true");
         }
 
-        let fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
-        let backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
+        const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
+        const backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, backendAzureRmUseCliFlagsForAuthentication);
 
-        for (let [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
 
         tasks.debug("Finished setting up backend for authorization scheme: " + authorizationScheme + ".");
     }
 
-    public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        let serviceConnectionID = tasks.getInput("environmentServiceNameAzureRM", true)!;
+    public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
+        const serviceConnectionID = tasks.getInput("environmentServiceNameAzureRM", true)!;
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
 
         tasks.debug("Setting up provider for authorization scheme: " + authorizationScheme + ".");
 
         // Setup required provider configuration for subscription ID
         let subscriptionId = tasks.getInput("environmentAzureRmOverrideSubscriptionID", false);
-        if (subscriptionId == null || subscriptionId == "") {
+        if (!subscriptionId) {
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
-        if (subscriptionId != null && subscriptionId != "") {
+        if (subscriptionId) {
             EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
         }
 
-        let fallbackToIdTokenGeneration = tasks.getBoolInput("environmentAzureRmUseIdTokenGeneration", false);
+        const fallbackToIdTokenGeneration = tasks.getBoolInput("environmentAzureRmUseIdTokenGeneration", false);
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, false);
 
@@ -125,7 +123,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private getServicePrincipalCredentials(serviceConnectionID: string): ServicePrincipalCredentials {
-        let servicePrincipalCredentials: ServicePrincipalCredentials = {
+        const servicePrincipalCredentials: ServicePrincipalCredentials = {
             servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
             servicePrincipalKey: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", true)!
         }
@@ -133,7 +131,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private async getWorkloadIdentityFederationCredentials(serviceConnectionID: string, getIdToken: boolean): Promise<WorkloadIdentityFederationCredentials> {
-        let workloadIdentityFederationCredentials: WorkloadIdentityFederationCredentials = {
+        const workloadIdentityFederationCredentials: WorkloadIdentityFederationCredentials = {
             servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
             oidcToken: ""
         }
@@ -144,20 +142,20 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private mapAuthorizationScheme(authorizationScheme: string): AuthorizationScheme {
-        if (authorizationScheme == undefined) {
+        if (authorizationScheme === undefined) {
             tasks.warning("The authorization scheme could not be found for your Service Connection, using Workload identity federation by default, but this could cause issues.");
             return AuthorizationScheme.WorkloadIdentityFederation;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.ServicePrincipal) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.ServicePrincipal) {
             return AuthorizationScheme.ServicePrincipal;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.ManagedServiceIdentity) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.ManagedServiceIdentity) {
             return AuthorizationScheme.ManagedServiceIdentity;
         }
 
-        if (authorizationScheme.toLowerCase() == AuthorizationScheme.WorkloadIdentityFederation) {
+        if (authorizationScheme.toLowerCase() === AuthorizationScheme.WorkloadIdentityFederation) {
             return AuthorizationScheme.WorkloadIdentityFederation;
         }
 

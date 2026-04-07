@@ -10,7 +10,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         this.providerName = "hcp";
     }
 
-    public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
+    public async handleBackend(_terraformToolRunner: ToolRunner): Promise<void> {
         const token = tasks.getInput("backendHCPToken", true)!;
         if (token) { tasks.setSecret(token); }
         EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token);
@@ -26,7 +26,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         }
     }
 
-    public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
+    public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
         // No-op: HCP backend does not provide cloud provider credentials for plan/apply
     }
 }

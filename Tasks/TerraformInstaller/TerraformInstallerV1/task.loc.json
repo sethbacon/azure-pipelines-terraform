@@ -1,9 +1,9 @@
 {
-  "id": "a4789e5d-f6e8-431f-add9-379d640a883c",
-  "name": "TerraformInstaller",
+  "id": "310afe61-60d3-49bd-b4b8-7abb989a38fc",
+  "name": "PipelineTerraformInstaller",
   "friendlyName": "ms-resource:loc.friendlyName",
   "description": "ms-resource:loc.description",
-  "author": "Microsoft Corporation",
+  "author": "sethbacon",
   "helpMarkDown": "ms-resource:loc.helpMarkDown",
   "category": "Tool",
   "visibility": [
@@ -68,11 +68,10 @@
     }
   ],
   "execution": {
-    "Node10": {
+    "Node16": {
       "target": "src/index.js"
-    },"Node16": {
-      "target": "src/index.js"
-    },"Node20_1": {
+    },
+    "Node20_1": {
       "target": "src/index.js"
     }
   },
@@ -98,6 +97,7 @@
     "InsecureUrlRejected": "ms-resource:loc.messages.InsecureUrlRejected",
     "RegistryRequestFailed": "ms-resource:loc.messages.RegistryRequestFailed",
     "Sha256VerificationFailed": "ms-resource:loc.messages.Sha256VerificationFailed",
-    "ResolvingLatestFromRegistry": "ms-resource:loc.messages.ResolvingLatestFromRegistry"
+    "ResolvingLatestFromRegistry": "ms-resource:loc.messages.ResolvingLatestFromRegistry",
+    "ResolvedVersionFromRegistry": "ms-resource:loc.messages.ResolvedVersionFromRegistry"
   }
 }

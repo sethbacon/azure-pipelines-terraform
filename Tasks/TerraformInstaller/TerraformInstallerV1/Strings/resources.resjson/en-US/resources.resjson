@@ -24,5 +24,6 @@
   "loc.messages.InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
   "loc.messages.RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
   "loc.messages.Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
-  "loc.messages.ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s"
+  "loc.messages.ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
+  "loc.messages.ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
 }

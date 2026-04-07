@@ -1,9 +1,9 @@
 import { TerraformToolHandler, ITerraformToolHandler } from './terraform';
-import { ToolRunner, IExecOptions, IExecSyncOptions, IExecSyncResult } from 'azure-pipelines-task-lib/toolrunner';
+import { ToolRunner, IExecOptions, IExecSyncOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
-import * as uuidV4 from 'uuid/v4';
+import { v4 as uuidV4 } from 'uuid';
 import fs = require('fs');
 
 export abstract class BaseTerraformCommandHandler {
@@ -36,21 +36,21 @@ export abstract class BaseTerraformCommandHandler {
         this.tempFiles = [];
     }
 
-    public warnIfMultipleProviders(): void {
+    public async warnIfMultipleProviders(): Promise<void> {
         let terraformPath;
         try {
             terraformPath = tasks.which("terraform", true);
-        } catch (err) {
+        } catch {
             throw new Error(tasks.loc("TerraformToolNotFound"));
         }
 
-        let terraformToolRunner: ToolRunner = tasks.tool(terraformPath);
+        const terraformToolRunner: ToolRunner = tasks.tool(terraformPath);
         terraformToolRunner.arg("providers");
-        let commandOutput = terraformToolRunner.execSync(<IExecSyncOptions>{
+        const commandOutput = terraformToolRunner.execSync(<IExecSyncOptions>{
             cwd: tasks.getInput("workingDirectory") || ''
         });
 
-        let countProviders = ["aws", "azurerm", "google", "oracle"].filter(provider => commandOutput.stdout.includes(provider)).length;
+        const countProviders = ["aws", "azurerm", "google", "oracle"].filter(provider => commandOutput.stdout.includes(provider)).length;
 
         tasks.debug(countProviders.toString());
         if (countProviders > 1) {
@@ -58,8 +58,14 @@ export abstract class BaseTerraformCommandHandler {
         }
     }
 
+    protected applyBackendConfig(terraformToolRunner: ToolRunner): void {
+        for (const [key, value] of this.backendConfig.entries()) {
+            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
+        }
+    }
+
     public getServiceProviderNameFromProviderInput(): string {
-        let provider: string = tasks.getInput("provider", true)!;
+        const provider: string = tasks.getInput("provider", true)!;
 
         switch (provider) {
             case "azurerm": return "AzureRM";
@@ -94,15 +100,13 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async init(): Promise<number> {
-        let initCommand = new TerraformBaseCommandInitializer(
+        const initCommand = new TerraformBaseCommandInitializer(
             "init",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput("commandOptions")
         );
 
-        let terraformTool;
-
-        terraformTool = this.terraformToolHandler.createToolRunner(initCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(initCommand);
         await this.handleBackend(terraformTool);
 
         return await terraformTool.execAsync(<IExecOptions>{
@@ -110,33 +114,32 @@ export abstract class BaseTerraformCommandHandler {
         });
     }
     public async show(): Promise<number> {
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
         let cmd;
         const outputTo = tasks.getInput("outputTo");
         const outputFormat = tasks.getInput("outputFormat");
-        if (outputFormat == "json") {
-            cmd = tasks.getInput("commandOptions") != null ? `-json  ${tasks.getInput("commandOptions")}` : `-json`;
+        if (outputFormat === "json") {
+            cmd = tasks.getInput("commandOptions") ? `-json  ${tasks.getInput("commandOptions")}` : `-json`;
         } else {
-            cmd = tasks.getInput("commandOptions") != null ? tasks.getInput("commandOptions") : ``;
+            cmd = tasks.getInput("commandOptions") ? tasks.getInput("commandOptions") : ``;
         }
 
-        let showCommand = new TerraformAuthorizationCommandInitializer(
+        const showCommand = new TerraformAuthorizationCommandInitializer(
             "show",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             cmd
         );
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(showCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(showCommand);
         await this.handleProvider(showCommand);
 
-        if (outputTo == "console") {
+        if (outputTo === "console") {
             return await terraformTool.execAsync(<IExecOptions>{
                 cwd: showCommand.workingDirectory
             });
-        } else if (outputTo == "file") {
+        } else if (outputTo === "file") {
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
-            let commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+            const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
                 cwd: showCommand.workingDirectory,
             });
 
@@ -148,22 +151,21 @@ export abstract class BaseTerraformCommandHandler {
         throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
     }
     public async output(): Promise<number> {
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let commandOptions = tasks.getInput("commandOptions") != null ? `-json ${tasks.getInput("commandOptions")}` : `-json`
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        const commandOptions = tasks.getInput("commandOptions") ? `-json ${tasks.getInput("commandOptions")}` : `-json`
 
-        let outputCommand = new TerraformAuthorizationCommandInitializer(
+        const outputCommand = new TerraformAuthorizationCommandInitializer(
             "output",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             commandOptions
         );
 
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
         await this.handleProvider(outputCommand);
 
         const jsonOutputVariablesFilePath = path.resolve(outputCommand.workingDirectory, `output-${uuidV4()}.json`);
-        let commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+        const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
             cwd: outputCommand.workingDirectory,
         });
 
@@ -174,25 +176,24 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async plan(): Promise<number> {
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let commandOptions = tasks.getInput("commandOptions") != null ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        let commandOptions = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`
         const replaceAddress = tasks.getInput("replaceAddress", false);
         if (replaceAddress) {
             commandOptions = `-replace=${replaceAddress} ${commandOptions}`;
         }
-        let planCommand = new TerraformAuthorizationCommandInitializer(
+        const planCommand = new TerraformAuthorizationCommandInitializer(
             "plan",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             commandOptions
         );
 
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
         await this.handleProvider(planCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
-        let result = await terraformTool.execAsync(<IExecOptions>{
+        const result = await terraformTool.execAsync(<IExecOptions>{
             cwd: planCommand.workingDirectory,
             ignoreReturnCode: true
         });
@@ -206,25 +207,24 @@ export abstract class BaseTerraformCommandHandler {
 
     public async custom(): Promise<number> {
         const outputTo = tasks.getInput("outputTo");
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let customCommand = new TerraformAuthorizationCommandInitializer(
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        const customCommand = new TerraformAuthorizationCommandInitializer(
             tasks.getInput("customCommand", true)!,
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             tasks.getInput("commandOptions")
         );
 
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
         await this.handleProvider(customCommand);
 
-        if (outputTo == "console") {
+        if (outputTo === "console") {
             return await terraformTool.execAsync(<IExecOptions>{
                 cwd: customCommand.workingDirectory
             });
-        } else if (outputTo == "file") {
+        } else if (outputTo === "file") {
             const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
-            let commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
+            const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
                 cwd: customCommand.workingDirectory
             });
 
@@ -236,9 +236,8 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async apply(): Promise<number> {
-        let terraformTool;
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let autoApprove: string = '-auto-approve';
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        const autoApprove: string = '-auto-approve';
         let additionalArgs: string = tasks.getInput("commandOptions") || autoApprove;
 
         if (additionalArgs.includes(autoApprove) === false) {
@@ -249,16 +248,16 @@ export abstract class BaseTerraformCommandHandler {
             additionalArgs = `-replace=${replaceAddress} ${additionalArgs}`;
         }
 
-        let applyCommand = new TerraformAuthorizationCommandInitializer(
+        const applyCommand = new TerraformAuthorizationCommandInitializer(
             "apply",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             additionalArgs
         );
 
-        terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
         await this.handleProvider(applyCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: applyCommand.workingDirectory
@@ -267,40 +266,38 @@ export abstract class BaseTerraformCommandHandler {
 
     public async destroy(): Promise<number> {
 
-        let serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let autoApprove: string = '-auto-approve';
+        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+        const autoApprove: string = '-auto-approve';
         let additionalArgs: string = tasks.getInput("commandOptions") || autoApprove;
 
         if (additionalArgs.includes(autoApprove) === false) {
             additionalArgs = `${autoApprove} ${additionalArgs}`;
         }
 
-        let destroyCommand = new TerraformAuthorizationCommandInitializer(
+        const destroyCommand = new TerraformAuthorizationCommandInitializer(
             "destroy",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput(serviceName, true)!,
             additionalArgs
         );
 
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
         await this.handleProvider(destroyCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: destroyCommand.workingDirectory
         });
-    };
+    }
 
     public async validate(): Promise<number> {
-        let validateCommand = new TerraformBaseCommandInitializer(
+        const validateCommand = new TerraformBaseCommandInitializer(
             "validate",
             tasks.getInput("workingDirectory") || '',
             tasks.getInput("commandOptions")
         );
 
-        let terraformTool;
-        terraformTool = this.terraformToolHandler.createToolRunner(validateCommand);
+        const terraformTool = this.terraformToolHandler.createToolRunner(validateCommand);
 
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: validateCommand.workingDirectory
@@ -312,7 +309,7 @@ export abstract class BaseTerraformCommandHandler {
         const workspaceName = tasks.getInput("workspaceName", false);
         const commandOptions = tasks.getInput("commandOptions");
 
-        let additionalArgs = workspaceName
+        const additionalArgs = workspaceName
             ? `${workspaceName}${commandOptions ? ` ${commandOptions}` : ''}`
             : commandOptions || undefined;
 
