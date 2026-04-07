@@ -97,6 +97,7 @@
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
         "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
-        "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s"
+        "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
+        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
     }
 }
