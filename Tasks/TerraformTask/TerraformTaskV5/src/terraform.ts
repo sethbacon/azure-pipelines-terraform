@@ -6,9 +6,9 @@ export interface ITerraformToolHandler {
 }
 
 export class TerraformToolHandler implements ITerraformToolHandler {
-    private readonly tasks: any;
-    
-    constructor(tasks: any) {
+    private readonly tasks: typeof import('azure-pipelines-task-lib/task');
+
+    constructor(tasks: typeof import('azure-pipelines-task-lib/task')) {
         this.tasks = tasks;
     }
 
@@ -16,10 +16,10 @@ export class TerraformToolHandler implements ITerraformToolHandler {
         let terraformPath;
         try {
             terraformPath = this.tasks.which("terraform", true);
-        } catch(err) {
+        } catch (err) {
             throw new Error(this.tasks.loc("TerraformToolNotFound"));
         }
-        
+
         let terraformToolRunner: ToolRunner = this.tasks.tool(terraformPath);
         if (command) {
             terraformToolRunner.arg(command.name);

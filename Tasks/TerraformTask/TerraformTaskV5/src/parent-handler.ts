@@ -12,17 +12,7 @@ export interface IParentCommandHandler {
 }
 
 export class ParentCommandHandler implements IParentCommandHandler {
-    private static readonly VALID_COMMANDS = [
-        'init', 'plan', 'apply', 'destroy', 'validate',
-        'show', 'output', 'custom', 'workspace', 'state',
-        'fmt', 'test', 'get'
-    ];
-
     public async execute(providerName: string, command: string): Promise<number> {
-        if (!ParentCommandHandler.VALID_COMMANDS.includes(command)) {
-            throw new Error(`Invalid command: ${command}. Valid commands: ${ParentCommandHandler.VALID_COMMANDS.join(', ')}`);
-        }
-
         let handler: BaseTerraformCommandHandler;
 
         if (command === 'init') {
@@ -35,7 +25,7 @@ export class ParentCommandHandler implements IParentCommandHandler {
         }
 
         try {
-            return await (handler as any)[command]();
+            return await handler.executeCommand(command);
         } finally {
             handler.cleanupTempFiles();
         }

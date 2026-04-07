@@ -2,6 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
+import { EnvironmentVariableHelper } from './environment-variables';
 import path = require('path');
 import * as uuidV4 from 'uuid/v4';
 
@@ -62,11 +63,11 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
         if (command.serviceProvidername) {
             let privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProvidername, "privateKey", false)!);
-            process.env['TF_VAR_tenancy_ocid'] = tasks.getEndpointDataParameter(command.serviceProvidername, "tenancy", false) || '';
-            process.env['TF_VAR_user_ocid'] = tasks.getEndpointDataParameter(command.serviceProvidername, "user", false) || '';
-            process.env['TF_VAR_region'] = tasks.getEndpointDataParameter(command.serviceProvidername, "region", false) || '';
-            process.env['TF_VAR_fingerprint'] = tasks.getEndpointDataParameter(command.serviceProvidername, "fingerprint", false) || '';
-            process.env['TF_VAR_private_key_path'] = `${privateKeyFilePath}`;
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "tenancy", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "user", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProvidername, "region", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", tasks.getEndpointDataParameter(command.serviceProvidername, "fingerprint", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_private_key_path", privateKeyFilePath);
         }
     }
 }
