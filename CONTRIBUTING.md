@@ -119,6 +119,29 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 When adding new commands or providers, add corresponding test pairs.
 
+### Writing new tests
+
+Use the helper pattern for all new tests:
+
+**L0 file** (`<Name>L0.ts`): use `runCommand()` from `test-l0-helpers.ts`:
+
+```typescript
+import { TerraformCommandHandlerAWS } from './../../src/aws-terraform-command-handler';
+import { runCommand } from '../test-l0-helpers';
+
+runCommand(new TerraformCommandHandlerAWS(), 'plan', 'AWSPlanSuccessL0');
+```
+
+For failure tests, pass `false` as the fourth argument:
+
+```typescript
+runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
+```
+
+**Mock-setup file** (`<Name>.ts`): configure inputs, env vars, and mock answers, then call `tr.run()`.
+
+**L0.ts registration**: add an `it()` block in the main `Tests/L0.ts` file near the other tests for the same command.
+
 ## Release Process
 
 Releases are triggered by pushing a semver tag to `main`. The automated workflow handles packaging and publishing.
