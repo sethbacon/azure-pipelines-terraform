@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Removed
+- Archive legacy task versions: TerraformTaskV1-V4 and TerraformInstallerV0
+- Remove Microsoft-internal `.azure-pipelines/` CI files (unusable from fork)
+
+---
+
 ## [0.3.0] — 2026-04-06
 
 ### Security

@@ -14,7 +14,7 @@ Local path: `C:\dev\gh\azure-pipelines-terraform`
 
 ## Working Repository
 
-All changes are made in the fork. The GitHub Actions CI workflow (`.github/workflows/unit-test.yml`) is the primary CI target. The Azure Pipelines CI (`.azure-pipelines/`) references internal Microsoft infrastructure and is not usable from the fork.
+All changes are made in the fork. The GitHub Actions CI workflow (`.github/workflows/unit-test.yml`) is the primary CI target.
 
 ## Branch Strategy
 
@@ -87,14 +87,9 @@ HashiCorp's trademark policy prohibits using "Terraform" as a standalone product
 azure-pipelines-terraform/
 ├── Tasks/
 │   ├── TerraformInstaller/
-│   │   ├── TerraformInstallerV0/      # Legacy installer task
 │   │   └── TerraformInstallerV1/      # Current installer task
 │   └── TerraformTask/
-│       ├── TerraformTaskV1/           # Legacy (Node10 only)
-│       ├── TerraformTaskV2/           # Legacy
-│       ├── TerraformTaskV3/           # Legacy
-│       ├── TerraformTaskV4/           # Legacy
-│       └── TerraformTaskV5/           # ACTIVE - current development target
+│       └── TerraformTaskV5/           # Current development target
 ├── configs/                           # Extension manifest configs
 │   ├── dev.json                       # Dev publisher override
 │   ├── release.json                   # Release publisher override (sethbacon)
@@ -102,13 +97,12 @@ azure-pipelines-terraform/
 ├── docs/
 │   ├── initiatives/                   # Initiative plans
 │   └── setup/                        # Setup guides (WIF, etc.)
-├── .azure-pipelines/                  # Microsoft-internal CI (not usable from fork)
 └── .github/workflows/                 # GitHub Actions CI/CD
     ├── unit-test.yml                  # CI: build + test on PR/push
     └── release.yml                    # Release: tag-triggered marketplace publish
 ```
 
-**Always work in TerraformTaskV5** unless explicitly asked to modify a prior version. TerraformInstallerV1 is the active installer task.
+**Always work in TerraformTaskV5.** TerraformInstallerV1 is the active installer task. Legacy task versions (V1-V4, InstallerV0) have been removed.
 
 ## Task Architecture (TerraformTaskV5)
 
@@ -235,7 +229,6 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## CI/CD
 
-- `.azure-pipelines/azure-pipeline-ci.yml` — Microsoft-internal only; not usable from the fork
 - `.github/workflows/unit-test.yml` — **Active CI for this fork.** Runs build + tests on push/PR to `main`/`development`
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`); publishes to VS Marketplace
 
