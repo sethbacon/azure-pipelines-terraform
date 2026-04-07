@@ -19,9 +19,6 @@
     },
     "instanceNameFormat": "Terraform : $(provider)",
     "execution": {
-        "Node16": {
-            "target": "src/index.js"
-        },
         "Node20_1": {
             "target": "src/index.js"
         }
@@ -636,6 +633,14 @@
         {
             "name": "changesPresent",
             "description": "A boolean indicating if the terraform plan found any changes to apply."
+        },
+        {
+            "name": "showFilePath",
+            "description": "The location of the file containing the terraform show output.<br><br>Note: This variable will only be set if 'command' is 'show' and 'outputTo' is 'file'."
+        },
+        {
+            "name": "customFilePath",
+            "description": "The location of the file containing the terraform custom command output.<br><br>Note: This variable will only be set if 'command' is 'custom' and 'outputTo' is 'file'."
         }
     ],
     "messages": {
