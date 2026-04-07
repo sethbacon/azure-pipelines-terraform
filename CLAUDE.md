@@ -83,7 +83,7 @@ HashiCorp's trademark policy prohibits using "Terraform" as a standalone product
 
 ## Repository Structure
 
-```
+```txt
 azure-pipelines-terraform/
 ├── Tasks/
 │   ├── TerraformInstaller/

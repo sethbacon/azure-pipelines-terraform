@@ -4,17 +4,51 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.1] — 2026-04-07
+
+### Refactored
+
+- Replace `(handler as any)[command]()` dynamic dispatch with typed `executeCommand()` method on `BaseTerraformCommandHandler`; `parent-handler.ts` now calls `handler.executeCommand(command)` with no unsafe cast
+- Remove `VALID_COMMANDS` whitelist array from `parent-handler.ts` — the dispatch map in `executeCommand()` IS the whitelist
+- Standardize all provider handlers (AWS, GCP, OCI) to use `EnvironmentVariableHelper.setEnvironmentVariable()` instead of direct `process.env` assignment, consistent with the Azure handler
+- Replace `var` with `const`/`let` throughout `azure-terraform-command-handler.ts`
+- Type `TerraformToolHandler` constructor parameter from `any` to `typeof import('azure-pipelines-task-lib/task')`
+- Wrap switch case blocks in braces in `azure-terraform-command-handler.ts` to satisfy `no-case-declarations` ESLint rule
+
+### Dependencies
+
+- Migrate ESLint 8 (`.eslintrc.json`) → ESLint 9 flat config (`eslint.config.mjs`) with `typescript-eslint@8` in both TerraformTaskV5 and TerraformInstallerV1
+- Update CI lint step to drop `--ext .ts` flag (ESLint 9 uses config-based file filtering)
+- Remove dead devDependencies: `@types/q` from TerraformTaskV5 and TerraformInstallerV1; `nock` from TerraformTaskV5 Tests
+- Add `uuid@^3.4.0` as a direct dependency in TerraformTaskV5
+- Regenerate `package-lock.json` for both tasks (lockfileVersion 3)
+
+### Fixed
+
+- Update TerraformInstallerV1 tests to use `runAsync()` — sync `run()` was removed in `azure-pipelines-task-lib@4.x`
+
+### Tests
+
+- Add 15 new test cases; total **117 tests passing (TerraformTaskV5)**
+  - ShowTests: AWS show (console), GCP show (console)
+  - OutputTests: AWS output, GCP output
+  - WorkspaceTests: workspace new, workspace delete, workspace show
+  - StateTests: state show, state mv, state rm, state pull
+  - ApplyTests: AWS WIF apply, GCP WIF apply
+  - DestroyTests: AWS WIF destroy, GCP WIF destroy
 
 ### Removed
-- Archive legacy task versions: TerraformTaskV1-V4 and TerraformInstallerV0
-- Remove Microsoft-internal `.azure-pipelines/` CI files (unusable from fork)
+
+- Delete TerraformTaskV1, V2, V3, V4 task directories
+- Delete TerraformInstallerV0 task directory
+- Delete Microsoft-internal `.azure-pipelines/` CI files (unusable from fork)
 
 ---
 
 ## [0.3.0] — 2026-04-06
 
 ### Security
+
 - Mask AWS backend credentials with `tasks.setSecret()` (access_key, secret_key)
 - Mask Azure ARM_CLIENT_SECRET with `tasks.setSecret()` for ServicePrincipal auth
 - Mask HCP API token with `tasks.setSecret()`
@@ -22,6 +56,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Fix proxy URL construction in installer using `URL` class (prevents malformed URLs with special characters)
 
 ### Fixed
+
 - Fix GCP backend prefix: treat `backendGCPPrefix` as optional (no longer crashes when omitted)
 - Fix output/show/custom file paths to resolve relative to `workingDirectory` instead of `process.cwd()`
 - Fix `azure-devops-extension.json`: correct `"Tags"` → `"tags"` (marketplace schema), fix `"aws-enpoint-type"` typo
@@ -29,12 +64,14 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Add missing `TerraformPlanFailed` localization key to task.json
 
 ### Added
+
 - OCI provider tests: init, plan, apply, destroy
 - Backend decoupling test: S3 backend with AzureRM provider
 - ESLint configuration and CI lint step for V5 and InstallerV1
 - ESLint devDependencies (`eslint`, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin`)
 
 ### Changed
+
 - Bump TypeScript from `^4.0.0` to `^5.0.0` in V5 and InstallerV1
 - Bump `@types/node` to `^20.11.0`, `@types/mocha` to `^10.0.0` in V5 and InstallerV1
 - Remove Node10 execution target from V5 and InstallerV1 task.json (Node16 + Node20_1 remain)
@@ -46,6 +83,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Rewrite `overview.md` to document fork capabilities
 
 ### Documentation
+
 - Review and fix all markdown documentation for correctness
 - Add implementation status to initiative docs (1, 2, 3 all marked COMPLETED)
 - Update CLAUDE.md: fix Node10 reference, add missing commands, fix test description
@@ -56,6 +94,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Update initiative-3: mark HCP as completed, note generic/local handler routing
 
 ### Removed
+
 - Delete empty `temp.js` artifact from repo root
 - Delete orphaned `L0CompareVersions.ts` test file (method was removed)
 
