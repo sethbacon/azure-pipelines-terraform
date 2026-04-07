@@ -4,6 +4,20 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.3.3] — 2026-04-07
+
+### Fixed
+
+- Replace `execSync` with `execAsync` for file output in `show()`, `output()`, `custom()`, and `warnIfMultipleProviders()` (#46)
+
+### Changed
+
+- Migrate 117 L0 test handler files to shared `runCommand()` helper, reducing ~1,600 lines of boilerplate (#44)
+
+### Added
+
+- OCI validate, show-to-console, and output test coverage (#45)
+
 ## [0.3.2] — 2026-04-07
 
 ### Security
