@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "0.2.3",
+    "version": "0.3.0",
     "publisher": "sethbacon",
     "targets": [
         {
