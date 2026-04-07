@@ -112,10 +112,10 @@ export abstract class BaseTerraformCommandHandler {
         let cmd;
         const outputTo = tasks.getInput("outputTo");
         const outputFormat = tasks.getInput("outputFormat");
-        if (outputFormat == "json") {
-            cmd = tasks.getInput("commandOptions") != null ? `-json  ${tasks.getInput("commandOptions")}` : `-json`;
+        if (outputFormat === "json") {
+            cmd = tasks.getInput("commandOptions") ? `-json  ${tasks.getInput("commandOptions")}` : `-json`;
         } else {
-            cmd = tasks.getInput("commandOptions") != null ? tasks.getInput("commandOptions") : ``;
+            cmd = tasks.getInput("commandOptions") ? tasks.getInput("commandOptions") : ``;
         }
 
         const showCommand = new TerraformAuthorizationCommandInitializer(
@@ -127,11 +127,11 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(showCommand);
         await this.handleProvider(showCommand);
 
-        if (outputTo == "console") {
+        if (outputTo === "console") {
             return await terraformTool.execAsync(<IExecOptions>{
                 cwd: showCommand.workingDirectory
             });
-        } else if (outputTo == "file") {
+        } else if (outputTo === "file") {
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
             const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
                 cwd: showCommand.workingDirectory,
@@ -146,7 +146,7 @@ export abstract class BaseTerraformCommandHandler {
     }
     public async output(): Promise<number> {
         const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        const commandOptions = tasks.getInput("commandOptions") != null ? `-json ${tasks.getInput("commandOptions")}` : `-json`
+        const commandOptions = tasks.getInput("commandOptions") ? `-json ${tasks.getInput("commandOptions")}` : `-json`
 
         const outputCommand = new TerraformAuthorizationCommandInitializer(
             "output",
@@ -171,7 +171,7 @@ export abstract class BaseTerraformCommandHandler {
 
     public async plan(): Promise<number> {
         const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let commandOptions = tasks.getInput("commandOptions") != null ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`
+        let commandOptions = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`
         const replaceAddress = tasks.getInput("replaceAddress", false);
         if (replaceAddress) {
             commandOptions = `-replace=${replaceAddress} ${commandOptions}`;
@@ -212,11 +212,11 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
         await this.handleProvider(customCommand);
 
-        if (outputTo == "console") {
+        if (outputTo === "console") {
             return await terraformTool.execAsync(<IExecOptions>{
                 cwd: customCommand.workingDirectory
             });
-        } else if (outputTo == "file") {
+        } else if (outputTo === "file") {
             const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
             const commandOutput = await terraformTool.execSync(<IExecSyncOptions>{
                 cwd: customCommand.workingDirectory
