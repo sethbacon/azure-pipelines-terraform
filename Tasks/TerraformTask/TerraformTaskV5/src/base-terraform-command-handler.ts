@@ -70,6 +70,29 @@ export abstract class BaseTerraformCommandHandler {
         }
     }
 
+    public async executeCommand(command: string): Promise<number> {
+        const commands: Record<string, () => Promise<number>> = {
+            init: () => this.init(),
+            validate: () => this.validate(),
+            plan: () => this.plan(),
+            apply: () => this.apply(),
+            destroy: () => this.destroy(),
+            show: () => this.show(),
+            output: () => this.output(),
+            custom: () => this.custom(),
+            workspace: () => this.workspace(),
+            state: () => this.state(),
+            fmt: () => this.fmt(),
+            test: () => this.test(),
+            get: () => this.get(),
+        };
+        const fn = commands[command];
+        if (!fn) {
+            throw new Error(`Invalid command: ${command}. Valid: ${Object.keys(commands).join(', ')}`);
+        }
+        return fn();
+    }
+
     public async init(): Promise<number> {
         let initCommand = new TerraformBaseCommandInitializer(
             "init",
