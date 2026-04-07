@@ -84,7 +84,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_MSI", "true");
                 break;
 
-            case AuthorizationScheme.WorkloadIdentityFederation:
+            case AuthorizationScheme.WorkloadIdentityFederation: {
                 const workloadIdentityFederationCredentials = await this.getWorkloadIdentityFederationCredentials(serviceConnectionID, fallbackToIdTokenGeneration);
                 if (useCliFlagsForBackend) {
                     // By persisting the client ID in the backend config, we can support multiple service connections for backend and provider auth.
@@ -110,8 +110,9 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 }
 
                 break;
+            }
 
-            case AuthorizationScheme.ServicePrincipal:
+            case AuthorizationScheme.ServicePrincipal: {
                 tasks.warning("Client secret authentication is not secure and will be deprecated in the next major version of this task. Please use Workload identity federation authentication instead.");
 
                 const servicePrincipalCredentials = this.getServicePrincipalCredentials(serviceConnectionID);
@@ -119,6 +120,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId);
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey);
                 break;
+            }
         }
     }
 
