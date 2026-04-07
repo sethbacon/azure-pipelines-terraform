@@ -13,6 +13,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     private getPrivateKeyFilePath(privateKey: string) {
+        tasks.setSecret(privateKey);
         // This is a bit of a hack but spaces need to be converted to line breaks to make it work
         privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '_begin_');
         privateKey = privateKey.replace('-----END PRIVATE KEY-----', '_end_');
