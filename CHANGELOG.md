@@ -4,6 +4,41 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.3.2] — 2026-04-07
+
+### Security
+
+- Mask OCI private key with `tasks.setSecret()` before processing (#30)
+- Add OIDC URL guard (`SYSTEM_OIDCREQUESTURI` check) and error handling to `id-token-generator.ts` (#31, #32)
+- Escape backslash and double-quote characters in OCI PAR URLs before embedding in generated HCL backend config (#42)
+
+### Fixed
+
+- Rewrite `id-token-generator.ts`: proper error handling for fetch, HTTP status checks, response validation (#31, #32)
+- Add runtime validation for external JSON responses in installer (`fetchJson` guard) (#40)
+- Use `tasks.loc()` for non-localized log string in installer (#39)
+- Extract hardcoded fallback Terraform version to `FALLBACK_TERRAFORM_VERSION` constant (#38)
+- Defer proxy config evaluation to download time in installer (#47)
+- Mirror SHA256 skip now uses `tasks.warning()` instead of `console.warn()` (#33)
+
+### Changed
+
+- Upgrade `uuid` from v3 (`^3.4.0`) to v9 (`^9.0.1`), `@types/uuid` to `^9.0.8` across V5 and InstallerV1 (#35)
+- Replace all loose equality (`==`, `!=`) with strict equality (`===`, `!==`) or truthiness checks (#36)
+- Replace `var` declarations with `const`/`let` throughout (#37)
+- Extract duplicated backend config loop from provider handlers into `BaseTerraformCommandHandler.applyBackendConfig()` (#41)
+- Make `warnIfMultipleProviders()` async (#43)
+- Resolve all 61 ESLint warnings: `prefer-const`, unused params (`_` prefix convention), unused imports
+- Add `argsIgnorePattern`/`varsIgnorePattern` to ESLint `no-unused-vars` rule
+- Delete `src/types.d.ts` ambient declaration shim (no longer needed with uuid v9)
+- Update all 18 test mock registrations from `uuid/v4` to `uuid` module
+
+### Chore
+
+- Sync InstallerV1 `task.loc.json` with `task.json` (matching id, name, author, execution targets) (#34)
+
+---
+
 ## [0.3.1] — 2026-04-07
 
 ### Refactored
@@ -20,7 +55,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Migrate ESLint 8 (`.eslintrc.json`) → ESLint 9 flat config (`eslint.config.mjs`) with `typescript-eslint@8` in both TerraformTaskV5 and TerraformInstallerV1
 - Update CI lint step to drop `--ext .ts` flag (ESLint 9 uses config-based file filtering)
 - Remove dead devDependencies: `@types/q` from TerraformTaskV5 and TerraformInstallerV1; `nock` from TerraformTaskV5 Tests
-- Add `uuid@^3.4.0` as a direct dependency in TerraformTaskV5
+- Add `uuid@^9.0.1` as a direct dependency in TerraformTaskV5
 - Regenerate `package-lock.json` for both tasks (lockfileVersion 3)
 
 ### Fixed
