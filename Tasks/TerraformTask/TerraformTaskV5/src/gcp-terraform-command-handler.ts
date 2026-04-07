@@ -20,6 +20,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         const clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
         const tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
         const privateKey = tasks.getEndpointAuthorizationParameter(serviceName, "PrivateKey", false);
+        if (privateKey) { tasks.setSecret(privateKey); }
 
         // Create json string and write it to the file
         const jsonCredsString = JSON.stringify({
@@ -28,7 +29,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             client_email: clientEmail,
             token_uri: tokenUri
         });
-        tasks.writeFile(jsonKeyFilePath, jsonCredsString);
+        require('fs').writeFileSync(jsonKeyFilePath, jsonCredsString, { mode: 0o600 });
         this.tempFiles.push(jsonKeyFilePath);
 
         return jsonKeyFilePath;
@@ -74,7 +75,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.resolve(`gcp-oidc-token-${uuidV4()}.jwt`);
-        tasks.writeFile(tokenFilePath, oidcToken);
+        require('fs').writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
         this.tempFiles.push(tokenFilePath);
 
         const projectNumber = tasks.getInput("gcpProjectNumber", true)!;
@@ -94,7 +95,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         };
 
         const credentialsFilePath = path.resolve(`gcp-wif-credentials-${uuidV4()}.json`);
-        tasks.writeFile(credentialsFilePath, JSON.stringify(credentials));
+        require('fs').writeFileSync(credentialsFilePath, JSON.stringify(credentials), { mode: 0o600 });
         this.tempFiles.push(credentialsFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);

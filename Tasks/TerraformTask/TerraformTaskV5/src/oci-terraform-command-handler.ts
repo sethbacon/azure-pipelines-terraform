@@ -23,7 +23,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         privateKey = privateKey.replace('_begin_', '-----BEGIN PRIVATE KEY-----');
         privateKey = privateKey.replace('_end_', '-----END PRIVATE KEY-----');
         const privateKeyFilePath = path.resolve(`keyfile-${uuidV4()}.pem`);
-        tasks.writeFile(privateKeyFilePath, privateKey);
+        require('fs').writeFileSync(privateKeyFilePath, privateKey, { mode: 0o600 });
         this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
     }
@@ -39,10 +39,20 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // Instead, will create a backend.tf config file for it in-flight when generate option was selected 'yes' (the default setting)
         if (tasks.getInput("backendOCIConfigGenerate", true) === 'yes') {
             tasks.debug('Generating backend tf statefile config.');
-            const parUrl = (tasks.getInput("backendOCIPar", true) || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            const parUrl = (tasks.getInput("backendOCIPar", true) || '');
+
+            // Validate PAR URL: must be HTTPS and must not contain HCL interpolation sequences
+            if (!parUrl.startsWith('https://')) {
+                throw new Error("OCI PAR URL must use HTTPS scheme.");
+            }
+            if (parUrl.includes('${') || parUrl.includes('%{')) {
+                throw new Error("OCI PAR URL contains invalid characters ('${' or '%{' are not allowed).");
+            }
+
+            const escapedParUrl = parUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             let config = "";
             config = config + "terraform {\n backend \"http\" {\n";
-            config = config + " address = \"" + parUrl + "\"\n";
+            config = config + " address = \"" + escapedParUrl + "\"\n";
             config = config + " update_method = \"PUT\"\n }\n }\n";
 
             const workingDirectory = tasks.getInput("workingDirectory") || '';

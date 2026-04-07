@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "217",
+        "Minor": "218",
         "Patch": "0"
     },
     "instanceNameFormat": "Install Terraform $(terraformVersion)",
@@ -68,9 +68,6 @@
         }
     ],
     "execution": {
-        "Node16": {
-            "target": "src/index.js"
-        },
         "Node20_1": {
             "target": "src/index.js"
         }
