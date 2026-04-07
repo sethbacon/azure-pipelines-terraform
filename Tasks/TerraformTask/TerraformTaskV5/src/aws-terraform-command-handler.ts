@@ -29,10 +29,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
         this.setupBackend(backendServiceName);
-
-        for (const [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
