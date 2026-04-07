@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm install --include=dev
       - name: Lint
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/ --ext .ts
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/
       - name: Compile TypeScript
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run compile
       - name: Run unit tests
@@ -45,7 +45,7 @@ jobs:
       - name: Install dependencies
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm install --include=dev
       - name: Lint
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npx eslint src/ --ext .ts
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npx eslint src/
       - name: Compile TypeScript
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm run compile
       - name: Run unit tests
