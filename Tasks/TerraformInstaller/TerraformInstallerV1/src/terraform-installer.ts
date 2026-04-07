@@ -133,7 +133,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
-    const data = await fetchJson(infoUrl);
+    const data = await fetchJson<{ download_url: string; sha256: string }>(infoUrl);
     // data.download_url = pre-signed storage URL (15-minute TTL)
     // data.sha256       = hex SHA256 of the zip
 
