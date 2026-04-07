@@ -27,6 +27,8 @@ jobs:
           node-version: "18"
       - name: Install dependencies
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm install --include=dev
+      - name: Audit dependencies
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --audit-level=high
       - name: Lint
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/
       - name: Compile TypeScript
@@ -44,6 +46,8 @@ jobs:
           node-version: "18"
       - name: Install dependencies
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm install --include=dev
+      - name: Audit dependencies
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm audit --audit-level=high
       - name: Lint
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npx eslint src/
       - name: Compile TypeScript
