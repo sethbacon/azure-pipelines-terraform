@@ -56,10 +56,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceOCI", true)!;
         this.setupBackend(backendServiceName);
-
-        for (const [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {

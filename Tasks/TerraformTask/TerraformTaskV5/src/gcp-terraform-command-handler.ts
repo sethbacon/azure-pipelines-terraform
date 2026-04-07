@@ -50,10 +50,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         tasks.debug('Setting up backend GCP.');
         const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
         this.setupBackend(backendServiceName);
-
-        for (const [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
         tasks.debug('Finished setting up backend GCP.');
     }
 

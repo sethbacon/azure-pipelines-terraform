@@ -47,9 +47,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, backendAzureRmUseCliFlagsForAuthentication);
 
-        for (const [key, value] of this.backendConfig.entries()) {
-            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
-        }
+        this.applyBackendConfig(terraformToolRunner);
 
         tasks.debug("Finished setting up backend for authorization scheme: " + authorizationScheme + ".");
     }

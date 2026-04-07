@@ -36,7 +36,7 @@ export abstract class BaseTerraformCommandHandler {
         this.tempFiles = [];
     }
 
-    public warnIfMultipleProviders(): void {
+    public async warnIfMultipleProviders(): Promise<void> {
         let terraformPath;
         try {
             terraformPath = tasks.which("terraform", true);
@@ -55,6 +55,12 @@ export abstract class BaseTerraformCommandHandler {
         tasks.debug(countProviders.toString());
         if (countProviders > 1) {
             tasks.warning("Multiple provider blocks specified in the .tf files in the current working directory.");
+        }
+    }
+
+    protected applyBackendConfig(terraformToolRunner: ToolRunner): void {
+        for (const [key, value] of this.backendConfig.entries()) {
+            terraformToolRunner.arg(`-backend-config=${key}=${value}`);
         }
     }
 
@@ -185,7 +191,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
         await this.handleProvider(planCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
         const result = await terraformTool.execAsync(<IExecOptions>{
             cwd: planCommand.workingDirectory,
@@ -251,7 +257,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
         await this.handleProvider(applyCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: applyCommand.workingDirectory
@@ -277,7 +283,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
         await this.handleProvider(destroyCommand);
-        this.warnIfMultipleProviders();
+        await this.warnIfMultipleProviders();
 
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: destroyCommand.workingDirectory
