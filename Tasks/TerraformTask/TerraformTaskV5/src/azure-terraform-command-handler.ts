@@ -159,8 +159,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             return AuthorizationScheme.WorkloadIdentityFederation;
         }
 
-        tasks.debug("No matching authorization scheme was found, using ServicePrincipal by default, but this could cause issues.");
-        return AuthorizationScheme.ServicePrincipal;
+        throw new Error(`Unrecognized authorization scheme '${authorizationScheme}'. Supported schemes: WorkloadIdentityFederation, ManagedServiceIdentity, ServicePrincipal.`);
     }
 }
 
