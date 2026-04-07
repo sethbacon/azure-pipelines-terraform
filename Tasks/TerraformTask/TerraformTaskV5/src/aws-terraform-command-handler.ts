@@ -53,7 +53,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.resolve(`aws-oidc-token-${uuidV4()}.jwt`);
-        tasks.writeFile(tokenFilePath, oidcToken);
+        require('fs').writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true)!);

@@ -86,18 +86,16 @@ describe('Terraform Test Suite', function () {
     });
 
 
-    it('azure init should succeed with malformed authentication scheme', async () => {
+    it('azure init should fail with malformed authentication scheme', async () => {
         let tp = path.join(__dirname, './InitTests/Azure/AzureInitSuccessMalformedAuthenticationScheme.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
 
         runValidations(() => {
-            assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
-            assert(tr.errorIssues.length === 0, 'should have no errors');
-            assert(tr.warningIssues.length === 1, 'should have 1 warning');
-            assert(tr.stdOutContained('AzureInitSuccessMalformedAuthenticationSchemeL0 should have succeeded.'), 'Should have printed: AzureInitSuccessMalformedAuthenticationSchemeL0 should have succeeded.');
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have errors');
+            assert(tr.stdOutContained('AzureInitSuccessMalformedAuthenticationSchemeL0 should have failed.'), 'Should have printed: AzureInitSuccessMalformedAuthenticationSchemeL0 should have failed.');
         }, tr);
     });
 
