@@ -1,7 +1,7 @@
 import tasks = require("azure-pipelines-task-lib/task");
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {
-    let tokenGenerator = new TokenGenerator();
+    const tokenGenerator = new TokenGenerator();
     return await tokenGenerator.generate(serviceConnectionID);
 }
 
@@ -11,22 +11,36 @@ export interface ITokenGenerator {
 
 export class TokenGenerator implements ITokenGenerator {
     public async generate(serviceConnectionID: string): Promise<string> {
-        const url = process.env["SYSTEM_OIDCREQUESTURI"] + "?api-version=7.1&serviceConnectionId=" + encodeURIComponent(serviceConnectionID);
-        var oidcToken = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!
-            }
-        }).then(async response => {
-            var oidcObject = await (response?.json()) as { oidcToken: string };
+        const oidcRequestUri = process.env["SYSTEM_OIDCREQUESTURI"];
+        if (!oidcRequestUri) {
+            throw new Error("SYSTEM_OIDCREQUESTURI is not set. Ensure the pipeline is running on an agent that supports OIDC token generation.");
+        }
 
-            if (!oidcObject?.oidcToken) {
-                throw new Error(tasks.loc("Error_FederatedTokenAquisitionFailed"));
-            }
-            return oidcObject.oidcToken;
-        });
+        const url = oidcRequestUri + "?api-version=7.1&serviceConnectionId=" + encodeURIComponent(serviceConnectionID);
 
+        let response: Response;
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!
+                }
+            });
+        } catch (error) {
+            throw new Error(`Failed to acquire federated token from ${oidcRequestUri}: ${error instanceof Error ? error.message : error}`);
+        }
+
+        if (!response.ok) {
+            throw new Error(`Failed to acquire federated token: HTTP ${response.status} ${response.statusText}`);
+        }
+
+        const oidcObject = await response.json() as { oidcToken: string };
+        if (!oidcObject?.oidcToken) {
+            throw new Error(tasks.loc("Error_FederatedTokenAquisitionFailed"));
+        }
+
+        const oidcToken = oidcObject.oidcToken;
         tasks.setSecret(oidcToken);
         return oidcToken;
     }
