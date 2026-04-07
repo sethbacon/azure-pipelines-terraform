@@ -5,9 +5,9 @@ import path = require('path');
 import * as installer from './terraform-installer';
 
 async function configureTerraform() {
-    let inputVersion = tasks.getInput("terraformVersion", true)!;
-    let terraformPath = await installer.downloadTerraform(inputVersion);
-    let envPath = process.env['PATH'];
+    const inputVersion = tasks.getInput("terraformVersion", true)!;
+    const terraformPath = await installer.downloadTerraform(inputVersion);
+    const envPath = process.env['PATH'];
 
     // Prepend the tools path. Instructs the agent to prepend for future tasks
     if (envPath && !envPath.startsWith(path.dirname(terraformPath))) {
@@ -17,8 +17,8 @@ async function configureTerraform() {
 
 async function verifyTerraform() {
     console.log(tasks.loc("VerifyTerraformInstallation"));
-    let terraformPath = tasks.which("terraform", true);
-    let terraformTool: ToolRunner = tasks.tool(terraformPath);
+    const terraformPath = tasks.which("terraform", true);
+    const terraformTool: ToolRunner = tasks.tool(terraformPath);
     terraformTool.arg("version");
     return terraformTool.exec();
 }

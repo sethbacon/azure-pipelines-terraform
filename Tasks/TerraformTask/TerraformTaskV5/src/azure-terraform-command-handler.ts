@@ -12,7 +12,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        let serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
+        const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
 
         tasks.debug("Setting up backend for authorization scheme: " + authorizationScheme + ".");
@@ -42,20 +42,20 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             this.backendConfig.set("use_azuread_auth", "true");
         }
 
-        let fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
-        let backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
+        const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
+        const backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, backendAzureRmUseCliFlagsForAuthentication);
 
-        for (let [key, value] of this.backendConfig.entries()) {
+        for (const [key, value] of this.backendConfig.entries()) {
             terraformToolRunner.arg(`-backend-config=${key}=${value}`);
         }
 
         tasks.debug("Finished setting up backend for authorization scheme: " + authorizationScheme + ".");
     }
 
-    public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        let serviceConnectionID = tasks.getInput("environmentServiceNameAzureRM", true)!;
+    public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
+        const serviceConnectionID = tasks.getInput("environmentServiceNameAzureRM", true)!;
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
 
         tasks.debug("Setting up provider for authorization scheme: " + authorizationScheme + ".");
@@ -69,7 +69,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
         }
 
-        let fallbackToIdTokenGeneration = tasks.getBoolInput("environmentAzureRmUseIdTokenGeneration", false);
+        const fallbackToIdTokenGeneration = tasks.getBoolInput("environmentAzureRmUseIdTokenGeneration", false);
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, false);
 
