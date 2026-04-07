@@ -57,10 +57,11 @@ Closes #12
 
 1. Collect changelog entries from merged PR bodies
 2. Update `CHANGELOG.md` on `development` branch
-3. Open PR: `development` → `main` (squash merge)
-4. Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
-5. The release workflow (`.github/workflows/release.yml`) triggers automatically on the semver tag
-6. The workflow: guards the tag is on `main` → runs CI → builds → packages `.vsix` → publishes to Marketplace → creates GitHub Release
+3. **Bump `version` in `azure-devops-extension.json`** to match the release tag (e.g. `"0.3.0"` for tag `v0.3.0`). The release workflow will fail if these don't match.
+4. Open PR: `development` → `main` (squash merge)
+5. Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
+6. The release workflow (`.github/workflows/release.yml`) triggers automatically on the semver tag
+7. The workflow: guards the tag is on `main` → verifies extension version matches tag → runs CI → builds → packages `.vsix` → publishes to Marketplace → creates GitHub Release
 
 **Required GitHub secret:** `TFX_PAT` — Personal Access Token for Visual Studio Marketplace with `Marketplace (publish)` scope. Set in repository Settings → Secrets → Actions.
 
