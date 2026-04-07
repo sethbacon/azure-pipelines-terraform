@@ -125,7 +125,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private getServicePrincipalCredentials(serviceConnectionID: string): ServicePrincipalCredentials {
-        let servicePrincipalCredentials: ServicePrincipalCredentials = {
+        const servicePrincipalCredentials: ServicePrincipalCredentials = {
             servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
             servicePrincipalKey: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", true)!
         }
@@ -133,7 +133,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private async getWorkloadIdentityFederationCredentials(serviceConnectionID: string, getIdToken: boolean): Promise<WorkloadIdentityFederationCredentials> {
-        let workloadIdentityFederationCredentials: WorkloadIdentityFederationCredentials = {
+        const workloadIdentityFederationCredentials: WorkloadIdentityFederationCredentials = {
             servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
             oidcToken: ""
         }

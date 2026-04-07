@@ -16,11 +16,11 @@ export class TerraformToolHandler implements ITerraformToolHandler {
         let terraformPath;
         try {
             terraformPath = this.tasks.which("terraform", true);
-        } catch (err) {
+        } catch {
             throw new Error(this.tasks.loc("TerraformToolNotFound"));
         }
 
-        let terraformToolRunner: ToolRunner = this.tasks.tool(terraformPath);
+        const terraformToolRunner: ToolRunner = this.tasks.tool(terraformPath);
         if (command) {
             terraformToolRunner.arg(command.name);
             if (command.additionalArgs) {

@@ -5,7 +5,7 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import path = require('path');
-import * as uuidV4 from 'uuid/v4';
+import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     constructor() {
@@ -17,12 +17,12 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         // Get credentials for json file
         const jsonKeyFilePath = path.resolve(`credentials-${uuidV4()}.json`);
 
-        let clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
-        let tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
-        let privateKey = tasks.getEndpointAuthorizationParameter(serviceName, "PrivateKey", false);
+        const clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
+        const tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
+        const privateKey = tasks.getEndpointAuthorizationParameter(serviceName, "PrivateKey", false);
 
         // Create json string and write it to the file
-        let jsonCredsString = JSON.stringify({
+        const jsonCredsString = JSON.stringify({
             type: "service_account",
             private_key: privateKey,
             client_email: clientEmail,
@@ -41,17 +41,17 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             this.backendConfig.set('prefix', prefix);
         }
 
-        let jsonKeyFilePath = this.getJsonKeyFilePath(backendServiceName);
+        const jsonKeyFilePath = this.getJsonKeyFilePath(backendServiceName);
 
         this.backendConfig.set('credentials', jsonKeyFilePath);
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         tasks.debug('Setting up backend GCP.');
-        let backendServiceName = tasks.getInput("backendServiceGCP", true)!;
+        const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
         this.setupBackend(backendServiceName);
 
-        for (let [key, value] of this.backendConfig.entries()) {
+        for (const [key, value] of this.backendConfig.entries()) {
             terraformToolRunner.arg(`-backend-config=${key}=${value}`);
         }
         tasks.debug('Finished setting up backend GCP.');
@@ -64,7 +64,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProvidername) {
-                let jsonKeyFilePath = this.getJsonKeyFilePath(command.serviceProvidername);
+                const jsonKeyFilePath = this.getJsonKeyFilePath(command.serviceProvidername);
 
                 EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", jsonKeyFilePath);
                 EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", tasks.getEndpointDataParameter(command.serviceProvidername, "project", false) || '');

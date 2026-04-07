@@ -5,7 +5,7 @@ import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
 
-const uuidV4 = require('uuid/v4');
+import { v4 as uuidV4 } from 'uuid';
 const fetch = require('node-fetch');
 const HttpsProxyAgent = require('https-proxy-agent');
 

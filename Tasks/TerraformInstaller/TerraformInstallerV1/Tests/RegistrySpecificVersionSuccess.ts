@@ -33,7 +33,7 @@ tr.registerMock('node-fetch', async (url: string, _options?: any) => {
     throw new Error('Unexpected fetch URL: ' + url);
 });
 
-tr.registerMock('uuid/v4', () => 'test-uuid-1234');
+tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('https-proxy-agent', function () { return {}; });
 
 // fs: mock readFileSync (for verifySha256) and chmodSync (no-op, Windows mock)

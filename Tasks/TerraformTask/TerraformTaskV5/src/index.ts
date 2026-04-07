@@ -5,7 +5,7 @@ import path = require('path');
 async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
 
-    let parentHandler = new ParentCommandHandler();
+    const parentHandler = new ParentCommandHandler();
     try {
         await parentHandler.execute(tasks.getInput("provider", true)!, tasks.getInput("command", true)!);
         tasks.setResult(tasks.TaskResult.Succeeded, "");

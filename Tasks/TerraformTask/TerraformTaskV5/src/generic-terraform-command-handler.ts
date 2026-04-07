@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import {ToolRunner} from 'azure-pipelines-task-lib/toolrunner';
-import {TerraformAuthorizationCommandInitializer} from './terraform-commands';
-import {BaseTerraformCommandHandler} from './base-terraform-command-handler';
+import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
+import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
+import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 
 export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler {
     constructor() {
@@ -9,7 +9,7 @@ export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler 
         this.providerName = "generic";
     }
 
-    public async handleBackend(terraformToolRunner: ToolRunner) : Promise<void> {
+    public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const configFile = tasks.getInput("backendConfigFile", false);
         if (configFile && configFile.trim()) {
             terraformToolRunner.arg(`-backend-config=${configFile.trim()}`);
@@ -26,7 +26,7 @@ export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler 
         }
     }
 
-    public async handleProvider(command: TerraformAuthorizationCommandInitializer) : Promise<void> {
+    public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
         // No provider credentials needed for generic/local backend type
     }
 }

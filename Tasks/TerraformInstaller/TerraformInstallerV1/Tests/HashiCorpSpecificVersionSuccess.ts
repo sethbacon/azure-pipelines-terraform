@@ -26,7 +26,7 @@ tr.registerMock('node-fetch', async (url: string, _options?: any) => {
     throw new Error('node-fetch should not be called for a specific version. Called with: ' + url);
 });
 
-tr.registerMock('uuid/v4', () => 'test-uuid-1234');
+tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('https-proxy-agent', function () { return {}; });
 
 // fs: readFileSync for verifySha256, chmodSync skipped on Windows
