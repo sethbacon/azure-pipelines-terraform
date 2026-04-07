@@ -1,19 +1,4 @@
 import { TerraformCommandHandlerAzureRM } from './../../src/azure-terraform-command-handler';
-import tl = require('azure-pipelines-task-lib');
+import { runCommand } from '../test-l0-helpers';
 
-let handler: TerraformCommandHandlerAzureRM = new TerraformCommandHandlerAzureRM();
-
-export async function run() {
-    try {
-        const response = await handler.workspace();
-        if (response === 0) {
-            tl.setResult(tl.TaskResult.Succeeded, 'WorkspaceListSuccessL0 should have succeeded.');
-        } else {
-            tl.setResult(tl.TaskResult.Failed, 'WorkspaceListSuccessL0 should have succeeded but failed.');
-        }
-    } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'WorkspaceListSuccessL0 should have succeeded but failed: ' + error.message);
-    }
-}
-
-run();
+runCommand(new TerraformCommandHandlerAzureRM(), 'workspace', 'WorkspaceListSuccessL0');
