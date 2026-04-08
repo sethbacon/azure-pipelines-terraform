@@ -14,3 +14,7 @@ keyfile-*.pem
 config-*.tf
 output-*.json
 .env
+
+# Code coverage artifacts
+.nyc_output/
+coverage/

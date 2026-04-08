@@ -1,0 +1,23 @@
+{
+    "reporter": [
+        "text",
+        "html",
+        "lcov"
+    ],
+    "all": true,
+    "include": [
+        "src/**/*.js"
+    ],
+    "exclude": [
+        "src/**/*.d.ts",
+        "src/**/*.map",
+        "src/index.js",
+        "src/parent-handler.js",
+        "src/id-token-generator.js",
+        "src/secure-file-loader.js"
+    ],
+    "check-coverage": true,
+    "lines": 75,
+    "functions": 75,
+    "branches": 70
+}

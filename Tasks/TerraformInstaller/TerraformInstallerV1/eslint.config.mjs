@@ -10,14 +10,14 @@ export default tseslint.config(
         },
         rules: {
             'no-unused-vars': 'off',
-            '@typescript-eslint/no-unused-vars': 'warn',
-            '@typescript-eslint/no-explicit-any': 'warn',
+            '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+            '@typescript-eslint/no-explicit-any': 'error',
             '@typescript-eslint/no-require-imports': 'off',
-            'prefer-const': 'warn',
-            'no-var': 'warn',
+            'prefer-const': 'error',
+            'no-var': 'error',
         },
     },
     {
-        ignores: ['Tests/**', 'node_modules/**', '**/*.js'],
+        ignores: ['Tests/**', 'node_modules/**', '**/*.js', '**/*.mjs'],
     }
 );
