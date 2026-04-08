@@ -34,7 +34,6 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - Fix floating promise in `index.ts` (`run()` → `void run()`)
 - Fix `return-await` lint violations across base handler and id-token-generator
-
 ## [0.5.1] — 2026-04-08
 
 ### Security
