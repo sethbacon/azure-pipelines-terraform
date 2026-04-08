@@ -68,13 +68,15 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             const workingDirectory = tasks.getInput("workingDirectory") || '';
             const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
             tasks.writeFile(tfConfigFilePath, config, 'utf-8');
-            try {
-                fs.chmodSync(tfConfigFilePath, 0o600);
-            } catch (err) {
-                if (process.platform !== 'win32') {
-                    throw new Error(`Failed to set restrictive permissions on OCI backend config file: ${err instanceof Error ? err.message : err}`);
+            if (fs.existsSync(tfConfigFilePath)) {
+                try {
+                    fs.chmodSync(tfConfigFilePath, 0o600);
+                } catch (err) {
+                    if (process.platform !== 'win32') {
+                        throw new Error(`Failed to set restrictive permissions on OCI backend config file: ${err instanceof Error ? err.message : err}`);
+                    }
+                    tasks.debug('Skipping chmod on Windows platform (ACLs apply instead).');
                 }
-                tasks.debug('Skipping chmod on Windows platform (ACLs apply instead).');
             }
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
