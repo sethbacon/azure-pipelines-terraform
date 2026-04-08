@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.4.1] — 2026-04-07
+
+### Fixed
+
+- Make `npm audit` CI step non-blocking (`continue-on-error`) — pre-existing `azure-pipelines-task-lib` vulnerability in `minimatch` requires a breaking upgrade to resolve
+
 ## [0.4.0] — 2026-04-07
 
 ### Security
