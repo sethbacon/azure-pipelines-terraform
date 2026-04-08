@@ -476,7 +476,7 @@ export abstract class BaseTerraformCommandHandler {
     public async import(): Promise<number> {
         const resourceAddress = tasks.getInput("importAddress", true)!;
         const resourceId = tasks.getInput("importId", true)!;
-        let commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = tasks.getInput("commandOptions");
 
         let args = commandOptions
             ? `${commandOptions} ${resourceAddress} ${resourceId}`

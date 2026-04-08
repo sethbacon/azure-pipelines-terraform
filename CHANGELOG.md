@@ -4,6 +4,18 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.5.1] — 2026-04-08
+
+### Security
+
+- Upgrade `azure-pipelines-task-lib` from `^4.1.0` to `^5.2.8` in both V5 and InstallerV1 — fixes minimatch ReDoS vulnerabilities (GHSA-3ppc-4f35-3m26, GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74)
+
+### Fixed
+
+- CI audit now uses `--omit=dev` and fails on production vulnerabilities instead of silently continuing
+- Set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` on release workflow to address Node.js 20 deprecation in `softprops/action-gh-release`
+- Fix lint warnings: `let` → `const` in import command, eslint-disable for untyped securefiles-common require
+
 ## [0.5.0] — 2026-04-08
 
 ### Security
