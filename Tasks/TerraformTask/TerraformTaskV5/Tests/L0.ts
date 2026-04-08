@@ -1207,6 +1207,77 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('oci apply should fail with empty working directory', async () => {
+        let tp = path.join(__dirname, './ApplyTests/OCI/OCIApplyFailEmptyWorkingDirectory.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 1, 'should have one error');
+            assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
+        }, tr);
+    });
+
+    it('oci apply should fail with invalid working directory', async () => {
+        let tp = path.join(__dirname, './ApplyTests/OCI/OCIApplyFailInvalidWorkingDirectory.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 1, 'should have one error');
+            assert(tr.stdOutContained('Error: Invalid working directory'), 'Should have shown error message');
+        }, tr);
+    });
+
+    it('oci apply should succeed with additional args with -auto-approve', async () => {
+        let tp = path.join(__dirname, './ApplyTests/OCI/OCIApplySuccessAdditionalArgsWithAutoApprove.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('oci plan should fail with empty working directory', async () => {
+        let tp = path.join(__dirname, './PlanTests/OCI/OCIPlanFailEmptyWorkingDirectory.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 1, 'should have one error');
+            assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
+        }, tr);
+    });
+
+    it('oci destroy should fail with empty working directory', async () => {
+        let tp = path.join(__dirname, './DestroyTests/OCI/OCIDestroyFailEmptyWorkingDirectory.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 1, 'should have one error');
+            assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
+        }, tr);
+    });
+
+    it('oci init should fail with invalid PAR URL', async () => {
+        let tp = path.join(__dirname, './InitTests/OCI/OCIInitFailInvalidParUrl.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have errors');
+            assert(tr.stdOutContained('OCIInitFailInvalidParUrlL0 should have failed.'), 'Should have printed: OCIInitFailInvalidParUrlL0 should have failed.');
+        }, tr);
+    });
+
     /* test for multiple providers */
 
     it('warnIfMultipleProviders should not warn for single provider', async () => {
@@ -1886,15 +1957,167 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
-    it('oci output should succeed', async () => {
-        let tp = path.join(__dirname, './OutputTests/OCIOutputSuccess.js');
+    /* import command tests */
+
+    it('azure import should succeed', async () => {
+        let tp = path.join(__dirname, './ImportTests/Azure/AzureImportSuccess.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
-            assert(tr.stdOutContained('OCIOutputSuccessL0 should have succeeded.'));
+            assert(tr.stdOutContained('AzureImportSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure import should succeed with terraform variables', async () => {
+        let tp = path.join(__dirname, './ImportTests/Azure/AzureImportSuccessWithVars.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureImportSuccessWithVarsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* force-unlock command tests */
+
+    it('azure force-unlock should succeed', async () => {
+        let tp = path.join(__dirname, './ForceUnlockTests/Azure/AzureForceUnlockSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length === 1, 'should have one warning about lock removal');
+            assert(tr.stdOutContained('AzureForceUnlockSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* show with sensitive output detection tests */
+
+    it('azure show to file with json should detect sensitive outputs and destroy changes', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowFileJsonSensitive.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length >= 1, 'should have warnings about sensitive outputs or destroy changes');
+            assert(tr.stdOutContained('AzureShowFileJsonSensitiveL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* terraform variables tests */
+
+    it('azure plan should succeed with terraform variables', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessWithVars.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessWithVarsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply should succeed with terraform variables', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySuccessWithVars.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplySuccessWithVarsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* destroy with variables tests */
+
+    it('azure destroy should succeed with terraform variables', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Azure/AzureDestroySuccessWithVars.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureDestroySuccessWithVarsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* parallelism tests */
+
+    it('azure plan should succeed with parallelism', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessWithParallelism.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessWithParallelismL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply should succeed with parallelism', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySuccessWithParallelism.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplySuccessWithParallelismL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* lockfile-readonly init test */
+
+    it('azure init should succeed with lockfile readonly', async () => {
+        let tp = path.join(__dirname, './InitTests/Azure/AzureInitSuccessLockfileReadonly.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureInitSuccessLockfileReadonlyL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* fmt with diff flag test */
+
+    it('fmt check with diff should succeed', async () => {
+        let tp = path.join(__dirname, './FmtTests/FmtCheckDiffSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('FmtCheckDiffSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* test command with filter and junit */
+
+    it('azure test should succeed with filter and junit', async () => {
+        let tp = path.join(__dirname, './TestCommandTests/AzureTestWithFilterAndJunit.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureTestWithFilterAndJunitL0 should have succeeded.'));
         }, tr);
     });
 

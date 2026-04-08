@@ -4,6 +4,36 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.5.2] — 2026-04-08
+
+### Security
+
+- Add output redaction warnings for sensitive Terraform plan data (`warnIfSensitiveOutputs`)
+- Fix OCI private key chmod: platform-aware error handling (throws on Linux/macOS, skips gracefully on Windows)
+- Strengthen OCI PAR URL validation: `new URL()` parsing plus expanded forbidden template patterns (`${`, `%{`, `$((`, backtick)
+- Add exponential backoff retry logic to OIDC token requests (3 attempts, 200ms initial backoff)
+- Mark secret environment variables with `tasks.setSecret()` via new `isSecret` parameter on `setEnvironmentVariable()`
+
+### Added
+
+- `terraformVariables` multiline input for direct `-var` support on plan, apply, destroy, and import commands
+- Detect destroy changes in JSON plan output: sets `destroyChangesPresent` pipeline variable and emits warning
+- Code coverage enforcement via `nyc` with thresholds: 75% lines/functions, 70% branches
+- Troubleshooting guide (`docs/troubleshooting.md`) covering auth, terraform, installer, and agent issues
+- New test coverage: import command, force-unlock command, OCI parity (6 tests), terraform variables, parallelism, lockfile-readonly, fmt diff, test filter/junit, show-to-file JSON with sensitive output detection — **143 tests passing**
+
+### Changed
+
+- CI Node.js version updated from 18 to 20 LTS
+- ESLint rules escalated from warnings to errors; added `no-floating-promises` and `return-await`
+- ESLint configs exclude `**/*.mjs` from type-checked linting
+- Enhanced `task.json` help text with code examples and Terraform CLI docs links
+- `.gitignore` updated to exclude `.nyc_output/` and `coverage/` directories
+
+### Fixed
+
+- Fix floating promise in `index.ts` (`run()` → `void run()`)
+- Fix `return-await` lint violations across base handler and id-token-generator
 ## [0.5.1] — 2026-04-08
 
 ### Security

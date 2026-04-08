@@ -74,7 +74,7 @@
             "label": "Provider",
             "defaultValue": "azurerm",
             "required": true,
-            "helpMarkDown": "The name of the provider used in the terraform configuration files.<br>Only one provider must be specified in the terraform configuration files in the below specified configuration directory.",
+            "helpMarkDown": "The cloud provider used in the terraform configuration files. Only one provider should be specified per task instance. If your configuration uses multiple providers, choose the primary one and use Additional command arguments for secondary auth.<br><br>Values: <code>azurerm</code>, <code>aws</code>, <code>gcp</code>, <code>oci</code>",
             "options": {
                 "azurerm": "azurerm",
                 "aws": "aws",
@@ -106,7 +106,7 @@
             "label": "Command",
             "defaultValue": "init",
             "required": true,
-            "helpMarkDown": "The terraform command to execute.",
+            "helpMarkDown": "The terraform command to execute. See the [Terraform CLI documentation](https://developer.hashicorp.com/terraform/cli/commands) for details on each command.",
             "options": {
                 "init": "init",
                 "validate": "validate",
@@ -171,6 +171,18 @@
             "required": false,
             "visibleRule": "command = plan || command = apply || command = destroy || command = import",
             "helpMarkDown": "Select a .tfvars file from the ADO Secure Files library. The file will be downloaded to a temporary location and passed as -var-file to the terraform command. The file is automatically deleted after execution. Useful for secrets that should not be stored in source control."
+        },
+        {
+            "name": "terraformVariables",
+            "type": "multiLine",
+            "label": "Terraform variables (key=value)",
+            "required": false,
+            "visibleRule": "command = plan || command = apply || command = destroy || command = import",
+            "helpMarkDown": "Define Terraform input variables, one per line, as key=value pairs. Each line is passed as a separate -var flag. Lines starting with # are ignored.<br><br>Example:<br>region=us-east-1<br>environment=prod<br>instance_count=3",
+            "properties": {
+                "rows": "5",
+                "resizable": "true"
+            }
         },
         {
             "name": "replaceAddress",

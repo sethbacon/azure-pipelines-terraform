@@ -2,7 +2,7 @@ import tasks = require("azure-pipelines-task-lib/task");
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {
     const tokenGenerator = new TokenGenerator();
-    return await tokenGenerator.generate(serviceConnectionID);
+    return tokenGenerator.generate(serviceConnectionID);
 }
 
 export interface ITokenGenerator {
@@ -10,6 +10,9 @@ export interface ITokenGenerator {
 }
 
 export class TokenGenerator implements ITokenGenerator {
+    private static readonly MAX_RETRIES = 3;
+    private static readonly INITIAL_BACKOFF_MS = 200;
+
     public async generate(serviceConnectionID: string): Promise<string> {
         const oidcRequestUri = process.env["SYSTEM_OIDCREQUESTURI"];
         if (!oidcRequestUri) {
@@ -18,6 +21,23 @@ export class TokenGenerator implements ITokenGenerator {
 
         const url = oidcRequestUri + "?api-version=7.1&serviceConnectionId=" + encodeURIComponent(serviceConnectionID);
 
+        let lastError: Error | undefined;
+        for (let attempt = 1; attempt <= TokenGenerator.MAX_RETRIES; attempt++) {
+            try {
+                return await this.fetchToken(url, oidcRequestUri);
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                if (attempt < TokenGenerator.MAX_RETRIES) {
+                    const delayMs = TokenGenerator.INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+                    tasks.debug(`OIDC token request attempt ${attempt} failed: ${lastError.message}. Retrying in ${delayMs}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+            }
+        }
+        throw lastError!;
+    }
+
+    private async fetchToken(url: string, oidcRequestUri: string): Promise<string> {
         let response: Response;
         try {
             const controller = new AbortController();
