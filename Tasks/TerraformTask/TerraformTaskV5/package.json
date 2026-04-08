@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
+    "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
     "compile": "tsc -b tsconfig.json",
     "compile:tests": "tsc -p tsconfig.tests.json",
     "compile:all": "npm run compile && npm run compile:tests",
@@ -25,6 +26,7 @@
     "@types/uuid": "^9.0.8",
     "eslint": "^9.0.0",
     "mocha": "^11.2.0",
+    "nyc": "^17.1.0",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.0",

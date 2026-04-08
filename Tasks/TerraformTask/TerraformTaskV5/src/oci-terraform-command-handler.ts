@@ -42,12 +42,21 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             tasks.debug('Generating backend tf statefile config.');
             const parUrl = (tasks.getInput("backendOCIPar", true) || '');
 
-            // Validate PAR URL: must be HTTPS and must not contain HCL interpolation sequences
-            if (!parUrl.startsWith('https://')) {
+            // Validate PAR URL: parse with URL constructor, enforce HTTPS, reject interpolation/template syntax
+            let parsedUrl: URL;
+            try {
+                parsedUrl = new URL(parUrl);
+            } catch {
+                throw new Error(`OCI PAR URL is not a valid URL: ${parUrl}`);
+            }
+            if (parsedUrl.protocol !== 'https:') {
                 throw new Error("OCI PAR URL must use HTTPS scheme.");
             }
-            if (parUrl.includes('${') || parUrl.includes('%{')) {
-                throw new Error("OCI PAR URL contains invalid characters ('${' or '%{' are not allowed).");
+            const forbiddenPatterns = ['${', '%{', '$((', '`'];
+            for (const pattern of forbiddenPatterns) {
+                if (parUrl.includes(pattern)) {
+                    throw new Error(`OCI PAR URL contains forbidden template syntax: '${pattern}' is not allowed.`);
+                }
             }
 
             const escapedParUrl = parUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -59,7 +68,16 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             const workingDirectory = tasks.getInput("workingDirectory") || '';
             const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
             tasks.writeFile(tfConfigFilePath, config, 'utf-8');
-            try { fs.chmodSync(tfConfigFilePath, 0o600); } catch { /* noop on Windows or test */ }
+            if (fs.existsSync(tfConfigFilePath)) {
+                try {
+                    fs.chmodSync(tfConfigFilePath, 0o600);
+                } catch (err) {
+                    if (process.platform !== 'win32') {
+                        throw new Error(`Failed to set restrictive permissions on OCI backend config file: ${err instanceof Error ? err.message : err}`);
+                    }
+                    tasks.debug('Skipping chmod on Windows platform (ACLs apply instead).');
+                }
+            }
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
         }

@@ -176,6 +176,12 @@ Tasks run on Windows, macOS, and Linux build agents using Node 20.
 
 ---
 
+## Troubleshooting
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for solutions to common issues with authentication, backend configuration, installer errors, and agent setup.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, local development setup, and the release process.
