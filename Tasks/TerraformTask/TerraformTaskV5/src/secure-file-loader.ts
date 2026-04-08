@@ -10,6 +10,7 @@ export interface ISecureFileLoader {
  * Wraps azure-pipelines-tasks-securefiles-common for mockability.
  */
 export class SecureFileLoader implements ISecureFileLoader {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic require of untyped securefiles-common
     private helpers: any;
 
     constructor() {
