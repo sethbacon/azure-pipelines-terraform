@@ -1,6 +1,7 @@
-import { TerraformToolHandler, ITerraformToolHandler } from './terraform';
+import { TerraformToolHandler, ITerraformToolHandler, getBinaryName } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
+import { getSecureVarFileArgs } from './secure-file-loader';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { v4 as uuidV4 } from 'uuid';
@@ -11,6 +12,7 @@ export abstract class BaseTerraformCommandHandler {
     terraformToolHandler: ITerraformToolHandler;
     backendConfig: Map<string, string>;
     protected tempFiles: string[];
+    private secureFileId: string | null = null;
 
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
     abstract handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void>;
@@ -21,6 +23,80 @@ export abstract class BaseTerraformCommandHandler {
         this.backendConfig = new Map<string, string>();
         this.tempFiles = [];
     }
+
+    // --- Helper methods to reduce duplication ---
+
+    protected getWorkingDirectory(): string {
+        return tasks.getInput("workingDirectory") || '';
+    }
+
+    protected getServiceName(): string {
+        return `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
+    }
+
+    protected getCommandOptions(): string | undefined {
+        return tasks.getInput("commandOptions") || undefined;
+    }
+
+    protected createAuthCommand(commandName: string, additionalArgs?: string): TerraformAuthorizationCommandInitializer {
+        return new TerraformAuthorizationCommandInitializer(
+            commandName,
+            this.getWorkingDirectory(),
+            tasks.getInput(this.getServiceName(), true)!,
+            additionalArgs
+        );
+    }
+
+    protected createBaseCommand(commandName: string, additionalArgs?: string): TerraformBaseCommandInitializer {
+        return new TerraformBaseCommandInitializer(
+            commandName,
+            this.getWorkingDirectory(),
+            additionalArgs
+        );
+    }
+
+    protected ensureAutoApprove(args: string | undefined): string {
+        const autoApprove = '-auto-approve';
+        let result = args || autoApprove;
+        if (!result.includes(autoApprove)) {
+            result = `${autoApprove} ${result}`;
+        }
+        return result;
+    }
+
+    protected prependReplaceFlag(args: string): string {
+        const replaceAddress = tasks.getInput("replaceAddress", false);
+        if (replaceAddress) {
+            return `-replace=${replaceAddress} ${args}`;
+        }
+        return args;
+    }
+
+    protected prependRefreshOnly(args: string): string {
+        if (tasks.getBoolInput("refreshOnly", false)) {
+            return `-refresh-only ${args}`;
+        }
+        return args;
+    }
+
+    protected appendParallelism(args: string): string {
+        const parallelism = tasks.getInput("parallelism", false);
+        if (parallelism) {
+            return `${args} -parallelism=${parallelism}`;
+        }
+        return args;
+    }
+
+    protected async appendSecureVarFile(args: string): Promise<string> {
+        const result = await getSecureVarFileArgs();
+        if (result) {
+            this.secureFileId = result.secureFileId;
+            return `${result.varFileArg} ${args}`;
+        }
+        return args;
+    }
+
+    // --- Core infrastructure ---
 
     protected async execWithStdoutCapture(terraformTool: ToolRunner, options: IExecOptions): Promise<{ code: number; stdout: string }> {
         let stdout = '';
@@ -45,20 +121,31 @@ export abstract class BaseTerraformCommandHandler {
             }
         }
         this.tempFiles = [];
+
+        if (this.secureFileId) {
+            try {
+                const { SecureFileLoader } = require('./secure-file-loader');
+                new SecureFileLoader().deleteSecureFile(this.secureFileId);
+            } catch (err) {
+                tasks.debug(`Failed to clean up secure file: ${err}`);
+            }
+            this.secureFileId = null;
+        }
     }
 
     public async warnIfMultipleProviders(): Promise<void> {
-        let terraformPath;
+        const binaryName = getBinaryName(tasks);
+        let toolPath;
         try {
-            terraformPath = tasks.which("terraform", true);
+            toolPath = tasks.which(binaryName, true);
         } catch {
             throw new Error(tasks.loc("TerraformToolNotFound"));
         }
 
-        const terraformToolRunner: ToolRunner = tasks.tool(terraformPath);
+        const terraformToolRunner: ToolRunner = tasks.tool(toolPath);
         terraformToolRunner.arg("providers");
         const commandOutput = await this.execWithStdoutCapture(terraformToolRunner, {
-            cwd: tasks.getInput("workingDirectory") || ''
+            cwd: this.getWorkingDirectory()
         });
 
         const countProviders = ["aws", "azurerm", "google", "oracle"].filter(provider => commandOutput.stdout.includes(provider)).length;
@@ -102,6 +189,8 @@ export abstract class BaseTerraformCommandHandler {
             fmt: () => this.fmt(),
             test: () => this.test(),
             get: () => this.get(),
+            import: () => this.import(),
+            forceunlock: () => this.forceUnlock(),
         };
         const fn = commands[command];
         if (!fn) {
@@ -110,11 +199,19 @@ export abstract class BaseTerraformCommandHandler {
         return fn();
     }
 
+    // --- Command implementations ---
+
     public async init(): Promise<number> {
+        let commandOptions = tasks.getInput("commandOptions");
+
+        if (tasks.getBoolInput("lockfileReadonly", false)) {
+            commandOptions = commandOptions ? `-lockfile=readonly ${commandOptions}` : '-lockfile=readonly';
+        }
+
         const initCommand = new TerraformBaseCommandInitializer(
             "init",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput("commandOptions")
+            this.getWorkingDirectory(),
+            commandOptions
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(initCommand);
@@ -124,23 +221,19 @@ export abstract class BaseTerraformCommandHandler {
             cwd: initCommand.workingDirectory
         });
     }
+
     public async show(): Promise<number> {
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let cmd;
         const outputTo = tasks.getInput("outputTo");
         const outputFormat = tasks.getInput("outputFormat");
+
+        let cmd: string;
         if (outputFormat === "json") {
             cmd = tasks.getInput("commandOptions") ? `-json  ${tasks.getInput("commandOptions")}` : `-json`;
         } else {
-            cmd = tasks.getInput("commandOptions") ? tasks.getInput("commandOptions") : ``;
+            cmd = tasks.getInput("commandOptions") ? tasks.getInput("commandOptions")! : ``;
         }
 
-        const showCommand = new TerraformAuthorizationCommandInitializer(
-            "show",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            cmd
-        );
+        const showCommand = this.createAuthCommand("show", cmd);
         const terraformTool = this.terraformToolHandler.createToolRunner(showCommand);
         await this.handleProvider(showCommand);
 
@@ -157,21 +250,20 @@ export abstract class BaseTerraformCommandHandler {
             tasks.writeFile(showFilePath, commandOutput.stdout);
             tasks.setVariable('showFilePath', showFilePath, false, true);
 
+            // Detect destroy changes in JSON plan output
+            if (outputFormat === "json") {
+                this.detectDestroyChanges(commandOutput.stdout);
+            }
+
             return commandOutput.code;
         }
         throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
     }
+
     public async output(): Promise<number> {
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
         const commandOptions = tasks.getInput("commandOptions") ? `-json ${tasks.getInput("commandOptions")}` : `-json`
 
-        const outputCommand = new TerraformAuthorizationCommandInitializer(
-            "output",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            commandOptions
-        );
-
+        const outputCommand = this.createAuthCommand("output", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
         await this.handleProvider(outputCommand);
 
@@ -183,23 +275,20 @@ export abstract class BaseTerraformCommandHandler {
         tasks.writeFile(jsonOutputVariablesFilePath, commandOutput.stdout);
         tasks.setVariable('jsonOutputVariablesPath', jsonOutputVariablesFilePath, false, true);
 
+        // Auto-set pipeline variables from terraform output
+        this.setOutputVariables(commandOutput.stdout);
+
         return commandOutput.code;
     }
 
     public async plan(): Promise<number> {
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        let commandOptions = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`
-        const replaceAddress = tasks.getInput("replaceAddress", false);
-        if (replaceAddress) {
-            commandOptions = `-replace=${replaceAddress} ${commandOptions}`;
-        }
-        const planCommand = new TerraformAuthorizationCommandInitializer(
-            "plan",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            commandOptions
-        );
+        let commandOptions = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`;
+        commandOptions = this.prependReplaceFlag(commandOptions);
+        commandOptions = this.prependRefreshOnly(commandOptions);
+        commandOptions = this.appendParallelism(commandOptions);
+        commandOptions = await this.appendSecureVarFile(commandOptions);
 
+        const planCommand = this.createAuthCommand("plan", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
         await this.handleProvider(planCommand);
         await this.warnIfMultipleProviders();
@@ -218,11 +307,8 @@ export abstract class BaseTerraformCommandHandler {
 
     public async custom(): Promise<number> {
         const outputTo = tasks.getInput("outputTo");
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        const customCommand = new TerraformAuthorizationCommandInitializer(
+        const customCommand = this.createAuthCommand(
             tasks.getInput("customCommand", true)!,
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
             tasks.getInput("commandOptions")
         );
 
@@ -247,25 +333,13 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async apply(): Promise<number> {
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        const autoApprove: string = '-auto-approve';
-        let additionalArgs: string = tasks.getInput("commandOptions") || autoApprove;
+        let additionalArgs = this.ensureAutoApprove(tasks.getInput("commandOptions"));
+        additionalArgs = this.prependReplaceFlag(additionalArgs);
+        additionalArgs = this.prependRefreshOnly(additionalArgs);
+        additionalArgs = this.appendParallelism(additionalArgs);
+        additionalArgs = await this.appendSecureVarFile(additionalArgs);
 
-        if (additionalArgs.includes(autoApprove) === false) {
-            additionalArgs = `${autoApprove} ${additionalArgs}`;
-        }
-        const replaceAddress = tasks.getInput("replaceAddress", false);
-        if (replaceAddress) {
-            additionalArgs = `-replace=${replaceAddress} ${additionalArgs}`;
-        }
-
-        const applyCommand = new TerraformAuthorizationCommandInitializer(
-            "apply",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            additionalArgs
-        );
-
+        const applyCommand = this.createAuthCommand("apply", additionalArgs);
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
         await this.handleProvider(applyCommand);
         await this.warnIfMultipleProviders();
@@ -276,22 +350,11 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async destroy(): Promise<number> {
+        let additionalArgs = this.ensureAutoApprove(tasks.getInput("commandOptions"));
+        additionalArgs = this.appendParallelism(additionalArgs);
+        additionalArgs = await this.appendSecureVarFile(additionalArgs);
 
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        const autoApprove: string = '-auto-approve';
-        let additionalArgs: string = tasks.getInput("commandOptions") || autoApprove;
-
-        if (additionalArgs.includes(autoApprove) === false) {
-            additionalArgs = `${autoApprove} ${additionalArgs}`;
-        }
-
-        const destroyCommand = new TerraformAuthorizationCommandInitializer(
-            "destroy",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            additionalArgs
-        );
-
+        const destroyCommand = this.createAuthCommand("destroy", additionalArgs);
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
         await this.handleProvider(destroyCommand);
         await this.warnIfMultipleProviders();
@@ -302,10 +365,9 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async validate(): Promise<number> {
-        const validateCommand = new TerraformBaseCommandInitializer(
+        const validateCommand = this.createBaseCommand(
             "validate",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput("commandOptions")
+            this.getCommandOptions()
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(validateCommand);
@@ -324,9 +386,8 @@ export abstract class BaseTerraformCommandHandler {
             ? `${workspaceName}${commandOptions ? ` ${commandOptions}` : ''}`
             : commandOptions || undefined;
 
-        const workspaceCommand = new TerraformBaseCommandInitializer(
+        const workspaceCommand = this.createBaseCommand(
             `workspace ${subCommand}`,
-            tasks.getInput("workingDirectory") || '',
             additionalArgs
         );
 
@@ -339,15 +400,19 @@ export abstract class BaseTerraformCommandHandler {
     public async state(): Promise<number> {
         const subCommand = tasks.getInput("stateSubCommand", true)!;
         const stateAddress = tasks.getInput("stateAddress", false);
+        const commandOptions = tasks.getInput("commandOptions");
 
         if (subCommand === 'push') {
             tasks.warning("terraform state push is a potentially destructive operation. Ensure you have a current backup of your state file.");
         }
 
-        const stateCommand = new TerraformBaseCommandInitializer(
+        const parts: string[] = [];
+        if (commandOptions) { parts.push(commandOptions); }
+        if (stateAddress) { parts.push(stateAddress); }
+
+        const stateCommand = this.createBaseCommand(
             `state ${subCommand}`,
-            tasks.getInput("workingDirectory") || '',
-            stateAddress || tasks.getInput("commandOptions") || undefined
+            parts.length > 0 ? parts.join(' ') : undefined
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(stateCommand);
@@ -360,12 +425,12 @@ export abstract class BaseTerraformCommandHandler {
         let args = "";
         if (tasks.getBoolInput("fmtCheck", false)) { args += " -check"; }
         if (tasks.getBoolInput("fmtRecursive", false)) { args += " -recursive"; }
+        if (tasks.getBoolInput("fmtDiff", false)) { args += " -diff"; }
         const commandOptions = tasks.getInput("commandOptions");
         if (commandOptions) { args += ` ${commandOptions}`; }
 
-        const fmtCommand = new TerraformBaseCommandInitializer(
+        const fmtCommand = this.createBaseCommand(
             "fmt",
-            tasks.getInput("workingDirectory") || '',
             args.trim() || undefined
         );
 
@@ -376,14 +441,19 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async test(): Promise<number> {
-        const serviceName = `environmentServiceName${this.getServiceProviderNameFromProviderInput()}`;
-        const testCommand = new TerraformAuthorizationCommandInitializer(
-            "test",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput(serviceName, true)!,
-            tasks.getInput("commandOptions")
-        );
+        let commandOptions = tasks.getInput("commandOptions");
 
+        const junitPath = tasks.getInput("testJunitXmlPath", false);
+        if (junitPath) {
+            commandOptions = commandOptions ? `${commandOptions} -junit-xml=${junitPath}` : `-junit-xml=${junitPath}`;
+        }
+
+        const testFilter = tasks.getInput("testFilter", false);
+        if (testFilter) {
+            commandOptions = commandOptions ? `${commandOptions} -filter=${testFilter}` : `-filter=${testFilter}`;
+        }
+
+        const testCommand = this.createAuthCommand("test", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
         await this.handleProvider(testCommand);
         return await terraformTool.execAsync(<IExecOptions>{
@@ -392,15 +462,90 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async get(): Promise<number> {
-        const getCommand = new TerraformBaseCommandInitializer(
+        const getCommand = this.createBaseCommand(
             "get",
-            tasks.getInput("workingDirectory") || '',
-            tasks.getInput("commandOptions")
+            this.getCommandOptions()
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(getCommand);
         return await terraformTool.execAsync(<IExecOptions>{
             cwd: getCommand.workingDirectory
         });
+    }
+
+    public async import(): Promise<number> {
+        const resourceAddress = tasks.getInput("importAddress", true)!;
+        const resourceId = tasks.getInput("importId", true)!;
+        let commandOptions = tasks.getInput("commandOptions");
+
+        let args = commandOptions
+            ? `${commandOptions} ${resourceAddress} ${resourceId}`
+            : `${resourceAddress} ${resourceId}`;
+        args = await this.appendSecureVarFile(args);
+
+        const importCommand = this.createAuthCommand("import", args);
+        const terraformTool = this.terraformToolHandler.createToolRunner(importCommand);
+        await this.handleProvider(importCommand);
+
+        return await terraformTool.execAsync(<IExecOptions>{
+            cwd: importCommand.workingDirectory
+        });
+    }
+
+    public async forceUnlock(): Promise<number> {
+        const lockId = tasks.getInput("lockId", true)!;
+        const commandOptions = tasks.getInput("commandOptions");
+
+        tasks.warning("terraform force-unlock removes the lock on the state for the current configuration. This will allow other users or automation to acquire the lock and potentially modify the state.");
+
+        const args = commandOptions
+            ? `-force ${commandOptions} ${lockId}`
+            : `-force ${lockId}`;
+
+        const unlockCommand = this.createBaseCommand("force-unlock", args);
+        const terraformTool = this.terraformToolHandler.createToolRunner(unlockCommand);
+        return await terraformTool.execAsync(<IExecOptions>{
+            cwd: unlockCommand.workingDirectory
+        });
+    }
+
+    // --- Pipeline variable helpers ---
+
+    private setOutputVariables(jsonOutput: string): void {
+        try {
+            const outputs = JSON.parse(jsonOutput);
+            for (const [key, outputDef] of Object.entries(outputs)) {
+                const def = outputDef as { value?: unknown; sensitive?: boolean; type?: unknown };
+                if (def.value === undefined) continue;
+
+                const stringValue = typeof def.value === 'object'
+                    ? JSON.stringify(def.value)
+                    : String(def.value);
+
+                const isSecret = def.sensitive === true;
+                tasks.setVariable(`TF_OUT_${key}`, stringValue, isSecret, true);
+                tasks.debug(`Set pipeline variable TF_OUT_${key}${isSecret ? ' (secret)' : ''}`);
+            }
+        } catch (err) {
+            tasks.debug(`Could not parse terraform output as JSON for pipeline variables: ${err}`);
+        }
+    }
+
+    private detectDestroyChanges(jsonOutput: string): void {
+        try {
+            const plan = JSON.parse(jsonOutput);
+            const resourceChanges = plan.resource_changes;
+            if (!Array.isArray(resourceChanges)) return;
+
+            const hasDestroy = resourceChanges.some((rc: { change?: { actions?: string[] } }) =>
+                rc.change?.actions?.includes('delete')
+            );
+            tasks.setVariable('destroyChangesPresent', hasDestroy.toString(), false, true);
+            if (hasDestroy) {
+                tasks.warning("Terraform plan contains resource deletions. Review carefully before applying.");
+            }
+        } catch (err) {
+            tasks.debug(`Could not parse terraform show output for destroy detection: ${err}`);
+        }
     }
 }

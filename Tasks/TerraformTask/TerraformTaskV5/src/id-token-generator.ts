@@ -20,14 +20,21 @@ export class TokenGenerator implements ITokenGenerator {
 
         let response: Response;
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
             response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!
-                }
+                },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
         } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error(`Timed out acquiring federated token from ${oidcRequestUri} (30s timeout).`);
+            }
             throw new Error(`Failed to acquire federated token from ${oidcRequestUri}: ${error instanceof Error ? error.message : error}`);
         }
 

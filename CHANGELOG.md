@@ -4,6 +4,46 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.5.0] — 2026-04-08
+
+### Security
+
+- Move credential temp files (AWS OIDC tokens, GCP credentials JSON, GCP WIF credentials, OCI key files) from working directory to `os.tmpdir()` — prevents accidental commit and reduces exposure window
+- Add `.gitignore` patterns for credential file types (`credentials-*.json`, `gcp-wif-credentials-*.json`, `keyfile-*.pem`, `*.jwt`, `config-*.tf`, `output-*.json`, `.env`)
+- Restrict OCI config file permissions with `fs.chmodSync(path, 0o600)` after write
+- Change `backendHCPToken` input type from `string` to `password` for log masking
+
+### Added
+
+- **Backend WIF for AWS S3**: `backendAuthSchemeAWS` picker with `backendAWSRoleArn`, `backendAWSRegion`, `backendAWSSessionName` inputs — OIDC authentication for S3 backend during `init`
+- **Backend WIF for GCP GCS**: `backendAuthSchemeGCP` picker with `backendGCPProjectNumber`, `backendGCPWorkloadIdentityPoolId`, `backendGCPWorkloadIdentityProviderId`, `backendGCPServiceAccountEmail` inputs — OIDC authentication for GCS backend during `init`
+- **Secure variables file**: `secureVarsFile` input (type `secureFile`) for plan/apply/destroy/import — downloads `.tfvars` from ADO Secure Files library and passes as `-var-file=<path>` with automatic cleanup
+- **Az login integration**: `runAzLogin` boolean for AzureRM provider — runs `az login` using service connection credentials (WIF/ServicePrincipal/MSI) before terraform commands for local-exec provisioners and external data sources
+- **OpenTofu support**: `binaryName` picker (terraform/tofu) — all commands and provider detection use the selected binary
+- **Import command**: `terraform import` with `importAddress` and `importId` inputs
+- **Force-unlock command**: `terraform force-unlock` with `lockId` input
+- Auto-set pipeline variables from `terraform output` as `TF_OUT_<key>` (sensitive outputs marked as secrets)
+- Destroy change detection: `destroyChangesPresent` output variable set when `terraform show -json` contains resource deletions
+- Implement previously-unused inputs: `refreshOnly` (plan/apply), `lockfileReadonly` (init), `parallelism` (plan/apply/destroy), `testJunitXmlPath` and `testFilter` (test), `fmtDiff` (fmt)
+- Process signal handlers (`SIGTERM`/`SIGINT`) for emergency credential cleanup
+- `outputTo` now visible for `custom` command (was only `show`)
+
+### Changed
+
+- **Installer modernization**: Replace `node-fetch` v2 + `https-proxy-agent` v5 with built-in `fetch()` + `undici.ProxyAgent`; extract mockable `http-client.ts` module
+- Add `azure-pipelines-tasks-securefiles-common` dependency for Secure Files support
+- Extract 7+ helper methods in base handler to reduce code duplication (`getWorkingDirectory`, `getServiceName`, `createAuthCommand`, `createBaseCommand`, `ensureAutoApprove`, `prependReplaceFlag`, `prependRefreshOnly`, `appendParallelism`, `appendSecureVarFile`)
+- AWS backend credentials now use environment variables (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) instead of `-backend-config` CLI args
+- Update error message for tool-not-found to mention both terraform and tofu
+
+### Fixed
+
+- Update all GCP init test mocks to use `os.tmpdir()` credential paths
+- Update all AWS init test mocks to remove exposed access_key/secret_key from exec strings
+- Update all installer test mocks from `node-fetch` to `./http-client` module mocks
+
+**134 tests passing** (126 TerraformTaskV5 + 8 TerraformInstallerV1)
+
 ## [0.4.1] — 2026-04-07
 
 ### Fixed

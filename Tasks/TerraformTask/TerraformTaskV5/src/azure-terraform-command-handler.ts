@@ -1,5 +1,5 @@
 import tasks = require("azure-pipelines-task-lib/task");
-import { ToolRunner } from "azure-pipelines-task-lib/toolrunner";
+import { ToolRunner, IExecOptions } from "azure-pipelines-task-lib/toolrunner";
 import { TerraformAuthorizationCommandInitializer } from "./terraform-commands";
 import { BaseTerraformCommandHandler } from "./base-terraform-command-handler";
 import { EnvironmentVariableHelper } from "./environment-variables";
@@ -71,7 +71,82 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, false);
 
+        // Optionally run az login for local-exec provisioners and external data sources
+        if (tasks.getBoolInput("runAzLogin", false)) {
+            await this.runAzLogin(authorizationScheme, serviceConnectionID, subscriptionId || '');
+        }
+
         tasks.debug("Finished up provider for authorization scheme: " + authorizationScheme + ".");
+    }
+
+    private async runAzLogin(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, subscriptionId: string): Promise<void> {
+        tasks.debug("Running az login for local-exec / external data source support.");
+
+        let azPath: string;
+        try {
+            azPath = tasks.which("az", true);
+        } catch {
+            throw new Error("az CLI not found. Install the Azure CLI on the agent to use 'Run az login'. See https://docs.microsoft.com/cli/azure/install-azure-cli");
+        }
+
+        const tenantId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false)!;
+
+        switch (authorizationScheme) {
+            case AuthorizationScheme.WorkloadIdentityFederation: {
+                const spnId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!;
+                const oidcToken = await generateIdToken(serviceConnectionID);
+                tasks.setSecret(oidcToken);
+
+                const loginTool: ToolRunner = tasks.tool(azPath);
+                loginTool.arg(["login", "--service-principal",
+                    "--username", spnId,
+                    "--tenant", tenantId,
+                    "--allow-no-subscriptions",
+                    "--federated-token", oidcToken]);
+
+                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
+                if (loginResult !== 0) {
+                    throw new Error(`az login failed with exit code ${loginResult}`);
+                }
+                break;
+            }
+            case AuthorizationScheme.ServicePrincipal: {
+                const spnId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!;
+                const spnKey = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", true)!;
+                if (spnKey) { tasks.setSecret(spnKey); }
+
+                const loginTool: ToolRunner = tasks.tool(azPath);
+                loginTool.arg(["login", "--service-principal",
+                    "--username", spnId,
+                    "--password", spnKey,
+                    "--tenant", tenantId,
+                    "--allow-no-subscriptions"]);
+
+                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
+                if (loginResult !== 0) {
+                    throw new Error(`az login failed with exit code ${loginResult}`);
+                }
+                break;
+            }
+            case AuthorizationScheme.ManagedServiceIdentity: {
+                const loginTool: ToolRunner = tasks.tool(azPath);
+                loginTool.arg(["login", "--identity"]);
+
+                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
+                if (loginResult !== 0) {
+                    throw new Error(`az login failed with exit code ${loginResult}`);
+                }
+                break;
+            }
+        }
+
+        if (subscriptionId) {
+            const setTool: ToolRunner = tasks.tool(azPath);
+            setTool.arg(["account", "set", "--subscription", subscriptionId]);
+            await setTool.execAsync(<IExecOptions>{ silent: true });
+        }
+
+        tasks.debug("az login completed successfully.");
     }
 
     private async setCommonVariables(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, fallbackToIdTokenGeneration: boolean, useCliFlagsForBackend: boolean): Promise<void> {
@@ -104,7 +179,9 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     } else {
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID);
                     }
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!);
+                    const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!;
+                    if (accessToken) { tasks.setSecret(accessToken); }
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken);
                 }
 
                 break;

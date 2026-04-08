@@ -15,25 +15,27 @@ tr.registerMock('os', {
     arch: () => 'x64'
 });
 
-// Registry returns a specific expected hash
-tr.registerMock('node-fetch', async (url: string, _options?: any) => {
-    if (url.includes('/terraform/binaries/terraform/versions/1.9.8/windows/amd64')) {
-        return {
-            ok: true,
-            json: async () => ({
+// http-client: registry returns a specific expected hash
+tr.registerMock('./http-client', {
+    fetchJson: async (url: string) => {
+        if (url.includes('/terraform/binaries/terraform/versions/1.9.8/windows/amd64')) {
+            return {
                 os: 'windows',
                 arch: 'amd64',
                 version: '1.9.8',
                 sha256: 'expected_correct_hash_abc123',
                 download_url: 'https://storage.example.com/signed/terraform_1.9.8_windows_amd64.zip'
-            })
-        };
+            };
+        }
+        throw new Error('Unexpected fetchJson URL: ' + url);
+    },
+    fetchText: async (url: string) => {
+        throw new Error('fetchText should not be called for registry download. Called with: ' + url);
     }
-    throw new Error('Unexpected fetch URL: ' + url);
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('https-proxy-agent', function () { return {}; });
+tr.registerMock('undici', { ProxyAgent: class {} });
 
 // fs: readFileSync returns some content
 tr.registerMock('fs', {

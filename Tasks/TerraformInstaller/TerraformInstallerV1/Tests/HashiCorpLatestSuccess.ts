@@ -16,25 +16,24 @@ tr.registerMock('os', {
 
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
-// Mock node-fetch: checkpoint API returns 1.9.8, SHA256SUMS returns matching hash
-tr.registerMock('node-fetch', async (url: string, _options?: any) => {
-    if (url.includes('checkpoint-api.hashicorp.com')) {
-        return {
-            ok: true,
-            json: async () => ({ current_version: '1.9.8' })
-        };
+// Mock http-client: checkpoint API returns 1.9.8, SHA256SUMS returns matching hash
+tr.registerMock('./http-client', {
+    fetchJson: async (url: string) => {
+        if (url.includes('checkpoint-api.hashicorp.com')) {
+            return { current_version: '1.9.8' };
+        }
+        throw new Error('Unexpected fetchJson URL: ' + url);
+    },
+    fetchText: async (url: string) => {
+        if (url.includes('SHA256SUMS')) {
+            return `${EXPECTED_SHA256}  terraform_1.9.8_windows_amd64.zip\n`;
+        }
+        throw new Error('Unexpected fetchText URL: ' + url);
     }
-    if (url.includes('SHA256SUMS')) {
-        return {
-            ok: true,
-            text: async () => `${EXPECTED_SHA256}  terraform_1.9.8_windows_amd64.zip\n`
-        };
-    }
-    throw new Error('Unexpected fetch URL: ' + url);
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('https-proxy-agent', function () { return {}; });
+tr.registerMock('undici', { ProxyAgent: class {} });
 
 // fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {

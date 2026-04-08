@@ -1,6 +1,10 @@
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner'
 import { TerraformBaseCommandInitializer } from './terraform-commands'
 
+export function getBinaryName(tasks: typeof import('azure-pipelines-task-lib/task')): string {
+    return tasks.getInput("binaryName", false) || "terraform";
+}
+
 export interface ITerraformToolHandler {
     createToolRunner(command?: TerraformBaseCommandInitializer): ToolRunner;
 }
@@ -13,21 +17,22 @@ export class TerraformToolHandler implements ITerraformToolHandler {
     }
 
     public createToolRunner(command?: TerraformBaseCommandInitializer): ToolRunner {
-        let terraformPath;
+        const binaryName = getBinaryName(this.tasks);
+        let toolPath;
         try {
-            terraformPath = this.tasks.which("terraform", true);
+            toolPath = this.tasks.which(binaryName, true);
         } catch {
             throw new Error(this.tasks.loc("TerraformToolNotFound"));
         }
 
-        const terraformToolRunner: ToolRunner = this.tasks.tool(terraformPath);
+        const toolRunner: ToolRunner = this.tasks.tool(toolPath);
         if (command) {
-            terraformToolRunner.arg(command.name);
+            toolRunner.arg(command.name);
             if (command.additionalArgs) {
-                terraformToolRunner.line(command.additionalArgs);
+                toolRunner.line(command.additionalArgs);
             }
         }
 
-        return terraformToolRunner;
+        return toolRunner;
     }
 }

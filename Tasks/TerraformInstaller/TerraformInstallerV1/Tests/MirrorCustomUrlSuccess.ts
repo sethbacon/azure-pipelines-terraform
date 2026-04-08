@@ -14,13 +14,19 @@ tr.registerMock('os', {
     arch: () => 'x64'
 });
 
-// node-fetch should NOT be called for mirror (no version lookup, direct download)
-tr.registerMock('node-fetch', async (url: string, _options?: any) => {
-    throw new Error('node-fetch should not be called for mirror download. Called with: ' + url);
+// http-client: mirror download — fetchText for SHA256SUMS will fail (unavailable), which is caught and warned
+tr.registerMock('./http-client', {
+    fetchJson: async (url: string) => {
+        throw new Error('fetchJson should not be called for mirror download. Called with: ' + url);
+    },
+    fetchText: async (url: string) => {
+        // Mirror SHA256SUMS is unavailable — the installer catches this and warns
+        throw new Error('Failed to fetch ' + url + ': HTTP 404');
+    }
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('https-proxy-agent', function () { return {}; });
+tr.registerMock('undici', { ProxyAgent: class {} });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,

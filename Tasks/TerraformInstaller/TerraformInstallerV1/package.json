@@ -16,8 +16,7 @@
   "dependencies": {
     "azure-pipelines-task-lib": "^4.1.0",
     "azure-pipelines-tool-lib": "^2.0.0-preview",
-    "https-proxy-agent": "^5.0.0",
-    "node-fetch": "^2.6.7",
+    "undici": "^6.21.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

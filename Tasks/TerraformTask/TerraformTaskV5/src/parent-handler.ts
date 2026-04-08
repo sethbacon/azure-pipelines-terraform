@@ -6,12 +6,16 @@ import { TerraformCommandHandlerGCP } from './gcp-terraform-command-handler';
 import { TerraformCommandHandlerOCI } from './oci-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from './generic-terraform-command-handler';
 import { TerraformCommandHandlerHCP } from './hcp-terraform-command-handler';
+import { EnvironmentVariableHelper } from './environment-variables';
 
 export interface IParentCommandHandler {
     execute(providerName: string, command: string): Promise<number>;
+    emergencyCleanup(): void;
 }
 
 export class ParentCommandHandler implements IParentCommandHandler {
+    private activeHandler: BaseTerraformCommandHandler | null = null;
+
     public async execute(providerName: string, command: string): Promise<number> {
         let handler: BaseTerraformCommandHandler;
 
@@ -24,10 +28,20 @@ export class ParentCommandHandler implements IParentCommandHandler {
             handler = this.createHandler(providerName);
         }
 
+        this.activeHandler = handler;
         try {
             return await handler.executeCommand(command);
         } finally {
             handler.cleanupTempFiles();
+            EnvironmentVariableHelper.clearTrackedVariables();
+            this.activeHandler = null;
+        }
+    }
+
+    public emergencyCleanup(): void {
+        if (this.activeHandler) {
+            this.activeHandler.cleanupTempFiles();
+            EnvironmentVariableHelper.clearTrackedVariables();
         }
     }
 
