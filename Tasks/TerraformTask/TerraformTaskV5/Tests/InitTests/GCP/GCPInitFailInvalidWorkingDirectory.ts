@@ -1,6 +1,7 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import os = require('os');
 
 let tp = path.join(__dirname, './GCPInitSuccessEmptyWorkingDirL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
@@ -21,7 +22,7 @@ process.env['ENDPOINT_AUTH_PARAMETER_GCP_AUDIENCE'] = 'DummyAudience';
 process.env['ENDPOINT_AUTH_PARAMETER_GCP_PRIVATEKEY'] = 'DummyPrivateKey';
 process.env['ENDPOINT_AUTH_PARAMETER_GCP_SCOPE'] = 'DummyScope';
 
-let credentialsFilePath = path.join(__dirname, '..', '..', '..', 'credentials-123.json');
+let credentialsFilePath = path.join(os.tmpdir(), 'credentials-123.json');
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
     "which": {

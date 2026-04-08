@@ -4,6 +4,8 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import path = require('path');
+import os = require('os');
+import fs = require('fs');
 import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
@@ -14,16 +16,15 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
     private getPrivateKeyFilePath(privateKey: string) {
         tasks.setSecret(privateKey);
-        // This is a bit of a hack but spaces need to be converted to line breaks to make it work
-        privateKey = privateKey.replace('-----BEGIN PRIVATE KEY-----', '_begin_');
-        privateKey = privateKey.replace('-----END PRIVATE KEY-----', '_end_');
-        while (privateKey.indexOf(' ') > -1) {
-            privateKey = privateKey.replace(' ', '\n');
-        }
-        privateKey = privateKey.replace('_begin_', '-----BEGIN PRIVATE KEY-----');
-        privateKey = privateKey.replace('_end_', '-----END PRIVATE KEY-----');
-        const privateKeyFilePath = path.resolve(`keyfile-${uuidV4()}.pem`);
-        require('fs').writeFileSync(privateKeyFilePath, privateKey, { mode: 0o600 });
+        // Preserve PEM header/footer, convert spaces to newlines in the base64 body
+        privateKey = privateKey
+            .replace('-----BEGIN PRIVATE KEY-----', '_begin_')
+            .replace('-----END PRIVATE KEY-----', '_end_')
+            .replace(/ /g, '\n')
+            .replace('_begin_', '-----BEGIN PRIVATE KEY-----')
+            .replace('_end_', '-----END PRIVATE KEY-----');
+        const privateKeyFilePath = path.join(os.tmpdir(), `keyfile-${uuidV4()}.pem`);
+        fs.writeFileSync(privateKeyFilePath, privateKey, { mode: 0o600 });
         this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
     }
@@ -57,7 +58,8 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
             const workingDirectory = tasks.getInput("workingDirectory") || '';
             const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
-            tasks.writeFile(tfConfigFilePath, config);
+            tasks.writeFile(tfConfigFilePath, config, 'utf-8');
+            try { fs.chmodSync(tfConfigFilePath, 0o600); } catch { /* noop on Windows or test */ }
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
         }
@@ -70,12 +72,12 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        if (command.serviceProvidername) {
-            const privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProvidername, "privateKey", false)!);
-            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "tenancy", false) || '');
-            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProvidername, "user", false) || '');
-            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProvidername, "region", false) || '');
-            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", tasks.getEndpointDataParameter(command.serviceProvidername, "fingerprint", false) || '');
+        if (command.serviceProviderName) {
+            const privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProviderName, "privateKey", false)!);
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "tenancy", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "user", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProviderName, "region", false) || '');
+            EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", tasks.getEndpointDataParameter(command.serviceProviderName, "fingerprint", false) || '');
             EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_private_key_path", privateKeyFilePath);
         }
     }

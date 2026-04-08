@@ -1834,6 +1834,32 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* backend workload identity federation tests */
+
+    it('aws init should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './InitTests/AWS/AWSInitWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AWSInitWIFSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('gcp init should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './InitTests/GCP/GCPInitWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GCPInitWIFSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
     /* OCI expanded coverage tests */
 
     it('oci validate should succeed', async () => {

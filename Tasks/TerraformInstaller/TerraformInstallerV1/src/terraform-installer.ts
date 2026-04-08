@@ -6,8 +6,7 @@ import fs = require('fs');
 import crypto = require('crypto');
 
 import { v4 as uuidV4 } from 'uuid';
-const fetch = require('node-fetch');
-const HttpsProxyAgent = require('https-proxy-agent');
+import { fetchJson, fetchText } from './http-client';
 
 const terraformToolName = "terraform";
 const isWindows = os.type().match(/^Win/);
@@ -177,68 +176,26 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
 
-    // Attempt SHA256 verification from mirror — don't fail if SHA256SUMS is unavailable
+    // Attempt SHA256 verification from mirror — fail if SHA256SUMS is available but hash doesn't match
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
     try {
         const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
         await verifySha256(zipPath, expectedHash);
     } catch (error) {
-        tasks.warning(`SHA256 verification skipped for mirror download: ${error instanceof Error ? error.message : error}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Only warn if SHA256SUMS file is unavailable; fail if hash mismatch
+        if (errorMessage.includes('SHA256 checksum not found') || errorMessage.includes('Failed to fetch')) {
+            tasks.warning(`SHA256 verification skipped for mirror download: ${errorMessage}`);
+        } else {
+            throw error;
+        }
     }
 
     return zipPath;
 }
 
 // --- Helpers ---
-
-function buildProxyUrl(): string | null {
-    const proxy = tasks.getHttpProxyConfiguration();
-    if (!proxy) return null;
-    if (proxy.proxyUsername !== "") {
-        const url = new URL(proxy.proxyUrl);
-        url.username = proxy.proxyUsername ?? "";
-        url.password = proxy.proxyPassword ?? "";
-        return url.toString();
-    }
-    return proxy.proxyUrl;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-    if (!url.startsWith('https://')) {
-        throw new Error(tasks.loc("InsecureUrlRejected", url));
-    }
-
-    const options: { agent?: object } = {};
-    const proxyUrl = buildProxyUrl();
-    if (proxyUrl) {
-        options.agent = new HttpsProxyAgent(proxyUrl);
-    }
-
-    const response = await fetch(url, options);
-    if (!response.ok) {
-        throw new Error(tasks.loc("RegistryRequestFailed", url, response.status));
-    }
-    return response.json();
-}
-
-async function fetchText(url: string): Promise<string> {
-    if (!url.startsWith('https://')) {
-        throw new Error(tasks.loc("InsecureUrlRejected", url));
-    }
-
-    const options: { agent?: object } = {};
-    const proxyUrl = buildProxyUrl();
-    if (proxyUrl) {
-        options.agent = new HttpsProxyAgent(proxyUrl);
-    }
-
-    const response = await fetch(url, options);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
-    }
-    return response.text();
-}
 
 async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): Promise<string> {
     tasks.debug(`Fetching SHA256SUMS from ${sha256SumsUrl}`);

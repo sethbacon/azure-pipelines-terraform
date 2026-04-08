@@ -5,6 +5,8 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import path = require('path');
+import os = require('os');
+import fs = require('fs');
 import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
@@ -22,13 +24,40 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         const secretKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "password", true)!;
         if (accessKey) { tasks.setSecret(accessKey); }
         if (secretKey) { tasks.setSecret(secretKey); }
-        this.backendConfig.set('access_key', accessKey);
-        this.backendConfig.set('secret_key', secretKey);
+
+        // Use environment variables instead of CLI args to avoid exposing secrets in process listings
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey);
+    }
+
+    private async setupBackendWIF(backendServiceName: string): Promise<void> {
+        this.backendConfig.set('bucket', tasks.getInput("backendAWSBucketName", true)!);
+        this.backendConfig.set('key', tasks.getInput("backendAWSKey", true)!);
+
+        const oidcToken = await generateIdToken(backendServiceName);
+        tasks.setSecret(oidcToken);
+
+        const tokenFilePath = path.join(os.tmpdir(), `aws-backend-oidc-token-${uuidV4()}.jwt`);
+        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        this.tempFiles.push(tokenFilePath);
+
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("backendAWSRoleArn", true)!);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", tasks.getInput("backendAWSRegion", true)!);
+
+        const sessionName = tasks.getInput("backendAWSSessionName", false) || "AzureDevOps-Terraform-Backend";
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", sessionName);
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
-        this.setupBackend(backendServiceName);
+        const authScheme = tasks.getInput("backendAuthSchemeAWS", false) || "ServiceConnection";
+
+        if (authScheme === "WorkloadIdentityFederation") {
+            await this.setupBackendWIF(backendServiceName);
+        } else {
+            this.setupBackend(backendServiceName);
+        }
         this.applyBackendConfig(terraformToolRunner);
     }
 
@@ -38,9 +67,9 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);
         } else {
-            if (command.serviceProvidername) {
-                const accessKeyId = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "username", false);
-                const secretAccessKey = tasks.getEndpointAuthorizationParameter(command.serviceProvidername, "password", false);
+            if (command.serviceProviderName) {
+                const accessKeyId = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "username", false);
+                const secretAccessKey = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "password", false);
                 if (secretAccessKey) { tasks.setSecret(secretAccessKey); }
                 EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId!);
                 EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey!);
@@ -49,11 +78,11 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const oidcToken = await generateIdToken(command.serviceProvidername);
+        const oidcToken = await generateIdToken(command.serviceProviderName);
         tasks.setSecret(oidcToken);
 
-        const tokenFilePath = path.resolve(`aws-oidc-token-${uuidV4()}.jwt`);
-        require('fs').writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        const tokenFilePath = path.join(os.tmpdir(), `aws-oidc-token-${uuidV4()}.jwt`);
+        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true)!);

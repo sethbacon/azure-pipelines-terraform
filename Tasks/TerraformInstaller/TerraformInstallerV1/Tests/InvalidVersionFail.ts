@@ -13,12 +13,17 @@ tr.registerMock('os', {
     arch: () => 'x64'
 });
 
-tr.registerMock('node-fetch', async (_url: string, _options?: any) => {
-    throw new Error('node-fetch should not be called for an invalid version');
+tr.registerMock('./http-client', {
+    fetchJson: async (_url: string) => {
+        throw new Error('fetchJson should not be called for an invalid version');
+    },
+    fetchText: async (_url: string) => {
+        throw new Error('fetchText should not be called for an invalid version');
+    }
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('https-proxy-agent', function () { return {}; });
+tr.registerMock('undici', { ProxyAgent: class {} });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,

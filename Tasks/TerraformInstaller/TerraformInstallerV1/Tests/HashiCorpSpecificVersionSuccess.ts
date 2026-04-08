@@ -15,19 +15,21 @@ tr.registerMock('os', {
 
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
-// node-fetch: handle SHA256SUMS fetch for HashiCorp verification
-tr.registerMock('node-fetch', async (url: string, _options?: any) => {
-    if (url.includes('SHA256SUMS')) {
-        return {
-            ok: true,
-            text: async () => `${EXPECTED_SHA256}  terraform_1.9.8_windows_amd64.zip\nother_hash  terraform_1.9.8_linux_amd64.zip\n`
-        };
+// http-client: handle SHA256SUMS fetch for HashiCorp verification
+tr.registerMock('./http-client', {
+    fetchJson: async (url: string) => {
+        throw new Error('fetchJson should not be called for a specific version. Called with: ' + url);
+    },
+    fetchText: async (url: string) => {
+        if (url.includes('SHA256SUMS')) {
+            return `${EXPECTED_SHA256}  terraform_1.9.8_windows_amd64.zip\nother_hash  terraform_1.9.8_linux_amd64.zip\n`;
+        }
+        throw new Error('Unexpected fetchText URL: ' + url);
     }
-    throw new Error('node-fetch should not be called for a specific version. Called with: ' + url);
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('https-proxy-agent', function () { return {}; });
+tr.registerMock('undici', { ProxyAgent: class {} });
 
 // fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {

@@ -5,3 +5,12 @@ Tasks/**/*.js
 configs/self.json
 *.vsix
 package-lock.json
+
+# Generated credential/key/token files from tests and runtime
+credentials-*.json
+gcp-wif-credentials-*.json
+keyfile-*.pem
+*.jwt
+config-*.tf
+output-*.json
+.env

@@ -86,6 +86,21 @@
             }
         },
         {
+            "name": "binaryName",
+            "type": "pickList",
+            "label": "Binary",
+            "defaultValue": "terraform",
+            "required": false,
+            "helpMarkDown": "The IaC binary to use. Select 'tofu' to use OpenTofu instead of Terraform. The selected binary must be installed on the agent and available in PATH.",
+            "options": {
+                "terraform": "terraform",
+                "tofu": "tofu (OpenTofu)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
             "name": "command",
             "type": "pickList",
             "label": "Command",
@@ -100,6 +115,8 @@
                 "apply": "apply",
                 "output": "output",
                 "destroy": "destroy",
+                "import": "import",
+                "forceunlock": "force-unlock",
                 "workspace": "workspace",
                 "state": "state",
                 "fmt": "fmt",
@@ -148,12 +165,86 @@
             "required": false
         },
         {
+            "name": "secureVarsFile",
+            "type": "secureFile",
+            "label": "Secure variables file (.tfvars)",
+            "required": false,
+            "visibleRule": "command = plan || command = apply || command = destroy || command = import",
+            "helpMarkDown": "Select a .tfvars file from the ADO Secure Files library. The file will be downloaded to a temporary location and passed as -var-file to the terraform command. The file is automatically deleted after execution. Useful for secrets that should not be stored in source control."
+        },
+        {
             "name": "replaceAddress",
             "type": "string",
             "label": "Replace resource address",
-            "visibleRule": "command = plan",
+            "visibleRule": "command = plan || command = apply",
             "required": false,
             "helpMarkDown": "Force replacement of a specific resource. Passed as -replace=ADDRESS to terraform plan or apply. Requires Terraform 1.0+."
+        },
+        {
+            "name": "importAddress",
+            "type": "string",
+            "label": "Resource address",
+            "visibleRule": "command = import",
+            "required": true,
+            "helpMarkDown": "The address to import the resource into. E.g. 'aws_instance.web' or 'module.vpc.aws_subnet.public[0]'."
+        },
+        {
+            "name": "importId",
+            "type": "string",
+            "label": "Resource ID",
+            "visibleRule": "command = import",
+            "required": true,
+            "helpMarkDown": "The provider-specific ID of the resource to import. E.g. 'i-1234567890abcdef0' for an AWS EC2 instance."
+        },
+        {
+            "name": "lockId",
+            "type": "string",
+            "label": "Lock ID",
+            "visibleRule": "command = forceunlock",
+            "required": true,
+            "helpMarkDown": "The lock ID shown in the error message when acquiring a lock failed. This is required to unlock the state."
+        },
+        {
+            "name": "refreshOnly",
+            "type": "boolean",
+            "label": "Refresh only (drift detection)",
+            "defaultValue": "false",
+            "visibleRule": "command = plan || command = apply",
+            "required": false,
+            "helpMarkDown": "Run in refresh-only mode. Terraform will reconcile the state file against real infrastructure without proposing resource changes. Useful for drift detection."
+        },
+        {
+            "name": "lockfileReadonly",
+            "type": "boolean",
+            "label": "Lock file readonly",
+            "defaultValue": "false",
+            "visibleRule": "command = init",
+            "required": false,
+            "helpMarkDown": "Set -lockfile=readonly to prevent Terraform from updating the dependency lock file (.terraform.lock.hcl). Recommended for CI pipelines."
+        },
+        {
+            "name": "parallelism",
+            "type": "string",
+            "label": "Parallelism",
+            "visibleRule": "command = plan || command = apply || command = destroy",
+            "required": false,
+            "helpMarkDown": "Limit the number of concurrent Terraform operations. Passed as -parallelism=N. Useful for rate-limited APIs or resource-constrained agents."
+        },
+        {
+            "name": "testJunitXmlPath",
+            "type": "string",
+            "label": "JUnit XML output path",
+            "visibleRule": "command = test",
+            "required": false,
+            "helpMarkDown": "Path to write JUnit XML test results. Passed as -junit-xml=PATH. The output file can be published using the PublishTestResults task for ADO test tab integration. Requires Terraform 1.6+."
+        },
+        {
+            "name": "testFilter",
+            "type": "string",
+            "label": "Test filter",
+            "visibleRule": "command = test",
+            "required": false,
+            "helpMarkDown": "Run only test files matching this filter. Passed as -filter=TESTFILE. E.g. 'tests/network.tftest.hcl'."
         },
         {
             "name": "workspaceSubCommand",
@@ -191,7 +282,8 @@
                 "push": "push",
                 "mv": "mv",
                 "rm": "rm",
-                "show": "show"
+                "show": "show",
+                "replace-provider": "replace-provider"
             }
         },
         {
@@ -221,11 +313,20 @@
             "helpMarkDown": "If true, runs terraform fmt -recursive to format files in subdirectories."
         },
         {
+            "name": "fmtDiff",
+            "type": "boolean",
+            "label": "Show diff",
+            "visibleRule": "command = fmt",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "If true, runs terraform fmt -diff to display formatting changes."
+        },
+        {
             "name": "outputTo",
             "type": "pickList",
             "label": "Output to",
             "defaultValue": "console",
-            "visibleRule": "command = show",
+            "visibleRule": "command = show || command = custom",
             "helpMarkDown": "choose output to file or console. ",
             "options": {
                 "file": "file",
@@ -267,7 +368,7 @@
             "type": "connectedService:AzureRM",
             "label": "Azure Provider Service Connection",
             "required": true,
-            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select an Azure Resource Manager Service Connection for the Azure providers",
             "groupName": "providerAzureRm"
         },
@@ -276,7 +377,7 @@
             "type": "string",
             "label": "Subscription ID Override",
             "required": false,
-            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = azurerm && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Used to override the subscription ID that the provider will target by default. This is set to the ARM_SUBSCRIPTION_ID environment variable. It will use the service connection subscription ID by default.",
             "groupName": "providerAzureRm"
         },
@@ -289,11 +390,19 @@
             "groupName": "providerAzureRm"
         },
         {
+            "name": "runAzLogin",
+            "type": "boolean",
+            "defaultValue": "false",
+            "label": "Run az login",
+            "helpMarkDown": "Run 'az login' using the provider service connection credentials before executing the terraform command. Enables Azure CLI authentication for local-exec provisioners, external data sources, and modules that use CLI-based auth (e.g. azapi). Requires the Azure CLI to be installed on the agent.",
+            "groupName": "providerAzureRm"
+        },
+        {
             "name": "environmentServiceNameAWS",
             "type": "connectedService:PTTAWSServiceEndpoint",
             "label": "Amazon Web Services connection",
             "required": true,
-            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select an Amazon Web Services connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup an Amazon Web Services service connection using the 'Add' or 'Manage' button."
         },
         {
@@ -302,7 +411,7 @@
             "label": "Authentication scheme",
             "defaultValue": "ServiceConnection",
             "required": false,
-            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = aws && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select how to authenticate with AWS. 'Service connection' uses static credentials from the service connection. 'Workload Identity Federation' uses OIDC to assume an IAM role without static credentials.",
             "options": {
                 "ServiceConnection": "Service connection (static credentials)",
@@ -317,7 +426,7 @@
             "type": "string",
             "label": "IAM Role ARN",
             "required": true,
-            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "ARN of the AWS IAM role to assume via OIDC. E.g. arn:aws:iam::123456789012:role/MyTerraformRole"
         },
         {
@@ -325,7 +434,7 @@
             "type": "string",
             "label": "AWS Region",
             "required": true,
-            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "AWS region for the provider. E.g. us-east-1"
         },
         {
@@ -334,7 +443,7 @@
             "label": "Session name",
             "required": false,
             "defaultValue": "AzureDevOps-Terraform",
-            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Name for the assumed role session. Defaults to 'AzureDevOps-Terraform'."
         },
         {
@@ -342,7 +451,7 @@
             "type": "connectedService:PTTGoogleCloudServiceEndpoint",
             "label": "Google Cloud Platform connection",
             "required": true,
-            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select a Google Cloud Platform connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Google Cloud Platform service connection using the 'Add' or 'Manage' button."
         },
         {
@@ -351,7 +460,7 @@
             "label": "Authentication scheme",
             "defaultValue": "ServiceConnection",
             "required": false,
-            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select how to authenticate with GCP. 'Service connection' uses a service account key. 'Workload Identity Federation' uses OIDC without static credentials.",
             "options": {
                 "ServiceConnection": "Service connection (service account key)",
@@ -366,7 +475,7 @@
             "type": "string",
             "label": "GCP Project Number",
             "required": true,
-            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Numeric GCP project number where the Workload Identity Pool lives."
         },
         {
@@ -374,7 +483,7 @@
             "type": "string",
             "label": "Workload Identity Pool ID",
             "required": true,
-            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "ID of the Workload Identity Pool configured to trust Azure DevOps."
         },
         {
@@ -382,7 +491,7 @@
             "type": "string",
             "label": "Workload Identity Provider ID",
             "required": true,
-            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "ID of the OIDC provider within the Workload Identity Pool."
         },
         {
@@ -390,7 +499,7 @@
             "type": "string",
             "label": "Service Account Email",
             "required": true,
-            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Email of the GCP service account to impersonate. E.g. terraform@my-project.iam.gserviceaccount.com"
         },
         {
@@ -398,7 +507,7 @@
             "type": "connectedService:PTTOCIServiceEndpoint",
             "label": "Oracle Cloud Platform connection",
             "required": true,
-            "visibleRule": "provider = oci && command != init && command != validate && command != workspace && command != state && command != fmt && command != get",
+            "visibleRule": "provider = oci && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
             "helpMarkDown": "Select a Oracle Cloud Platform connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button."
         },
         {
@@ -486,6 +595,22 @@
             "groupName": "backendAzureRm"
         },
         {
+            "name": "backendAuthSchemeAWS",
+            "type": "pickList",
+            "label": "Backend authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "helpMarkDown": "Select how to authenticate with the S3 backend. 'Service connection' uses static credentials. 'Workload Identity Federation' uses OIDC to assume an IAM role without static credentials.",
+            "groupName": "backendAWS",
+            "options": {
+                "ServiceConnection": "Service connection (static credentials)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
             "name": "backendServiceAWS",
             "type": "connectedService:PTTAWSServiceEndpoint",
             "label": "Amazon Web Services connection",
@@ -511,6 +636,50 @@
             "required": true,
             "helpMarkDown": "The path to the state file inside the Amazon S3 bucket.<br>For example, if you want to store the state file, named terraform.tfstate, inside a folder, named tf, then give the input 'tf/terraform.tfstate'.",
             "groupName": "backendAWS"
+        },
+        {
+            "name": "backendAWSRoleArn",
+            "type": "string",
+            "label": "IAM Role ARN",
+            "required": true,
+            "visibleRule": "backendAuthSchemeAWS = WorkloadIdentityFederation",
+            "helpMarkDown": "ARN of the AWS IAM role to assume via OIDC for accessing the S3 backend. E.g. arn:aws:iam::123456789012:role/MyTerraformBackendRole",
+            "groupName": "backendAWS"
+        },
+        {
+            "name": "backendAWSRegion",
+            "type": "string",
+            "label": "AWS Region",
+            "required": true,
+            "visibleRule": "backendAuthSchemeAWS = WorkloadIdentityFederation",
+            "helpMarkDown": "AWS region where the S3 bucket resides. E.g. us-east-1",
+            "groupName": "backendAWS"
+        },
+        {
+            "name": "backendAWSSessionName",
+            "type": "string",
+            "label": "Session name",
+            "required": false,
+            "defaultValue": "AzureDevOps-Terraform-Backend",
+            "visibleRule": "backendAuthSchemeAWS = WorkloadIdentityFederation",
+            "helpMarkDown": "Name for the assumed role session. Defaults to 'AzureDevOps-Terraform-Backend'.",
+            "groupName": "backendAWS"
+        },
+        {
+            "name": "backendAuthSchemeGCP",
+            "type": "pickList",
+            "label": "Backend authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "helpMarkDown": "Select how to authenticate with the GCS backend. 'Service connection' uses a service account key. 'Workload Identity Federation' uses OIDC without static credentials.",
+            "groupName": "backendGCP",
+            "options": {
+                "ServiceConnection": "Service connection (service account key)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
         },
         {
             "name": "backendServiceGCP",
@@ -540,8 +709,44 @@
             "groupName": "backendGCP"
         },
         {
-            "name": "backendHCPToken",
+            "name": "backendGCPProjectNumber",
             "type": "string",
+            "label": "GCP Project Number",
+            "required": true,
+            "visibleRule": "backendAuthSchemeGCP = WorkloadIdentityFederation",
+            "helpMarkDown": "Numeric GCP project number where the Workload Identity Pool lives.",
+            "groupName": "backendGCP"
+        },
+        {
+            "name": "backendGCPWorkloadIdentityPoolId",
+            "type": "string",
+            "label": "Workload Identity Pool ID",
+            "required": true,
+            "visibleRule": "backendAuthSchemeGCP = WorkloadIdentityFederation",
+            "helpMarkDown": "ID of the Workload Identity Pool configured to trust Azure DevOps.",
+            "groupName": "backendGCP"
+        },
+        {
+            "name": "backendGCPWorkloadIdentityProviderId",
+            "type": "string",
+            "label": "Workload Identity Provider ID",
+            "required": true,
+            "visibleRule": "backendAuthSchemeGCP = WorkloadIdentityFederation",
+            "helpMarkDown": "ID of the OIDC provider within the Workload Identity Pool.",
+            "groupName": "backendGCP"
+        },
+        {
+            "name": "backendGCPServiceAccountEmail",
+            "type": "string",
+            "label": "Service Account Email",
+            "required": true,
+            "visibleRule": "backendAuthSchemeGCP = WorkloadIdentityFederation",
+            "helpMarkDown": "Email of the GCP service account to impersonate for backend access. E.g. terraform@my-project.iam.gserviceaccount.com",
+            "groupName": "backendGCP"
+        },
+        {
+            "name": "backendHCPToken",
+            "type": "password",
             "label": "HCP Terraform token",
             "required": true,
             "helpMarkDown": "API token for HCP Terraform / Terraform Cloud. Generate at app.terraform.io → User Settings → Tokens. This sets the TF_TOKEN_app_terraform_io environment variable.",
@@ -635,6 +840,10 @@
             "description": "A boolean indicating if the terraform plan found any changes to apply."
         },
         {
+            "name": "destroyChangesPresent",
+            "description": "A boolean indicating if the terraform plan contains resource deletions. Set when 'command' is 'show', 'outputTo' is 'file', and 'outputFormat' is 'json'."
+        },
+        {
             "name": "showFilePath",
             "description": "The location of the file containing the terraform show output.<br><br>Note: This variable will only be set if 'command' is 'show' and 'outputTo' is 'file'."
         },
@@ -644,7 +853,7 @@
         }
     ],
     "messages": {
-        "TerraformToolNotFound": "Failed to find terraform tool in paths",
+        "TerraformToolNotFound": "Failed to find terraform/tofu binary in PATH. Ensure the selected binary is installed on the agent.",
         "TerraformPlanFailed": "Terraform plan failed with exit code %s"
     }
 }
