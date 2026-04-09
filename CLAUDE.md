@@ -108,20 +108,20 @@ azure-pipelines-terraform/
 
 ### Source files: `Tasks/TerraformTask/TerraformTaskV5/src/`
 
-| File | Role |
-| --- | --- |
-| `index.ts` | Entry point - reads `provider` and `command` inputs, delegates to `ParentCommandHandler` |
-| `parent-handler.ts` | Routes provider/backend name to the correct handler class |
-| `base-terraform-command-handler.ts` | Abstract base with shared command implementations |
-| `terraform.ts` | `TerraformToolHandler` - locates terraform binary and builds `ToolRunner` |
-| `terraform-commands.ts` | Data classes: `TerraformBaseCommandInitializer`, `TerraformAuthorizationCommandInitializer` |
+| File                                 | Role                                                                                           |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `index.ts`                           | Entry point - reads `provider` and `command` inputs, delegates to `ParentCommandHandler`       |
+| `parent-handler.ts`                  | Routes provider/backend name to the correct handler class                                      |
+| `base-terraform-command-handler.ts`  | Abstract base with shared command implementations                                              |
+| `terraform.ts`                       | `TerraformToolHandler` - locates terraform binary and builds `ToolRunner`                      |
+| `terraform-commands.ts`              | Data classes: `TerraformBaseCommandInitializer`, `TerraformAuthorizationCommandInitializer`    |
 | `azure-terraform-command-handler.ts` | AzureRM-specific backend and provider auth (MSI, WorkloadIdentityFederation, ServicePrincipal) |
-| `aws-terraform-command-handler.ts` | AWS-specific backend and provider auth |
-| `gcp-terraform-command-handler.ts` | GCP-specific backend and provider auth |
-| `oci-terraform-command-handler.ts` | OCI-specific backend (HTTP backend via PAR URL) and provider auth |
-| `environment-variables.ts` | Helper for setting environment variables with tracking and cleanup |
-| `secure-file-loader.ts` | Downloads secure var files from ADO Secure Files library |
-| `id-token-generator.ts` | Generates OIDC ID tokens for Workload Identity Federation fallback |
+| `aws-terraform-command-handler.ts`   | AWS-specific backend and provider auth                                                         |
+| `gcp-terraform-command-handler.ts`   | GCP-specific backend and provider auth                                                         |
+| `oci-terraform-command-handler.ts`   | OCI-specific backend (HTTP backend via PAR URL) and provider auth                              |
+| `environment-variables.ts`           | Helper for setting environment variables with tracking and cleanup                             |
+| `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
+| `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
 
 ### Provider dispatch pattern
 
@@ -223,15 +223,15 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## Key Dependencies
 
-| Package | Purpose |
-| --- | --- |
-| `azure-pipelines-task-lib` | ADO task SDK (inputs, variables, tool runners) |
-| `azure-pipelines-tool-lib` | Tool download/cache (used by installer) |
-| `azure-devops-node-api` | Azure DevOps REST API client |
-| `azure-pipelines-tasks-artifacts-common` | Shared artifact utilities |
-| `typescript` | Build toolchain |
-| `mocha` + `ts-node` | Test framework |
-| `openpgp` | GPG signature verification for installer downloads |
+| Package                                  | Purpose                                            |
+| ---------------------------------------- | -------------------------------------------------- |
+| `azure-pipelines-task-lib`               | ADO task SDK (inputs, variables, tool runners)     |
+| `azure-pipelines-tool-lib`               | Tool download/cache (used by installer)            |
+| `azure-devops-node-api`                  | Azure DevOps REST API client                       |
+| `azure-pipelines-tasks-artifacts-common` | Shared artifact utilities                          |
+| `typescript`                             | Build toolchain                                    |
+| `mocha` + `ts-node`                      | Test framework                                     |
+| `openpgp`                                | GPG signature verification for installer downloads |
 
 ## CI/CD
 
@@ -242,25 +242,25 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 Verified tooling (as of March 2026):
 
-| Tool | Status | Version |
-| --- | --- | --- |
-| Node.js | Installed | v25.7.0 (not LTS — CI pins Node 18) |
-| npm | Installed | v11.10.1 |
-| TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install` |
-| `tfx-cli` | Not globally installed | Available as dev dep after `npm install` at root |
-| GitHub CLI (`gh`) | Installed | v2.87.3 |
-| Terraform | Installed | v1.14.6 at `/c/dev/terraform` |
+| Tool               | Status                 | Version                                          |
+| ------------------ | ---------------------- | ------------------------------------------------ |
+| Node.js            | Installed              | v25.7.0 (not LTS — CI pins Node 18)              |
+| npm                | Installed              | v11.10.1                                         |
+| TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install`         |
+| `tfx-cli`          | Not globally installed | Available as dev dep after `npm install` at root |
+| GitHub CLI (`gh`)  | Installed              | v2.87.3                                          |
+| Terraform          | Installed              | v1.14.6 at `/c/dev/terraform`                    |
 
 Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local development on Node 25 works for tests; build-related failures may be version-related.
 
 ## Supported Providers
 
-| Provider | Handler class | Auth method |
-| --- | --- | --- |
-| `azurerm` | `TerraformCommandHandlerAzureRM` | Workload Identity Federation / MSI / Service Principal |
-| `aws` | `TerraformCommandHandlerAWS` | AWS service connection credentials |
-| `gcp` | `TerraformCommandHandlerGCP` | GCP service connection credentials |
-| `oci` | `TerraformCommandHandlerOCI` | OCI private key + TF_VAR_ env vars; HTTP backend via PAR URL |
+| Provider  | Handler class                    | Auth method                                                  |
+| --------- | -------------------------------- | ------------------------------------------------------------ |
+| `azurerm` | `TerraformCommandHandlerAzureRM` | Workload Identity Federation / MSI / Service Principal       |
+| `aws`     | `TerraformCommandHandlerAWS`     | AWS service connection credentials                           |
+| `gcp`     | `TerraformCommandHandlerGCP`     | GCP service connection credentials                           |
+| `oci`     | `TerraformCommandHandlerOCI`     | OCI private key + TF_VAR_ env vars; HTTP backend via PAR URL |
 
 ## Important Notes
 
