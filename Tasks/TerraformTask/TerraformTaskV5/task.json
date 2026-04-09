@@ -244,6 +244,14 @@
             "helpMarkDown": "Limit the number of concurrent Terraform operations. Passed as -parallelism=N. Useful for rate-limited APIs or resource-constrained agents."
         },
         {
+            "name": "publishPlanResults",
+            "type": "string",
+            "label": "Publish Plan Results",
+            "required": false,
+            "visibleRule": "command = plan",
+            "helpMarkDown": "Name for the published plan. When set, plan output is attached to the pipeline run and visible in the Terraform Plan tab. Multiple plan steps can use different names. Adopted from jason-johnson/azure-pipelines-tasks-terraform for migration compatibility."
+        },
+        {
             "name": "varFile",
             "type": "multiLine",
             "label": "Variable files (.tfvars)",

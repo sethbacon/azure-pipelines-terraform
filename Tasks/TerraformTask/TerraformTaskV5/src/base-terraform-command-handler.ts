@@ -343,16 +343,27 @@ export abstract class BaseTerraformCommandHandler {
         await this.handleProvider(planCommand);
         await this.warnIfMultipleProviders();
 
-        const result = await terraformTool.execAsync(<IExecOptions>{
+        const commandOutput = await this.execWithStdoutCapture(terraformTool, <IExecOptions>{
             cwd: planCommand.workingDirectory,
             ignoreReturnCode: true
         });
 
-        if (result !== 0 && result !== 2) {
-            throw new Error(tasks.loc("TerraformPlanFailed", result));
+        if (commandOutput.code !== 0 && commandOutput.code !== 2) {
+            throw new Error(tasks.loc("TerraformPlanFailed", commandOutput.code));
         }
-        tasks.setVariable('changesPresent', (result === 2).toString(), false, true);
-        return result;
+        tasks.setVariable('changesPresent', (commandOutput.code === 2).toString(), false, true);
+
+        const publishPlanResults = tasks.getInput("publishPlanResults");
+        if (publishPlanResults) {
+            const tempDir = tasks.getVariable('Agent.TempDirectory') || require('os').tmpdir();
+            const planFilePath = path.join(tempDir, `tfplan-${Date.now()}.txt`);
+            fs.writeFileSync(planFilePath, commandOutput.stdout);
+            this.tempFiles.push(planFilePath);
+            tasks.addAttachment("terraform-plan-results", publishPlanResults, planFilePath);
+            console.log(`Published plan results as '${publishPlanResults}'`);
+        }
+
+        return commandOutput.code;
     }
 
     public async custom(): Promise<number> {
