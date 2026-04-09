@@ -2121,4 +2121,58 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* refresh command tests */
+
+    it('azure refresh should succeed', async () => {
+        let tp = path.join(__dirname, './RefreshTests/Azure/AzureRefreshSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureRefreshSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure refresh should succeed with var-file and target', async () => {
+        let tp = path.join(__dirname, './RefreshTests/Azure/AzureRefreshSuccessWithVarFileAndTarget.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureRefreshSuccessWithVarFileAndTargetL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* var-file input tests */
+
+    it('azure plan should succeed with var-file', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessWithVarFile.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessWithVarFileL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* target resources input tests */
+
+    it('azure plan should succeed with target resources', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessWithTarget.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessWithTargetL0 should have succeeded.'));
+        }, tr);
+    });
+
 });

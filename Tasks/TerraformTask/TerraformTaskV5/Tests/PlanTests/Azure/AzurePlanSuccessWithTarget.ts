@@ -2,17 +2,15 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-let tp = path.join(__dirname, './AzureImportSuccessWithVarsL0.js');
+let tp = path.join(__dirname, './AzurePlanSuccessWithTargetL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('provider', 'azurerm');
-tr.setInput('command', 'import');
+tr.setInput('command', 'plan');
 tr.setInput('workingDirectory', 'DummyWorkingDirectory');
 tr.setInput('environmentServiceNameAzureRM', 'AzureRM');
-tr.setInput('importAddress', 'azurerm_resource_group.example');
-tr.setInput('importId', '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/example');
 tr.setInput('commandOptions', '');
-tr.setInput('terraformVariables', 'env=staging\n# comment line\nregion=eastus');
+tr.setInput('targetResources', 'azurerm_resource_group.rg1\nazurerm_storage_account.sa1');
 
 process.env['ENDPOINT_AUTH_SCHEME_AzureRM'] = 'ServicePrincipal';
 process.env['ENDPOINT_DATA_AzureRM_SUBSCRIPTIONID'] = 'DummySubscriptionId';
@@ -32,9 +30,9 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "code": 0,
             "stdout": "Executed successfully"
         },
-        "terraform import azurerm_resource_group.example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/example -var env=staging -var region=eastus": {
+        "terraform plan -target=azurerm_resource_group.rg1 -target=azurerm_storage_account.sa1 -detailed-exitcode": {
             "code": 0,
-            "stdout": "Import successful!"
+            "stdout": "No changes."
         }
     }
 }

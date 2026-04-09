@@ -30,7 +30,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "code": 0,
             "stdout": "Executed successfully"
         },
-        "terraform apply -var 'env=staging' -auto-approve": {
+        "terraform apply -auto-approve -var env=staging": {
             "code": 0,
             "stdout": "Apply complete!"
         }
