@@ -23,7 +23,12 @@ tr.registerMock('./http-client', {
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('undici', { ProxyAgent: class {} });
+tr.registerMock('undici', { ProxyAgent: class { } });
+
+// gpg-verifier: mock to prevent openpgp from loading
+tr.registerMock('./gpg-verifier', {
+    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
+});
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,

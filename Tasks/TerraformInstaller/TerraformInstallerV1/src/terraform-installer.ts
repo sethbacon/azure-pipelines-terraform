@@ -7,6 +7,7 @@ import crypto = require('crypto');
 
 import { v4 as uuidV4 } from 'uuid';
 import { fetchJson, fetchText } from './http-client';
+import { verifyGpgSignature } from './gpg-verifier';
 
 const terraformToolName = "terraform";
 const isWindows = os.type().match(/^Win/);
@@ -129,7 +130,12 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const arch = getArchString();
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `https://releases.hashicorp.com/terraform/${version}/terraform_${version}_SHA256SUMS`;
-    const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
+    const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
+
+    const sha256SumsContent = await fetchText(sha256SumsUrl);
+    await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl);
+
+    const expectedHash = parseSha256(sha256SumsContent, zipFileName);
     await verifySha256(zipPath, expectedHash);
 
     return zipPath;
@@ -197,10 +203,8 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 
 // --- Helpers ---
 
-async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): Promise<string> {
-    tasks.debug(`Fetching SHA256SUMS from ${sha256SumsUrl}`);
-    const body = await fetchText(sha256SumsUrl);
-    const lines = body.split('\n');
+function parseSha256(sha256SumsContent: string, zipFileName: string): string {
+    const lines = sha256SumsContent.split('\n');
     for (const line of lines) {
         // Format: "<hex-hash>  <filename>" (two spaces between hash and filename)
         const match = line.match(/^([a-fA-F0-9]{64})\s+(.+)$/);
@@ -209,7 +213,13 @@ async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): 
             return match[1];
         }
     }
-    throw new Error(`SHA256 checksum not found for ${zipFileName} in ${sha256SumsUrl}`);
+    throw new Error(`SHA256 checksum not found for ${zipFileName}`);
+}
+
+async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): Promise<string> {
+    tasks.debug(`Fetching SHA256SUMS from ${sha256SumsUrl}`);
+    const body = await fetchText(sha256SumsUrl);
+    return parseSha256(body, zipFileName);
 }
 
 async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
