@@ -119,7 +119,8 @@ azure-pipelines-terraform/
 | `aws-terraform-command-handler.ts` | AWS-specific backend and provider auth |
 | `gcp-terraform-command-handler.ts` | GCP-specific backend and provider auth |
 | `oci-terraform-command-handler.ts` | OCI-specific backend (HTTP backend via PAR URL) and provider auth |
-| `environment-variables.ts` | Helper for setting environment variables |
+| `environment-variables.ts` | Helper for setting environment variables with tracking and cleanup |
+| `secure-file-loader.ts` | Downloads secure var files from ADO Secure Files library |
 | `id-token-generator.ts` | Generates OIDC ID tokens for Workload Identity Federation fallback |
 
 ### Provider dispatch pattern
@@ -144,6 +145,9 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 - **`fmt`** - runs `terraform fmt -check` for formatting validation
 - **`test`** - runs `terraform test` with optional filter and verbose flags
 - **`get`** - runs `terraform get` to download modules
+- **`import`** - runs `terraform import` with `importAddress` and `importId` inputs
+- **`forceUnlock`** - runs `terraform force-unlock` with `lockId` input
+- **`refresh`** - calls `handleProvider()`, supports `varFile`, `targetResources`, `parallelism`, `secureVarsFile`, `terraformVariables`
 
 ### Azure auth schemes (AzureRM handler)
 
@@ -160,6 +164,7 @@ Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.t
 - Downloads Terraform from `https://releases.hashicorp.com/terraform/` for the requested version
 - Supports `latest` (queries HashiCorp checkpoint API, falls back to `1.9.8`)
 - Supports Windows, macOS, Linux on amd64, arm64, arm, 386
+- Verifies GPG signature of SHA256SUMS using HashiCorp's embedded public key (`gpg-verifier.ts`)
 - Sets `terraformLocation` pipeline variable after install
 - Handles proxy configuration via `tasks.getHttpProxyConfiguration()`
 
@@ -207,7 +212,7 @@ Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runn
 - `<Name>.ts` - test data/mock setup (mock runner)
 - `<Name>L0.ts` - the actual mocha test using `MockTestRunner`
 
-Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`, `ValidateTests/`, `WorkspaceTests/`, `StateTests/`, `FmtTests/`, `GetTests/`, `TestCommandTests/`, `ShowTests/`, `OutputTests/`, `CustomTests/`.
+Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`, `ValidateTests/`, `WorkspaceTests/`, `StateTests/`, `FmtTests/`, `GetTests/`, `TestCommandTests/`, `ShowTests/`, `OutputTests/`, `CustomTests/`, `ImportTests/`, `ForceUnlockTests/`, `RefreshTests/`.
 
 ### Personal dev publishing
 
@@ -226,6 +231,7 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 | `azure-pipelines-tasks-artifacts-common` | Shared artifact utilities |
 | `typescript` | Build toolchain |
 | `mocha` + `ts-node` | Test framework |
+| `openpgp` | GPG signature verification for installer downloads |
 
 ## CI/CD
 
@@ -261,7 +267,9 @@ Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local dev
 - The OCI backend does NOT support `-backend-config` CLI flags; it generates a `config-<uuid>.tf` file at runtime
 - `plan` uses `-detailed-exitcode`: exit code 2 means changes present (not an error), sets `changesPresent=true`
 - `apply` and `destroy` always inject `-auto-approve`
-- `warnIfMultipleProviders()` runs `terraform providers` and warns if multiple cloud providers are detected
+- `warnIfMultipleProviders()` runs `terraform providers` and warns if multiple cloud providers are detected (non-fatal)
+- Credential env vars are cleared via `EnvironmentVariableHelper.clearTrackedVariables()` in the `finally` block after every command
+- Installer verifies GPG signature of SHA256SUMS before trusting checksums for HashiCorp downloads
 - Client secret (ServicePrincipal) auth is deprecated in V5 and will be removed in a future version
 - `taint`/`untaint` are NOT supported (removed in Terraform 1.0); use the `-replace` flag on `plan`/`apply` instead
 
