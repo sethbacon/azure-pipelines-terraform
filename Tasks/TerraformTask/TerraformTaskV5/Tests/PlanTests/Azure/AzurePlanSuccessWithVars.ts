@@ -30,7 +30,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "code": 0,
             "stdout": "Executed successfully"
         },
-        "terraform plan -var 'env=production' -var 'region=westus2' -detailed-exitcode": {
+        "terraform plan -detailed-exitcode -var env=production -var region=westus2": {
             "code": 0,
             "stdout": "No changes. Your infrastructure matches the configuration."
         }
