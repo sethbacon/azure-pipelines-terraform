@@ -122,4 +122,39 @@ describe('TerraformInstaller Test Suite', function () {
             assert(tr.errorIssues.length > 0, 'should have an error issue');
         }, tr);
     });
+
+    // --- GPG signature verification ---
+
+    it('GPG verification success: should pass when GPG signature is valid', async () => {
+        const tp = path.join(__dirname, 'GpgVerificationSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('GPG verification failure: should fail when GPG signature is invalid', async () => {
+        const tp = path.join(__dirname, 'GpgVerificationFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('GPG signature unavailable: should succeed with warning when .sig file is missing', async () => {
+        const tp = path.join(__dirname, 'GpgSignatureUnavailable.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
 });

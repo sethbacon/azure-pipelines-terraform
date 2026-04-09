@@ -29,7 +29,12 @@ tr.registerMock('./http-client', {
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-tr.registerMock('undici', { ProxyAgent: class {} });
+tr.registerMock('undici', { ProxyAgent: class { } });
+
+// gpg-verifier: mock GPG verification as passing
+tr.registerMock('./gpg-verifier', {
+    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
+});
 
 // fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {
