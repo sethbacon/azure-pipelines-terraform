@@ -2,13 +2,12 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-const tp = path.join(__dirname, 'HashiCorpLatestSuccessL0.js');
+const tp = path.join(__dirname, 'GpgVerificationFailL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-tr.setInput('terraformVersion', 'latest');
+tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'hashicorp');
 
-// Mock os: Windows_NT so chmodSync is skipped; arch x64 -> amd64
 tr.registerMock('os', {
     type: () => 'Windows_NT',
     arch: () => 'x64'
@@ -16,13 +15,9 @@ tr.registerMock('os', {
 
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
-// Mock http-client: checkpoint API returns 1.9.8, SHA256SUMS returns matching hash
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
-        if (url.includes('checkpoint-api.hashicorp.com')) {
-            return { current_version: '1.9.8' };
-        }
-        throw new Error('Unexpected fetchJson URL: ' + url);
+        throw new Error('fetchJson should not be called. Called with: ' + url);
     },
     fetchText: async (url: string) => {
         if (url.includes('SHA256SUMS')) {
@@ -35,18 +30,18 @@ tr.registerMock('./http-client', {
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
-// gpg-verifier: mock GPG verification as passing
+// gpg-verifier: mock GPG verification as FAILING (invalid signature)
 tr.registerMock('./gpg-verifier', {
-    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
+    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => {
+        throw new Error('GPG signature verification failed for SHA256SUMS: Signature is not valid');
+    }
 });
 
-// fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
     readFileSync: (_path: string) => Buffer.from('fake-zip-content')
 });
 
-// crypto: return the expected hash so SHA256 verification passes
 tr.registerMock('crypto', {
     createHash: (_algorithm: string) => ({
         update: (_data: any) => ({

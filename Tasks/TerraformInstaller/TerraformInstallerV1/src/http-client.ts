@@ -44,3 +44,16 @@ export async function fetchText(url: string): Promise<string> {
     }
     return response.text();
 }
+
+export async function fetchBuffer(url: string): Promise<Uint8Array> {
+    if (!url.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", url));
+    }
+
+    const options = buildFetchOptions();
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+}

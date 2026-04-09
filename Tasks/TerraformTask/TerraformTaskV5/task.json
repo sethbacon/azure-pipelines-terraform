@@ -122,6 +122,7 @@
                 "fmt": "fmt",
                 "test": "test",
                 "get": "get",
+                "refresh": "refresh",
                 "custom": "custom"
             },
             "properties": {
@@ -169,7 +170,7 @@
             "type": "secureFile",
             "label": "Secure variables file (.tfvars)",
             "required": false,
-            "visibleRule": "command = plan || command = apply || command = destroy || command = import",
+            "visibleRule": "command = plan || command = apply || command = destroy || command = import || command = refresh",
             "helpMarkDown": "Select a .tfvars file from the ADO Secure Files library. The file will be downloaded to a temporary location and passed as -var-file to the terraform command. The file is automatically deleted after execution. Useful for secrets that should not be stored in source control."
         },
         {
@@ -177,7 +178,7 @@
             "type": "multiLine",
             "label": "Terraform variables (key=value)",
             "required": false,
-            "visibleRule": "command = plan || command = apply || command = destroy || command = import",
+            "visibleRule": "command = plan || command = apply || command = destroy || command = import || command = refresh",
             "helpMarkDown": "Define Terraform input variables, one per line, as key=value pairs. Each line is passed as a separate -var flag. Lines starting with # are ignored.<br><br>Example:<br>region=us-east-1<br>environment=prod<br>instance_count=3",
             "properties": {
                 "rows": "5",
@@ -238,9 +239,33 @@
             "name": "parallelism",
             "type": "string",
             "label": "Parallelism",
-            "visibleRule": "command = plan || command = apply || command = destroy",
+            "visibleRule": "command = plan || command = apply || command = destroy || command = refresh",
             "required": false,
             "helpMarkDown": "Limit the number of concurrent Terraform operations. Passed as -parallelism=N. Useful for rate-limited APIs or resource-constrained agents."
+        },
+        {
+            "name": "varFile",
+            "type": "multiLine",
+            "label": "Variable files (.tfvars)",
+            "visibleRule": "command = plan || command = apply || command = destroy || command = import || command = refresh",
+            "required": false,
+            "helpMarkDown": "Paths to .tfvars files, one per line. Each file is passed as -var-file=<path> to the terraform command. Paths are relative to the working directory.",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
+        },
+        {
+            "name": "targetResources",
+            "type": "multiLine",
+            "label": "Target resources",
+            "visibleRule": "command = plan || command = apply || command = destroy || command = refresh",
+            "required": false,
+            "helpMarkDown": "Resource addresses to target, one per line. Each address is passed as -target=<address> to the terraform command. Only the specified resources and their dependencies will be included.",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
         },
         {
             "name": "testJunitXmlPath",

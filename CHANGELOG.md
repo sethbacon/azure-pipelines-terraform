@@ -4,6 +4,42 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.6.1] — 2026-04-09
+
+### Security
+
+- **GPG signature verification**: HashiCorp downloads now verify `SHA256SUMS.sig` against embedded GPG public key (key ID `34365D9472D7468F`) before trusting SHA256 checksums — closes the #1 HIGH security finding across all code reviews
+- Hard fail if `.sig` file is present but signature verification fails; graceful degradation if `.sig` unavailable (custom mirrors)
+- InstallerV1 ESLint parity: enforce `no-floating-promises` and `return-await` as errors (matches V5)
+- Fix floating promise in InstallerV1 entry point (`run()` → `void run()`)
+
+### Added
+
+- **`refresh` command** — dedicated drift detection with full provider auth, var-file, target, parallelism, secure var file, and terraform variables support
+- **`varFile` multiline input** — first-class `-var-file` support (one path per line), visible for plan/apply/destroy/import/refresh
+- **`targetResources` multiline input** — first-class `-target` support (one address per line), visible for plan/apply/destroy/refresh
+- `openpgp@^6.0.1` dependency for OpenPGP detached signature verification
+- `gpg-verifier.ts` module with `verifyGpgSignature()` function
+- `hashicorp-gpg-key.ts` with embedded HashiCorp GPG public key
+- `fetchBuffer()` in `http-client.ts` for binary content downloads
+- `parseSha256()` extracted as pure function for testability
+- Input validation: target resource addresses validated against Terraform address regex; parallelism validated as positive integer; replace address validated
+- 8 new tests: refresh (2), var-file (1), target (1), GPG verification (3), total **158 tests** (147 V5 + 11 InstallerV1)
+
+### Changed
+
+- V5 TypeScript target upgraded from ES6 to ES2020 (Node 20 supports ES2022+)
+- Both tasks now declare `engines.node >= 20` in `package.json`
+- Refactor `appendTerraformVariables()` from string interpolation to `ToolRunner.arg()` for proper shell escaping
+- `warnIfMultipleProviders()` now catches errors internally (non-fatal)
+- `downloadZipFromHashiCorp()` fetches full SHA256SUMS content, verifies GPG signature, then parses hash
+- GPG verifier mocked in all 8 existing installer tests to prevent openpgp module interference
+
+### Fixed
+
+- Fix double-space in JSON plan command options string
+- Update 4 existing terraform variables test mocks for new `-var` arg ordering
+
 ## [0.5.2] — 2026-04-08
 
 ### Security
