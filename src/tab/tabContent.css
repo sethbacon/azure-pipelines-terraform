@@ -41,13 +41,42 @@
     font-size: 14px;
 }
 
-.ansi-bold { font-weight: bold; }
-.ansi-red { color: #cd3131; }
-.ansi-green { color: #0dbc79; }
-.ansi-yellow { color: #e5e510; }
-.ansi-blue { color: #2472c8; }
-.ansi-magenta { color: #bc3fbc; }
-.ansi-cyan { color: #11a8cd; }
-.ansi-white { color: #e5e5e5; }
-.ansi-grey { color: #808080; }
-.ansi-black { color: #333333; }
+.ansi-bold {
+    font-weight: bold;
+}
+
+.ansi-red {
+    color: #cd3131;
+}
+
+.ansi-green {
+    color: #0dbc79;
+}
+
+.ansi-yellow {
+    color: #e5e510;
+}
+
+.ansi-blue {
+    color: #2472c8;
+}
+
+.ansi-magenta {
+    color: #bc3fbc;
+}
+
+.ansi-cyan {
+    color: #11a8cd;
+}
+
+.ansi-white {
+    color: #e5e5e5;
+}
+
+.ansi-grey {
+    color: #808080;
+}
+
+.ansi-black {
+    color: #333333;
+}
