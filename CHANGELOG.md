@@ -4,6 +4,24 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.7.0] — 2026-04-09
+
+### Added
+
+- **Terraform Plan tab** in pipeline build results — displays plan output with ANSI color rendering, accessible from the build results view when the task is used
+- **`publishPlanResults` input** on the `plan` command — set a plan name (e.g. `production`) to publish plan output as a pipeline attachment visible in the Terraform Plan tab
+- Multi-plan selector dropdown when multiple plan steps publish results in the same pipeline run
+- `THIRD_PARTY_NOTICES.md` — attribution for jason-johnson/azure-pipelines-tasks-terraform and JaydenMaalouf/azure-pipelines-terraform-output reference implementations
+- New devDependencies: `azure-devops-extension-sdk`, `azure-devops-extension-api`, `react`, `react-dom`, `ts-loader`, `style-loader`, `css-loader`
+- Tab webpack entry point with TypeScript and CSS loader support
+- 1 new test: plan with `publishPlanResults` attachment publishing — **148 tests passing**
+
+### Changed
+
+- `azure-devops-extension.json`: added `terraform-plan-tab` build-results-tab contribution with `supportsTasks` filtering to V5 task GUID
+- `webpack.config.js`: added tab entry point and `index.html` copy rule
+- `plan()` method captures stdout via `execWithStdoutCapture` when `publishPlanResults` is set, writes to temp file, and publishes as `terraform-plan-results` attachment
+
 ## [0.6.1] — 2026-04-09
 
 ### Security

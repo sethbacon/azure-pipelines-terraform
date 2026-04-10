@@ -1,0 +1,223 @@
+/**
+ * Terraform Plan Tab — Azure DevOps Pipeline Build Results Tab
+ *
+ * Displays terraform plan output published as pipeline attachments.
+ * Uses the standard Azure DevOps Extension SDK pattern:
+ *   SDK.init() → SDK.ready() → config.onBuildChanged() → BuildRestClient.getAttachments()
+ *
+ * Architecture informed by studying:
+ *   - jason-johnson/azure-pipelines-tasks-terraform (MIT, Copyright 2021 Charles Zipp, 2023 Jason Johnson)
+ *   - JaydenMaalouf/azure-pipelines-terraform-output (MIT, Copyright Microsoft Corporation)
+ * See THIRD_PARTY_NOTICES.md for full attribution.
+ * No code was copied from either project. All implementation below is original.
+ */
+
+import * as React from "react";
+import * as ReactDOM from "react-dom";
+import * as SDK from "azure-devops-extension-sdk";
+import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
+import { getClient } from "azure-devops-extension-api";
+import "./tabContent.css";
+
+/** Attachment type matching jason-johnson convention for migration compatibility */
+const ATTACHMENT_TYPE = "terraform-plan-results";
+
+interface PlanAttachment {
+    name: string;
+    content: string;
+}
+
+interface TerraformPlanTabState {
+    plans: PlanAttachment[];
+    selectedIndex: number;
+    loading: boolean;
+    error: string | null;
+}
+
+/**
+ * Convert ANSI SGR escape codes (ECMA-48 standard) to HTML spans with CSS classes.
+ * Handles the subset of codes that terraform uses: bold, basic colors, and reset.
+ */
+function ansiToHtml(text: string): string {
+    const colorMap: Record<string, string> = {
+        "1": "ansi-bold",
+        "30": "ansi-black",
+        "31": "ansi-red",
+        "32": "ansi-green",
+        "33": "ansi-yellow",
+        "34": "ansi-blue",
+        "35": "ansi-magenta",
+        "36": "ansi-cyan",
+        "37": "ansi-white",
+        "90": "ansi-grey",
+    };
+
+    // Escape HTML entities first
+    let html = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    // Replace ANSI color codes with spans
+    html = html.replace(/\x1b\[([0-9;]+)m/g, (_match, codes: string) => {
+        const codeList = codes.split(";");
+        for (const code of codeList) {
+            if (code === "0") {
+                return "</span>";
+            }
+            const className = colorMap[code];
+            if (className) {
+                return `<span class="${className}">`;
+            }
+        }
+        return "";
+    });
+
+    // Strip any remaining escape sequences
+    html = html.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+
+    return html;
+}
+
+class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
+    constructor(props: {}) {
+        super(props);
+        this.state = {
+            plans: [],
+            selectedIndex: 0,
+            loading: true,
+            error: null,
+        };
+    }
+
+    public render(): JSX.Element {
+        const { plans, selectedIndex, loading, error } = this.state;
+
+        if (loading) {
+            return <div className="plan-loading">Loading terraform plans...</div>;
+        }
+
+        if (error) {
+            return <div className="plan-empty">Error: {error}</div>;
+        }
+
+        if (plans.length === 0) {
+            return (
+                <div className="plan-empty">
+                    No terraform plans have been published for this pipeline run.
+                    <br /><br />
+                    Set <code>publishPlanResults</code> on the terraform plan task to publish plan output here.
+                </div>
+            );
+        }
+
+        const selectedPlan = plans[selectedIndex];
+
+        return (
+            <div className="terraform-container">
+                {plans.length > 1 && (
+                    <div className="plan-header">
+                        <label htmlFor="plan-select">Plan:</label>
+                        <select
+                            id="plan-select"
+                            className="plan-select"
+                            value={selectedIndex}
+                            onChange={this.onPlanSelect}
+                        >
+                            {plans.map((plan, i) => (
+                                <option key={plan.name} value={i}>{plan.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+                {plans.length === 1 && (
+                    <div className="plan-header">
+                        <strong>{selectedPlan.name}</strong>
+                    </div>
+                )}
+                <pre dangerouslySetInnerHTML={{ __html: ansiToHtml(selectedPlan.content) }} />
+            </div>
+        );
+    }
+
+    private onPlanSelect = (event: React.ChangeEvent<HTMLSelectElement>): void => {
+        this.setState({ selectedIndex: parseInt(event.target.value, 10) });
+    };
+
+    public async loadPlans(build: Build): Promise<void> {
+        try {
+            const buildClient = getClient(BuildRestClient);
+            const attachments = await buildClient.getAttachments(
+                build.project.id,
+                build.id,
+                ATTACHMENT_TYPE
+            );
+
+            if (!attachments || attachments.length === 0) {
+                this.setState({ plans: [], loading: false });
+                return;
+            }
+
+            const plans: PlanAttachment[] = [];
+            const accessToken = await SDK.getAccessToken();
+            const authHeader = "Basic " + btoa(":" + accessToken);
+
+            for (const attachment of attachments) {
+                try {
+                    const response = await fetch(attachment._links.self.href, {
+                        headers: { Authorization: authHeader },
+                    });
+                    if (response.ok) {
+                        const content = await response.text();
+                        plans.push({ name: attachment.name, content });
+                    }
+                } catch (err) {
+                    console.error(`Failed to download attachment ${attachment.name}:`, err);
+                }
+            }
+
+            plans.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+            this.setState({ plans, selectedIndex: 0, loading: false });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.setState({ error: message, loading: false });
+        }
+    }
+}
+
+// Initialize the Azure DevOps Extension SDK and render the tab
+SDK.init();
+
+SDK.ready().then(() => {
+    const config = SDK.getConfiguration();
+    const container = document.getElementById("terraform-container");
+
+    if (!container) {
+        console.error("Container element not found");
+        return;
+    }
+
+    if (typeof config.onBuildChanged === "function") {
+        let tabRef: TerraformPlanTab | null = null;
+
+        ReactDOM.render(
+            <TerraformPlanTab ref={(ref) => { tabRef = ref; }} />,
+            container
+        );
+
+        config.onBuildChanged((build: Build) => {
+            if (tabRef) {
+                tabRef.loadPlans(build);
+            }
+        });
+    } else {
+        ReactDOM.render(
+            <div className="plan-empty">
+                This tab is only available in build pipeline results.
+            </div>,
+            container
+        );
+    }
+}).catch((err) => {
+    console.error("Failed to initialize Azure DevOps Extension SDK:", err);
+});

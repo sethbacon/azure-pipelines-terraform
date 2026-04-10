@@ -90,6 +90,12 @@ azure-pipelines-terraform/
 │   │   └── TerraformInstallerV1/      # Current installer task
 │   └── TerraformTask/
 │       └── TerraformTaskV5/           # Current development target
+├── src/
+│   └── tab/                           # Terraform Plan tab UI (React + ADO Extension SDK)
+│       ├── tabContent.tsx             # Tab component with ANSI rendering
+│       ├── tabContent.css             # Tab styling
+│       ├── index.html                 # Tab HTML shell
+│       └── tsconfig.json              # Tab TypeScript config
 ├── configs/                           # Extension manifest configs
 │   ├── dev.json                       # Dev publisher override
 │   ├── release.json                   # Release publisher override (sethbacon)
@@ -134,7 +140,7 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 
 - **`init`** - calls `handleBackend()` then runs `terraform init -backend-config=...`
 - **`validate`** - runs `terraform validate` (no auth needed)
-- **`plan`** - calls `handleProvider()`, runs with `-detailed-exitcode`, sets `changesPresent` output variable
+- **`plan`** - calls `handleProvider()`, runs with `-detailed-exitcode`, sets `changesPresent` output variable. When `publishPlanResults` is set, captures stdout and publishes as `terraform-plan-results` pipeline attachment for the Terraform Plan tab.
 - **`apply`** - calls `handleProvider()`, forces `-auto-approve` if not already present
 - **`destroy`** - calls `handleProvider()`, forces `-auto-approve` if not already present
 - **`show`** - calls `handleProvider()`, supports `outputTo=console|file` and `outputFormat=json|default`
@@ -272,6 +278,7 @@ Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local dev
 - Installer verifies GPG signature of SHA256SUMS before trusting checksums for HashiCorp downloads
 - Client secret (ServicePrincipal) auth is deprecated in V5 and will be removed in a future version
 - `taint`/`untaint` are NOT supported (removed in Terraform 1.0); use the `-replace` flag on `plan`/`apply` instead
+- The **Terraform Plan tab** is a build-results-tab extension contribution that reads `terraform-plan-results` pipeline attachments. The tab UI is in `src/tab/` and bundled via webpack. The attachment type and naming convention is compatible with jason-johnson/azure-pipelines-tasks-terraform for migration.
 
 ## Active Initiatives
 

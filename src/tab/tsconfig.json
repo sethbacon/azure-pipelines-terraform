@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "module": "amd",
+        "moduleResolution": "node",
+        "target": "es6",
+        "jsx": "react",
+        "lib": [
+            "es6",
+            "dom"
+        ],
+        "outDir": "../../build/tab",
+        "sourceMap": true,
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "types": [
+            "react",
+            "node"
+        ]
+    },
+    "include": [
+        "./**/*.tsx",
+        "./**/*.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}

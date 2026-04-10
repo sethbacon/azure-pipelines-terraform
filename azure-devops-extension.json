@@ -2,12 +2,15 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "0.6.1",
+    "version": "0.7.0",
     "publisher": "sethbacon",
     "targets": [
         {
             "id": "Microsoft.VisualStudio.Services"
         }
+    ],
+    "scopes": [
+        "vso.build"
     ],
     "description": "Install Terraform and run Terraform commands to manage resources on Azure, AWS, GCP and OCI.",
     "public": false,
@@ -73,6 +76,10 @@
             "path": "Tasks/TerraformInstaller"
         },
         {
+            "path": "tab",
+            "addressable": true
+        },
+        {
             "path": "images/1_AWS_service_endpoint.PNG",
             "addressable": true
         },
@@ -110,6 +117,22 @@
         "uri": "https://github.com/sethbacon/azure-pipelines-terraform"
     },
     "contributions": [
+        {
+            "id": "terraform-plan-tab",
+            "type": "ms.vss-build-web.build-results-tab",
+            "description": "A tab to show terraform plan output in pipeline results",
+            "targets": [
+                "ms.vss-build-web.build-results-view"
+            ],
+            "properties": {
+                "name": "Terraform Plan",
+                "uri": "tab/index.html",
+                "supportsTasks": [
+                    "981E87CD-B686-4A9E-B09E-B4AFDEDF126B"
+                ],
+                "dynamic": true
+            }
+        },
         {
             "id": "custom-terraform-installer-task",
             "type": "ms.vss-distributed-task.task",
