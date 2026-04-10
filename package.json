@@ -22,8 +22,8 @@
         "test:all": "cd Tasks/TerraformTask/TerraformTaskV5 && npm test"
     },
     "devDependencies": {
-        "azure-pipelines-task-lib": "^4.1.0",
-        "azure-pipelines-tool-lib": "^2.0.0-preview",
+        "azure-pipelines-task-lib": "^5.2.8",
+        "azure-pipelines-tool-lib": "^2.0.12",
         "azure-devops-node-api": "^12.0.0",
         "azure-devops-extension-sdk": "^4.0.2",
         "azure-devops-extension-api": "^4.245.1",
