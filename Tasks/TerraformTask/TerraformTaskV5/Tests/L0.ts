@@ -2175,4 +2175,18 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* publish plan results tests */
+
+    it('azure plan should succeed and publish plan results as attachment', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessPublishResults.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessPublishResultsL0 should have succeeded.'));
+        }, tr);
+    });
+
 });

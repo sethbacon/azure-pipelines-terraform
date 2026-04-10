@@ -1,0 +1,82 @@
+.terraform-container {
+    padding: 16px;
+    font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.terraform-container pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+}
+
+.plan-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+}
+
+.plan-select {
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+.plan-empty {
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #666;
+    font-size: 14px;
+}
+
+.plan-loading {
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #999;
+    font-size: 14px;
+}
+
+.ansi-bold {
+    font-weight: bold;
+}
+
+.ansi-red {
+    color: #cd3131;
+}
+
+.ansi-green {
+    color: #0dbc79;
+}
+
+.ansi-yellow {
+    color: #e5e510;
+}
+
+.ansi-blue {
+    color: #2472c8;
+}
+
+.ansi-magenta {
+    color: #bc3fbc;
+}
+
+.ansi-cyan {
+    color: #11a8cd;
+}
+
+.ansi-white {
+    color: #e5e5e5;
+}
+
+.ansi-grey {
+    color: #808080;
+}
+
+.ansi-black {
+    color: #333333;
+}

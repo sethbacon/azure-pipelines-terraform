@@ -166,6 +166,14 @@
             "required": false
         },
         {
+            "name": "publishPlanResults",
+            "type": "string",
+            "label": "Publish plan results",
+            "required": false,
+            "visibleRule": "command = plan",
+            "helpMarkDown": "Publish the terraform plan output to a 'Terraform Plan' tab in the pipeline results. Enter a name for the plan (e.g. 'production' or 'stage'). Leave empty to disable.<br><br>The plan output is published as a pipeline attachment and displayed with ANSI color rendering in the build results tab."
+        },
+        {
             "name": "secureVarsFile",
             "type": "secureFile",
             "label": "Secure variables file (.tfvars)",

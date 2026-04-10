@@ -6,6 +6,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { v4 as uuidV4 } from 'uuid';
 import fs = require('fs');
+import os = require('os');
 
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
@@ -343,10 +344,26 @@ export abstract class BaseTerraformCommandHandler {
         await this.handleProvider(planCommand);
         await this.warnIfMultipleProviders();
 
-        const result = await terraformTool.execAsync(<IExecOptions>{
-            cwd: planCommand.workingDirectory,
-            ignoreReturnCode: true
-        });
+        const publishPlanResults = tasks.getInput("publishPlanResults");
+
+        let result: number;
+        if (publishPlanResults) {
+            const commandOutput = await this.execWithStdoutCapture(terraformTool, {
+                cwd: planCommand.workingDirectory,
+                ignoreReturnCode: true
+            });
+            result = commandOutput.code;
+
+            const attachmentPath = path.join(os.tmpdir(), `terraform-plan-${uuidV4()}.txt`);
+            fs.writeFileSync(attachmentPath, commandOutput.stdout, "utf-8");
+            tasks.addAttachment("terraform-plan-results", publishPlanResults, attachmentPath);
+            this.tempFiles.push(attachmentPath);
+        } else {
+            result = await terraformTool.execAsync(<IExecOptions>{
+                cwd: planCommand.workingDirectory,
+                ignoreReturnCode: true
+            });
+        }
 
         if (result !== 0 && result !== 2) {
             throw new Error(tasks.loc("TerraformPlanFailed", result));
