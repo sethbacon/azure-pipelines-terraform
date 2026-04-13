@@ -22,12 +22,11 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
 
         const accessKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "username", true)!;
         const secretKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "password", true)!;
-        if (accessKey) { tasks.setSecret(accessKey); }
         if (secretKey) { tasks.setSecret(secretKey); }
 
         // Use environment variables instead of CLI args to avoid exposing secrets in process listings
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey, true);
     }
 
     private async setupBackendWIF(backendServiceName: string): Promise<void> {
@@ -72,7 +71,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
                 const secretAccessKey = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "password", false);
                 if (secretAccessKey) { tasks.setSecret(secretAccessKey); }
                 EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId!);
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey!);
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey!, true);
             }
         }
     }

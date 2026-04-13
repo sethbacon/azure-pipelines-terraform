@@ -170,7 +170,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
                 if (fallbackToIdTokenGeneration) {
                     tasks.debug("ID token generation fallback is enabled, generating ID Token.");
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_TOKEN", workloadIdentityFederationCredentials.oidcToken);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_TOKEN", workloadIdentityFederationCredentials.oidcToken, true);
                 } else {
                     tasks.debug("ID token generation fallback is disabled, using ID Token Refresh.");
                     if (useCliFlagsForBackend) {
@@ -181,7 +181,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     }
                     const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!;
                     if (accessToken) { tasks.setSecret(accessToken); }
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true);
                 }
 
                 break;
@@ -193,7 +193,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 const servicePrincipalCredentials = this.getServicePrincipalCredentials(serviceConnectionID);
                 if (servicePrincipalCredentials.servicePrincipalKey) { tasks.setSecret(servicePrincipalCredentials.servicePrincipalKey); }
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId);
-                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey);
+                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey, true);
                 break;
             }
         }
