@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+
+  # npm — TerraformTaskV5
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformTask/TerraformTaskV5"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+
+  # npm — TerraformInstallerV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformInstaller/TerraformInstallerV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+
+  # npm — root (build tooling)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 5
