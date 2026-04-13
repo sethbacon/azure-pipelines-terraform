@@ -4,6 +4,22 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.7.1] — 2026-04-13
+
+### Security
+
+- **Secret masking**: `AWS_SECRET_ACCESS_KEY`, `ARM_OIDC_TOKEN`, `ARM_OIDC_REQUEST_TOKEN`, `ARM_CLIENT_SECRET`, and `TF_TOKEN_app_terraform_io` are now explicitly registered via `tasks.setSecret()` when set as environment variables — the `isSecret: true` flag was missing from all provider handler calls, risking accidental log exposure
+- **`binaryName` input validation**: restrict accepted values to `terraform`, `tofu`, `terragrunt` — prevents arbitrary binary execution from pipeline task input
+
+### Added
+
+- `.github/CODEOWNERS` — `@sethbacon` owns all files; `.github/`, `configs/`, and `azure-devops-extension.json` require explicit owner review
+- `.github/dependabot.yml` — weekly automated dependency updates for GitHub Actions and npm (TerraformTaskV5, TerraformInstallerV1, root)
+
+### Changed
+
+- `THIRD_PARTY_NOTICES.md`: add language tag to fenced code blocks
+
 ## [0.7.0] — 2026-04-09
 
 ### Added
