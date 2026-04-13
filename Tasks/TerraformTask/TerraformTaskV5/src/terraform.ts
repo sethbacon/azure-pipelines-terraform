@@ -1,8 +1,14 @@
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner'
 import { TerraformBaseCommandInitializer } from './terraform-commands'
 
+const ALLOWED_BINARY_NAMES = ["terraform", "tofu", "terragrunt"];
+
 export function getBinaryName(tasks: typeof import('azure-pipelines-task-lib/task')): string {
-    return tasks.getInput("binaryName", false) || "terraform";
+    const name = tasks.getInput("binaryName", false) || "terraform";
+    if (!ALLOWED_BINARY_NAMES.includes(name)) {
+        throw new Error(`Invalid binaryName '${name}'. Allowed values: ${ALLOWED_BINARY_NAMES.join(', ')}`);
+    }
+    return name;
 }
 
 export interface ITerraformToolHandler {

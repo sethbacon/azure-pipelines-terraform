@@ -1,0 +1,9 @@
+# Default owner for all files
+* @sethbacon
+
+# CI/CD workflows require explicit review
+.github/ @sethbacon
+
+# Release configuration
+configs/ @sethbacon
+azure-devops-extension.json @sethbacon

@@ -50,8 +50,9 @@ Closes #12
    - `npm test` (all tests pass)
 4. Rebase on `origin/development` before pushing: `git rebase origin/development`
 5. Open PR to `development` with a `## Changelog` section in the body
-6. Squash-merge when approved
-7. Never merge directly to `main`
+6. Squash-merge when approved (only merge strategy allowed)
+7. Feature branches are deleted automatically after merge
+8. Never merge directly to `main`
 
 ## Release Process
 
@@ -279,6 +280,65 @@ Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local dev
 - Client secret (ServicePrincipal) auth is deprecated in V5 and will be removed in a future version
 - `taint`/`untaint` are NOT supported (removed in Terraform 1.0); use the `-replace` flag on `plan`/`apply` instead
 - The **Terraform Plan tab** is a build-results-tab extension contribution that reads `terraform-plan-results` pipeline attachments. The tab UI is in `src/tab/` and bundled via webpack. The attachment type and naming convention is compatible with jason-johnson/azure-pipelines-tasks-terraform for migration.
+
+## Repository Security Hardening (applied 2026-04-09)
+
+### Branch Protection
+
+**`main` branch:**
+
+- Required status checks (strict — branch must be up-to-date): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`
+- Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
+- Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
+- Required linear history: yes (squash/rebase only, no merge commits)
+- Required conversation resolution: yes
+- Force pushes: blocked
+- Branch deletion: blocked
+
+**`development` branch:**
+
+- Required status checks (non-strict): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`
+- Required linear history: yes
+- Force pushes: blocked
+- Branch deletion: blocked
+- Admin bypass: allowed (owner can push directly for admin tasks)
+
+### Merge Strategy
+
+- **Squash merge only** — merge commits and rebase merges are disabled
+- **Delete branch on merge** — enabled; feature/fix branches are cleaned up automatically
+- **Allow update branch** — enabled; PRs can pull in base branch changes via GitHub UI
+- **Web commit signoff required** — enabled; all web-based commits require DCO signoff
+
+### Dependency Management
+
+- **Dependabot vulnerability alerts** — enabled
+- **Dependabot automated security fixes** — enabled
+- **Dependabot version updates** — configured via `.github/dependabot.yml` for:
+  - GitHub Actions (weekly)
+  - npm: TerraformTaskV5, TerraformInstallerV1, root (weekly)
+
+### Code Ownership
+
+- **CODEOWNERS** file at `.github/CODEOWNERS` — `@sethbacon` owns all files; `.github/`, `configs/`, and `azure-devops-extension.json` require explicit owner review
+
+### Security Features (GitHub)
+
+- Secret scanning: enabled
+- Secret scanning push protection: enabled
+- `npm audit --omit=dev --audit-level=high` in CI
+- All GitHub Actions pinned to full commit SHAs
+
+### Repository Topics
+
+`terraform`, `azure-devops`, `azure-pipelines`, `infrastructure-as-code`, `azure-devops-extension`, `devops`
+
+### Remaining Recommendations (not yet applied)
+
+- **Enable code scanning** (CodeQL) for TypeScript static analysis — requires GitHub Advanced Security or a public repo CodeQL workflow
+- **Enable secret scanning non-provider patterns and validity checks** for broader secret detection
+- **Add a second collaborator/maintainer** to reduce bus factor (currently sole maintainer: @sethbacon)
+- **Consider adding a tag protection rule** to prevent deletion of release tags (`v*.*.*`)
 
 ## Active Initiatives
 

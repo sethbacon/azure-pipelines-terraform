@@ -13,7 +13,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
     public async handleBackend(_terraformToolRunner: ToolRunner): Promise<void> {
         const token = tasks.getInput("backendHCPToken", true)!;
         if (token) { tasks.setSecret(token); }
-        EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token);
+        EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token, true);
 
         const organization = tasks.getInput("backendHCPOrganization", false);
         if (organization && organization.trim()) {

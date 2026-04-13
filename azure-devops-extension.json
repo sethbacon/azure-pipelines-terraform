@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "0.7.0",
+    "version": "0.7.1",
     "publisher": "sethbacon",
     "targets": [
         {
@@ -198,7 +198,7 @@
                             {
                                 "id": "username",
                                 "name": "Access key id",
-                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value \u00e2\u20ac\u201d this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
@@ -209,7 +209,7 @@
                             {
                                 "id": "password",
                                 "name": "Secret access key",
-                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value \u00e2\u20ac\u201d this field is ignored at runtime.",
                                 "inputMode": "passwordbox",
                                 "isConfidential": true,
                                 "validation": {
@@ -243,7 +243,7 @@
             "properties": {
                 "name": "PTTGoogleCloudServiceEndpoint",
                 "displayName": "Pipeline GCP for Terraform",
-                "helpMarkDown": "For service account key auth: [Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts). For Workload Identity Federation (OIDC): create a placeholder connection — WIF configuration is set in the pipeline task inputs.",
+                "helpMarkDown": "For service account key auth: [Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts). For Workload Identity Federation (OIDC): create a placeholder connection \u00e2\u20ac\u201d WIF configuration is set in the pipeline task inputs.",
                 "url": {
                     "displayName": "Server Url",
                     "helpText": "GCP homepage",
@@ -264,7 +264,7 @@
                             {
                                 "id": "Issuer",
                                 "name": "Client email",
-                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value \u00e2\u20ac\u201d this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
@@ -276,7 +276,7 @@
                             {
                                 "id": "Audience",
                                 "name": "Token uri",
-                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value \u00e2\u20ac\u201d this field is ignored at runtime.",
                                 "inputMode": "textbox",
                                 "isConfidential": false,
                                 "validation": {
@@ -292,7 +292,7 @@
                     {
                         "id": "project",
                         "name": "Project id",
-                        "description": "The GCP project id. Required for service account key auth. For Workload Identity Federation (OIDC), this is optional — the project is set in the pipeline task.",
+                        "description": "The GCP project id. Required for service account key auth. For Workload Identity Federation (OIDC), this is optional \u00e2\u20ac\u201d the project is set in the pipeline task.",
                         "inputMode": "textbox",
                         "isConfidential": false,
                         "validation": {

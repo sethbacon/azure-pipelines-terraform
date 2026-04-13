@@ -14,7 +14,7 @@ and the general architecture of the Terraform Plan tab (pipeline task publishes 
 as a build attachment; extension tab reads and renders it) were informed by studying this
 extension. No code was copied. All implementation is original.
 
-```
+```txt
 MIT License
 
 Copyright (c) 2021 Charles Zipp
@@ -50,7 +50,7 @@ The webpack configuration pattern for bundling Azure DevOps extension tab UI alo
 pipeline tasks, and the `dynamic: true` contribution property were informed by studying
 this extension. No code was copied. All implementation is original.
 
-```
+```txt
 MIT License
 
 Copyright (c) Microsoft Corporation. All rights reserved.
