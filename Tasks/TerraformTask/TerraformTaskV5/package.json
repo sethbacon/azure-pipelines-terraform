@@ -23,6 +23,10 @@
     "azure-pipelines-tasks-securefiles-common": "^2.272.0",
     "uuid": "^9.0.1"
   },
+  "overrides": {
+    "serialize-javascript": "^7.0.0",
+    "diff": "^8.0.3"
+  },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^20.11.0",
