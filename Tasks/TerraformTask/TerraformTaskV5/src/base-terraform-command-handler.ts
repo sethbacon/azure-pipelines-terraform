@@ -1,12 +1,15 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { getSecureVarFileArgs } from './secure-file-loader';
+import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { v4 as uuidV4 } from 'uuid';
 import fs = require('fs');
 import os = require('os');
+
+/** Validates Terraform resource addresses (e.g. `aws_instance.foo`, `module.bar["key"]`). */
+export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w\-]*(\[[^\]]+\])?)*$/;
 
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
@@ -68,7 +71,7 @@ export abstract class BaseTerraformCommandHandler {
     protected prependReplaceFlag(args: string): string {
         const replaceAddress = tasks.getInput("replaceAddress", false);
         if (replaceAddress) {
-            if (!/^[a-zA-Z_][\w.\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w.\-]*(\[[^\]]+\])?)*$/.test(replaceAddress)) {
+            if (!RESOURCE_ADDRESS_RE.test(replaceAddress)) {
                 throw new Error(`Invalid replace address '${replaceAddress}': must be a valid Terraform resource address`);
             }
             return `-replace=${replaceAddress} ${args}`;
@@ -117,7 +120,7 @@ export abstract class BaseTerraformCommandHandler {
         if (!targetResources) return args;
         const lines = targetResources.split('\n').map(l => l.trim()).filter(l => l);
         for (const address of lines) {
-            if (!/^[a-zA-Z_][\w.\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w.\-]*(\[[^\]]+\])?)*$/.test(address)) {
+            if (!RESOURCE_ADDRESS_RE.test(address)) {
                 throw new Error(`Invalid target address '${address}': must be a valid Terraform resource address`);
             }
         }
@@ -166,7 +169,6 @@ export abstract class BaseTerraformCommandHandler {
 
         if (this.secureFileId) {
             try {
-                const { SecureFileLoader } = require('./secure-file-loader');
                 new SecureFileLoader().deleteSecureFile(this.secureFileId);
             } catch (err) {
                 tasks.debug(`Failed to clean up secure file: ${err}`);

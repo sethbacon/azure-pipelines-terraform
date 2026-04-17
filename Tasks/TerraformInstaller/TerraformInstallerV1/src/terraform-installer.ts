@@ -13,7 +13,7 @@ const terraformToolName = "terraform";
 const isWindows = os.type().match(/^Win/);
 
 /** Fallback version used when the HashiCorp checkpoint API is unreachable. Update periodically. */
-const FALLBACK_TERRAFORM_VERSION = '1.9.8';
+const FALLBACK_TERRAFORM_VERSION = '1.14.8';
 
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const downloadSource = tasks.getInput("downloadSource") || "hashicorp";

@@ -2263,4 +2263,16 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* resource address regex tests */
+
+    it('RESOURCE_ADDRESS_RE should accept valid and reject invalid addresses', async () => {
+        let tp = path.join(__dirname, './ResourceAddressTests/ResourceAddress.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
 });
