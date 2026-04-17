@@ -43,6 +43,10 @@ tr.registerMock('./gpg-verifier', {
     verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
 });
 
+tr.registerMock('./cosign-verifier', {
+    verifyCosignSignature: async () => { }
+});
+
 // fs: mock readFileSync (for verifySha256) and chmodSync (no-op, Windows mock)
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },

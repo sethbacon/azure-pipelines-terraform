@@ -16,15 +16,27 @@
         "Minor": "218",
         "Patch": "0"
     },
-    "instanceNameFormat": "Install Terraform $(terraformVersion)",
+    "instanceNameFormat": "Install $(binary) $(terraformVersion)",
     "inputs": [
+        {
+            "name": "binary",
+            "type": "pickList",
+            "label": "Binary",
+            "defaultValue": "terraform",
+            "required": true,
+            "helpMarkDown": "Which IaC binary to install: Terraform (HashiCorp) or OpenTofu.",
+            "options": {
+                "terraform": "Terraform (HashiCorp)",
+                "tofu": "OpenTofu"
+            }
+        },
         {
             "name": "terraformVersion",
             "type": "string",
             "label": "Version",
             "defaultValue": "latest",
             "required": true,
-            "helpMarkDown": "The version of Terraform to install. Use 'latest' to install the current latest release."
+            "helpMarkDown": "The version to install. Use 'latest' to install the current latest release. Applies to both Terraform and OpenTofu."
         },
         {
             "name": "downloadSource",
@@ -32,7 +44,8 @@
             "label": "Download source",
             "defaultValue": "hashicorp",
             "required": true,
-            "helpMarkDown": "Where to download the Terraform binary from.",
+            "visibleRule": "binary = terraform",
+            "helpMarkDown": "Where to download the Terraform binary from. OpenTofu always downloads from GitHub releases.",
             "options": {
                 "hashicorp": "HashiCorp official releases (releases.hashicorp.com)",
                 "registry": "Private registry (terraform-registry-backend)",
@@ -72,8 +85,17 @@
             "label": "Require GPG signature verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "downloadSource = hashicorp || downloadSource = mirror",
+            "visibleRule": "binary = terraform && downloadSource = hashicorp || binary = terraform && downloadSource = mirror",
             "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Disable for mirrors that do not serve .sig files."
+        },
+        {
+            "name": "requireCosignVerification",
+            "type": "boolean",
+            "label": "Require cosign signature verification",
+            "defaultValue": "false",
+            "required": false,
+            "visibleRule": "binary = tofu",
+            "helpMarkDown": "When enabled, fail if cosign is not available on the agent or the signature cannot be verified. When disabled (default), cosign verification is attempted but skipped if cosign is not installed."
         }
     ],
     "execution": {
@@ -92,14 +114,15 @@
         }
     ],
     "messages": {
-        "VerifyTerraformInstallation": "Verifying Terraform installation...",
+        "VerifyTerraformInstallation": "Verifying installation...",
         "InputVersionNotValidSemanticVersion": "Input version %s is not a valid semantic version",
-        "TerraformNotFoundInFolder": "Terraform executable not found in path %s",
+        "TerraformNotFoundInFolder": "Executable not found in path %s",
         "OperatingSystemNotSupported": "Operating system %s is not supported",
         "ArchitectureNotSupported": "Architecture %s is not supported",
-        "TerraformDownloadFailed": "Failed to download Terraform from url %s. Error: %s",
-        "TerraformVersionNotFound": "Unable to get latest version from source, defaulting to 1.9.8",
+        "TerraformDownloadFailed": "Failed to download binary from url %s. Error: %s",
+        "TerraformVersionNotFound": "Unable to get latest version from source, using fallback version",
         "GettingLatestTerraformVersion": "Getting latest Terraform version.",
+        "GettingLatestOpenTofuVersion": "Getting latest OpenTofu version from GitHub releases.",
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
         "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
