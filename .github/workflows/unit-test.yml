@@ -26,42 +26,56 @@ jobs:
         run: node scripts/check-versions.js
 
   build-and-test-v5:
-    name: Build and Test V5
-    runs-on: ubuntu-latest
+    name: Build and Test V5 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: Tasks/TerraformTask/TerraformTaskV5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "20"
       - name: Install dependencies
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm install --include=dev
+        run: npm install --include=dev
       - name: Audit production dependencies
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Lint
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/ Tests/
+        run: npx eslint src/ Tests/
       - name: Compile TypeScript
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run compile
+        run: npm run compile
       - name: Run unit tests with coverage
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run test:coverage
+        run: npm run test:coverage
 
   build-and-test-installer-v1:
-    name: Build and Test Installer V1
-    runs-on: ubuntu-latest
+    name: Build and Test Installer V1 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "20"
       - name: Install dependencies
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm install --include=dev
+        run: npm install --include=dev
       - name: Audit production dependencies
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Lint
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npx eslint src/
+        run: npx eslint src/
       - name: Compile TypeScript
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm run compile
+        run: npm run compile
       - name: Run unit tests
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm test
+        run: npm test
 
   build-and-test-tab:
     name: Build and Test Tab
