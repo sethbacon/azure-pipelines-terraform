@@ -3,6 +3,7 @@ import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
+import { writeSecretFile } from './secure-temp';
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
@@ -24,7 +25,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             .replace('_begin_', '-----BEGIN PRIVATE KEY-----')
             .replace('_end_', '-----END PRIVATE KEY-----');
         const privateKeyFilePath = path.join(os.tmpdir(), `keyfile-${uuidV4()}.pem`);
-        fs.writeFileSync(privateKeyFilePath, privateKey, { mode: 0o600 });
+        writeSecretFile(privateKeyFilePath, privateKey);
         this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
     }
