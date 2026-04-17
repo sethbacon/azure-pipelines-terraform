@@ -2,13 +2,12 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-const tp = path.join(__dirname, 'HashiCorpLatestSuccessL0.js');
+const tp = path.join(__dirname, 'OpenTofuSpecificVersionSuccessL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-tr.setInput('terraformVersion', 'latest');
-tr.setInput('downloadSource', 'hashicorp');
+tr.setInput('binary', 'tofu');
+tr.setInput('terraformVersion', '1.11.6');
 
-// Mock os: Windows_NT so chmodSync is skipped; arch x64 -> amd64
 tr.registerMock('os', {
     type: () => 'Windows_NT',
     arch: () => 'x64'
@@ -16,41 +15,40 @@ tr.registerMock('os', {
 
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
-// Mock http-client: checkpoint API returns 1.9.8, SHA256SUMS returns matching hash
+// Mock http-client: specific version skips GitHub API; only SHA256SUMS is fetched
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
-        if (url.includes('checkpoint-api.hashicorp.com')) {
-            return { current_version: '1.9.8' };
-        }
-        throw new Error('Unexpected fetchJson URL: ' + url);
+        throw new Error('fetchJson should not be called for specific version. Called with: ' + url);
     },
     fetchText: async (url: string) => {
         if (url.includes('SHA256SUMS')) {
-            return `${EXPECTED_SHA256}  terraform_1.9.8_windows_amd64.zip\n`;
+            return `${EXPECTED_SHA256}  tofu_1.11.6_windows_amd64.zip\n`;
         }
         throw new Error('Unexpected fetchText URL: ' + url);
+    },
+    fetchBuffer: async (_url: string) => {
+        throw new Error('fetchBuffer should not be called in this test');
     }
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
-// gpg-verifier: mock GPG verification as passing
 tr.registerMock('./gpg-verifier', {
-    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
+    verifyGpgSignature: async () => { }
 });
 
 tr.registerMock('./cosign-verifier', {
     verifyCosignSignature: async () => { }
 });
 
-// fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
-    readFileSync: (_path: string) => Buffer.from('fake-zip-content')
+    readFileSync: (_path: string) => Buffer.from('fake-zip-content'),
+    writeFileSync: (_path: string, _content: any) => { },
+    unlinkSync: (_path: string) => { }
 });
 
-// crypto: return the expected hash so SHA256 verification passes
 tr.registerMock('crypto', {
     createHash: (_algorithm: string) => ({
         update: (_data: any) => ({
@@ -61,16 +59,16 @@ tr.registerMock('crypto', {
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,
-    downloadTool: async (_url: string, _fileName: string) => '/tmp/terraform.zip',
-    extractZip: async (_zipPath: string) => '/tmp/terraform-extracted',
-    cacheDir: async (_srcPath: string, _tool: string, _version: string) => '/tmp/terraform-cached',
+    downloadTool: async (_url: string, _fileName: string) => '/tmp/tofu.zip',
+    extractZip: async (_zipPath: string) => '/tmp/tofu-extracted',
+    cacheDir: async (_srcPath: string, _tool: string, _version: string) => '/tmp/tofu-cached',
     cleanVersion: (version: string) => version,
     prependPath: (_toolPath: string) => { }
 });
 
 const a: ma.TaskLibAnswers = {
     'find': {
-        '/tmp/terraform-cached': ['/tmp/terraform-cached/terraform.exe']
+        '/tmp/tofu-cached': ['/tmp/tofu-cached/tofu.exe']
     }
 };
 

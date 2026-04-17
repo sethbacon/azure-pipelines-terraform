@@ -168,4 +168,39 @@ describe('TerraformInstaller Test Suite', function () {
             assert(tr.errorIssues.length > 0, 'should have an error issue');
         }, tr);
     });
+
+    // --- OpenTofu download ---
+
+    it('opentofu latest: should resolve version from GitHub API and download', async () => {
+        const tp = path.join(__dirname, 'OpenTofuLatestSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('opentofu specific version: should skip GitHub API and download directly', async () => {
+        const tp = path.join(__dirname, 'OpenTofuSpecificVersionSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('opentofu cached: should use cached tool and skip download', async () => {
+        const tp = path.join(__dirname, 'OpenTofuCachedSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
 });

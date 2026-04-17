@@ -2,33 +2,35 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-const tp = path.join(__dirname, 'CachedInstallSuccessL0.js');
+const tp = path.join(__dirname, 'OpenTofuCachedSuccessL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-tr.setInput('terraformVersion', '1.9.8');
-tr.setInput('downloadSource', 'hashicorp');
+tr.setInput('binary', 'tofu');
+tr.setInput('terraformVersion', '1.11.6');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
     arch: () => 'x64'
 });
 
-// http-client should NOT be called when tool is cached (no download, no SHA256)
+// http-client should NOT be called when tool is cached
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
         throw new Error('fetchJson should not be called when tool is cached. Called with: ' + url);
     },
     fetchText: async (url: string) => {
         throw new Error('fetchText should not be called when tool is cached. Called with: ' + url);
+    },
+    fetchBuffer: async (url: string) => {
+        throw new Error('fetchBuffer should not be called when tool is cached. Called with: ' + url);
     }
 });
 
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
-// gpg-verifier: mock to prevent openpgp from loading
 tr.registerMock('./gpg-verifier', {
-    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
+    verifyGpgSignature: async () => { }
 });
 
 tr.registerMock('./cosign-verifier', {
@@ -36,8 +38,7 @@ tr.registerMock('./cosign-verifier', {
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
-    // findLocalTool returns a path, indicating the tool is already cached
-    findLocalTool: (_toolName: string, _version: string) => '/tmp/terraform-cached',
+    findLocalTool: (_toolName: string, _version: string) => '/tmp/tofu-cached',
     downloadTool: async (_url: string, _fileName: string) => {
         throw new Error('downloadTool should not be called when tool is cached');
     },
@@ -53,7 +54,7 @@ tr.registerMock('azure-pipelines-tool-lib/tool', {
 
 const a: ma.TaskLibAnswers = {
     'find': {
-        '/tmp/terraform-cached': ['/tmp/terraform-cached/terraform.exe']
+        '/tmp/tofu-cached': ['/tmp/tofu-cached/tofu.exe']
     }
 };
 

@@ -33,6 +33,10 @@ tr.registerMock('./gpg-verifier', {
     verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
 });
 
+tr.registerMock('./cosign-verifier', {
+    verifyCosignSignature: async () => { }
+});
+
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,
     downloadTool: async (url: string, _fileName: string) => {

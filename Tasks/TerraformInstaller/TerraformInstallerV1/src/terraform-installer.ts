@@ -8,14 +8,25 @@ import crypto = require('crypto');
 import { v4 as uuidV4 } from 'uuid';
 import { fetchJson, fetchText } from './http-client';
 import { verifyGpgSignature } from './gpg-verifier';
+import { verifyCosignSignature } from './cosign-verifier';
 
 const terraformToolName = "terraform";
+const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
 
 /** Fallback version used when the HashiCorp checkpoint API is unreachable. Update periodically. */
 const FALLBACK_TERRAFORM_VERSION = '1.14.8';
 
+/** Fallback version used when the OpenTofu GitHub API is unreachable. Update periodically. */
+const FALLBACK_TOFU_VERSION = '1.11.6';
+
 export async function downloadTerraform(inputVersion: string): Promise<string> {
+    const binary = tasks.getInput("binary") || "terraform";
+
+    if (binary === "tofu") {
+        return downloadTofu(inputVersion);
+    }
+
     const downloadSource = tasks.getInput("downloadSource") || "hashicorp";
 
     // Step 1: Resolve version string (may require an API call for 'latest')
@@ -257,9 +268,13 @@ function getHashiCorpDownloadUrl(version: string): string {
 }
 
 function findTerraformExecutable(rootFolder: string): string {
-    const terraformPath = path.join(rootFolder, terraformToolName + getExecutableExtension());
+    return findExecutable(rootFolder, terraformToolName);
+}
+
+function findExecutable(rootFolder: string, toolName: string): string {
+    const execPath = path.join(rootFolder, toolName + getExecutableExtension());
     const allPaths = tasks.find(rootFolder);
-    const matchingResultFiles = tasks.match(allPaths, terraformPath, rootFolder);
+    const matchingResultFiles = tasks.match(allPaths, execPath, rootFolder);
     return matchingResultFiles[0];
 }
 
@@ -268,4 +283,85 @@ function getExecutableExtension(): string {
         return ".exe";
     }
     return "";
+}
+
+// --- OpenTofu ---
+
+async function downloadTofu(inputVersion: string): Promise<string> {
+    const resolvedVersion = await resolveVersionFromOpenTofu(inputVersion);
+    const version = tools.cleanVersion(resolvedVersion);
+    if (!version) {
+        throw new Error(tasks.loc("InputVersionNotValidSemanticVersion", resolvedVersion));
+    }
+
+    let cachedToolPath = tools.findLocalTool(tofuToolName, version);
+
+    if (!cachedToolPath) {
+        const zipPath = await downloadZipFromOpenTofu(version);
+        const unzippedPath = await tools.extractZip(zipPath);
+        cachedToolPath = await tools.cacheDir(unzippedPath, tofuToolName, version);
+        tasks.setVariable('terraformDownloadedFrom', 'opentofu');
+    } else {
+        tasks.setVariable('terraformDownloadedFrom', 'cache');
+    }
+
+    const tofuPath = findExecutable(cachedToolPath, tofuToolName);
+    if (!tofuPath) {
+        throw new Error(tasks.loc("TerraformNotFoundInFolder", cachedToolPath));
+    }
+
+    if (!isWindows) {
+        fs.chmodSync(tofuPath, "755");
+    }
+
+    tasks.setVariable('terraformLocation', tofuPath);
+    return tofuPath;
+}
+
+async function resolveVersionFromOpenTofu(inputVersion: string): Promise<string> {
+    if (inputVersion.toLowerCase() !== 'latest') {
+        return inputVersion;
+    }
+    console.log(tasks.loc("GettingLatestOpenTofuVersion"));
+    try {
+        const data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/opentofu/opentofu/releases/latest');
+        if (!data.tag_name) {
+            throw new Error("GitHub API returned invalid response: missing tag_name");
+        }
+        // tag_name is "v1.11.6" — strip the leading "v"
+        return data.tag_name.replace(/^v/, '');
+    } catch {
+        console.warn(tasks.loc("TerraformVersionNotFound"));
+        return FALLBACK_TOFU_VERSION;
+    }
+}
+
+async function downloadZipFromOpenTofu(version: string): Promise<string> {
+    const osPlatform = getPlatformString();
+    const arch = getArchString();
+    const zipFileName = `tofu_${version}_${osPlatform}_${arch}.zip`;
+    const downloadUrl = `https://github.com/opentofu/opentofu/releases/download/v${version}/${zipFileName}`;
+
+    const fileName = `${tofuToolName}-${version}-${uuidV4()}.zip`;
+    let zipPath: string;
+    try {
+        zipPath = await tools.downloadTool(downloadUrl, fileName);
+    } catch (exception) {
+        throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
+    }
+
+    // SHA256 verification via SHA256SUMS file
+    const sha256SumsUrl = `https://github.com/opentofu/opentofu/releases/download/v${version}/tofu_${version}_SHA256SUMS`;
+    const sha256SumsContent = await fetchText(sha256SumsUrl);
+
+    // Cosign verification of SHA256SUMS
+    const requireCosign = tasks.getBoolInput("requireCosignVerification", false) === true;
+    const signatureUrl = `${sha256SumsUrl}.sig`;
+    const certificateUrl = `${sha256SumsUrl}.pem`;
+    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, requireCosign);
+
+    const expectedHash = parseSha256(sha256SumsContent, zipFileName);
+    await verifySha256(zipPath, expectedHash);
+
+    return zipPath;
 }
