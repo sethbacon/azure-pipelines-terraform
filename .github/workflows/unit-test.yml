@@ -38,11 +38,11 @@ jobs:
       - name: Audit production dependencies
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/ Tests/
       - name: Compile TypeScript
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run compile
-      - name: Run unit tests
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm test
+      - name: Run unit tests with coverage
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run test:coverage
 
   build-and-test-installer-v1:
     name: Build and Test Installer V1
