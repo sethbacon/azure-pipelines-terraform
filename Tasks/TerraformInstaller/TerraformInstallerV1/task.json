@@ -85,7 +85,7 @@
             "label": "Require GPG signature verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "binary = terraform && downloadSource = hashicorp || binary = terraform && downloadSource = mirror",
+            "visibleRule": "binary = terraform && downloadSource != registry",
             "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Disable for mirrors that do not serve .sig files."
         },
         {
