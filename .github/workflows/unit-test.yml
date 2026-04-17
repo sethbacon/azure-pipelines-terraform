@@ -38,11 +38,11 @@ jobs:
       - name: Audit production dependencies
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/ Tests/
       - name: Compile TypeScript
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run compile
-      - name: Run unit tests
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm test
+      - name: Run unit tests with coverage
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm run test:coverage
 
   build-and-test-installer-v1:
     name: Build and Test Installer V1
@@ -62,3 +62,18 @@ jobs:
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm run compile
       - name: Run unit tests
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm test
+
+  build-and-test-tab:
+    name: Build and Test Tab
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install --include=dev
+      - name: Type-check tab
+        run: npx tsc -p src/tab/tsconfig.json --noEmit
+      - name: Run tab unit tests
+        run: npm run test:tab
