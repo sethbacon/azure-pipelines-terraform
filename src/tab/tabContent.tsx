@@ -13,7 +13,7 @@
  */
 
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import * as ReactDOM from "react-dom/client";
 import * as SDK from "azure-devops-extension-sdk";
 import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
 import { getClient } from "azure-devops-extension-api";
@@ -173,24 +173,22 @@ SDK.ready().then(() => {
     }
 
     if (typeof config.onBuildChanged === "function") {
-        let tabRef: TerraformPlanTab | null = null;
+        const tabRef = React.createRef<TerraformPlanTab>();
+        const root = ReactDOM.createRoot(container);
 
-        ReactDOM.render(
-            <TerraformPlanTab ref={(ref) => { tabRef = ref; }} />,
-            container
-        );
+        root.render(<TerraformPlanTab ref={tabRef} />);
 
         config.onBuildChanged((build: Build) => {
-            if (tabRef) {
-                tabRef.loadPlans(build);
+            if (tabRef.current) {
+                tabRef.current.loadPlans(build);
             }
         });
     } else {
-        ReactDOM.render(
+        const root = ReactDOM.createRoot(container);
+        root.render(
             <div className="plan-empty">
                 This tab is only available in build pipeline results.
-            </div>,
-            container
+            </div>
         );
     }
 }).catch((err) => {
