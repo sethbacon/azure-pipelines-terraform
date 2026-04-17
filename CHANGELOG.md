@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.0] — 2026-04-17
+
+### Added
+
+- **P6.1 · OpenTofu installer support**: new `binary` input on TerraformInstaller (`terraform` | `tofu`); resolves latest version from GitHub releases API; downloads from `github.com/opentofu/opentofu/releases`; cosign signature verification of SHA256SUMS (optional, controlled by `requireCosignVerification` input); tool cache separated by binary name
+- **P6.2 · OCI Workload Identity Federation**: OIDC-based authentication for OCI provider using RFC 8693 token exchange with OCI Identity Domains; generates ephemeral RSA-2048 key pair, exchanges Azure DevOps OIDC JWT for OCI User Principal Session Token (UPST), writes synthetic OCI config for SecurityToken auth mode; new task inputs: `environmentAuthSchemeOCI`, `ociWifTenancyOcid`, `ociWifRegion`, `ociWifIdentityDomainUrl`, `ociWifClientId`
+
+### Changed
+
+- **P6.0 · Codebase cleanup**: freshened Terraform fallback version to 1.14.8 and OpenTofu to 1.11.6; shared `RESOURCE_ADDRESS_RE` regex across plan/apply/destroy; removed dynamic `require()` in favor of static imports; upgraded React 16 → 18 with `createRoot` API; replaced OCI PEM string-replace chain with proper `normalizePem()` function; DRY'd `commandOptions` handling with shared `buildCommandArgs` pipeline
+
+**193 tests passing** (158 TerraformTaskV5 + 15 TerraformInstallerV1 + 20 Tab/Jest)
+
 ## [0.9.0] — 2026-04-17
 
 ### Added
