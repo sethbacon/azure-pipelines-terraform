@@ -4,6 +4,26 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.8.0] — 2026-04-17
+
+### Security
+
+- **P3.1 · Strict GPG verification**: new `requireGpgSignature` boolean input on TerraformInstaller (default `true` for HashiCorp source). When enabled, missing `.sig` files are a hard failure instead of a warning
+- **P3.3 · Fail-closed auth scheme validation**: AWS and GCP handlers now validate `environmentAuthSchemeAWS`/`environmentAuthSchemeGCP` against `["ServiceConnection", "WorkloadIdentityFederation"]` and throw on unknown values — matches the existing AzureRM strict pattern
+- **P3.4 · Secure temp file writes**: new shared `writeSecretFile()` helper (`secure-temp.ts`) writes credential files with `mode: 0o600` and verifies permissions; Windows ACL fallback. Used by AWS, GCP, and OCI OIDC token/key file writes
+- **P3.7 · Stricter provider detection**: `warnIfMultipleProviders()` now uses anchored regex patterns (`provider[.*/aws]`) instead of substring `.includes()`, eliminating false positives from modules named like `my-aws-helper`
+
+### Added
+
+- **P3.2 · Plan tab hardening**: `ansiToHtml()` rewritten as a state machine that tracks open `<span>` tags to guarantee balanced HTML. Multi-code SGR sequences fully processed. 2 MB render cap — oversized attachments show a "Download raw output" blob-URL link instead of freezing the browser
+- **P3.5 · Emergency cleanup hooks**: `uncaughtException` and `unhandledRejection` process handlers call credential cleanup and `tasks.setResult(Failed)` before exiting
+
+### Changed
+
+- **P3.6 · Set-based env var tracking**: `EnvironmentVariableHelper.trackedVariables` switched from `string[]` to `Set<string>` for idempotent re-registration and cleaner cleanup
+
+**162 tests passing** (150 TerraformTaskV5 + 12 TerraformInstallerV1)
+
 ## [0.7.2] — 2026-04-17
 
 ### Fixed
