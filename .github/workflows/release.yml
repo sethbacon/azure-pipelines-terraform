@@ -98,10 +98,38 @@ jobs:
           path: '*.vsix'
           retention-days: 7
 
+  draft-release:
+    name: Create Draft GitHub Release
+    needs: package
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - name: Download vsix artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: vsix
+      - name: Create draft GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        with:
+          files: '*.vsix'
+          generate_release_notes: true
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          draft: true
+
   publish-marketplace:
     name: Publish to VS Marketplace
-    needs: package
+    needs: draft-release
     runs-on: ubuntu-latest
+    environment: marketplace
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -118,25 +146,20 @@ jobs:
           VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
           ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --token "${{ secrets.TFX_PAT }}"
 
-  github-release:
-    name: Create GitHub Release
-    needs: publish-marketplace
+  undraft-release:
+    name: Undraft GitHub Release
+    needs: [draft-release, publish-marketplace]
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Undraft the release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
-          fetch-depth: 0
-      - name: Download vsix artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: vsix
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-        with:
-          files: '*.vsix'
-          generate_release_notes: true
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.draft-release.outputs.release_id }},
+              draft: false
+            });
