@@ -2217,4 +2217,16 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* parent handler error tests */
+
+    it('unknown provider should fail with descriptive error', async () => {
+        let tp = path.join(__dirname, './ParentHandlerTests/UnknownProvider.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
 });
