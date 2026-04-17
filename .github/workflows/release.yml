@@ -98,9 +98,53 @@ jobs:
           path: '*.vsix'
           retention-days: 7
 
+  sbom-and-sign:
+    name: Generate SBOM and sign VSIX
+    needs: package
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '20'
+      - name: Install CycloneDX
+        run: npm install --no-save @cyclonedx/cyclonedx-npm
+      - name: Generate SBOM for TerraformTaskV5
+        run: |
+          cd Tasks/TerraformTask/TerraformTaskV5
+          npm install --omit=dev
+          npx @cyclonedx/cyclonedx-npm --output-file ../../../sbom-terraform-task-v5.cdx.json --omit dev
+      - name: Generate SBOM for TerraformInstallerV1
+        run: |
+          cd Tasks/TerraformInstaller/TerraformInstallerV1
+          npm install --omit=dev
+          npx @cyclonedx/cyclonedx-npm --output-file ../../../sbom-terraform-installer-v1.cdx.json --omit dev
+      - name: Download vsix artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: vsix
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign VSIX with cosign keyless
+        run: |
+          VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
+          cosign sign-blob --yes "$VSIX_FILE" --output-signature "${VSIX_FILE}.sig" --output-certificate "${VSIX_FILE}.pem"
+      - name: Upload SBOM and signature artifacts
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: sbom-and-signatures
+          path: |
+            sbom-*.cdx.json
+            *.vsix.sig
+            *.vsix.pem
+          retention-days: 7
+
   draft-release:
     name: Create Draft GitHub Release
-    needs: package
+    needs: [package, sbom-and-sign]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -114,13 +158,21 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vsix
+      - name: Download SBOM and signature artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sbom-and-signatures
       - name: Create draft GitHub Release
         id: create_release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
-          files: '*.vsix'
+          files: |
+            *.vsix
+            sbom-*.cdx.json
+            *.vsix.sig
+            *.vsix.pem
           generate_release_notes: true
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
