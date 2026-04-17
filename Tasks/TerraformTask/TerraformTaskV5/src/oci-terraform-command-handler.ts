@@ -4,6 +4,7 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { writeSecretFile } from './secure-temp';
+import { normalizePem } from './pem-normalizer';
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
@@ -17,15 +18,9 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
     private getPrivateKeyFilePath(privateKey: string) {
         tasks.setSecret(privateKey);
-        // Preserve PEM header/footer, convert spaces to newlines in the base64 body
-        privateKey = privateKey
-            .replace('-----BEGIN PRIVATE KEY-----', '_begin_')
-            .replace('-----END PRIVATE KEY-----', '_end_')
-            .replace(/ /g, '\n')
-            .replace('_begin_', '-----BEGIN PRIVATE KEY-----')
-            .replace('_end_', '-----END PRIVATE KEY-----');
+        const normalized = normalizePem(privateKey);
         const privateKeyFilePath = path.join(os.tmpdir(), `keyfile-${uuidV4()}.pem`);
-        writeSecretFile(privateKeyFilePath, privateKey);
+        writeSecretFile(privateKeyFilePath, normalized);
         this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
     }
