@@ -143,7 +143,7 @@ jobs:
           name: vsix
       - name: Publish extension
         run: |
-          VSIX_FILE=$(ls *.vsix | head -1)
+          VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
           ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --token "${{ secrets.TFX_PAT }}"
 
   undraft-release:
