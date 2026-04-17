@@ -38,6 +38,7 @@ interface TerraformPlanTabState {
     error: string | null;
 }
 
+
 class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
     constructor(props: {}) {
         super(props);
