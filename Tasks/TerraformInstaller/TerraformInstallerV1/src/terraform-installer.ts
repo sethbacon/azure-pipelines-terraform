@@ -106,7 +106,7 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
         }
         return data.current_version;
     } catch {
-        console.warn(tasks.loc("TerraformVersionNotFound"));
+        tasks.warning(tasks.loc("TerraformVersionNotFound"));
         return FALLBACK_TERRAFORM_VERSION;
     }
 }
@@ -331,7 +331,7 @@ async function resolveVersionFromOpenTofu(inputVersion: string): Promise<string>
         // tag_name is "v1.11.6" — strip the leading "v"
         return data.tag_name.replace(/^v/, '');
     } catch {
-        console.warn(tasks.loc("TerraformVersionNotFound"));
+        tasks.warning(tasks.loc("TerraformVersionNotFound"));
         return FALLBACK_TOFU_VERSION;
     }
 }
