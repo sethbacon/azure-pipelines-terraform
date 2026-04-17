@@ -2,12 +2,12 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-const tp = path.join(__dirname, 'GpgSignatureUnavailableL0.js');
+const tp = path.join(__dirname, 'GpgSignatureRequiredButMissingL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'hashicorp');
-tr.setInput('requireGpgSignature', 'false');
+tr.setInput('requireGpgSignature', 'true');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
@@ -31,12 +31,12 @@ tr.registerMock('./http-client', {
 tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
-// gpg-verifier: mock .sig file unavailable — should warn but not fail
-let gpgWarningIssued = false;
+// gpg-verifier: mock required=true path — throws when .sig unavailable
 tr.registerMock('./gpg-verifier', {
-    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => {
-        // Simulate graceful degradation: no error thrown, just returns
-        // (the real implementation warns via tasks.warning when .sig fetch fails)
+    verifyGpgSignature: async (_sha256SumsContent: string, signatureUrl: string, required: boolean) => {
+        if (required) {
+            throw new Error(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
+        }
     }
 });
 

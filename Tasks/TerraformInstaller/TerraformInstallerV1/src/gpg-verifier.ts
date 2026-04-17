@@ -9,14 +9,18 @@ import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
  * Fetches the `.sig` file from the same base URL as the SHA256SUMS file.
  *
  * - If verification succeeds, returns the SHA256SUMS content (already fetched).
- * - If the `.sig` file is unavailable (e.g., air-gapped mirror), warns and returns the content unverified.
+ * - If the `.sig` file is unavailable and `required` is false, warns and returns unverified.
+ * - If the `.sig` file is unavailable and `required` is true, throws (hard fail).
  * - If the signature is invalid, throws (hard fail).
  */
-export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string): Promise<void> {
+export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean = false): Promise<void> {
     let signatureBytes: Uint8Array;
     try {
         signatureBytes = await fetchBuffer(signatureUrl);
     } catch {
+        if (required) {
+            throw new Error(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
+        }
         tasks.warning(`GPG signature file unavailable (${signatureUrl}). SHA256SUMS will be trusted without signature verification.`);
         return;
     }
