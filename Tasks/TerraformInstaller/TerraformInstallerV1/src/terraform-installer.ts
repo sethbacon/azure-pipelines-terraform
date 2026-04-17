@@ -243,6 +243,7 @@ function getPlatformString(): string {
 function getArchString(): string {
     switch (os.arch()) {
         case "x64": return "amd64";
+        case "ia32":
         case "x32": return "386";
         case "arm64": return "arm64";
         case "arm": return "arm";

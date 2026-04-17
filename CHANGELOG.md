@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.7.2] — 2026-04-17
+
+### Fixed
+
+- **Installer**: detect 32-bit x86 agents via `os.arch() === "ia32"` (Node's actual value) in addition to the previously-matched `x32`; `ia32` path was unreachable before
+- **task.json**: rename the `fileName` input on the `show` and `custom` commands to `filename` to match `tasks.getInput("filename")` in the handler. `show`/`custom` → file had silently produced no output file because the input name mismatched; matching Strings entries also renamed (#101)
+- **task.json**: correct the `backendAzureRmUseCliFlagsForAuthentication` help text — schema default is `false`, not `true`; help now matches the default
+
+### Documentation
+
+- New `docs/migration-from-ms-devlabs.md`: task rename table, service-connection type renames, side-by-side install, input-rename notes
+- README: command table now lists all **16** supported commands (added `import`, `forceunlock`, `refresh`); OCI providers row notes WIF is not yet supported; Differences-from-DevLabs table updated from 13 to 16 commands; link added to migration guide
+- CONTRIBUTING: new **Terraform Plan Tab** section covering `src/tab/` layout, the `build:release` flow, webpack bundling, and the `package:self` private-publish loop
+- `docs/troubleshooting.md`: document Azure auth-scheme case-insensitivity plus the AWS/GCP exact-match gotcha; clarify OIDC federated-token 30s-per-attempt timeout and 3-attempt retry; expand the multi-provider warning section (including the known substring false-positive)
+- New `docs/roadmap.md`: 7-phase plan for April 2026 codebase review — correctness, docs drift, security hardening, test backfill, CI/CD hardening, architecture improvements, observability
+
+### Chore
+
+- Add `tsconfig.tsbuildinfo` to `.gitignore` and untrack the two previously-committed `tsconfig.tsbuildinfo` files
+- Delete stale `IMPLEMENTATION_PLAN.md`
+
 ## [0.7.1] — 2026-04-13
 
 ### Security
