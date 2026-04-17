@@ -4,6 +4,32 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [0.9.0] — 2026-04-17
+
+### Added
+
+- **P5.3 · Actionlint**: GitHub Actions workflow files are now linted by `actionlint` on every CI run
+- **P5.4 · CodeQL**: new TypeScript static analysis workflow runs on PRs and weekly schedule
+- **P5.5 · Changelog guard**: release pipeline verifies `CHANGELOG.md` has an entry matching the tag version
+- **P5.6 · Draft-first release**: release pipeline creates a draft GitHub release with `.vsix` before Marketplace publish; Marketplace publish requires manual approval via `marketplace` environment; release is undrafted on success
+- **P5.7 · SBOM + cosign signing**: CycloneDX SBOMs generated for V5 and Installer V1 production deps; `.vsix` signed with cosign keyless (OIDC-backed); SBOM, signature, and certificate attached to GitHub releases
+
+### Changed
+
+- **P5.2 · Audit level lowered**: `npm audit` threshold lowered from `high` to `moderate` for earlier advisory detection
+- **P5.1 · Cross-platform CI**: V5 and Installer V1 tests now run on both `ubuntu-latest` and `windows-latest`
+
+### Test coverage
+
+- **P4.1 · Tab unit tests**: 20 Jest tests for `ansiToHtml` (edge cases, performance, realistic terraform output)
+- **P4.2 · Environment variable tests**: tracking, re-registration, clear-all cycle
+- **P4.5 · Emergency cleanup test**: verifies `clearTrackedVariables()` removes env vars
+- **P4.6 · Unknown provider test**: `ParentCommandHandler` rejects invalid provider
+- **P4.7 · Coverage reporting**: nyc integration with 75/70/75 thresholds (stmts/branches/functions)
+- **P4.8 · Lint extends to Tests/**: ESLint now covers `Tests/` directory with relaxed rules
+
+**186 tests passing** (154 TerraformTaskV5 + 12 TerraformInstallerV1 + 20 Tab/Jest)
+
 ## [0.8.0] — 2026-04-17
 
 ### Security

@@ -2217,4 +2217,50 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* parent handler error tests */
+
+    it('unknown provider should fail with descriptive error', async () => {
+        let tp = path.join(__dirname, './ParentHandlerTests/UnknownProvider.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    /* environment variable helper tests */
+
+    it('EnvironmentVariableHelper should set, track, re-register, and clear variables', async () => {
+        let tp = path.join(__dirname, './EnvironmentVariableTests/EnvironmentVariableHelper.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('EnvironmentVariableHelper should handle empty name and value gracefully', async () => {
+        let tp = path.join(__dirname, './EnvironmentVariableTests/EnvironmentVariableEdgeCases.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    /* emergency cleanup tests */
+
+    it('emergencyCleanup should clear tracked environment variables', async () => {
+        let tp = path.join(__dirname, './EmergencyCleanupTests/EmergencyCleanup.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
 });
