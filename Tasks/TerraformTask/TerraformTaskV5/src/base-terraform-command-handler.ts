@@ -9,7 +9,7 @@ import fs = require('fs');
 import os = require('os');
 
 /** Validates Terraform resource addresses (e.g. `aws_instance.foo`, `module.bar["key"]`). */
-export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w.\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w.\-]*(\[[^\]]+\])?)*$/;
+export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w\-]*(\[[^\]]+\])?)*$/;
 
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
