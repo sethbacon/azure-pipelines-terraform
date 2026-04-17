@@ -1,6 +1,7 @@
 node_modules
 build
 Tasks/**/*.js
+tsconfig.tsbuildinfo
 .taskkey
 configs/self.json
 *.vsix

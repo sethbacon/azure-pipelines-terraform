@@ -401,12 +401,12 @@
             "required": true
         },
         {
-            "name": "fileName",
+            "name": "filename",
             "type": "string",
-            "label": "Output Filename",
+            "label": "Output filename",
             "visibleRule": "outputTo = file",
             "required": true,
-            "helpMarkDown": "filename of output"
+            "helpMarkDown": "Path (relative to the working directory) of the file to write the command output to. Used when Output to is set to file for the show and custom commands."
         },
         {
             "name": "environmentServiceNameAzureRM",
@@ -568,7 +568,7 @@
             "type": "boolean",
             "defaultValue": "false",
             "label": "Use CLI flags for Authentication",
-            "helpMarkDown": "Choose whether to use CLI flags for client_id, ado_pipeline_service_connection_id and use_oidc inputs. This is designed to enable the use of a separate service connection for the backend configuration. Defaults to true.",
+            "helpMarkDown": "Choose whether to use CLI flags for client_id, ado_pipeline_service_connection_id and use_oidc inputs. This is designed to enable the use of a separate service connection for the backend configuration. Defaults to false.",
             "groupName": "backendAzureRm"
         },
         {
