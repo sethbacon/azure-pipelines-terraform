@@ -33,6 +33,37 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 **Fix:** Verify the `issuer`, `audience`, and `subject` in the Workload Identity Provider match the Azure DevOps pipeline OIDC token. See [GCP WIF Setup Guide](setup/gcp-wif-setup.md).
 
+### "Unrecognized authorization scheme 'xxx'" (Azure)
+
+**Cause:** The Azure service connection's authorization scheme does not map to one of the three supported values after case-insensitive comparison: `WorkloadIdentityFederation`, `ManagedServiceIdentity`, `ServicePrincipal`.
+
+**Fix:**
+
+- The AzureRM handler lowercases the incoming scheme before matching, so `serviceprincipal`, `ServicePrincipal`, and `SERVICEPRINCIPAL` all resolve the same way.
+- If you see this error, the service connection was created with a scheme the task does not recognize (for example, a legacy certificate-based principal). Recreate the connection using one of the supported schemes from the Azure DevOps UI.
+- **AWS / GCP schemes are case-sensitive**, unlike Azure. The `environmentAuthSchemeAWS` and `environmentAuthSchemeGCP` inputs must be exactly `WorkloadIdentityFederation` or `ServiceConnection` — `workloadidentityfederation` will silently fall through to the static-credentials path.
+
+### AWS / GCP — WIF configured but task uses static credentials
+
+**Cause:** `environmentAuthSchemeAWS` / `environmentAuthSchemeGCP` is set to something other than the exact string `WorkloadIdentityFederation` (typos, case variation, or inadvertently blank).
+
+**Fix:**
+
+- Check the YAML or classic-editor input for the exact value `WorkloadIdentityFederation`. The string comparison is case-sensitive and no partial matching is performed.
+- Enable debug logging (`System.Debug: true`) and look for a `handleProvider` trace to confirm which code path executed.
+- If the input is unset, the default is `ServiceConnection` (static credentials). Explicitly set the auth scheme input — it is not inherited from the service connection.
+
+### OIDC federated-token acquisition — timeouts and retries
+
+**Cause:** The pipeline agent could not reach `SYSTEM_OIDCREQUESTURI` (the Azure DevOps token exchange endpoint) within 30 seconds, or the upstream service returned a non-2xx response.
+
+**Fix:**
+
+- Each token request has a 30-second timeout. The task retries up to **3 times** with exponential backoff (200 ms, then 400 ms between attempts), so worst-case total delay is around **90 seconds** before the task fails.
+- `Timed out acquiring federated token` indicates the HTTPS call itself did not return — check agent network connectivity to the Azure DevOps API, proxy configuration, and firewall rules.
+- `Failed to acquire federated token: HTTP 4xx/5xx` indicates a server-side response — check that the service connection ID is still valid and that the pipeline identity is allowed to use it.
+- `SYSTEM_OIDCREQUESTURI is not set` means the pipeline is running on an agent or in a context that does not expose the OIDC request endpoint. Only **yaml pipelines on Microsoft-hosted agents (and properly configured self-hosted agents)** receive this variable.
+
 ### OCI — "Error: Failed to parse private key"
 
 **Cause:** The OCI service connection private key is malformed or not in PEM format.
@@ -136,9 +167,19 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 ### Multiple provider blocks warning
 
-**Cause:** The task detected multiple cloud provider blocks (e.g., both `aws` and `azurerm`) in your Terraform configuration.
+**Cause:** The task runs `terraform providers` after `handleProvider` and greps the output for names of _other_ cloud providers the extension supports. When a match is found, it emits a non-fatal warning so the pipeline author is aware that credentials for only the selected provider have been configured.
 
-**Fix:** This is a warning, not an error. If you intentionally use multiple providers, this warning is expected. If not, review your `.tf` files and remove unused provider blocks.
+**When to ignore:**
+
+- You are intentionally composing multiple providers (e.g. deploying to AWS while reading an AzureRM data source for cross-cloud references).
+- Only the selected provider's credentials are needed at runtime — Terraform will only authenticate against providers actually instantiated.
+
+**When to investigate:**
+
+- You did not expect to see a second provider — look for transitive module dependencies with stray provider blocks.
+- The warning names a provider whose binary has not been resolved — `terraform init` will fail.
+
+**Known false positive:** the current detection uses a substring match. Modules with names like `my-aws-helpers` or `terraform-azurerm-utils` can trip the warning even when no second cloud provider is actually configured. A stricter regex-anchored check is planned (roadmap item P3.7). Suppress by renaming the offending module or ignoring the warning.
 
 ---
 

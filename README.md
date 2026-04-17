@@ -42,23 +42,26 @@ Installs a specific version of Terraform on the build agent.
 
 ### `PipelineTerraformTask@5` — Terraform
 
-Runs Terraform commands. Supports 13 commands:
+Runs Terraform commands. Supports 16 commands:
 
-| Command     | Description                                                                |
-| ----------- | -------------------------------------------------------------------------- |
-| `init`      | Initialize a working directory. Configure backend with `backendType`.      |
-| `validate`  | Validate configuration files.                                              |
-| `plan`      | Generate an execution plan. Use `replaceAddress` for `-replace=ADDRESS`.   |
-| `apply`     | Apply changes.                                                             |
-| `destroy`   | Destroy infrastructure.                                                    |
-| `show`      | Show the current state or a saved plan.                                    |
-| `output`    | Read output values from state.                                             |
-| `workspace` | Manage workspaces (`new`, `select`, `list`, `delete`, `show`).             |
-| `state`     | Advanced state management (`list`, `pull`, `push`, `mv`, `rm`, `show`).    |
-| `fmt`       | Reformat configuration files. Use `fmtCheck` to fail on unformatted files. |
-| `test`      | Run module tests (Terraform 1.6+).                                         |
-| `get`       | Download and install modules.                                              |
-| `custom`    | Run any Terraform command via `customCommand` input.                       |
+| Command       | Description                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| `init`        | Initialize a working directory. Configure backend with `backendType`.                          |
+| `validate`    | Validate configuration files.                                                                  |
+| `plan`        | Generate an execution plan. Use `replaceAddress` for `-replace=ADDRESS`.                       |
+| `apply`       | Apply changes.                                                                                 |
+| `destroy`     | Destroy infrastructure.                                                                        |
+| `show`        | Show the current state or a saved plan.                                                        |
+| `output`      | Read output values from state.                                                                 |
+| `workspace`   | Manage workspaces (`new`, `select`, `list`, `delete`, `show`).                                 |
+| `state`       | Advanced state management (`list`, `pull`, `push`, `mv`, `rm`, `show`).                        |
+| `fmt`         | Reformat configuration files. Use `fmtCheck` to fail on unformatted files.                     |
+| `test`        | Run module tests (Terraform 1.6+).                                                             |
+| `get`         | Download and install modules.                                                                  |
+| `import`      | Import existing infrastructure into state. Takes `importAddress` and `importId` inputs.        |
+| `forceunlock` | Forcibly release a stuck state lock. Takes a `lockId` input.                                   |
+| `refresh`     | Reconcile state with real-world resources. Supports `varFile`, `targetResources`, parallelism. |
+| `custom`      | Run any Terraform command via `customCommand` input.                                           |
 
 ---
 
@@ -69,7 +72,7 @@ Runs Terraform commands. Supports 13 commands:
 | Azure    | `azurerm`        | Azure Resource Manager (built-in)                            | Service Principal, Managed Identity, WIF         |
 | AWS      | `aws`            | Pipeline AWS for Terraform (`PTTAWSServiceEndpoint`)         | Static credentials, Workload Identity Federation |
 | GCP      | `gcp`            | Pipeline GCP for Terraform (`PTTGoogleCloudServiceEndpoint`) | Static credentials, Workload Identity Federation |
-| OCI      | `oci`            | Pipeline OCI for Terraform (`PTTOCIServiceEndpoint`)         | API key credentials                              |
+| OCI      | `oci`            | Pipeline OCI for Terraform (`PTTOCIServiceEndpoint`)         | API key credentials (WIF not yet supported)      |
 
 ---
 
@@ -153,7 +156,7 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 | Extension ID                                   | `custom-terraform-tasks`                                       | `pipeline-tasks-terraform`                                            |
 | Terraform task name                            | `TerraformTaskV4` (YAML)                                       | `PipelineTerraformTask@5`                                             |
 | Installer task name                            | `TerraformInstallerV0` (YAML)                                  | `PipelineTerraformInstaller@1`                                        |
-| Commands                                       | 8 (init, validate, plan, apply, destroy, show, output, custom) | 13 — adds workspace, state, fmt, test, get                            |
+| Commands                                       | 8 (init, validate, plan, apply, destroy, show, output, custom) | 16 — adds workspace, state, fmt, test, get, refresh, import, unlock   |
 | `-replace` flag                                | Not available                                                  | `replaceAddress` input on `plan`                                      |
 | Backend/provider coupling                      | Backend always matches provider                                | `backendType` input decouples them                                    |
 | HCP Terraform Cloud backend                    | Not supported                                                  | Supported via `backendType: hcp`                                      |
@@ -173,6 +176,12 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 ## Agent Compatibility
 
 Tasks run on Windows, macOS, and Linux build agents using Node 20.
+
+---
+
+## Migrating from Microsoft DevLabs
+
+See [docs/migration-from-ms-devlabs.md](docs/migration-from-ms-devlabs.md) for a step-by-step guide: task renames, service connection type changes, and side-by-side install instructions.
 
 ---
 
