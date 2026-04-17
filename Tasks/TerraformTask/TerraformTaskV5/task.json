@@ -556,6 +556,54 @@
             "helpMarkDown": "Select a Oracle Cloud Platform connection for the deployment.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button."
         },
         {
+            "name": "environmentAuthSchemeOCI",
+            "type": "pickList",
+            "label": "Authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "visibleRule": "provider = oci && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
+            "helpMarkDown": "Select how to authenticate with OCI. 'Service connection' uses API key credentials. 'Workload Identity Federation' uses OIDC to obtain an OCI User Principal Session Token (UPST) without static credentials.",
+            "options": {
+                "ServiceConnection": "Service connection (API key)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
+            "name": "ociWifTenancyOcid",
+            "type": "string",
+            "label": "Tenancy OCID",
+            "required": true,
+            "visibleRule": "provider = oci && environmentAuthSchemeOCI = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
+            "helpMarkDown": "OCID of the OCI tenancy. E.g. ocid1.tenancy.oc1..aaaa..."
+        },
+        {
+            "name": "ociWifRegion",
+            "type": "string",
+            "label": "OCI Region",
+            "required": true,
+            "visibleRule": "provider = oci && environmentAuthSchemeOCI = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
+            "helpMarkDown": "OCI region identifier. E.g. us-ashburn-1"
+        },
+        {
+            "name": "ociWifIdentityDomainUrl",
+            "type": "string",
+            "label": "Identity Domain URL",
+            "required": true,
+            "visibleRule": "provider = oci && environmentAuthSchemeOCI = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
+            "helpMarkDown": "URL of the OCI Identity Domain configured for OIDC federation. E.g. https://idcs-abc123.identity.oraclecloud.com"
+        },
+        {
+            "name": "ociWifClientId",
+            "type": "string",
+            "label": "Identity Domain Application Client ID",
+            "required": true,
+            "visibleRule": "provider = oci && environmentAuthSchemeOCI = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock",
+            "helpMarkDown": "Client ID of the OCI Identity Domains application configured to accept OIDC tokens from Azure DevOps."
+        },
+        {
             "name": "backendAzureRmUseEntraIdForAuthentication",
             "type": "boolean",
             "defaultValue": "true",
