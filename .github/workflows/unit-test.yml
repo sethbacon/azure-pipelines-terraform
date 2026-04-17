@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npm install --include=dev
       - name: Audit production dependencies
-        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --omit=dev --audit-level=high
+        run: cd Tasks/TerraformTask/TerraformTaskV5 && npm audit --omit=dev --audit-level=moderate
       - name: Lint
         run: cd Tasks/TerraformTask/TerraformTaskV5 && npx eslint src/ Tests/
       - name: Compile TypeScript
@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm install --include=dev
       - name: Audit production dependencies
-        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm audit --omit=dev --audit-level=high
+        run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npm audit --omit=dev --audit-level=moderate
       - name: Lint
         run: cd Tasks/TerraformInstaller/TerraformInstallerV1 && npx eslint src/
       - name: Compile TypeScript
@@ -77,3 +77,14 @@ jobs:
         run: npx tsc -p src/tab/tsconfig.json --noEmit
       - name: Run tab unit tests
         run: npm run test:tab
+
+  actionlint:
+    name: Lint GitHub Actions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install actionlint
+        shell: bash
+        run: bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Run actionlint
+        run: ./actionlint -color
