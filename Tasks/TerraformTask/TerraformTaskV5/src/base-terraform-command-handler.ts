@@ -128,6 +128,29 @@ export abstract class BaseTerraformCommandHandler {
         return flags ? `${flags} ${args}` : args;
     }
 
+    /**
+     * Declarative command-args pipeline.  Ordering is fixed here so every
+     * command that opts-in gets flags in a consistent position:
+     *   [secureVarFile] [varFiles] [targetResources] [replace] [refreshOnly] <base> [parallelism]
+     */
+    protected async buildCommandArgs(base: string, config: {
+        replaceFlag?: boolean;
+        refreshOnly?: boolean;
+        varFiles?: boolean;
+        targetResources?: boolean;
+        parallelism?: boolean;
+        secureVarFile?: boolean;
+    }): Promise<string> {
+        let args = base;
+        if (config.replaceFlag)      args = this.prependReplaceFlag(args);
+        if (config.refreshOnly)      args = this.prependRefreshOnly(args);
+        if (config.varFiles)         args = this.prependVarFiles(args);
+        if (config.targetResources)  args = this.prependTargetResources(args);
+        if (config.parallelism)      args = this.appendParallelism(args);
+        if (config.secureVarFile)    args = await this.appendSecureVarFile(args);
+        return args;
+    }
+
     protected appendTerraformVariables(terraformTool: ToolRunner): void {
         const variables = tasks.getInput("terraformVariables", false);
         if (!variables) return;
@@ -344,13 +367,11 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async plan(): Promise<number> {
-        let commandOptions = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`;
-        commandOptions = this.prependReplaceFlag(commandOptions);
-        commandOptions = this.prependRefreshOnly(commandOptions);
-        commandOptions = this.prependVarFiles(commandOptions);
-        commandOptions = this.prependTargetResources(commandOptions);
-        commandOptions = this.appendParallelism(commandOptions);
-        commandOptions = await this.appendSecureVarFile(commandOptions);
+        const base = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`;
+        const commandOptions = await this.buildCommandArgs(base, {
+            replaceFlag: true, refreshOnly: true, varFiles: true,
+            targetResources: true, parallelism: true, secureVarFile: true,
+        });
 
         const planCommand = this.createAuthCommand("plan", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
@@ -414,13 +435,11 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async apply(): Promise<number> {
-        let additionalArgs = this.ensureAutoApprove(tasks.getInput("commandOptions"));
-        additionalArgs = this.prependReplaceFlag(additionalArgs);
-        additionalArgs = this.prependRefreshOnly(additionalArgs);
-        additionalArgs = this.prependVarFiles(additionalArgs);
-        additionalArgs = this.prependTargetResources(additionalArgs);
-        additionalArgs = this.appendParallelism(additionalArgs);
-        additionalArgs = await this.appendSecureVarFile(additionalArgs);
+        const additionalArgs = await this.buildCommandArgs(
+            this.ensureAutoApprove(tasks.getInput("commandOptions")), {
+            replaceFlag: true, refreshOnly: true, varFiles: true,
+            targetResources: true, parallelism: true, secureVarFile: true,
+        });
 
         const applyCommand = this.createAuthCommand("apply", additionalArgs);
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
@@ -434,11 +453,11 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async destroy(): Promise<number> {
-        let additionalArgs = this.ensureAutoApprove(tasks.getInput("commandOptions"));
-        additionalArgs = this.prependVarFiles(additionalArgs);
-        additionalArgs = this.prependTargetResources(additionalArgs);
-        additionalArgs = this.appendParallelism(additionalArgs);
-        additionalArgs = await this.appendSecureVarFile(additionalArgs);
+        const additionalArgs = await this.buildCommandArgs(
+            this.ensureAutoApprove(tasks.getInput("commandOptions")), {
+            varFiles: true, targetResources: true,
+            parallelism: true, secureVarFile: true,
+        });
 
         const destroyCommand = this.createAuthCommand("destroy", additionalArgs);
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
@@ -568,8 +587,9 @@ export abstract class BaseTerraformCommandHandler {
         let args = commandOptions
             ? `${commandOptions} ${resourceAddress} ${resourceId}`
             : `${resourceAddress} ${resourceId}`;
-        args = this.prependVarFiles(args);
-        args = await this.appendSecureVarFile(args);
+        args = await this.buildCommandArgs(args, {
+            varFiles: true, secureVarFile: true,
+        });
 
         const importCommand = this.createAuthCommand("import", args);
         const terraformTool = this.terraformToolHandler.createToolRunner(importCommand);
@@ -599,11 +619,11 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async refresh(): Promise<number> {
-        let commandOptions = this.getCommandOptions() || '';
-        commandOptions = this.prependVarFiles(commandOptions);
-        commandOptions = this.prependTargetResources(commandOptions);
-        commandOptions = this.appendParallelism(commandOptions);
-        commandOptions = await this.appendSecureVarFile(commandOptions);
+        const commandOptions = await this.buildCommandArgs(
+            this.getCommandOptions() || '', {
+            varFiles: true, targetResources: true,
+            parallelism: true, secureVarFile: true,
+        });
 
         const refreshCommand = this.createAuthCommand("refresh", commandOptions.trim() || undefined);
         const terraformTool = this.terraformToolHandler.createToolRunner(refreshCommand);
