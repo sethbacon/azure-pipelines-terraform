@@ -22,6 +22,9 @@ import "./tabContent.css";
 /** Attachment type matching jason-johnson convention for migration compatibility */
 const ATTACHMENT_TYPE = "terraform-plan-results";
 
+/** Maximum attachment size (bytes) to render inline. Larger content gets a download link. */
+const MAX_RENDER_SIZE = 2 * 1024 * 1024; // 2 MB
+
 interface PlanAttachment {
     name: string;
     content: string;
@@ -35,48 +38,82 @@ interface TerraformPlanTabState {
 }
 
 /**
+ * SGR code → CSS class mapping for the subset of ANSI codes terraform emits.
+ */
+const SGR_CLASS_MAP: Record<string, string> = {
+    "1": "ansi-bold",
+    "30": "ansi-black",
+    "31": "ansi-red",
+    "32": "ansi-green",
+    "33": "ansi-yellow",
+    "34": "ansi-blue",
+    "35": "ansi-magenta",
+    "36": "ansi-cyan",
+    "37": "ansi-white",
+    "90": "ansi-grey",
+};
+
+/**
  * Convert ANSI SGR escape codes (ECMA-48 standard) to HTML spans with CSS classes.
- * Handles the subset of codes that terraform uses: bold, basic colors, and reset.
+ *
+ * Uses a state-machine approach that tracks open spans to guarantee balanced tags.
+ * Multi-code sequences (e.g. \x1b[1;31m) are fully handled — each recognised code
+ * opens its own span, and reset (code 0) closes all currently open spans.
  */
 function ansiToHtml(text: string): string {
-    const colorMap: Record<string, string> = {
-        "1": "ansi-bold",
-        "30": "ansi-black",
-        "31": "ansi-red",
-        "32": "ansi-green",
-        "33": "ansi-yellow",
-        "34": "ansi-blue",
-        "35": "ansi-magenta",
-        "36": "ansi-cyan",
-        "37": "ansi-white",
-        "90": "ansi-grey",
-    };
+    const parts: string[] = [];
+    let openSpans = 0;
 
-    // Escape HTML entities first
-    let html = text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    // Match SGR sequences (\x1b[...m) or runs of plain text between them.
+    // Also matches any other CSI sequences so they can be stripped.
+    const TOKEN_RE = /\x1b\[([0-9;]*)m|\x1b\[[0-9;]*[a-zA-Z]/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-    // Replace ANSI color codes with spans
-    html = html.replace(/\x1b\[([0-9;]+)m/g, (_match, codes: string) => {
-        const codeList = codes.split(";");
-        for (const code of codeList) {
-            if (code === "0") {
-                return "</span>";
-            }
-            const className = colorMap[code];
-            if (className) {
-                return `<span class="${className}">`;
+    while ((match = TOKEN_RE.exec(text)) !== null) {
+        // Emit plain text before this match (HTML-escaped)
+        if (match.index > lastIndex) {
+            parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+        }
+        lastIndex = TOKEN_RE.lastIndex;
+
+        // Non-SGR CSI sequence (no capture group) — strip it
+        if (match[1] === undefined) continue;
+
+        const codes = match[1].split(";");
+        for (const code of codes) {
+            if (code === "0" || code === "") {
+                // Reset: close all open spans
+                while (openSpans > 0) {
+                    parts.push("</span>");
+                    openSpans--;
+                }
+            } else {
+                const className = SGR_CLASS_MAP[code];
+                if (className) {
+                    parts.push(`<span class="${className}">`);
+                    openSpans++;
+                }
             }
         }
-        return "";
-    });
+    }
 
-    // Strip any remaining escape sequences
-    html = html.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+    // Emit any trailing plain text
+    if (lastIndex < text.length) {
+        parts.push(escapeHtml(text.slice(lastIndex)));
+    }
 
-    return html;
+    // Close any spans left open at end-of-input
+    while (openSpans > 0) {
+        parts.push("</span>");
+        openSpans--;
+    }
+
+    return parts.join("");
+}
+
+function escapeHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
@@ -135,7 +172,22 @@ class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
                         <strong>{selectedPlan.name}</strong>
                     </div>
                 )}
-                <pre dangerouslySetInnerHTML={{ __html: ansiToHtml(selectedPlan.content) }} />
+                {selectedPlan.content.length > MAX_RENDER_SIZE ? (
+                    <div className="plan-oversize">
+                        <p>
+                            Plan output is too large to render inline
+                            ({(selectedPlan.content.length / (1024 * 1024)).toFixed(1)} MB).
+                        </p>
+                        <a
+                            href={URL.createObjectURL(new Blob([selectedPlan.content], { type: "text/plain" }))}
+                            download={`${selectedPlan.name}.txt`}
+                        >
+                            Download raw output
+                        </a>
+                    </div>
+                ) : (
+                    <pre dangerouslySetInnerHTML={{ __html: ansiToHtml(selectedPlan.content) }} />
+                )}
             </div>
         );
     }
