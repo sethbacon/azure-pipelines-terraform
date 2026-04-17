@@ -2217,4 +2217,26 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* environment variable helper tests */
+
+    it('EnvironmentVariableHelper should set, track, re-register, and clear variables', async () => {
+        let tp = path.join(__dirname, './EnvironmentVariableTests/EnvironmentVariableHelper.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('EnvironmentVariableHelper should handle empty name and value gracefully', async () => {
+        let tp = path.join(__dirname, './EnvironmentVariableTests/EnvironmentVariableEdgeCases.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
 });
