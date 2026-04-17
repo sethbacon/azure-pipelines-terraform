@@ -142,6 +142,61 @@ runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
 
 **L0.ts registration**: add an `it()` block in the main `Tests/L0.ts` file near the other tests for the same command.
 
+## Terraform Plan Tab (build-results-tab)
+
+The extension contributes a **Terraform Plan** tab to the Azure DevOps build results page. The tab reads pipeline attachments named `terraform-plan-results` published by the `plan` command (when `publishPlanResults: true`) and renders the captured `terraform plan` output with ANSI color translated to HTML.
+
+### Source layout
+
+```text
+src/tab/
+├── tabContent.tsx      # React entry point; registers the tab via SDK
+├── tabContent.css      # Tab styling
+├── index.html          # HTML shell loaded by the ADO iframe
+└── tsconfig.json       # TypeScript config used by webpack
+```
+
+The tab is bundled by `webpack.config.js` (at the repo root) alongside packaging of the manifest, images, and compiled task JS into `build/`.
+
+### Build flow
+
+From the repo root:
+
+```bash
+npm install --include=dev            # installs tfx-cli, webpack, ts-loader, glob-exec
+npm run build:release                # clean → deps → compile tasks → prune dev deps → webpack
+```
+
+`build:release` does four things in order:
+
+1. `clean` — removes `build/`.
+2. `deps` — runs `npm install` in each task subdirectory.
+3. `compile` — `tsc -b` each task's `tsconfig.json`.
+4. `deps:prune` — removes dev dependencies from each task (trims the `.vsix`).
+5. `webpack` — bundles `src/tab/tabContent.tsx` → `build/tab/tabContent.js`, copies the manifest, images, `overview.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `Tasks/` directory (excluding Tests/TS sources) into `build/`.
+
+### Inspecting a dev build locally
+
+Webpack emits to `build/tab/`. You can open `build/tab/tabContent.js` to confirm the bundle was generated, but the tab only renders inside the Azure DevOps iframe — there is currently no static browser harness. To exercise the tab in a real ADO org:
+
+1. `configs/self.json` — see the **Personal Dev Publishing** section above for the schema. The file is gitignored.
+2. `npm run build:release` then `npm run package:self` from the repo root — produces a private `.vsix` prefixed with your publisher.
+3. Upload the `.vsix` to your publisher page as a **Private** extension and share it with a test Azure DevOps organization.
+4. Install the shared extension into your test project.
+5. Run a pipeline that uses `PipelineTerraformTask@5` with `command: plan` and `publishPlanResults: true`.
+6. Open the build results page — the **Terraform Plan** tab appears alongside **Summary** / **Tests**. Iterate by rebuilding the `.vsix`, bumping the version in `configs/self.json`, and re-uploading.
+
+### Contribution points (manifest)
+
+The tab is declared in `azure-devops-extension.json` as a `ms.vss-build-web.build-results-tab` contribution and pulls its bundle from `tab/tabContent.js` (relative to the packaged extension root, which matches webpack's output layout).
+
+### When editing the tab
+
+- Run `npm run webpack` for fast iteration (skips re-running task compilation). Errors surface immediately in the webpack output.
+- The bundle currently pins **React 16.13.1** — if you upgrade to React 18, you must also switch from `ReactDOM.render` to `createRoot` in `tabContent.tsx`.
+- The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. See the roadmap item **P3.2 · plan tab hardening** for the planned state-machine rewrite.
+- There is no Jest harness in `src/tab/` yet (planned in roadmap item **P4.1**). Until then, end-to-end verification requires a private publish.
+
 ## Release Process
 
 Releases are triggered by pushing a semver tag to `main`. The automated workflow handles packaging and publishing.
