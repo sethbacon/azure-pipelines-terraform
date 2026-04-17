@@ -1,0 +1,4 @@
+import { TerraformCommandHandlerOCI } from './../../../src/oci-terraform-command-handler';
+import { runCommand } from '../../test-l0-helpers';
+
+runCommand(new TerraformCommandHandlerOCI(), 'plan', 'OCIPlanInvalidAuthSchemeL0', false);

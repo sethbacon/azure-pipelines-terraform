@@ -1611,7 +1611,21 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
-    /* aws/gcp invalid auth scheme tests */
+    it('oci plan should succeed with workload identity federation', async () => {
+        let tp = path.join(__dirname, './PlanTests/OCI/OCIPlanWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: OCIPlanWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    /* aws/gcp/oci invalid auth scheme tests */
 
     it('aws plan should fail with invalid auth scheme', async () => {
         let tp = path.join(__dirname, './PlanTests/AWS/AWSPlanInvalidAuthScheme.js');
@@ -1628,6 +1642,19 @@ describe('Terraform Test Suite', function () {
 
     it('gcp plan should fail with invalid auth scheme', async () => {
         let tp = path.join(__dirname, './PlanTests/GCP/GCPPlanInvalidAuthScheme.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 0, 'tool should not have been invoked. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 1, 'should have one error');
+        }, tr);
+    });
+
+    it('oci plan should fail with invalid auth scheme', async () => {
+        let tp = path.join(__dirname, './PlanTests/OCI/OCIPlanInvalidAuthScheme.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
