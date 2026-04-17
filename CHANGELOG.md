@@ -25,6 +25,13 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Add `tsconfig.tsbuildinfo` to `.gitignore` and untrack the two previously-committed `tsconfig.tsbuildinfo` files
 - Delete stale `IMPLEMENTATION_PLAN.md`
 
+### Security
+
+- Override `serialize-javascript` → `^7.0.0` (was 6.0.2 via mocha) — fixes RCE via `RegExp.flags` (high) and CPU exhaustion DoS (moderate) in both V5 and InstallerV1
+- Override `diff` → `^8.0.3` (was 7.x via mocha) — fixes low-severity ReDoS advisory
+- Bump `follow-redirects` via `npm audit fix` — fixes auth header leak on cross-domain redirects (moderate)
+- Regenerate Tests lockfile to purge ghost `nock` → `lodash.set@4.3.2` dependency (prototype pollution, high)
+
 ## [0.7.1] — 2026-04-13
 
 ### Security
