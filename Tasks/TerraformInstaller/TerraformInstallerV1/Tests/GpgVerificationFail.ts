@@ -37,6 +37,10 @@ tr.registerMock('./gpg-verifier', {
     }
 });
 
+tr.registerMock('./cosign-verifier', {
+    verifyCosignSignature: async () => { }
+});
+
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
     readFileSync: (_path: string) => Buffer.from('fake-zip-content')

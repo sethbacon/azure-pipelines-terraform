@@ -17,10 +17,11 @@ async function configureTerraform() {
 
 async function verifyTerraform() {
     console.log(tasks.loc("VerifyTerraformInstallation"));
-    const terraformPath = tasks.which("terraform", true);
-    const terraformTool: ToolRunner = tasks.tool(terraformPath);
-    terraformTool.arg("version");
-    return terraformTool.exec();
+    const binary = tasks.getInput("binary") || "terraform";
+    const binaryPath = tasks.which(binary, true);
+    const binaryTool: ToolRunner = tasks.tool(binaryPath);
+    binaryTool.arg("version");
+    return binaryTool.exec();
 }
 
 async function run() {
