@@ -4,15 +4,23 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
+import { writeSecretFile } from './secure-temp';
 import path = require('path');
 import os = require('os');
-import fs = require('fs');
 import { v4 as uuidV4 } from 'uuid';
+
+const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
 export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "gcp";
+    }
+
+    private validateAuthScheme(scheme: string, inputName: string): void {
+        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
+            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
+        }
     }
 
     private getJsonKeyFilePath(serviceName: string) {
@@ -31,7 +39,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             client_email: clientEmail,
             token_uri: tokenUri
         });
-        fs.writeFileSync(jsonKeyFilePath, jsonCredsString, { mode: 0o600 });
+        writeSecretFile(jsonKeyFilePath, jsonCredsString);
         this.tempFiles.push(jsonKeyFilePath);
 
         return jsonKeyFilePath;
@@ -60,7 +68,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `gcp-backend-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         const projectNumber = tasks.getInput("backendGCPProjectNumber", true)!;
@@ -80,7 +88,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         };
 
         const credentialsFilePath = path.join(os.tmpdir(), `gcp-backend-wif-credentials-${uuidV4()}.json`);
-        fs.writeFileSync(credentialsFilePath, JSON.stringify(credentials), { mode: 0o600 });
+        writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
         this.tempFiles.push(credentialsFilePath);
 
         this.backendConfig.set('credentials', credentialsFilePath);
@@ -90,6 +98,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         tasks.debug('Setting up backend GCP.');
         const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
         const authScheme = tasks.getInput("backendAuthSchemeGCP", false) || "ServiceConnection";
+        this.validateAuthScheme(authScheme, "backendAuthSchemeGCP");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.setupBackendWIF(backendServiceName);
@@ -102,6 +111,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
         const authScheme = tasks.getInput("environmentAuthSchemeGCP", false) || "ServiceConnection";
+        this.validateAuthScheme(authScheme, "environmentAuthSchemeGCP");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);
@@ -120,7 +130,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `gcp-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         const projectNumber = tasks.getInput("gcpProjectNumber", true)!;
@@ -140,7 +150,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         };
 
         const credentialsFilePath = path.join(os.tmpdir(), `gcp-wif-credentials-${uuidV4()}.json`);
-        fs.writeFileSync(credentialsFilePath, JSON.stringify(credentials), { mode: 0o600 });
+        writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
         this.tempFiles.push(credentialsFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);

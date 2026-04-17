@@ -65,6 +65,15 @@
             "required": true,
             "visibleRule": "downloadSource = mirror",
             "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as releases.hashicorp.com/terraform. Example: https://artifacts.example.com/hashicorp/terraform"
+        },
+        {
+            "name": "requireGpgSignature",
+            "type": "boolean",
+            "label": "Require GPG signature verification",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "downloadSource = hashicorp || downloadSource = mirror",
+            "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Disable for mirrors that do not serve .sig files."
         }
     ],
     "execution": {

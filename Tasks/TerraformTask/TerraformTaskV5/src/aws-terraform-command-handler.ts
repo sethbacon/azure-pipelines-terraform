@@ -4,15 +4,23 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
+import { writeSecretFile } from './secure-temp';
 import path = require('path');
 import os = require('os');
-import fs = require('fs');
 import { v4 as uuidV4 } from 'uuid';
+
+const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "aws";
+    }
+
+    private validateAuthScheme(scheme: string, inputName: string): void {
+        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
+            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
+        }
     }
 
     private setupBackend(backendServiceName: string) {
@@ -37,7 +45,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `aws-backend-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("backendAWSRoleArn", true)!);
@@ -51,6 +59,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
         const authScheme = tasks.getInput("backendAuthSchemeAWS", false) || "ServiceConnection";
+        this.validateAuthScheme(authScheme, "backendAuthSchemeAWS");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.setupBackendWIF(backendServiceName);
@@ -62,6 +71,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
         const authScheme = tasks.getInput("environmentAuthSchemeAWS", false) || "ServiceConnection";
+        this.validateAuthScheme(authScheme, "environmentAuthSchemeAWS");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);
@@ -81,7 +91,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `aws-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true)!);

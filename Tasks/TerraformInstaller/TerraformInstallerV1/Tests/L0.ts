@@ -157,4 +157,15 @@ describe('TerraformInstaller Test Suite', function () {
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
         }, tr);
     });
+
+    it('GPG signature required but missing: should fail when requireGpgSignature is true', async () => {
+        const tp = path.join(__dirname, 'GpgSignatureRequiredButMissing.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
 });

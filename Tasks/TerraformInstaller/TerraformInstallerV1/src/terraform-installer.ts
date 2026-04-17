@@ -133,7 +133,8 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
 
     const sha256SumsContent = await fetchText(sha256SumsUrl);
-    await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl);
+    const requireGpg = tasks.getBoolInput("requireGpgSignature", false) !== false;
+    await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
     await verifySha256(zipPath, expectedHash);
