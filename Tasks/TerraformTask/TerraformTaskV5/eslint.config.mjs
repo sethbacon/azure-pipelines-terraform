@@ -21,6 +21,22 @@ export default tseslint.config(
         },
     },
     {
-        ignores: ['Tests/**', 'node_modules/**', '**/*.js', '**/*.mjs'],
+        files: ['Tests/**/*.ts'],
+        languageOptions: {
+            parserOptions: {
+                project: './tsconfig.tests.json',
+            },
+        },
+        rules: {
+            '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/no-floating-promises': 'off',
+            '@typescript-eslint/return-await': 'off',
+            '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+            'prefer-const': 'off',
+            'no-var': 'off',
+        },
+    },
+    {
+        ignores: ['node_modules/**', '**/*.js', '**/*.mjs'],
     }
 );
