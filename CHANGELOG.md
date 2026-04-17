@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.1] — 2026-04-17
+
+### Fixed
+
+- Installer `requireGpgSignature` visibleRule mixed `&&` and `||` operators, which VS Marketplace validation rejects; replaced with `binary = terraform && downloadSource != registry`
+
 ## [1.0.0] — 2026-04-17
 
 ### Added
