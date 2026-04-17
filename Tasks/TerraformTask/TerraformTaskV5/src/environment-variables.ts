@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 
 export class EnvironmentVariableHelper {
-    private static readonly trackedVariables: string[] = [];
+    private static readonly trackedVariables: Set<string> = new Set();
 
     public static setEnvironmentVariable(name: string, value: string, isSecret: boolean = false): void {
         if (!name) {
@@ -16,7 +16,7 @@ export class EnvironmentVariableHelper {
             tasks.setSecret(value);
         }
         process.env[name] = value;
-        this.trackedVariables.push(name);
+        this.trackedVariables.add(name);
         tasks.debug(`Set environment variable: ${name}${isSecret ? ' (secret)' : ''}`);
     }
 
@@ -25,6 +25,6 @@ export class EnvironmentVariableHelper {
             delete process.env[name];
             tasks.debug(`Cleared environment variable: ${name}`);
         }
-        this.trackedVariables.length = 0;
+        this.trackedVariables.clear();
     }
 }
