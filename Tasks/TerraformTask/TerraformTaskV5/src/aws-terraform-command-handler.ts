@@ -4,9 +4,9 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
+import { writeSecretFile } from './secure-temp';
 import path = require('path');
 import os = require('os');
-import fs = require('fs');
 import { v4 as uuidV4 } from 'uuid';
 
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
@@ -37,7 +37,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `aws-backend-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("backendAWSRoleArn", true)!);
@@ -81,7 +81,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tasks.setSecret(oidcToken);
 
         const tokenFilePath = path.join(os.tmpdir(), `aws-oidc-token-${uuidV4()}.jwt`);
-        fs.writeFileSync(tokenFilePath, oidcToken, { mode: 0o600 });
+        writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true)!);
