@@ -175,6 +175,17 @@ export abstract class BaseTerraformCommandHandler {
         }
     }
 
+    /**
+     * Regex patterns anchored to typical `terraform providers` output format.
+     * Matches lines like: `provider[registry.terraform.io/hashicorp/aws]`
+     */
+    private static readonly PROVIDER_PATTERNS: ReadonlyMap<string, RegExp> = new Map([
+        ["aws",     /provider\[.*\/aws\s*\]/i],
+        ["azurerm", /provider\[.*\/azurerm\s*\]/i],
+        ["google",  /provider\[.*\/google\s*\]/i],
+        ["oracle",  /provider\[.*\/oci\s*\]/i],
+    ]);
+
     public async warnIfMultipleProviders(): Promise<void> {
         try {
             const binaryName = getBinaryName(tasks);
@@ -191,7 +202,8 @@ export abstract class BaseTerraformCommandHandler {
                 cwd: this.getWorkingDirectory()
             });
 
-            const countProviders = ["aws", "azurerm", "google", "oracle"].filter(provider => commandOutput.stdout.includes(provider)).length;
+            const countProviders = [...BaseTerraformCommandHandler.PROVIDER_PATTERNS.values()]
+                .filter(regex => regex.test(commandOutput.stdout)).length;
 
             tasks.debug(countProviders.toString());
             if (countProviders > 1) {

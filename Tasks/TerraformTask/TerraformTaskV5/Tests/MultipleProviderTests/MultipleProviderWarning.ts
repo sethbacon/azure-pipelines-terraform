@@ -20,7 +20,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
     "exec": {
         "terraform providers": {
             "code": 0,
-            "stdout": "provider azurerm\nprovider aws\nprovider gcp"
+            "stdout": "Providers required by configuration:\n├── provider[registry.terraform.io/hashicorp/azurerm]\n├── provider[registry.terraform.io/hashicorp/aws]\n└── provider[registry.terraform.io/hashicorp/google]"
         }
     }
 }
