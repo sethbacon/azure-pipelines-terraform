@@ -13,7 +13,7 @@
 ### Original tracking (as of v0.1.2)
 
 | Item | Status |
-|------|--------|
+| ------ | -------- |
 | `backendType` input (azurerm, s3, gcs, oci, generic, local) | Done |
 | `ParentCommandHandler` routing by `backendType` on init | Done |
 | `TerraformCommandHandlerGeneric` (generic + local) | Done |
