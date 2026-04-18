@@ -6,7 +6,11 @@
 2. Add Workload Identity Federation (OIDC) support for AWS and GCP providers
 3. Support all Terraform backends: first-class for azurerm/s3/gcs/hcp, plus a generic passthrough for all others
 
-## Implementation Status (as of v0.1.2)
+## Implementation Status
+
+**Status: COMPLETED** — All features shipped in v0.8.0 (AWS/GCP WIF, backend/provider decoupling, HCP backend). This document is retained for reference.
+
+### Original tracking (as of v0.1.2)
 
 | Item | Status |
 |------|--------|

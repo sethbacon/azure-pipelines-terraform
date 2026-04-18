@@ -2,6 +2,8 @@
 
 Sequenced plan to close gaps identified in the April 2026 codebase review. Each item is sized for a single PR off `development`. Effort: **S** = <½ day, **M** = ½–2 days, **L** = 2–5 days.
 
+> **STATUS: COMPLETED** — All 7 phases delivered across v0.7.2 through v1.0.0. See [CHANGELOG.md](../CHANGELOG.md) for details by version.
+
 ---
 
 ## Phase 1 — Correctness bugs
