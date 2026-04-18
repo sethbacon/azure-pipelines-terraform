@@ -6,7 +6,11 @@ Add Workload Identity Federation (OIDC) support to the OCI provider handler so t
 API key credentials are no longer required in pipeline service connections. This mirrors the
 WIF support added for AWS and GCP in Initiative 3.
 
-## Current State
+## Implementation Status
+
+**Status: COMPLETED** — OCI WIF support shipped in v1.0.0 (2026-04-17). This document is retained for reference.
+
+## Current State (historical)
 
 The `TerraformCommandHandlerOCI` handler currently authenticates using an API key stored in
 an `PTTOCIServiceEndpoint` service connection (user OCID + tenancy OCID + private key + fingerprint
