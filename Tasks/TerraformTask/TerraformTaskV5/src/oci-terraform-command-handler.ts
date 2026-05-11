@@ -11,7 +11,7 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
-import { v4 as uuidV4 } from 'uuid';
+import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
