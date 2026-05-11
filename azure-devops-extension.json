@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "publisher": "sethbacon",
     "targets": [
         {
@@ -140,7 +140,7 @@
                 "ms.vss-distributed-task.tasks"
             ],
             "properties": {
-                "name": "Tasks/TerraformInstaller"
+                "name": "Tasks/TerraformInstaller/TerraformInstallerV1"
             }
         },
         {
@@ -150,7 +150,7 @@
                 "ms.vss-distributed-task.tasks"
             ],
             "properties": {
-                "name": "Tasks/TerraformTask"
+                "name": "Tasks/TerraformTask/TerraformTaskV5"
             }
         },
         {

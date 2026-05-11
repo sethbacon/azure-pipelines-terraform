@@ -3,7 +3,7 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 
-import { v4 as uuidV4 } from 'uuid';
+import { randomUUID as uuidV4 } from 'crypto';
 import { fetchBuffer } from './http-client';
 
 /**

@@ -17,18 +17,16 @@ tr.setInput('ociWifClientId', 'dummy-client-id');
 tr.setInput('commandOptions', '');
 
 tr.registerMock('./id-token-generator', {
-    generateIdToken: function(serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
+    generateIdToken: function (serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 });
 
 tr.registerMock('./oci-token-exchange', {
-    exchangeOidcForUpst: function(oidcToken: string, identityDomainUrl: string, clientId: string, publicKeyPem: string) {
+    exchangeOidcForUpst: function (oidcToken: string, identityDomainUrl: string, clientId: string, publicKeyPem: string) {
         return Promise.resolve('mock-upst-token-67890');
     }
 });
 
-tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
-
-let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
+let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {
         "terraform": "terraform"
     },

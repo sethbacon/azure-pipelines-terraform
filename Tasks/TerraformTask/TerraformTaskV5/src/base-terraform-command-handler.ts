@@ -4,7 +4,7 @@ import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializ
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
-import { v4 as uuidV4 } from 'uuid';
+import { randomUUID as uuidV4 } from 'crypto';
 import fs = require('fs');
 import os = require('os');
 
@@ -142,12 +142,12 @@ export abstract class BaseTerraformCommandHandler {
         secureVarFile?: boolean;
     }): Promise<string> {
         let args = base;
-        if (config.replaceFlag)      args = this.prependReplaceFlag(args);
-        if (config.refreshOnly)      args = this.prependRefreshOnly(args);
-        if (config.varFiles)         args = this.prependVarFiles(args);
-        if (config.targetResources)  args = this.prependTargetResources(args);
-        if (config.parallelism)      args = this.appendParallelism(args);
-        if (config.secureVarFile)    args = await this.appendSecureVarFile(args);
+        if (config.replaceFlag) args = this.prependReplaceFlag(args);
+        if (config.refreshOnly) args = this.prependRefreshOnly(args);
+        if (config.varFiles) args = this.prependVarFiles(args);
+        if (config.targetResources) args = this.prependTargetResources(args);
+        if (config.parallelism) args = this.appendParallelism(args);
+        if (config.secureVarFile) args = await this.appendSecureVarFile(args);
         return args;
     }
 
@@ -205,10 +205,10 @@ export abstract class BaseTerraformCommandHandler {
      * Matches lines like: `provider[registry.terraform.io/hashicorp/aws]`
      */
     private static readonly PROVIDER_PATTERNS: ReadonlyMap<string, RegExp> = new Map([
-        ["aws",     /provider\[.*\/aws\s*\]/i],
+        ["aws", /provider\[.*\/aws\s*\]/i],
         ["azurerm", /provider\[.*\/azurerm\s*\]/i],
-        ["google",  /provider\[.*\/google\s*\]/i],
-        ["oracle",  /provider\[.*\/oci\s*\]/i],
+        ["google", /provider\[.*\/google\s*\]/i],
+        ["oracle", /provider\[.*\/oci\s*\]/i],
     ]);
 
     public async warnIfMultipleProviders(): Promise<void> {
