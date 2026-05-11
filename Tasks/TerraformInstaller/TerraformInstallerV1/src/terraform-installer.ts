@@ -5,7 +5,7 @@ import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
 
-import { v4 as uuidV4 } from 'uuid';
+import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText } from './http-client';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';

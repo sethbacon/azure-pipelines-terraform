@@ -22,7 +22,7 @@ tr.registerMock('./http-client', {
     }
 });
 
-tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
+tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
 // gpg-verifier: mock to prevent openpgp from loading

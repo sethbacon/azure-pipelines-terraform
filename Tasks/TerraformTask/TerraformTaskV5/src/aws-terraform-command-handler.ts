@@ -7,7 +7,7 @@ import { generateIdToken } from './id-token-generator';
 import { writeSecretFile } from './secure-temp';
 import path = require('path');
 import os = require('os');
-import { v4 as uuidV4 } from 'uuid';
+import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
