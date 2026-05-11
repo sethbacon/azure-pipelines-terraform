@@ -31,7 +31,6 @@ tr.registerMock('./http-client', {
     }
 });
 
-tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
 tr.registerMock('./gpg-verifier', {
@@ -50,6 +49,7 @@ tr.registerMock('fs', {
 });
 
 tr.registerMock('crypto', {
+    randomUUID: () => 'test-uuid-1234',
     createHash: (_algorithm: string) => ({
         update: (_data: any) => ({
             digest: (_encoding: string) => EXPECTED_SHA256

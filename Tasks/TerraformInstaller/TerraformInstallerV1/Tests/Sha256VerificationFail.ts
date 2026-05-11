@@ -34,7 +34,6 @@ tr.registerMock('./http-client', {
     }
 });
 
-tr.registerMock('uuid', { v4: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 
 // gpg-verifier: mock to prevent openpgp from loading (not used in registry path)
@@ -54,6 +53,7 @@ tr.registerMock('fs', {
 
 // crypto: returns a DIFFERENT hash than what the registry provided → mismatch
 tr.registerMock('crypto', {
+    randomUUID: () => 'test-uuid-1234',
     createHash: (_algorithm: string) => ({
         update: (_data: any) => ({
             digest: (_encoding: string) => 'wrong_hash_that_does_not_match_xyz789'

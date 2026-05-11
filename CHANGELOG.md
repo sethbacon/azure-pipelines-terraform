@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.3] — 2026-05-11
+
+### Fixed
+
+- Extension contribution `name` paths were missing versioned subdirectory (`TerraformInstallerV1`, `TerraformTaskV5`); ADO could not locate `task.json` to register task packages, causing `No task definition found` errors in pipelines
+- Replace `uuid` dependency with Node.js built-in `crypto.randomUUID()`; uuid v14 (ESM-only) broke CJS task runner; eliminates the dependency entirely from both tasks
+- Update `fast-uri` to 3.1.2 in TerraformTaskV5 (dev dep, GHSA-q3j6-qgpj-74h6, GHSA-v39h-62p7-jpjc)
+
 ## [1.0.2] — 2026-05-11
 
 ### Fixed

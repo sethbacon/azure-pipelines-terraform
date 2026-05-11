@@ -39,7 +39,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
     }
 }
 
-tr.registerMock('uuid', { v4: () => '123' });
+tr.registerMock('crypto', { randomUUID: () => '123' });
 tr.setAnswers(a);
 
 tr.run();
