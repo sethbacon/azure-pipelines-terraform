@@ -4,6 +4,15 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.4] — 2026-05-11
+
+### Fixed
+
+- Bump `postcss` to 8.5.14 (CVE-2026-41305, medium, dev dep — XSS in CSS stringify output)
+- Bump `fast-uri` to 3.1.2 (CVE-2026-6322, high, dev dep — host confusion via percent-encoded authority)
+- Bump `uuid` to 13.0.2 via `overrides` (CVE-2026-41907, medium, nested in tfx-cli — missing buffer bounds check)
+- Resolve CodeQL `incomplete-url-substring-sanitization` warning in installer test by using exact hostname comparison
+
 ## [1.0.3] — 2026-05-11
 
 ### Fixed
