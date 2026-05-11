@@ -169,7 +169,7 @@ Three modes via service connection `authorizationScheme`:
 Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts`
 
 - Downloads Terraform from `https://releases.hashicorp.com/terraform/` for the requested version
-- Supports `latest` (queries HashiCorp checkpoint API, falls back to `1.9.8`)
+- Supports `latest` (queries HashiCorp checkpoint API, falls back to `1.14.8`)
 - Supports Windows, macOS, Linux on amd64, arm64, arm, 386
 - Verifies GPG signature of SHA256SUMS using HashiCorp's embedded public key (`gpg-verifier.ts`)
 - Sets `terraformLocation` pipeline variable after install
@@ -340,10 +340,13 @@ Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local dev
 - **Add a second collaborator/maintainer** to reduce bus factor (currently sole maintainer: @sethbacon)
 - **Consider adding a tag protection rule** to prevent deletion of release tags (`v*.*.*`)
 
-## Active Initiatives
+## Completed Initiatives
 
-See `docs/initiatives/` for detailed plans:
+All 7 roadmap phases are complete as of v1.0.0. See `docs/initiatives/` for detailed plans:
 
-- [Initiative 1: Flexible Terraform Installer](docs/initiatives/initiative-1-flexible-installer.md) — Support HashiCorp official releases, terraform-registry-backend, and custom mirror URLs
-- [Initiative 2: Complete CLI Coverage](docs/initiatives/initiative-2-complete-cli-coverage.md) — Add workspace, state, fmt, test, get commands; -replace flag on plan/apply
-- [Initiative 3: Workload Identity Federation for Non-AzureRM](docs/initiatives/initiative-3-workload-identity-federation.md) — AWS and GCP WIF support; backend/provider decoupling
+- [Initiative 1: Flexible Terraform Installer](docs/initiatives/initiative-1-flexible-installer.md) — Completed
+- [Initiative 2: Complete CLI Coverage](docs/initiatives/initiative-2-complete-cli-coverage.md) — Completed
+- [Initiative 3: Workload Identity Federation for Non-AzureRM](docs/initiatives/initiative-3-workload-identity-federation.md) — Completed
+- [Initiative 4: Workload Identity Federation for OCI](docs/initiatives/initiative-4-oci-wif.md) — Completed
+
+See [docs/roadmap.md](docs/roadmap.md) for the full 7-phase plan and [CHANGELOG.md](CHANGELOG.md) for the release history.

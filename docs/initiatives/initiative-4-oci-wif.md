@@ -6,11 +6,15 @@ Add Workload Identity Federation (OIDC) support to the OCI provider handler so t
 API key credentials are no longer required in pipeline service connections. This mirrors the
 WIF support added for AWS and GCP in Initiative 3.
 
-## Current State
+## Implementation Status
+
+**Status: COMPLETED** — OCI WIF support shipped in v1.0.0 (2026-04-17). This document is retained for reference.
+
+## Current State (historical)
 
 The `TerraformCommandHandlerOCI` handler currently authenticates using an API key stored in
-an `PTTOCIServiceEndpoint` service connection (user OCID + tenancy OCID + private key + fingerprint
-+ region). These long-lived credentials must be rotated manually and stored in ADO as secrets.
+an `PTTOCIServiceEndpoint` service connection (user OCID + tenancy OCID + private key +
+fingerprint + region). These long-lived credentials must be rotated manually and stored in ADO as secrets.
 
 ## Why OCI WIF Is More Complex Than AWS/GCP
 
@@ -59,6 +63,7 @@ testing against a real OCI tenancy before implementation begins.
 - What subject claim format does OCI use for trust policy conditions?
 
 **Reference endpoints to investigate:**
+
 - OCI SDK source: `github.com/oracle/oci-go-sdk` — `common/auth/` package, token exchange flow
 - OCI documentation: "Using Token Authentication" in Identity and Access Management
 
@@ -76,6 +81,7 @@ provider "oci" {
 This reads a session token from the OCI CLI config file at the specified profile path.
 
 **Questions:**
+
 - Can `config_file_profile` be overridden via environment variable (`TF_VAR_` or provider env vars)?
 - Does the OCI provider respect `OCI_CLI_PROFILE` or equivalent env var?
 - Is `security_token_file` accepted directly in the provider block without a full OCI config file?
@@ -96,6 +102,7 @@ The OCI Terraform provider reads several env vars:
 | `OCI_CONFIG_PROFILE`                        | Profile name within the config file   |
 
 **Questions:**
+
 - Does setting `OCI_CONFIG_FILE` to a synthetically generated file containing a `[DEFAULT]`
   profile with `security_token_file=<path>` and `auth=SecurityToken` work?
 - Is `fingerprint` still required in the config file when using token auth?
@@ -106,7 +113,7 @@ The OCI Terraform provider reads several env vars:
 A UPST is a base64-encoded token returned from the OCI token exchange. The OCI CLI session
 profile directory contains:
 
-```
+```txt
 ~/.oci/sessions/<profile>/
     oci_api_key.pem         # ephemeral private key
     oci_api_key_public.pem  # corresponding public key
@@ -114,6 +121,7 @@ profile directory contains:
 ```
 
 **Questions:**
+
 - Is an ephemeral key pair required alongside the UPST, or can the UPST be used standalone?
 - Does the OCI Terraform provider require a private key even in `SecurityToken` auth mode?
 - If yes, must the ephemeral key pair be generated client-side before calling the token
@@ -123,7 +131,7 @@ profile directory contains:
 
 If the above questions resolve favourably, the proposed flow would be:
 
-```
+```txt
 1. Generate ephemeral RSA key pair (in-memory, Node.js crypto module)
 2. POST ephemeral public key + ADO OIDC JWT to OCI Token Exchange API
    → Receive UPST
@@ -139,6 +147,7 @@ If the above questions resolve favourably, the proposed flow would be:
 ```
 
 This is significantly more complex than AWS/GCP WIF and requires:
+
 - Client-side RSA key generation (available via Node.js `crypto` module)
 - Knowledge of the OCI token exchange API request format
 - Writing 3-4 files to disk (config, private key, public key, UPST)

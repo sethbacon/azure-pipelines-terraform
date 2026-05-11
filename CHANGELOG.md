@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.2] — 2026-05-11
+
+### Fixed
+
+- Task packages (`PipelineTerraformInstaller@1`, `PipelineTerraformTask@5`) failed to register in ADO distributed task service after v1.0.1 install; re-publishing forces task re-registration
+
 ## [1.0.1] — 2026-04-17
 
 ### Fixed
