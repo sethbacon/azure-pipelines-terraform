@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "pipeline-tasks-terraform",
     "name": "Pipeline Tasks for Terraform",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "publisher": "sethbacon",
     "targets": [
         {
@@ -128,7 +128,7 @@
                 "name": "Terraform Plan",
                 "uri": "tab/index.html",
                 "supportsTasks": [
-                    "981E87CD-B686-4A9E-B09E-B4AFDEDF126B"
+                    "51E85A73-2294-422A-B4D0-B780182923B5"
                 ],
                 "dynamic": true
             }
