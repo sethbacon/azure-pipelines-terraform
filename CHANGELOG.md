@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.7] — 2026-05-12
+
+### Fixed
+
+- Remove `task.loc.json` from `TerraformInstallerV1`: the file had `"Minor": "217"` while `task.json` had `"Minor": "218"`, causing ADO to register the installer task as version `1.217.0` instead of `1.218.0`. This was the root cause of the "No task definition found" error in pipelines referencing the installer task. The file is unused (this extension does not use the ADO localization pipeline).
+
 ## [1.0.6] — 2026-05-12
 
 ### Fixed
