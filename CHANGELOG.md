@@ -4,6 +4,20 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.5] — 2026-05-11
+
+### Changed
+
+- Regenerated task IDs for both `PipelineTerraformInstaller` and `PipelineTerraformTask` to bypass an Azure DevOps task catalog cache that was pinning the previous task minor version (`1.217.0`) even after extension upgrades published newer task minors. New IDs force a fresh registration on extension install.
+  - `PipelineTerraformInstaller`: `310afe61-60d3-49bd-b4b8-7abb989a38fc` → `D935A3E4-0C05-4DB1-A7DF-18FE110C38C8`
+  - `PipelineTerraformTask`: `981E87CD-B686-4A9E-B09E-B4AFDEDF126B` → `51E85A73-2294-422A-B4D0-B780182923B5`
+- Updated the Terraform Plan tab `supportsTasks` contribution to the new V5 task ID so the tab continues to attach to plan results.
+
+### Notes
+
+- Existing pipeline YAML continues to work unchanged: tasks are still referenced as `PipelineTerraformInstaller@1` and `PipelineTerraformTask@5` (name-based lookup, not by ID).
+- After upgrading to v1.0.5, queue any failing pipelines once to refresh the task definition cache.
+
 ## [1.0.4] — 2026-05-11
 
 ### Fixed
