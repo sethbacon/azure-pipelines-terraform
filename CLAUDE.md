@@ -150,7 +150,7 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 - **`workspace`** - runs `terraform workspace` with `workspaceSubCommand` (select, new, list, show, delete)
 - **`state`** - runs `terraform state` with `stateSubCommand` (list, show, mv, rm, pull, push)
 - **`fmt`** - runs `terraform fmt -check` for formatting validation
-- **`test`** - runs `terraform test` with optional filter and verbose flags
+- **`test`** - runs `terraform test` with optional filter and verbose flags. Service connection is **optional**: omit for unit tests, provide for integration tests that need provider auth
 - **`get`** - runs `terraform get` to download modules
 - **`import`** - runs `terraform import` with `importAddress` and `importId` inputs
 - **`forceUnlock`** - runs `terraform force-unlock` with `lockId` input

@@ -559,9 +559,20 @@ export abstract class BaseTerraformCommandHandler {
             commandOptions = commandOptions ? `${commandOptions} -filter=${testFilter}` : `-filter=${testFilter}`;
         }
 
-        const testCommand = this.createAuthCommand("test", commandOptions);
+        // Service connection is optional for test. Unit/validation tests don't need
+        // provider auth, but integration tests (run blocks with command = apply) may.
+        const serviceName = tasks.getInput(this.getServiceName(), false);
+        if (serviceName) {
+            const testCommand = this.createAuthCommand("test", commandOptions);
+            const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
+            await this.handleProvider(testCommand);
+            return terraformTool.execAsync(<IExecOptions>{
+                cwd: testCommand.workingDirectory
+            });
+        }
+
+        const testCommand = this.createBaseCommand("test", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
-        await this.handleProvider(testCommand);
         return terraformTool.execAsync(<IExecOptions>{
             cwd: testCommand.workingDirectory
         });
