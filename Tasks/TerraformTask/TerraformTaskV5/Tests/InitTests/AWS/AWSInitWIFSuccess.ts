@@ -19,13 +19,13 @@ tr.setInput('backendAWSRegion', 'us-east-1');
 tr.setInput('backendAWSSessionName', 'AzureDevOps-Terraform-Backend');
 
 var mock = {
-    "generateIdToken": function(serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
+    "generateIdToken": function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 };
 
 tr.registerMock('./id-token-generator', mock);
 tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 
-let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
+let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {
         "terraform": "terraform"
     },

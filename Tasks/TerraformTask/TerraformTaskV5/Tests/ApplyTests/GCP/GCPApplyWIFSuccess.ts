@@ -17,7 +17,7 @@ tr.setInput('gcpWorkloadIdentityProviderId', 'my-oidc-provider');
 tr.setInput('gcpServiceAccountEmail', 'terraform@my-project.iam.gserviceaccount.com');
 
 tr.registerMock('./id-token-generator', {
-    generateIdToken: (serviceConnectionId: string) => {
+    generateIdToken: (_serviceConnectionId: string) => {
         return Promise.resolve('mock-oidc-token-12345');
     }
 });

@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-2025]
     defaults:
       run:
         working-directory: Tasks/TerraformTask/TerraformTaskV5
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-2025]
     defaults:
       run:
         working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
