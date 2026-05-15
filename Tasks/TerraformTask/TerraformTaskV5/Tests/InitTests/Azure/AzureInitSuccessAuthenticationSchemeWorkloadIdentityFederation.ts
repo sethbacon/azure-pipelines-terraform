@@ -22,7 +22,7 @@ process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_SERVICEPRINCIPALID'] = 'DummyServic
 process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_TENANTID'] = 'DummyTenantId';
 process.env['ENDPOINT_AUTH_PARAMETER_SYSTEMVSSCONNECTION_ACCESSTOKEN'] = 'DummyAccessToken';
 
-let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
+let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {
         "terraform": "terraform"
     },
@@ -38,8 +38,8 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
 }
 
 var mock = {
-    "generateIdToken" : function(command) { return Promise.resolve('12345'); }
- }
+    "generateIdToken": function (_command) { return Promise.resolve('12345'); }
+}
 
 tr.registerMock('./id-token-generator', mock);
 tr.setAnswers(a);
