@@ -22,7 +22,7 @@ process.env['ENDPOINT_AUTH_SCHEME_AzureRM'] = 'ManagedServiceIdentity';
 process.env['ENDPOINT_DATA_AzureRM_SUBSCRIPTIONID'] = 'DummmySubscriptionId';
 process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_TENANTID'] = 'DummyTenantId';
 
-let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
+let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {
         "terraform": "terraform"
     },
@@ -38,8 +38,8 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
 }
 
 var mock = {
-    "generateIdToken" : function(command) { return Promise.resolve('12345'); }
- }
+    "generateIdToken": function (_command) { return Promise.resolve('12345'); }
+}
 
 tr.registerMock('./id-token-generator', mock);
 tr.setAnswers(a);

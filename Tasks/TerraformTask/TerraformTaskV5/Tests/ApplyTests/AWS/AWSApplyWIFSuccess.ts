@@ -16,7 +16,7 @@ tr.setInput('awsRegion', 'us-east-1');
 tr.setInput('awsSessionName', 'AzureDevOps-Terraform');
 
 tr.registerMock('./id-token-generator', {
-    generateIdToken: (serviceConnectionId: string) => {
+    generateIdToken: (_serviceConnectionId: string) => {
         return Promise.resolve('mock-oidc-token-12345');
     }
 });
