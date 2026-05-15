@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.9] — 2026-05-15
+
+### Fixed
+
+- **Bump task Minor versions to invalidate ADO distributed task cache**: Azure DevOps caches tasks by Major.Minor and only refreshes when Minor increments. The v1.0.8 fix was not served to agents because only Patch was bumped. TerraformTask now at `5.261.0`, TerraformInstaller at `1.219.0`.
+
 ## [1.0.8] — 2026-05-15
 
 ### Fixed
