@@ -1946,6 +1946,20 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('test command without service connection should succeed', async () => {
+        let tp = path.join(__dirname, './TestCommandTests/NoAuthTestSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('NoAuthTestSuccessL0 should have succeeded.'), 'Should have printed: NoAuthTestSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
     /* backend type decoupling tests */
 
     it('init with s3 backend and azurerm provider should succeed', async () => {

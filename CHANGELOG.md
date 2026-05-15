@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.8] — 2026-05-15
+
+### Fixed
+
+- **`test` command no longer requires a service connection**: previously, running `terraform test` with any provider would fail with `Input required: environmentServiceNameAWS` (or the equivalent for other providers) even when the tests didn't need cloud credentials. The service connection is now optional for the `test` command — unit/validation tests work without one, while integration tests that provision real resources can still provide a service connection and the task will configure provider auth automatically.
+
 ## [1.0.7] — 2026-05-12
 
 ### Fixed
