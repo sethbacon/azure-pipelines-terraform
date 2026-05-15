@@ -56,7 +56,7 @@ Runs Terraform commands. Supports 16 commands:
 | `workspace`   | Manage workspaces (`new`, `select`, `list`, `delete`, `show`).                                 |
 | `state`       | Advanced state management (`list`, `pull`, `push`, `mv`, `rm`, `show`).                        |
 | `fmt`         | Reformat configuration files. Use `fmtCheck` to fail on unformatted files.                     |
-| `test`        | Run module tests (Terraform 1.6+).                                                             |
+| `test`        | Run module tests (Terraform 1.6+). Service connection is optional (see below).                 |
 | `get`         | Download and install modules.                                                                  |
 | `import`      | Import existing infrastructure into state. Takes `importAddress` and `importId` inputs.        |
 | `forceunlock` | Forcibly release a stuck state lock. Takes a `lockId` input.                                   |
@@ -67,11 +67,11 @@ Runs Terraform commands. Supports 16 commands:
 
 ## Providers
 
-| Provider | `provider` value | Service Connection Type                                      | Auth Methods                                     |
-| -------- | ---------------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| Azure    | `azurerm`        | Azure Resource Manager (built-in)                            | Service Principal, Managed Identity, WIF         |
-| AWS      | `aws`            | Pipeline AWS for Terraform (`PTTAWSServiceEndpoint`)         | Static credentials, Workload Identity Federation |
-| GCP      | `gcp`            | Pipeline GCP for Terraform (`PTTGoogleCloudServiceEndpoint`) | Static credentials, Workload Identity Federation |
+| Provider | `provider` value | Service Connection Type                                      | Auth Methods                                      |
+| -------- | ---------------- | ------------------------------------------------------------ | ------------------------------------------------- |
+| Azure    | `azurerm`        | Azure Resource Manager (built-in)                            | Service Principal, Managed Identity, WIF          |
+| AWS      | `aws`            | Pipeline AWS for Terraform (`PTTAWSServiceEndpoint`)         | Static credentials, Workload Identity Federation  |
+| GCP      | `gcp`            | Pipeline GCP for Terraform (`PTTGoogleCloudServiceEndpoint`) | Static credentials, Workload Identity Federation  |
 | OCI      | `oci`            | Pipeline OCI for Terraform (`PTTOCIServiceEndpoint`)         | API key credentials, Workload Identity Federation |
 
 ---
@@ -170,6 +170,48 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 | OCI service connection type                    | `OCIServiceEndpoint`                                           | `PTTOCIServiceEndpoint`                                               |
 | Azure backend resource group/storage dropdowns | Dynamic API lookups                                            | Free-text strings                                                     |
 | Side-by-side install                           | N/A                                                            | Yes — distinct extension ID and service connection types              |
+
+---
+
+## Service Connection Requirements by Command
+
+Most commands that interact with cloud resources require a provider service connection. The following commands **do not** require one:
+
+| Command       | Service Connection | Notes                                                                                                                                                                                                                   |
+| ------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`        | Backend only       | Uses the backend service connection (e.g. `backendServiceArm`), not the provider connection. `backendType: local` needs no connection at all.                                                                           |
+| `validate`    | Not required       | Validates configuration syntax and internal consistency.                                                                                                                                                                |
+| `fmt`         | Not required       | Checks or applies formatting.                                                                                                                                                                                           |
+| `get`         | Not required       | Downloads modules referenced in configuration.                                                                                                                                                                          |
+| `workspace`   | Not required       | Manages local workspace state.                                                                                                                                                                                          |
+| `state`       | Not required       | Local state operations.                                                                                                                                                                                                 |
+| `forceunlock` | Not required       | Releases a stuck state lock.                                                                                                                                                                                            |
+| `test`        | **Optional**       | Unit/validation tests run without auth. Integration tests that provision real resources (test files with `run` blocks using `command = apply`) need a service connection — provide it in YAML and the task will use it. |
+
+All other commands (`plan`, `apply`, `destroy`, `show`, `output`, `import`, `refresh`, `custom`) require a provider service connection.
+
+### Running `terraform test` without a service connection
+
+```yaml
+# Unit/validation tests — no service connection needed
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Test'
+  inputs:
+    provider: aws          # still required (selects handler)
+    command: test
+```
+
+### Running `terraform test` with a service connection
+
+```yaml
+# Integration tests that provision real resources
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Test (integration)'
+  inputs:
+    provider: aws
+    command: test
+    environmentServiceNameAWS: my-aws-connection
+```
 
 ---
 

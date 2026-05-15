@@ -19,6 +19,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Flexible installer**: Download Terraform from HashiCorp releases, a private registry, or a custom mirror with SHA256 verification
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
+- **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
 
 ## Quick Start
 
