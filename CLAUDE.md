@@ -59,10 +59,11 @@ Closes #12
 1. Collect changelog entries from merged PR bodies
 2. Update `CHANGELOG.md` on `development` branch
 3. **Bump `version` in `azure-devops-extension.json`** to match the release tag (e.g. `"0.3.0"` for tag `v0.3.0`). The release workflow will fail if these don't match.
-4. Open PR: `development` → `main` (squash merge)
-5. Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
-6. The release workflow (`.github/workflows/release.yml`) triggers automatically on the semver tag
-7. The workflow: guards the tag is on `main` → verifies extension version matches tag → runs CI → builds → packages `.vsix` → publishes to Marketplace → creates GitHub Release
+4. **Bump `Minor` in `task.json` for every task whose code changed** — ADO caches tasks by `Major.Minor` and will not serve updated code to agents until `Minor` increments. Files to update: `Tasks/TerraformTask/TerraformTaskV5/task.json` and/or `Tasks/TerraformInstaller/TerraformInstallerV1/task.json`. Increment `Minor` by 1, leave `Patch` at 0.
+5. Open PR: `development` → `main` (squash merge)
+6. Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
+7. The release workflow (`.github/workflows/release.yml`) triggers automatically on the semver tag
+8. The workflow: guards the tag is on `main` → verifies extension version matches tag → runs CI → builds → packages `.vsix` → publishes to Marketplace → creates GitHub Release
 
 **Required GitHub secret:** `TFX_PAT` — Personal Access Token for Visual Studio Marketplace with `Marketplace (publish)` scope. Set in repository Settings → Secrets → Actions.
 
