@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.11] — 2026-05-16
+
+### Fixed
+
+- **Bump TerraformInstallerV1 Minor to 220 for ADO cache invalidation**: the v1.0.10 fix to the registry binary download was not picked up by ADO agents because the task Minor version was not incremented. TerraformInstaller is now at `1.220.0`.
+
 ## [1.0.10] — 2026-05-16
 
 ### Fixed
