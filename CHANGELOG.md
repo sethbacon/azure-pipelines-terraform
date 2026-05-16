@@ -4,6 +4,12 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.10] — 2026-05-16
+
+### Fixed
+
+- **TerraformInstallerV1 registry download no longer fails when registry returns empty sha256**: when `downloadSource: registry` is used, the installer calls the per-platform endpoint which may return an empty `sha256` field if the registry already verified the binary server-side (`sha256_verified: true`). An empty string is falsy in JavaScript, causing a spurious "missing sha256" error. The guard now only requires `download_url`; local SHA256 verification is performed when the field is non-empty and skipped (with a debug log) when it is empty.
+
 ## [1.0.9] — 2026-05-15
 
 ### Fixed
