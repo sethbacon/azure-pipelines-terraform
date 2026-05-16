@@ -159,11 +159,11 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
     const data = await fetchJson<{ download_url: string; sha256: string }>(infoUrl);
-    if (!data.download_url || !data.sha256) {
-        throw new Error(`Registry API returned invalid response: missing download_url or sha256 from ${infoUrl}`);
+    if (!data.download_url) {
+        throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
     }
     // data.download_url = pre-signed storage URL (15-minute TTL)
-    // data.sha256       = hex SHA256 of the zip
+    // data.sha256       = hex SHA256 of the zip (may be empty if registry verified server-side)
 
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
@@ -173,7 +173,11 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         throw new Error(tasks.loc("TerraformDownloadFailed", data.download_url, exception));
     }
 
-    await verifySha256(zipPath, data.sha256);
+    if (data.sha256) {
+        await verifySha256(zipPath, data.sha256);
+    } else {
+        tasks.debug(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (registry performed server-side verification)`);
+    }
     return zipPath;
 }
 
