@@ -23,6 +23,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **Bump task Minor versions for ADO cache invalidation**: TerraformTaskV5 `5.261→5.262`, TerraformInstallerV1 `1.220→1.221`.
 
+- **Fix cosign v4 bundle format**: `sigstore/cosign-installer` v4 dropped `--output-signature`/`--output-certificate` in favour of `--bundle`. Release workflow updated to produce a single `.vsix.bundle` artifact instead of separate `.sig` and `.pem` files.
+
 ## [1.0.11] — 2026-05-16
 
 ### Fixed
