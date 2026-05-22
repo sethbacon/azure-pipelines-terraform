@@ -131,15 +131,14 @@ jobs:
       - name: Sign VSIX with cosign keyless
         run: |
           VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
-          cosign sign-blob --yes "$VSIX_FILE" --output-signature "${VSIX_FILE}.sig" --output-certificate "${VSIX_FILE}.pem"
+          cosign sign-blob --yes "$VSIX_FILE" --bundle "${VSIX_FILE}.bundle"
       - name: Upload SBOM and signature artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom-and-signatures
           path: |
             sbom-*.cdx.json
-            *.vsix.sig
-            *.vsix.pem
+            *.vsix.bundle
           retention-days: 7
 
   draft-release:
@@ -169,8 +168,7 @@ jobs:
           files: |
             *.vsix
             sbom-*.cdx.json
-            *.vsix.sig
-            *.vsix.pem
+            *.vsix.bundle
           generate_release_notes: true
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true

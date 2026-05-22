@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.0.12] — 2026-05-22
+
+### Fixed
+
+- **Guard null credentials and empty GPG signatures across all provider handlers** (closes #189–#195):
+  - Azure handler (#189): throw on null `SystemVssConnection` AccessToken in OIDC token refresh path instead of silently passing `null` downstream
+  - OCI handler (#190): validate `privateKey` before passing to `normalizePem`; throw a clear error when it is missing from the service connection
+  - GCP handler (#191): validate all three credential fields (`Issuer`, `Audience`, `PrivateKey`) before writing the JSON credentials file; error message names which fields are missing
+  - `id-token-generator` (#192): validate `AccessToken` before building the `Bearer` header; surfacing an actionable error when `SystemVssConnection` is unavailable prevents opaque HTTP 401 failures across all WIF providers
+  - `gpg-verifier` (#193): guard `result.signatures.length > 0` before destructuring to avoid a `TypeError` on malformed or empty `.sig` files
+  - AWS handler (#194): replace misleading `!` non-null assertions with `?? ''` on `required=false` credential parameters
+  - Azure handler (#195): `tenantId` in `runAzLogin` changed to `required=true`; `ARM_TENANT_ID` env var set with `?? ''` to remove false type assertion
+
+- **Upgrade to Node 24 LTS**: Node 20 reached EOL April 2026. All CI workflows, `package.json` engine constraints, and ADO `task.json` execution targets updated to Node 24 (`Node24` added alongside `Node20_1` for backward-compatible agent fallback).
+
+- **GitHub Actions upgrades**: `actions/setup-node` v5→v6.4.0, `sigstore/cosign-installer` v3→v4.1.2, `softprops/action-gh-release` v2→v3.0.0 (native Node 24), `actions/github-script` v7→v9.0.0, `github/codeql-action` v3→v4.36.0, `actions/upload-artifact` v7.0.0→v7.0.1.
+
+- **Bump task Minor versions for ADO cache invalidation**: TerraformTaskV5 `5.261→5.262`, TerraformInstallerV1 `1.220→1.221`.
+
+- **Fix cosign v4 bundle format**: `sigstore/cosign-installer` v4 dropped `--output-signature`/`--output-certificate` in favour of `--bundle`. Release workflow updated to produce a single `.vsix.bundle` artifact instead of separate `.sig` and `.pem` files.
+
 ## [1.0.11] — 2026-05-16
 
 ### Fixed
