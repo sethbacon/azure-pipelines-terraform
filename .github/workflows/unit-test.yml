@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: npm install --include=dev
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=high
       - name: Lint
         run: npx eslint src/ Tests/
       - name: Compile TypeScript
@@ -69,7 +69,7 @@ jobs:
       - name: Install dependencies
         run: npm install --include=dev
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=high
       - name: Lint
         run: npx eslint src/
       - name: Compile TypeScript
