@@ -36,15 +36,7 @@ jobs:
           TAG_VERSION="${TAG#v}"
           EXT_VERSION=$(node -p "require('./azure-devops-extension.json').version")
           if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
-            echo "::error::Tag version (${TAG_VERSION}) does not match azure-devops-extension.json version (${EXT_VERSION}). Update the extension manifest before tagging."
-            exit 1
-          fi
-      - name: Verify changelog has entry for release version
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          TAG_VERSION="${TAG#v}"
-          if ! grep -qE "^## \[?${TAG_VERSION}\]?" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no entry matching version ${TAG_VERSION}. Add a changelog section before releasing."
+            echo "::error::Tag version (${TAG_VERSION}) does not match azure-devops-extension.json version (${EXT_VERSION}). Merge the release-please PR before tagging."
             exit 1
           fi
 

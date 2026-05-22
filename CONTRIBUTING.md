@@ -6,10 +6,33 @@ This document describes the development process for the **Pipeline Tasks for Ter
 
 Forked from [azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) by Microsoft DevLabs, licensed under MIT. The original Microsoft copyright notice is retained in `LICENSE`.
 
+## Commit convention
+
+All commits and PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+type: short description (50 chars max)
+```
+
+| Type | When to use |
+|------|-------------|
+| `feat` | New Terraform command, provider, or auth scheme |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `refactor` | Restructure without changing behavior |
+| `perf` | Performance improvement |
+| `test` | Adding or fixing tests |
+| `ci` | CI/CD workflow changes |
+| `chore` | Housekeeping |
+| `deps` | Dependency updates |
+| `security` | Security fix or hardening |
+
+The PR title is what ends up in the changelog — write it as a clear, reader-facing statement.
+
 ## Prerequisites
 
-- Node.js 18+ (LTS recommended; Node 18 is what CI uses)
-- npm 9+
+- Node.js 24 (Active LTS — matches CI)
+- npm 10+
 - GitHub CLI (`gh`) — optional, useful for creating PRs
 
 TypeScript (`tsc`) and `tfx-cli` are installed as dev dependencies; no global installation needed.
@@ -21,10 +44,6 @@ TypeScript (`tsc`) and `tfx-cli` are installed as dev dependencies; no global in
 git clone https://github.com/sethbacon/azure-pipelines-terraform
 cd azure-pipelines-terraform
 
-# Set up development branch tracking
-git checkout development
-git pull origin development
-
 # Install dependencies for TerraformTaskV5
 cd Tasks/TerraformTask/TerraformTaskV5
 npm install --include=dev
@@ -34,42 +53,11 @@ cd ../../../Tasks/TerraformInstaller/TerraformInstallerV1
 npm install --include=dev
 ```
 
-## Branch Strategy
+## Development workflow
 
-- `main` — production-ready; tagged releases only; never force-pushed directly
-- `development` — integration branch; all feature and fix PRs target this branch
-- `feature/<description>` — created from `development`; deleted after merge
-- `fix/<description>` — bug fix branches from `development`
-
-**Never commit directly to `main`.** The only path to `main` is a PR from `development`.
-
-## Commit Convention
-
-Format: `type: short description` (50 chars max for title line)
-
-Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`
-
-Include a body with the issue reference:
-
-```text
-feat: add registry download strategy to terraform installer
-
-Closes #12
-```
-
-## Workflow for Each Change
-
-1. Open a GitHub issue before writing code
-2. Create a branch from `development`:
-
-   ```bash
-   git checkout development
-   git pull origin development
-   git checkout -b feature/<description>
-   ```
-
-3. Make your changes
-4. Run the local quality gate:
+1. Create a branch from `main`: `git checkout -b feat/my-feature`
+2. Make your changes.
+3. Run the local quality gate:
 
    ```bash
    # From the task directory you changed
@@ -77,15 +65,9 @@ Closes #12
    npm test          # all tests must pass
    ```
 
-5. Rebase on `origin/development` before pushing:
-
-   ```bash
-   git rebase origin/development
-   git push origin feature/<description>
-   ```
-
-6. Open a PR to `development` — include a `## Changelog` section in the PR body
-7. Squash-merge when approved; delete the branch after merge
+4. Open a PR to `main` with a conventional-commit title.
+5. CI runs automatically: version consistency check → build + test (Ubuntu + Windows × Node 24) → type-check tab → actionlint.
+6. Squash-merge when CI passes and the PR is approved; the branch is deleted automatically.
 
 ## Testing
 
@@ -197,33 +179,40 @@ The tab is declared in `azure-devops-extension.json` as a `ms.vss-build-web.buil
 - The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. See the roadmap item **P3.2 · plan tab hardening** for the planned state-machine rewrite.
 - There is no Jest harness in `src/tab/` yet (planned in roadmap item **P4.1**). Until then, end-to-end verification requires a private publish.
 
-## Release Process
+## Release process
 
-Releases are triggered by pushing a semver tag to `main`. The automated workflow handles packaging and publishing.
+Releases are fully automated via [release-please](https://github.com/googleapis/release-please):
 
-**Steps:**
+1. Merge conventional-commit PRs to `main` — release-please accumulates them.
+2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
+3. Before merging the Release PR, manually bump the `Minor` field in `task.json` for every task whose code changed since the last release. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments.
 
-1. Merge all intended changes to `development` via squash-merge PRs
-2. Update `CHANGELOG.md` on `development` (collect entries from PR bodies)
-3. Open a PR from `development` to `main` — title: `chore: release vX.Y.Z`
-4. Squash-merge the PR
-5. Tag the merge commit and push:
+   Files to update:
+   - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
+   - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
 
-   ```bash
-   git fetch origin
-   git tag vX.Y.Z origin/main
-   git push origin vX.Y.Z
-   ```
+   Increment `Minor` by 1, leave `Patch` at 0.
 
-6. The `.github/workflows/release.yml` workflow triggers automatically:
+4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
+5. The `release.yml` workflow fires on the tag:
    - Verifies the tag is reachable from `main`
-   - Runs CI (build + tests)
-   - Builds the release bundle
-   - Packages the `.vsix`
-   - Publishes to the VS Marketplace (`sethbacon.pipeline-tasks-terraform`)
-   - Creates a GitHub Release with the `.vsix` attached
+   - Verifies `azure-devops-extension.json` version matches the tag
+   - Runs full CI
+   - Builds release bundle + packages `.vsix`
+   - Generates CycloneDX SBOMs + cosign signature
+   - Creates draft GitHub Release with assets
+   - **Publishes to VS Marketplace** (requires `marketplace` environment approval)
+   - Undrafts the GitHub Release
 
-**Required secret:** `TFX_PAT` must be set in repository Settings → Secrets → Actions. This is a VS Marketplace Personal Access Token with `Marketplace (publish)` scope for the `sethbacon` publisher.
+**Required secrets/variables:**
+
+| Name | Type | Purpose |
+|------|------|---------|
+| `TFX_PAT` | Secret | VS Marketplace PAT with `Marketplace (publish)` scope |
+| `RELEASE_DISPATCH_APP_ID` | Variable | GitHub App client ID for release-please |
+| `RELEASE_DISPATCH_APP_KEY` | Secret | GitHub App private key for release-please |
+
+The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 
 ## Personal Dev Publishing
 
