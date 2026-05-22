@@ -30,7 +30,13 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         const clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
         const tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
         const privateKey = tasks.getEndpointAuthorizationParameter(serviceName, "PrivateKey", false);
-        if (privateKey) { tasks.setSecret(privateKey); }
+
+        if (!clientEmail || !tokenUri || !privateKey) {
+            const missing = ([!clientEmail && "Issuer", !tokenUri && "Audience", !privateKey && "PrivateKey"] as (string | false)[])
+                .filter(Boolean).join(", ");
+            throw new Error(`GCP service connection is missing required fields: ${missing}`);
+        }
+        tasks.setSecret(privateKey);
 
         // Create json string and write it to the file
         const jsonCredsString = JSON.stringify({

@@ -80,8 +80,8 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
                 const accessKeyId = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "username", false);
                 const secretAccessKey = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "password", false);
                 if (secretAccessKey) { tasks.setSecret(secretAccessKey); }
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId!);
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey!, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId ?? '');
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey ?? '', true);
             }
         }
     }

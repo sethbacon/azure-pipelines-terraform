@@ -37,6 +37,9 @@ export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl
         verificationKeys: publicKey,
     });
 
+    if (!result.signatures || result.signatures.length === 0) {
+        throw new Error(`GPG signature verification failed: no signatures found in ${signatureUrl}`);
+    }
     const { verified } = result.signatures[0];
     try {
         await verified;

@@ -40,13 +40,20 @@ export class TokenGenerator implements ITokenGenerator {
     private async fetchToken(url: string, oidcRequestUri: string): Promise<string> {
         let response: Response;
         try {
+            const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false);
+            if (!accessToken) {
+                throw new Error(
+                    "SystemVssConnection AccessToken is not available. " +
+                    "Ensure the pipeline has 'Allow scripts to access the OAuth token' enabled and OIDC is configured for the service connection."
+                );
+            }
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
             response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!
+                    'Authorization': 'Bearer ' + accessToken
                 },
                 signal: controller.signal
             });

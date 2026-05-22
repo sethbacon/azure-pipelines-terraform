@@ -14,12 +14,15 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "261",
+        "Minor": "262",
         "Patch": "0"
     },
     "instanceNameFormat": "Terraform : $(provider)",
     "execution": {
         "Node20_1": {
+            "target": "src/index.js"
+        },
+        "Node24": {
             "target": "src/index.js"
         }
     },

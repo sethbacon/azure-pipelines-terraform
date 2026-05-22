@@ -104,7 +104,11 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProviderName) {
-                const privateKeyFilePath = this.getPrivateKeyFilePath(tasks.getEndpointDataParameter(command.serviceProviderName, "privateKey", false)!);
+                const rawPrivateKey = tasks.getEndpointDataParameter(command.serviceProviderName, "privateKey", false);
+                if (!rawPrivateKey) {
+                    throw new Error("OCI private key not found in service connection. Ensure the 'privateKey' field is configured.");
+                }
+                const privateKeyFilePath = this.getPrivateKeyFilePath(rawPrivateKey);
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "tenancy", false) || '');
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "user", false) || '');
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProviderName, "region", false) || '');

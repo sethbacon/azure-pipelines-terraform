@@ -89,7 +89,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             throw new Error("az CLI not found. Install the Azure CLI on the agent to use 'Run az login'. See https://docs.microsoft.com/cli/azure/install-azure-cli");
         }
 
-        const tenantId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false)!;
+        const tenantId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", true)!;
 
         switch (authorizationScheme) {
             case AuthorizationScheme.WorkloadIdentityFederation: {
@@ -150,7 +150,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     }
 
     private async setCommonVariables(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, fallbackToIdTokenGeneration: boolean, useCliFlagsForBackend: boolean): Promise<void> {
-        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false)!);
+        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false) ?? '');
 
         switch (authorizationScheme) {
             case AuthorizationScheme.ManagedServiceIdentity:
@@ -179,8 +179,11 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     } else {
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID);
                     }
-                    const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false)!;
-                    if (accessToken) { tasks.setSecret(accessToken); }
+                    const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false);
+                    if (!accessToken) {
+                        throw new Error("AccessToken not found in SystemVssConnection. Ensure the pipeline has OIDC enabled.");
+                    }
+                    tasks.setSecret(accessToken);
                     EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true);
                 }
 
