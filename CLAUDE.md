@@ -179,7 +179,7 @@ Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.t
 ## task.json Schema Key Points
 
 - `id` is shared across all versions of TerraformTask (`FE504ACC-6115-40CB-89FF-191386B5E7BF`)
-- `execution` targets `Node16` and `Node20_1` in V5
+- `execution` targets `Node20_1` and `Node24` in V5; `Node24` is preferred on modern agents, `Node20_1` retained for agent backward compatibility
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
 - Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `showFilePath`, `customFilePath`
@@ -248,18 +248,18 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## Local Development Environment
 
-Verified tooling (as of March 2026):
+Verified tooling (as of May 2026):
 
 | Tool               | Status                 | Version                                          |
 | ------------------ | ---------------------- | ------------------------------------------------ |
-| Node.js            | Installed              | v25.7.0 (not LTS — CI pins Node 18)              |
-| npm                | Installed              | v11.10.1                                         |
+| Node.js            | Installed              | v24.14.0 (Active LTS — matches CI target)        |
+| npm                | Installed              | v11.9.0                                          |
 | TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install`         |
 | `tfx-cli`          | Not globally installed | Available as dev dep after `npm install` at root |
 | GitHub CLI (`gh`)  | Installed              | v2.87.3                                          |
 | Terraform          | Installed              | v1.14.6 at `/c/dev/terraform`                    |
 
-Node v25.7.0 is not LTS. The GitHub Actions workflow pins Node 18 LTS. Local development on Node 25 works for tests; build-related failures may be version-related.
+CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). Node 20 is EOL as of April 2026.
 
 ## Supported Providers
 
