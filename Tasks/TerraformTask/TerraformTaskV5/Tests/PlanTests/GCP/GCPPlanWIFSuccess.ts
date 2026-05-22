@@ -17,7 +17,7 @@ tr.setInput('gcpServiceAccountEmail', 'terraform@my-project.iam.gserviceaccount.
 tr.setInput('commandOptions', '');
 
 var mock = {
-    "generateIdToken": function(serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
+    "generateIdToken": function(_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 };
 
 tr.registerMock('./id-token-generator', mock);

@@ -17,11 +17,11 @@ tr.setInput('ociWifClientId', 'dummy-client-id');
 tr.setInput('commandOptions', '');
 
 tr.registerMock('./id-token-generator', {
-    generateIdToken: function (serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
+    generateIdToken: function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 });
 
 tr.registerMock('./oci-token-exchange', {
-    exchangeOidcForUpst: function (oidcToken: string, identityDomainUrl: string, clientId: string, publicKeyPem: string) {
+    exchangeOidcForUpst: function (_oidcToken: string, _identityDomainUrl: string, _clientId: string, _publicKeyPem: string) {
         return Promise.resolve('mock-upst-token-67890');
     }
 });

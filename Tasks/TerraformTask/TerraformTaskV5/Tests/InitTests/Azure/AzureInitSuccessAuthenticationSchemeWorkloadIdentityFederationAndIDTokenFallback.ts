@@ -40,7 +40,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
 }
 
 var mock = {
-    "generateIdToken" : function(command) { return Promise.resolve('12345'); }
+    "generateIdToken" : function(_command: string) { return Promise.resolve('12345'); }
  }
 
 tr.registerMock('./id-token-generator', mock);
