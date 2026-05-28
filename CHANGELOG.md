@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.1.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.0...v1.1.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* unique provider mirror task id and command arg quoting ([#201](https://github.com/sethbacon/azure-pipelines-terraform/issues/201)) ([b214bd2](https://github.com/sethbacon/azure-pipelines-terraform/commit/b214bd2c1232f4b28152ee754c494c48f38b7938))
+
 ## [1.1.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.0.12...v1.1.0) (2026-05-28)
 
 
