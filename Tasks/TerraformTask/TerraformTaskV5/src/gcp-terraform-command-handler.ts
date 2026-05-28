@@ -63,26 +63,29 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         this.backendConfig.set('credentials', jsonKeyFilePath);
     }
 
-    private async setupBackendWIF(backendServiceName: string): Promise<void> {
-        this.backendConfig.set('bucket', tasks.getInput("backendGCPBucketName", true)!);
-        const prefix = tasks.getInput("backendGCPPrefix", false);
-        if (prefix) {
-            this.backendConfig.set('prefix', prefix);
-        }
-
-        const oidcToken = await generateIdToken(backendServiceName);
+    /**
+     * Writes the OIDC token file and a GCP external_account credentials file for
+     * Workload Identity Federation, registering both for cleanup. Returns the path
+     * to the credentials file. The file-name prefixes are passed in so the backend
+     * and provider call sites keep their distinct, stable temp-file names.
+     */
+    private async writeWifCredentials(params: {
+        serviceConnection: string;
+        projectNumber: string;
+        poolId: string;
+        providerId: string;
+        serviceAccountEmail: string;
+        tokenFilePrefix: string;
+        credentialsFilePrefix: string;
+    }): Promise<string> {
+        const oidcToken = await generateIdToken(params.serviceConnection);
         tasks.setSecret(oidcToken);
 
-        const tokenFilePath = path.join(os.tmpdir(), `gcp-backend-oidc-token-${uuidV4()}.jwt`);
+        const tokenFilePath = path.join(os.tmpdir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
-        const projectNumber = tasks.getInput("backendGCPProjectNumber", true)!;
-        const poolId = tasks.getInput("backendGCPWorkloadIdentityPoolId", true)!;
-        const providerId = tasks.getInput("backendGCPWorkloadIdentityProviderId", true)!;
-        const serviceAccountEmail = tasks.getInput("backendGCPServiceAccountEmail", true)!;
-
-        const audience = `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
+        const audience = `//iam.googleapis.com/projects/${params.projectNumber}/locations/global/workloadIdentityPools/${params.poolId}/providers/${params.providerId}`;
 
         const credentials = {
             type: "external_account",
@@ -90,12 +93,32 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
             token_url: "https://sts.googleapis.com/v1/token",
             credential_source: { file: tokenFilePath },
-            service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccountEmail}:generateAccessToken`
+            service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${params.serviceAccountEmail}:generateAccessToken`
         };
 
-        const credentialsFilePath = path.join(os.tmpdir(), `gcp-backend-wif-credentials-${uuidV4()}.json`);
+        const credentialsFilePath = path.join(os.tmpdir(), `${params.credentialsFilePrefix}-${uuidV4()}.json`);
         writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
         this.tempFiles.push(credentialsFilePath);
+
+        return credentialsFilePath;
+    }
+
+    private async setupBackendWIF(backendServiceName: string): Promise<void> {
+        this.backendConfig.set('bucket', tasks.getInput("backendGCPBucketName", true)!);
+        const prefix = tasks.getInput("backendGCPPrefix", false);
+        if (prefix) {
+            this.backendConfig.set('prefix', prefix);
+        }
+
+        const credentialsFilePath = await this.writeWifCredentials({
+            serviceConnection: backendServiceName,
+            projectNumber: tasks.getInput("backendGCPProjectNumber", true)!,
+            poolId: tasks.getInput("backendGCPWorkloadIdentityPoolId", true)!,
+            providerId: tasks.getInput("backendGCPWorkloadIdentityProviderId", true)!,
+            serviceAccountEmail: tasks.getInput("backendGCPServiceAccountEmail", true)!,
+            tokenFilePrefix: "gcp-backend-oidc-token",
+            credentialsFilePrefix: "gcp-backend-wif-credentials",
+        });
 
         this.backendConfig.set('credentials', credentialsFilePath);
     }
@@ -132,32 +155,17 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const oidcToken = await generateIdToken(command.serviceProviderName);
-        tasks.setSecret(oidcToken);
-
-        const tokenFilePath = path.join(os.tmpdir(), `gcp-oidc-token-${uuidV4()}.jwt`);
-        writeSecretFile(tokenFilePath, oidcToken);
-        this.tempFiles.push(tokenFilePath);
-
         const projectNumber = tasks.getInput("gcpProjectNumber", true)!;
-        const poolId = tasks.getInput("gcpWorkloadIdentityPoolId", true)!;
-        const providerId = tasks.getInput("gcpWorkloadIdentityProviderId", true)!;
-        const serviceAccountEmail = tasks.getInput("gcpServiceAccountEmail", true)!;
 
-        const audience = `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
-
-        const credentials = {
-            type: "external_account",
-            audience: audience,
-            subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
-            token_url: "https://sts.googleapis.com/v1/token",
-            credential_source: { file: tokenFilePath },
-            service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccountEmail}:generateAccessToken`
-        };
-
-        const credentialsFilePath = path.join(os.tmpdir(), `gcp-wif-credentials-${uuidV4()}.json`);
-        writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
-        this.tempFiles.push(credentialsFilePath);
+        const credentialsFilePath = await this.writeWifCredentials({
+            serviceConnection: command.serviceProviderName,
+            projectNumber,
+            poolId: tasks.getInput("gcpWorkloadIdentityPoolId", true)!,
+            providerId: tasks.getInput("gcpWorkloadIdentityProviderId", true)!,
+            serviceAccountEmail: tasks.getInput("gcpServiceAccountEmail", true)!,
+            tokenFilePrefix: "gcp-oidc-token",
+            credentialsFilePrefix: "gcp-wif-credentials",
+        });
 
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);

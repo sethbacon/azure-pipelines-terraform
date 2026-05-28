@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "262",
+        "Minor": "263",
         "Patch": "0"
     },
     "instanceNameFormat": "Terraform : $(provider)",
@@ -190,7 +190,7 @@
             "label": "Terraform variables (key=value)",
             "required": false,
             "visibleRule": "command = plan || command = apply || command = destroy || command = import || command = refresh",
-            "helpMarkDown": "Define Terraform input variables, one per line, as key=value pairs. Each line is passed as a separate -var flag. Lines starting with # are ignored.<br><br>Example:<br>region=us-east-1<br>environment=prod<br>instance_count=3",
+            "helpMarkDown": "Define Terraform input variables, one per line, as key=value pairs. Each line is passed as a separate -var flag. Lines starting with # are ignored.<br><br>Do not use this for secrets: -var values are passed on the command line and may be visible in process listings and logs. For sensitive values use a secure variables file (Secure variables file input) or TF_VAR_ pipeline secret variables instead.<br><br>Example:<br>region=us-east-1<br>environment=prod<br>instance_count=3",
             "properties": {
                 "rows": "5",
                 "resizable": "true"

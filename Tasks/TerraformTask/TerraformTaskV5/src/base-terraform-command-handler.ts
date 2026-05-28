@@ -11,6 +11,32 @@ import os = require('os');
 /** Validates Terraform resource addresses (e.g. `aws_instance.foo`, `module.bar["key"]`). */
 export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w\-]*(\[[^\]]+\])?)*$/;
 
+/**
+ * Splits a multi-line `varFile` input into `-var-file=<path>` tokens, one per
+ * non-empty line. Each path is kept whole so it can be passed as a single argv
+ * entry — paths containing spaces (common on Windows agents) must not be split.
+ */
+export function parseVarFileTokens(varFile: string | undefined): string[] {
+    if (!varFile) return [];
+    return varFile.split('\n').map(l => l.trim()).filter(l => l).map(f => `-var-file=${f}`);
+}
+
+/**
+ * Splits a multi-line `targetResources` input into validated `-target=<address>`
+ * tokens. Addresses may legitimately contain spaces inside quoted index keys
+ * (e.g. `module.x["a b"]`), so each is kept as a single argv entry.
+ */
+export function parseTargetTokens(targetResources: string | undefined): string[] {
+    if (!targetResources) return [];
+    const lines = targetResources.split('\n').map(l => l.trim()).filter(l => l);
+    for (const address of lines) {
+        if (!RESOURCE_ADDRESS_RE.test(address)) {
+            throw new Error(`Invalid target address '${address}': must be a valid Terraform resource address`);
+        }
+    }
+    return lines.map(a => `-target=${a}`);
+}
+
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
     terraformToolHandler: ITerraformToolHandler;
@@ -59,96 +85,65 @@ export abstract class BaseTerraformCommandHandler {
         );
     }
 
-    protected ensureAutoApprove(args: string | undefined): string {
-        const autoApprove = '-auto-approve';
-        let result = args || autoApprove;
-        if (!result.includes(autoApprove)) {
-            result = `${autoApprove} ${result}`;
-        }
-        return result;
-    }
-
-    protected prependReplaceFlag(args: string): string {
+    protected replaceTokens(): string[] {
         const replaceAddress = tasks.getInput("replaceAddress", false);
-        if (replaceAddress) {
-            if (!RESOURCE_ADDRESS_RE.test(replaceAddress)) {
-                throw new Error(`Invalid replace address '${replaceAddress}': must be a valid Terraform resource address`);
-            }
-            return `-replace=${replaceAddress} ${args}`;
+        if (!replaceAddress) return [];
+        if (!RESOURCE_ADDRESS_RE.test(replaceAddress)) {
+            throw new Error(`Invalid replace address '${replaceAddress}': must be a valid Terraform resource address`);
         }
-        return args;
+        return [`-replace=${replaceAddress}`];
     }
 
-    protected prependRefreshOnly(args: string): string {
-        if (tasks.getBoolInput("refreshOnly", false)) {
-            return `-refresh-only ${args}`;
-        }
-        return args;
-    }
-
-    protected appendParallelism(args: string): string {
+    /** Returns the `-parallelism=N` token, or [] if not set. Validates the value. */
+    protected parallelismTokens(): string[] {
         const parallelism = tasks.getInput("parallelism", false);
-        if (parallelism) {
-            const n = parseInt(parallelism, 10);
-            if (isNaN(n) || n < 1) {
-                throw new Error(`Invalid parallelism value '${parallelism}': must be a positive integer`);
-            }
-            return `${args} -parallelism=${n}`;
+        if (!parallelism) return [];
+        const n = parseInt(parallelism, 10);
+        if (isNaN(n) || n < 1) {
+            throw new Error(`Invalid parallelism value '${parallelism}': must be a positive integer`);
         }
-        return args;
+        return [`-parallelism=${n}`];
     }
 
-    protected async appendSecureVarFile(args: string): Promise<string> {
+    /** Downloads the secure var file (if configured) and returns its `-var-file=<path>` token. */
+    protected async secureVarFileTokens(): Promise<string[]> {
         const result = await getSecureVarFileArgs();
-        if (result) {
-            this.secureFileId = result.secureFileId;
-            return `${result.varFileArg} ${args}`;
-        }
-        return args;
-    }
-
-    protected prependVarFiles(args: string): string {
-        const varFile = tasks.getInput("varFile", false);
-        if (!varFile) return args;
-        const lines = varFile.split('\n').map(l => l.trim()).filter(l => l);
-        const flags = lines.map(f => `-var-file=${f}`).join(' ');
-        return flags ? `${flags} ${args}` : args;
-    }
-
-    protected prependTargetResources(args: string): string {
-        const targetResources = tasks.getInput("targetResources", false);
-        if (!targetResources) return args;
-        const lines = targetResources.split('\n').map(l => l.trim()).filter(l => l);
-        for (const address of lines) {
-            if (!RESOURCE_ADDRESS_RE.test(address)) {
-                throw new Error(`Invalid target address '${address}': must be a valid Terraform resource address`);
-            }
-        }
-        const flags = lines.map(a => `-target=${a}`).join(' ');
-        return flags ? `${flags} ${args}` : args;
+        if (!result) return [];
+        this.secureFileId = result.secureFileId;
+        return [result.varFileArg];
     }
 
     /**
-     * Declarative command-args pipeline.  Ordering is fixed here so every
-     * command that opts-in gets flags in a consistent position:
-     *   [secureVarFile] [varFiles] [targetResources] [replace] [refreshOnly] <base> [parallelism]
+     * Builds the structured leading flags that precede the base command. Each flag
+     * is returned as a single argv token (applied later via {@link applyTokens})
+     * so values containing spaces — a var-file path on a Windows agent, or a
+     * target/replace address with a quoted index key — are never split.
+     *
+     * Token order (left to right): secureVarFile, targetResources, varFiles,
+     * refreshOnly, replace. Flag order is irrelevant to Terraform; it is fixed
+     * here only for predictability and stable test assertions.
      */
-    protected async buildCommandArgs(base: string, config: {
+    protected async buildLeadingArgs(config: {
         replaceFlag?: boolean;
         refreshOnly?: boolean;
         varFiles?: boolean;
         targetResources?: boolean;
-        parallelism?: boolean;
         secureVarFile?: boolean;
-    }): Promise<string> {
-        let args = base;
-        if (config.replaceFlag) args = this.prependReplaceFlag(args);
-        if (config.refreshOnly) args = this.prependRefreshOnly(args);
-        if (config.varFiles) args = this.prependVarFiles(args);
-        if (config.targetResources) args = this.prependTargetResources(args);
-        if (config.parallelism) args = this.appendParallelism(args);
-        if (config.secureVarFile) args = await this.appendSecureVarFile(args);
-        return args;
+    }): Promise<string[]> {
+        const tokens: string[] = [];
+        if (config.secureVarFile) tokens.push(...await this.secureVarFileTokens());
+        if (config.targetResources) tokens.push(...parseTargetTokens(tasks.getInput("targetResources", false)));
+        if (config.varFiles) tokens.push(...parseVarFileTokens(tasks.getInput("varFile", false)));
+        if (config.refreshOnly && tasks.getBoolInput("refreshOnly", false)) tokens.push('-refresh-only');
+        if (config.replaceFlag) tokens.push(...this.replaceTokens());
+        return tokens;
+    }
+
+    /** Applies tokens to a tool runner as individual argv entries (no re-splitting). */
+    protected applyTokens(tool: ToolRunner, tokens: string[]): void {
+        for (const token of tokens) {
+            tool.arg(token);
+        }
     }
 
     protected appendTerraformVariables(terraformTool: ToolRunner): void {
@@ -367,15 +362,19 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async plan(): Promise<number> {
-        const base = tasks.getInput("commandOptions") ? `${tasks.getInput("commandOptions")} -detailed-exitcode` : `-detailed-exitcode`;
-        const commandOptions = await this.buildCommandArgs(base, {
-            replaceFlag: true, refreshOnly: true, varFiles: true,
-            targetResources: true, parallelism: true, secureVarFile: true,
-        });
-
-        const planCommand = this.createAuthCommand("plan", commandOptions);
+        const planCommand = this.createAuthCommand("plan");
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
+
+        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+            replaceFlag: true, refreshOnly: true, varFiles: true,
+            targetResources: true, secureVarFile: true,
+        }));
+        const commandOptions = tasks.getInput("commandOptions");
+        if (commandOptions) terraformTool.line(commandOptions);
+        terraformTool.arg("-detailed-exitcode");
+        this.applyTokens(terraformTool, this.parallelismTokens());
         this.appendTerraformVariables(terraformTool);
+
         await this.handleProvider(planCommand);
         await this.warnIfMultipleProviders();
 
@@ -435,15 +434,17 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async apply(): Promise<number> {
-        const additionalArgs = await this.buildCommandArgs(
-            this.ensureAutoApprove(tasks.getInput("commandOptions")), {
-            replaceFlag: true, refreshOnly: true, varFiles: true,
-            targetResources: true, parallelism: true, secureVarFile: true,
-        });
-
-        const applyCommand = this.createAuthCommand("apply", additionalArgs);
+        const applyCommand = this.createAuthCommand("apply");
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
+
+        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+            replaceFlag: true, refreshOnly: true, varFiles: true,
+            targetResources: true, secureVarFile: true,
+        }));
+        this.applyAutoApprove(terraformTool);
+        this.applyTokens(terraformTool, this.parallelismTokens());
         this.appendTerraformVariables(terraformTool);
+
         await this.handleProvider(applyCommand);
         await this.warnIfMultipleProviders();
 
@@ -453,21 +454,35 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async destroy(): Promise<number> {
-        const additionalArgs = await this.buildCommandArgs(
-            this.ensureAutoApprove(tasks.getInput("commandOptions")), {
-            varFiles: true, targetResources: true,
-            parallelism: true, secureVarFile: true,
-        });
-
-        const destroyCommand = this.createAuthCommand("destroy", additionalArgs);
+        const destroyCommand = this.createAuthCommand("destroy");
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
+
+        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+            varFiles: true, targetResources: true, secureVarFile: true,
+        }));
+        this.applyAutoApprove(terraformTool);
+        this.applyTokens(terraformTool, this.parallelismTokens());
         this.appendTerraformVariables(terraformTool);
+
         await this.handleProvider(destroyCommand);
         await this.warnIfMultipleProviders();
 
         return terraformTool.execAsync(<IExecOptions>{
             cwd: destroyCommand.workingDirectory
         });
+    }
+
+    /**
+     * Forces `-auto-approve` on the tool runner (apply/destroy), then applies any
+     * free-form `commandOptions`. If the user already supplied `-auto-approve` in
+     * `commandOptions`, it is not added a second time.
+     */
+    private applyAutoApprove(terraformTool: ToolRunner): void {
+        const commandOptions = tasks.getInput("commandOptions");
+        if (!commandOptions || !commandOptions.includes('-auto-approve')) {
+            terraformTool.arg('-auto-approve');
+        }
+        if (commandOptions) terraformTool.line(commandOptions);
     }
 
     public async validate(): Promise<number> {
@@ -593,18 +608,21 @@ export abstract class BaseTerraformCommandHandler {
     public async import(): Promise<number> {
         const resourceAddress = tasks.getInput("importAddress", true)!;
         const resourceId = tasks.getInput("importId", true)!;
-        const commandOptions = tasks.getInput("commandOptions");
 
-        let args = commandOptions
-            ? `${commandOptions} ${resourceAddress} ${resourceId}`
-            : `${resourceAddress} ${resourceId}`;
-        args = await this.buildCommandArgs(args, {
-            varFiles: true, secureVarFile: true,
-        });
-
-        const importCommand = this.createAuthCommand("import", args);
+        const importCommand = this.createAuthCommand("import");
         const terraformTool = this.terraformToolHandler.createToolRunner(importCommand);
+
+        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+            varFiles: true, secureVarFile: true,
+        }));
+        const commandOptions = tasks.getInput("commandOptions");
+        if (commandOptions) terraformTool.line(commandOptions);
+        // Address and id are passed as discrete argv entries so an id containing
+        // spaces is not split.
+        terraformTool.arg(resourceAddress);
+        terraformTool.arg(resourceId);
         this.appendTerraformVariables(terraformTool);
+
         await this.handleProvider(importCommand);
 
         return terraformTool.execAsync(<IExecOptions>{
@@ -630,15 +648,17 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async refresh(): Promise<number> {
-        const commandOptions = await this.buildCommandArgs(
-            this.getCommandOptions() || '', {
-            varFiles: true, targetResources: true,
-            parallelism: true, secureVarFile: true,
-        });
-
-        const refreshCommand = this.createAuthCommand("refresh", commandOptions.trim() || undefined);
+        const refreshCommand = this.createAuthCommand("refresh");
         const terraformTool = this.terraformToolHandler.createToolRunner(refreshCommand);
+
+        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+            varFiles: true, targetResources: true, secureVarFile: true,
+        }));
+        const commandOptions = this.getCommandOptions();
+        if (commandOptions) terraformTool.line(commandOptions);
+        this.applyTokens(terraformTool, this.parallelismTokens());
         this.appendTerraformVariables(terraformTool);
+
         await this.handleProvider(refreshCommand);
 
         return terraformTool.execAsync(<IExecOptions>{

@@ -2316,6 +2316,18 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /* command arg token tests */
+
+    it('parseVarFileTokens/parseTargetTokens keep space-containing values as single tokens', async () => {
+        let tp = path.join(__dirname, './CommandArgsTests/CommandArgs.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
     /* PEM normalizer tests */
 
     it('normalizePem should normalize valid keys and reject malformed input', async () => {

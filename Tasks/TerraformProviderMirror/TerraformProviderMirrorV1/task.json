@@ -1,5 +1,5 @@
 {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "id": "1c36ffb0-b3b3-4716-90c7-d7d02884acd0",
     "name": "PipelineTerraformProviderMirror",
     "friendlyName": "Pipeline Terraform provider mirror",
     "description": "Configure Terraform to download providers from a network mirror instead of the public registry",
@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "1",
+        "Minor": "2",
         "Patch": "0"
     },
     "instanceNameFormat": "Configure provider mirror: $(mirrorUrl)",

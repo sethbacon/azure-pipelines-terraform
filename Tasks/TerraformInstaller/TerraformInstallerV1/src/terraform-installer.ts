@@ -144,7 +144,7 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
 
     const sha256SumsContent = await fetchText(sha256SumsUrl);
-    const requireGpg = tasks.getBoolInput("requireGpgSignature", false) !== false;
+    const requireGpg = tasks.getBoolInput("requireGpgSignature", false);
     await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
@@ -201,14 +201,19 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // Attempt SHA256 verification from mirror — fail if SHA256SUMS is available but hash doesn't match
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
+    const requireChecksum = tasks.getBoolInput("requireChecksum", false);
     try {
         const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
         await verifySha256(zipPath, expectedHash);
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        // Only warn if SHA256SUMS file is unavailable; fail if hash mismatch
-        if (errorMessage.includes('SHA256 checksum not found') || errorMessage.includes('Failed to fetch')) {
+        const checksumUnavailable = errorMessage.includes('SHA256 checksum not found') || errorMessage.includes('Failed to fetch');
+        // A genuine hash mismatch is always fatal. An unavailable SHA256SUMS file is
+        // fatal only when the user requires checksum verification; otherwise warn.
+        if (checksumUnavailable && !requireChecksum) {
             tasks.warning(`SHA256 verification skipped for mirror download: ${errorMessage}`);
+        } else if (checksumUnavailable) {
+            throw new Error(`Checksum verification is required but the mirror did not provide a usable SHA256SUMS file (${sha256SumsUrl}): ${errorMessage}`);
         } else {
             throw error;
         }

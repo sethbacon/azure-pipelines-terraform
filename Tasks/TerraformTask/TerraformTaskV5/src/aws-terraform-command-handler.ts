@@ -37,23 +37,43 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey, true);
     }
 
+    /**
+     * Generates the OIDC token, writes it to a cleanup-tracked temp file, and sets
+     * the AWS web-identity environment variables used by both the backend and the
+     * provider. The token-file prefix is passed in so each call site keeps its own
+     * stable temp-file name.
+     */
+    private async applyWifEnvironment(params: {
+        serviceConnection: string;
+        roleArn: string;
+        region: string;
+        sessionName: string;
+        tokenFilePrefix: string;
+    }): Promise<void> {
+        const oidcToken = await generateIdToken(params.serviceConnection);
+        tasks.setSecret(oidcToken);
+
+        const tokenFilePath = path.join(os.tmpdir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
+        writeSecretFile(tokenFilePath, oidcToken);
+        this.tempFiles.push(tokenFilePath);
+
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", params.roleArn);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", params.region);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", params.sessionName);
+    }
+
     private async setupBackendWIF(backendServiceName: string): Promise<void> {
         this.backendConfig.set('bucket', tasks.getInput("backendAWSBucketName", true)!);
         this.backendConfig.set('key', tasks.getInput("backendAWSKey", true)!);
 
-        const oidcToken = await generateIdToken(backendServiceName);
-        tasks.setSecret(oidcToken);
-
-        const tokenFilePath = path.join(os.tmpdir(), `aws-backend-oidc-token-${uuidV4()}.jwt`);
-        writeSecretFile(tokenFilePath, oidcToken);
-        this.tempFiles.push(tokenFilePath);
-
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("backendAWSRoleArn", true)!);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", tasks.getInput("backendAWSRegion", true)!);
-
-        const sessionName = tasks.getInput("backendAWSSessionName", false) || "AzureDevOps-Terraform-Backend";
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", sessionName);
+        await this.applyWifEnvironment({
+            serviceConnection: backendServiceName,
+            roleArn: tasks.getInput("backendAWSRoleArn", true)!,
+            region: tasks.getInput("backendAWSRegion", true)!,
+            sessionName: tasks.getInput("backendAWSSessionName", false) || "AzureDevOps-Terraform-Backend",
+            tokenFilePrefix: "aws-backend-oidc-token",
+        });
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
@@ -87,18 +107,12 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const oidcToken = await generateIdToken(command.serviceProviderName);
-        tasks.setSecret(oidcToken);
-
-        const tokenFilePath = path.join(os.tmpdir(), `aws-oidc-token-${uuidV4()}.jwt`);
-        writeSecretFile(tokenFilePath, oidcToken);
-        this.tempFiles.push(tokenFilePath);
-
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", tasks.getInput("awsRoleArn", true)!);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", tasks.getInput("awsRegion", true)!);
-
-        const sessionName = tasks.getInput("awsSessionName", false) || "AzureDevOps-Terraform";
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", sessionName);
+        await this.applyWifEnvironment({
+            serviceConnection: command.serviceProviderName,
+            roleArn: tasks.getInput("awsRoleArn", true)!,
+            region: tasks.getInput("awsRegion", true)!,
+            sessionName: tasks.getInput("awsSessionName", false) || "AzureDevOps-Terraform",
+            tokenFilePrefix: "aws-oidc-token",
+        });
     }
 }
