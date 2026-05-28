@@ -1,0 +1,84 @@
+{
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "PipelineTerraformProviderMirror",
+    "friendlyName": "Pipeline Terraform provider mirror",
+    "description": "Configure Terraform to download providers from a network mirror instead of the public registry",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Tool",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "1",
+        "Patch": "0"
+    },
+    "instanceNameFormat": "Configure provider mirror: $(mirrorUrl)",
+    "inputs": [
+        {
+            "name": "mirrorUrl",
+            "type": "string",
+            "label": "Mirror URL",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Base URL of the network mirror for provider downloads. Must use HTTPS. Example: https://registry.example.com/terraform/providers"
+        },
+        {
+            "name": "allowDirectFallback",
+            "type": "boolean",
+            "label": "Allow direct registry fallback",
+            "defaultValue": "true",
+            "required": false,
+            "helpMarkDown": "When enabled, Terraform can fall back to downloading providers directly from registry.terraform.io if the mirror does not have them. When disabled, the mirror is authoritative for all providers."
+        },
+        {
+            "name": "directExcludePatterns",
+            "type": "multiLine",
+            "label": "Exclude from direct (force mirror)",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "allowDirectFallback = true",
+            "helpMarkDown": "Provider namespace patterns to exclude from direct download (one per line). These providers will only be fetched from the mirror. Example: registry.terraform.io/company-internal/*",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
+        },
+        {
+            "name": "directIncludePatterns",
+            "type": "multiLine",
+            "label": "Include for direct (bypass mirror)",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "allowDirectFallback = true",
+            "helpMarkDown": "Provider namespace patterns to include for direct download (one per line). When specified, only these providers can use direct download; all others must use the mirror. Example: registry.terraform.io/hashicorp/*",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
+        }
+    ],
+    "execution": {
+        "Node20_1": {
+            "target": "src/index.js"
+        },
+        "Node24": {
+            "target": "src/index.js"
+        }
+    },
+    "outputVariables": [
+        {
+            "name": "configFilePath",
+            "description": "The path to the generated .terraformrc configuration file."
+        }
+    ],
+    "messages": {
+        "GeneratingConfig": "Generating Terraform CLI configuration for provider mirror: %s",
+        "ConfigWritten": "Configuration written to: %s",
+        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+        "InvalidUrl": "Invalid mirror URL: %s"
+    }
+}
