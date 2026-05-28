@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.1.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.0.12...v1.1.0) (2026-05-28)
+
+
+### Features
+
+* add provider mirror configuration task ([#199](https://github.com/sethbacon/azure-pipelines-terraform/issues/199)) ([dacfc9c](https://github.com/sethbacon/azure-pipelines-terraform/commit/dacfc9c288f7e0f4fd786226699e6d8fa8a9f959))
+
 ## [1.0.12] — 2026-05-22
 
 ### Fixed
