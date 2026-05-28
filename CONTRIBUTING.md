@@ -14,18 +14,18 @@ All commits and PR titles must follow [Conventional Commits](https://www.convent
 type: short description (50 chars max)
 ```
 
-| Type | When to use |
-|------|-------------|
-| `feat` | New Terraform command, provider, or auth scheme |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `refactor` | Restructure without changing behavior |
-| `perf` | Performance improvement |
-| `test` | Adding or fixing tests |
-| `ci` | CI/CD workflow changes |
-| `chore` | Housekeeping |
-| `deps` | Dependency updates |
-| `security` | Security fix or hardening |
+| Type       | When to use                                     |
+| ---------- | ----------------------------------------------- |
+| `feat`     | New Terraform command, provider, or auth scheme |
+| `fix`      | Bug fix                                         |
+| `docs`     | Documentation only                              |
+| `refactor` | Restructure without changing behavior           |
+| `perf`     | Performance improvement                         |
+| `test`     | Adding or fixing tests                          |
+| `ci`       | CI/CD workflow changes                          |
+| `chore`    | Housekeeping                                    |
+| `deps`     | Dependency updates                              |
+| `security` | Security fix or hardening                       |
 
 The PR title is what ends up in the changelog — write it as a clear, reader-facing statement.
 
@@ -50,6 +50,10 @@ npm install --include=dev
 
 # Install dependencies for TerraformInstallerV1
 cd ../../../Tasks/TerraformInstaller/TerraformInstallerV1
+npm install --include=dev
+
+# Install dependencies for TerraformProviderMirrorV1
+cd ../../../Tasks/TerraformProviderMirror/TerraformProviderMirrorV1
 npm install --include=dev
 ```
 
@@ -86,6 +90,14 @@ where `compile:all` = `compile` (`tsc -b tsconfig.json`) + `compile:tests` (`tsc
 
 ```bash
 cd Tasks/TerraformInstaller/TerraformInstallerV1
+npm run compile
+npm test
+```
+
+### TerraformProviderMirrorV1
+
+```bash
+cd Tasks/TerraformProviderMirror/TerraformProviderMirrorV1
 npm run compile
 npm test
 ```
@@ -190,6 +202,7 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    Files to update:
    - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
    - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
+   - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
 
@@ -206,11 +219,11 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 **Required secrets/variables:**
 
-| Name | Type | Purpose |
-|------|------|---------|
-| `TFX_PAT` | Secret | VS Marketplace PAT with `Marketplace (publish)` scope |
-| `RELEASE_DISPATCH_APP_ID` | Variable | GitHub App client ID for release-please |
-| `RELEASE_DISPATCH_APP_KEY` | Secret | GitHub App private key for release-please |
+| Name                       | Type     | Purpose                                               |
+| -------------------------- | -------- | ----------------------------------------------------- |
+| `TFX_PAT`                  | Secret   | VS Marketplace PAT with `Marketplace (publish)` scope |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please               |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please             |
 
 The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 

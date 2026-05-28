@@ -26,13 +26,19 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] Upload the `.vsix` to a test ADO org via **Organization Settings → Extensions → Browse local extensions → Upload**
 - [ ] Extension installs without errors
-- [ ] Both tasks appear: `PipelineTerraformInstaller@1` and `PipelineTerraformTask@5`
+- [ ] Both tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, and `PipelineTerraformTask@5`
 
 ## 4. Installer task smoke test
 
 - [ ] `PipelineTerraformInstaller@1` with `binary: terraform`, `terraformVersion: latest` — installs and reports version
 - [ ] `PipelineTerraformInstaller@1` with `binary: tofu`, `terraformVersion: latest` — installs and reports version
 - [ ] `PipelineTerraformInstaller@1` with a pinned version (e.g. `1.14.8`) — installs correct version
+
+## 4b. Provider mirror task smoke test
+
+- [ ] `PipelineTerraformProviderMirror@1` with a valid mirror URL — generates `.terraformrc` and sets `TF_CLI_CONFIG_FILE`
+- [ ] `PipelineTerraformProviderMirror@1` with `allowDirectFallback: false` — config contains only `network_mirror` block
+- [ ] Subsequent `terraform init` downloads providers from the configured mirror
 
 ## 5. Core commands smoke test (AzureRM)
 
