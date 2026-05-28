@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "221",
+        "Minor": "222",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
@@ -96,6 +96,15 @@
             "required": false,
             "visibleRule": "binary = tofu",
             "helpMarkDown": "When enabled, fail if cosign is not available on the agent or the signature cannot be verified. When disabled (default), cosign verification is attempted but skipped if cosign is not installed."
+        },
+        {
+            "name": "requireChecksum",
+            "type": "boolean",
+            "label": "Require checksum verification",
+            "defaultValue": "false",
+            "required": false,
+            "visibleRule": "binary = terraform && downloadSource = mirror",
+            "helpMarkDown": "When enabled, fail if the mirror does not serve a SHA256SUMS file for the requested version. When disabled (default), checksum verification is attempted but skipped if the mirror does not publish a SHA256SUMS file."
         }
     ],
     "execution": {

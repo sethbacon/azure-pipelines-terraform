@@ -22,8 +22,11 @@ export async function exchangeOidcForUpst(
 ): Promise<string> {
     const tokenEndpoint = `${identityDomainUrl.replace(/\/+$/, '')}/oauth2/v1/token`;
 
-    // JWK thumbprint of the ephemeral public key for binding
-    const jwkThumbprint = computeJwkThumbprint(publicKeyPem);
+    // The ephemeral public key is sent so OCI can bind the issued UPST to it; the
+    // caller signs subsequent API requests with the matching private key. OCI
+    // expects the base64-encoded SubjectPublicKeyInfo (DER), i.e. the PEM body
+    // with armor and line breaks removed.
+    const publicKeyDerBase64 = publicKeyToBase64Der(publicKeyPem);
 
     const body = new URLSearchParams({
         grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
@@ -31,7 +34,7 @@ export async function exchangeOidcForUpst(
         subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
         requested_token_type: 'urn:oci:token-type:oci-upst',
         client_id: clientId,
-        public_key: jwkThumbprint,
+        public_key: publicKeyDerBase64,
     });
 
     tasks.debug(`Exchanging OIDC JWT for OCI UPST at ${tokenEndpoint}`);
@@ -72,14 +75,12 @@ export async function exchangeOidcForUpst(
 }
 
 /**
- * Compute a JWK thumbprint (RFC 7638) of an RSA public key.
- * OCI Identity Domains uses this to bind the UPST to the ephemeral key pair.
+ * Export an RSA public key as base64-encoded SubjectPublicKeyInfo (DER).
+ * This is the form OCI Identity Domains expects in the token-exchange
+ * `public_key` parameter so it can bind the issued UPST to the ephemeral key.
  */
-function computeJwkThumbprint(publicKeyPem: string): string {
+function publicKeyToBase64Der(publicKeyPem: string): string {
     const keyObject = crypto.createPublicKey(publicKeyPem);
-    const jwk = keyObject.export({ format: 'jwk' }) as { e: string; kty: string; n: string };
-
-    // Canonical JWK for RSA: {"e":"...","kty":"RSA","n":"..."} (alphabetical order)
-    const canonical = JSON.stringify({ e: jwk.e, kty: jwk.kty, n: jwk.n });
-    return crypto.createHash('sha256').update(canonical).digest('base64url');
+    const der = keyObject.export({ type: 'spki', format: 'der' });
+    return der.toString('base64');
 }
