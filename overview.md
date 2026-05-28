@@ -5,6 +5,7 @@ Install Terraform and run Terraform commands in Azure Pipelines. Supports Azure 
 This extension provides:
 
 - **PipelineTerraformInstaller** -- Install a specific version of Terraform on the pipeline agent
+- **PipelineTerraformProviderMirror** -- Configure Terraform to download providers from a network mirror instead of the public registry
 - **PipelineTerraformTask** -- Execute Terraform commands with provider authentication and backend state management
 - Service connections for AWS, GCP, and OCI accounts
 
@@ -17,6 +18,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Backend types**: azurerm, s3, gcs, oci, HCP Terraform Cloud, generic (any backend via config file), local
 - **Workload Identity Federation (OIDC)** for Azure, AWS, and GCP
 - **Flexible installer**: Download Terraform from HashiCorp releases, a private registry, or a custom mirror with SHA256 verification
+- **Provider network mirroring**: Route provider downloads through a private mirror for air-gapped environments, caching, or compliance
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources

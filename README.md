@@ -40,6 +40,25 @@ Installs a specific version of Terraform on the build agent.
 
 ---
 
+### `PipelineTerraformProviderMirror@1` — Provider Mirror Configuration
+
+Configures Terraform to download providers from a network mirror instead of the public registry. Generates a `.terraformrc` file and sets `TF_CLI_CONFIG_FILE` for subsequent tasks.
+
+| Input                   | Default | Description                                                                                        |
+| ----------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `mirrorUrl`             | —       | Base HTTPS URL of the network mirror for provider downloads.                                       |
+| `allowDirectFallback`   | `true`  | Allow Terraform to fall back to direct registry download if the mirror doesn't have a provider.    |
+| `directExcludePatterns` | —       | Provider patterns to exclude from direct download (one per line). Forces these through the mirror. |
+| `directIncludePatterns` | —       | Provider patterns to include for direct download (one per line). Only these can bypass the mirror. |
+
+**Output variables:**
+
+| Variable         | Description                                         |
+| ---------------- | --------------------------------------------------- |
+| `configFilePath` | Path to the generated `.terraformrc` configuration. |
+
+---
+
 ### `PipelineTerraformTask@5` — Terraform
 
 Runs Terraform commands. Supports 16 commands:
@@ -156,6 +175,7 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 | Extension ID                                   | `custom-terraform-tasks`                                       | `pipeline-tasks-terraform`                                            |
 | Terraform task name                            | `TerraformTaskV4` (YAML)                                       | `PipelineTerraformTask@5`                                             |
 | Installer task name                            | `TerraformInstallerV0` (YAML)                                  | `PipelineTerraformInstaller@1`                                        |
+| Provider mirror task                           | Not available                                                  | `PipelineTerraformProviderMirror@1`                                   |
 | Commands                                       | 8 (init, validate, plan, apply, destroy, show, output, custom) | 16 — adds workspace, state, fmt, test, get, refresh, import, unlock   |
 | `-replace` flag                                | Not available                                                  | `replaceAddress` input on `plan`                                      |
 | Backend/provider coupling                      | Backend always matches provider                                | `backendType` input decouples them                                    |

@@ -19,17 +19,16 @@ All changes are made in the fork. The GitHub Actions CI workflow (`.github/workf
 ## Branch Strategy
 
 - `main` — production-ready; tagged releases only; never force-pushed
-- `development` — integration branch; all feature/fix PRs merge here first
-- `feature/<description>` — created from `development`; deleted after merge
-- `fix/<description>` — bug fix branches from `development`
+- `feature/<description>` — created from `main`; deleted after merge
+- `fix/<description>` — bug fix branches from `main`
 
-**Never commit directly to `main`.** Use PRs from `development`.
+**Never commit directly to `main`.** Use PRs with conventional-commit titles.
 
 ## Commit Convention
 
 Format: `type: short description` (50 chars max for the title)
 
-Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`
+Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`, `deps`, `security`, `perf`
 
 Body line: `Closes #<issue-number>`
 
@@ -43,29 +42,50 @@ Closes #12
 
 ## Workflow Per Change
 
-1. Open a GitHub issue before writing code
-2. Create branch from `development`: `git checkout -b feature/<description> development`
+1. Create branch from `main`: `git checkout -b feature/<description> main`
+2. Make changes.
 3. Run local quality gate before pushing:
    - `npm run compile` (TypeScript build, zero errors)
    - `npm test` (all tests pass)
-4. Rebase on `origin/development` before pushing: `git rebase origin/development`
-5. Open PR to `development` with a `## Changelog` section in the body
-6. Squash-merge when approved (only merge strategy allowed)
-7. Feature branches are deleted automatically after merge
-8. Never merge directly to `main`
+4. Open PR to `main` with a conventional-commit title.
+5. CI runs automatically: version consistency check → build + test (Ubuntu + Windows) → type-check tab → actionlint.
+6. Squash-merge when CI passes and the PR is approved; the branch is deleted automatically.
 
 ## Release Process
 
-1. Collect changelog entries from merged PR bodies
-2. Update `CHANGELOG.md` on `development` branch
-3. **Bump `version` in `azure-devops-extension.json`** to match the release tag (e.g. `"0.3.0"` for tag `v0.3.0`). The release workflow will fail if these don't match.
-4. **Bump `Minor` in `task.json` for every task whose code changed** — ADO caches tasks by `Major.Minor` and will not serve updated code to agents until `Minor` increments. Files to update: `Tasks/TerraformTask/TerraformTaskV5/task.json` and/or `Tasks/TerraformInstaller/TerraformInstallerV1/task.json`. Increment `Minor` by 1, leave `Patch` at 0.
-5. Open PR: `development` → `main` (squash merge)
-6. Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
-7. The release workflow (`.github/workflows/release.yml`) triggers automatically on the semver tag
-8. The workflow: guards the tag is on `main` → verifies extension version matches tag → runs CI → builds → packages `.vsix` → publishes to Marketplace → creates GitHub Release
+Releases are fully automated via [release-please](https://github.com/googleapis/release-please):
 
-**Required GitHub secret:** `TFX_PAT` — Personal Access Token for Visual Studio Marketplace with `Marketplace (publish)` scope. Set in repository Settings → Secrets → Actions.
+1. Merge conventional-commit PRs to `main` — release-please accumulates them.
+2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
+3. Before merging the Release PR, manually bump the `Minor` field in `task.json` for every task whose code changed since the last release. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments.
+
+   Files to update:
+   - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
+   - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
+   - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
+
+   Increment `Minor` by 1, leave `Patch` at 0.
+
+4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
+5. The `release.yml` workflow fires on the tag:
+   - Verifies the tag is reachable from `main`
+   - Verifies `azure-devops-extension.json` version matches the tag
+   - Runs full CI
+   - Builds release bundle + packages `.vsix`
+   - Generates CycloneDX SBOMs + cosign signature
+   - Creates draft GitHub Release with assets
+   - **Publishes to VS Marketplace** (requires `marketplace` environment approval)
+   - Undrafts the GitHub Release
+
+**Required secrets/variables:**
+
+| Name                       | Type     | Purpose                                               |
+| -------------------------- | -------- | ----------------------------------------------------- |
+| `TFX_PAT`                  | Secret   | VS Marketplace PAT with `Marketplace (publish)` scope |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please               |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please             |
+
+The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 
 ## Publisher Registration
 
@@ -90,6 +110,8 @@ azure-pipelines-terraform/
 ├── Tasks/
 │   ├── TerraformInstaller/
 │   │   └── TerraformInstallerV1/      # Current installer task
+│   ├── TerraformProviderMirror/
+│   │   └── TerraformProviderMirrorV1/ # Provider mirror configuration task
 │   └── TerraformTask/
 │       └── TerraformTaskV5/           # Current development target
 ├── src/
@@ -110,7 +132,7 @@ azure-pipelines-terraform/
     └── release.yml                    # Release: tag-triggered marketplace publish
 ```
 
-**Always work in TerraformTaskV5.** TerraformInstallerV1 is the active installer task. Legacy task versions (V1-V4, InstallerV0) have been removed.
+**Always work in TerraformTaskV5.** TerraformInstallerV1 is the active installer task. TerraformProviderMirrorV1 is the provider mirror configuration task. Legacy task versions (V1-V4, InstallerV0) have been removed.
 
 ## Task Architecture (TerraformTaskV5)
 
@@ -175,6 +197,21 @@ Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.t
 - Verifies GPG signature of SHA256SUMS using HashiCorp's embedded public key (`gpg-verifier.ts`)
 - Sets `terraformLocation` pipeline variable after install
 - Handles proxy configuration via `tasks.getHttpProxyConfiguration()`
+
+## TerraformProviderMirror Task (TerraformProviderMirrorV1)
+
+Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
+
+- Generates a `.terraformrc` CLI configuration file with a `provider_installation` block for network mirroring
+- Sets `TF_CLI_CONFIG_FILE` pipeline variable so subsequent `terraform init` routes provider downloads through the mirror
+- Supports include/exclude patterns for routing specific providers to the mirror vs direct registry
+- Pure config generation — no network calls, no credentials needed
+- Intended to run once per agent job, before `terraform init`
+
+| File                  | Role                                                       |
+| --------------------- | ---------------------------------------------------------- |
+| `index.ts`            | Entry point — reads inputs, validates URL, writes config   |
+| `config-generator.ts` | Pure function generating HCL `provider_installation` block |
 
 ## task.json Schema Key Points
 
@@ -243,8 +280,10 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## CI/CD
 
-- `.github/workflows/unit-test.yml` — **Active CI for this fork.** Runs build + tests on push/PR to `main`/`development`
-- `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`); publishes to VS Marketplace
+- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Tab`, `Lint GitHub Actions`.
+- `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
+- `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
+- `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
 
 ## Local Development Environment
 
@@ -288,21 +327,13 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`
+- Required status checks (strict — branch must be up-to-date): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)
 - Required conversation resolution: yes
 - Force pushes: blocked
 - Branch deletion: blocked
-
-**`development` branch:**
-
-- Required status checks (non-strict): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`
-- Required linear history: yes
-- Force pushes: blocked
-- Branch deletion: blocked
-- Admin bypass: allowed (owner can push directly for admin tasks)
 
 ### Merge Strategy
 
@@ -317,7 +348,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 - **Dependabot automated security fixes** — enabled
 - **Dependabot version updates** — configured via `.github/dependabot.yml` for:
   - GitHub Actions (weekly)
-  - npm: TerraformTaskV5, TerraformInstallerV1, root (weekly)
+  - npm: TerraformTaskV5, TerraformInstallerV1, TerraformProviderMirrorV1, root (weekly)
 
 ### Code Ownership
 
@@ -325,6 +356,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 ### Security Features (GitHub)
 
+- Code scanning: enabled (CodeQL for TypeScript)
 - Secret scanning: enabled
 - Secret scanning push protection: enabled
 - `npm audit --omit=dev --audit-level=high` in CI
@@ -336,7 +368,6 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 ### Remaining Recommendations (not yet applied)
 
-- **Enable code scanning** (CodeQL) for TypeScript static analysis — requires GitHub Advanced Security or a public repo CodeQL workflow
 - **Enable secret scanning non-provider patterns and validity checks** for broader secret detection
 - **Add a second collaborator/maintainer** to reduce bus factor (currently sole maintainer: @sethbacon)
 - **Consider adding a tag protection rule** to prevent deletion of release tags (`v*.*.*`)
