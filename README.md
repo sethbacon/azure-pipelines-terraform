@@ -247,6 +247,12 @@ See [docs/migration-from-ms-devlabs.md](docs/migration-from-ms-devlabs.md) for a
 
 ---
 
+## Examples
+
+See [docs/yaml-examples.md](docs/yaml-examples.md) for YAML examples covering every task and command, including cross-cloud scenarios (AzureRM state with AWS/GCP resources, HCP Terraform backend with AzureRM resources).
+
+---
+
 ## Troubleshooting
 
 See [docs/troubleshooting.md](docs/troubleshooting.md) for solutions to common issues with authentication, backend configuration, installer errors, and agent setup.

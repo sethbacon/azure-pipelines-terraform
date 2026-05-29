@@ -123,5 +123,6 @@ Reference output variables using the task `name` prefix: `$(taskName.changesPres
 ## Links
 
 - **Source code**: [github.com/sethbacon/azure-pipelines-terraform](https://github.com/sethbacon/azure-pipelines-terraform)
+- **Examples**: See [docs/yaml-examples.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/docs/yaml-examples.md)
 - **Contributing**: See [CONTRIBUTING.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/CHANGELOG.md)
