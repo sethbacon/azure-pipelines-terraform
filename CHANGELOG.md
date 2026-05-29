@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.1.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.1...v1.1.2) (2026-05-29)
+
+
+### Documentation
+
+* add YAML examples reference page ([#203](https://github.com/sethbacon/azure-pipelines-terraform/issues/203)) ([f2a4e9d](https://github.com/sethbacon/azure-pipelines-terraform/commit/f2a4e9da8acfcb33c104975e0e518ef231a9bce5))
+
 ## [1.1.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.0...v1.1.1) (2026-05-28)
 
 
