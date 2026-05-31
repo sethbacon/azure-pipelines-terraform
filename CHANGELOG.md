@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.2.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.2...v1.2.0) (2026-05-31)
+
+
+### Features
+
+* add module publish task (HCP + private) ([#205](https://github.com/sethbacon/azure-pipelines-terraform/issues/205)) ([a2df988](https://github.com/sethbacon/azure-pipelines-terraform/commit/a2df988bbc381b71d6380632600399fb6fb2104e))
+
 ## [1.1.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.1...v1.1.2) (2026-05-29)
 
 
