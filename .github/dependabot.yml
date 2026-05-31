@@ -35,6 +35,15 @@ updates:
       prefix: "chore"
     open-pull-requests-limit: 10
 
+  # npm — TerraformModulePublishV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformModulePublish/TerraformModulePublishV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+
   # npm — root (build tooling)
   - package-ecosystem: "npm"
     directory: "/"

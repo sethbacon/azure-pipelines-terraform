@@ -1,0 +1,192 @@
+{
+    "id": "c4d8e2f6-3a91-4b7c-9e05-1f6a8d3b2c47",
+    "name": "PipelineTerraformModulePublish",
+    "friendlyName": "Pipeline Terraform module publish",
+    "description": "Publish a Terraform module version to HCP Terraform or a private Terraform registry",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Deploy",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "0",
+        "Patch": "0"
+    },
+    "instanceNameFormat": "Publish module $(name) to $(registryType)",
+    "groups": [
+        {
+            "name": "private",
+            "displayName": "Private registry",
+            "isExpanded": true,
+            "visibleRule": "registryType = private"
+        },
+        {
+            "name": "hcp",
+            "displayName": "HCP Terraform",
+            "isExpanded": true,
+            "visibleRule": "registryType = hcp"
+        },
+        {
+            "name": "advanced",
+            "displayName": "Advanced",
+            "isExpanded": false
+        }
+    ],
+    "inputs": [
+        {
+            "name": "registryType",
+            "type": "pickList",
+            "label": "Registry type",
+            "defaultValue": "private",
+            "required": true,
+            "helpMarkDown": "Target registry platform.",
+            "options": {
+                "private": "Private registry (terraform-registry-backend)",
+                "hcp": "HCP Terraform / Terraform Enterprise"
+            }
+        },
+        {
+            "name": "namespace",
+            "type": "string",
+            "label": "Module namespace",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Registry namespace. For HCP Terraform this is the organization name."
+        },
+        {
+            "name": "name",
+            "type": "string",
+            "label": "Module name",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Module name without the terraform-<provider>- prefix (e.g. networking-vpc)."
+        },
+        {
+            "name": "provider",
+            "type": "string",
+            "label": "Provider / system",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Target provider or system, e.g. aws, azurerm, google."
+        },
+        {
+            "name": "version",
+            "type": "string",
+            "label": "Version",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Semantic version to publish, e.g. 1.2.3."
+        },
+        {
+            "name": "registryUrl",
+            "type": "string",
+            "label": "Registry base URL",
+            "groupName": "private",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Base URL of the private registry, e.g. https://registry.example.com."
+        },
+        {
+            "name": "apiKey",
+            "type": "string",
+            "label": "API key",
+            "groupName": "private",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Registry API key with modules:write scope. Pass a secret pipeline variable, e.g. $(tfregistry-api-key)."
+        },
+        {
+            "name": "skipTlsVerify",
+            "type": "boolean",
+            "label": "Skip TLS verification",
+            "groupName": "private",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Disable TLS certificate verification. Use only for internal registries fronted by a private CA the agent does not trust; prefer installing the CA via NODE_EXTRA_CA_CERTS."
+        },
+        {
+            "name": "hcpAddress",
+            "type": "string",
+            "label": "HCP / TFE address",
+            "groupName": "hcp",
+            "defaultValue": "https://app.terraform.io",
+            "required": false,
+            "helpMarkDown": "Base address of HCP Terraform or Terraform Enterprise."
+        },
+        {
+            "name": "hcpToken",
+            "type": "string",
+            "label": "HCP API token",
+            "groupName": "hcp",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "HCP Terraform team or user API token. Pass a secret pipeline variable."
+        },
+        {
+            "name": "vcsRepoIdentifier",
+            "type": "string",
+            "label": "VCS repo identifier",
+            "groupName": "hcp",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Used only when the module does not yet exist, to create a VCS-connected module. Example: my-org/my-project/_git/terraform-aws-vpc."
+        },
+        {
+            "name": "vcsBranch",
+            "type": "string",
+            "label": "VCS branch",
+            "groupName": "hcp",
+            "defaultValue": "main",
+            "required": false,
+            "helpMarkDown": "Branch for the VCS-connected module."
+        },
+        {
+            "name": "vcsOauthTokenId",
+            "type": "string",
+            "label": "VCS OAuth token ID",
+            "groupName": "hcp",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "HCP VCS OAuth token ID (ot-xxxxxxxx). Required only when creating a new VCS-connected module."
+        },
+        {
+            "name": "commitSha",
+            "type": "string",
+            "label": "Commit SHA",
+            "groupName": "hcp",
+            "defaultValue": "$(Build.SourceVersion)",
+            "required": false,
+            "helpMarkDown": "Commit SHA for the module version."
+        },
+        {
+            "name": "waitForPublish",
+            "type": "boolean",
+            "label": "Wait for version to be available",
+            "groupName": "advanced",
+            "defaultValue": "true",
+            "required": false,
+            "helpMarkDown": "Poll the registry until the published version is available."
+        },
+        {
+            "name": "timeoutSeconds",
+            "type": "string",
+            "label": "Wait timeout (seconds)",
+            "groupName": "advanced",
+            "defaultValue": "180",
+            "required": false,
+            "helpMarkDown": "Maximum time to wait for the version to become available."
+        }
+    ],
+    "execution": {
+        "Node20_1": {
+            "target": "src/index.js"
+        },
+        "Node24": {
+            "target": "src/index.js"
+        }
+    }
+}

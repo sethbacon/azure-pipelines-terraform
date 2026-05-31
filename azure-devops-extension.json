@@ -79,6 +79,9 @@
             "path": "Tasks/TerraformProviderMirror"
         },
         {
+            "path": "Tasks/TerraformModulePublish"
+        },
+        {
             "path": "tab",
             "addressable": true
         },
@@ -154,6 +157,16 @@
             ],
             "properties": {
                 "name": "Tasks/TerraformProviderMirror/TerraformProviderMirrorV1"
+            }
+        },
+        {
+            "id": "custom-terraform-module-publish-task",
+            "type": "ms.vss-distributed-task.task",
+            "targets": [
+                "ms.vss-distributed-task.tasks"
+            ],
+            "properties": {
+                "name": "Tasks/TerraformModulePublish/TerraformModulePublishV1"
             }
         },
         {
