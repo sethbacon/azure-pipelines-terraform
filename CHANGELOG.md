@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.3.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.2.0...v1.3.0) (2026-06-12)
+
+
+### Features
+
+* add policy agent installer and policy check tasks ([#208](https://github.com/sethbacon/azure-pipelines-terraform/issues/208)) ([cca3774](https://github.com/sethbacon/azure-pipelines-terraform/commit/cca3774eb8a6aeac45e1faba08df8eba36908c76))
+
 ## [1.2.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.1.2...v1.2.0) (2026-05-31)
 
 
