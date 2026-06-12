@@ -16,6 +16,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      # ts-node (the test transpiler) does not support TypeScript 6 yet.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — TerraformInstallerV1
   - package-ecosystem: "npm"
@@ -25,6 +29,9 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — TerraformProviderMirrorV1
   - package-ecosystem: "npm"
@@ -34,6 +41,9 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — TerraformModulePublishV1
   - package-ecosystem: "npm"
@@ -43,6 +53,9 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — PolicyAgentInstallerV1
   - package-ecosystem: "npm"
@@ -52,6 +65,9 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — TerraformPolicyCheckV1
   - package-ecosystem: "npm"
@@ -61,6 +77,9 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # npm — root (build tooling)
   - package-ecosystem: "npm"
@@ -70,3 +89,6 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
