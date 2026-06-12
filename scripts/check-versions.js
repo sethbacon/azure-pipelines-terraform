@@ -9,6 +9,8 @@ const files = [
     { path: 'Tasks/TerraformTask/TerraformTaskV5/task.json', type: 'task' },
     { path: 'Tasks/TerraformInstaller/TerraformInstallerV1/task.json', type: 'task' },
     { path: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json', type: 'task' },
+    { path: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json', type: 'task' },
+    { path: 'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json', type: 'task' },
 ];
 
 let hasError = false;

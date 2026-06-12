@@ -44,6 +44,24 @@ updates:
       prefix: "chore"
     open-pull-requests-limit: 10
 
+  # npm — PolicyAgentInstallerV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+
+  # npm — TerraformPolicyCheckV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+
   # npm — root (build tooling)
   - package-ecosystem: "npm"
     directory: "/"

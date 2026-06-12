@@ -1,0 +1,243 @@
+{
+    "id": "a83a73f5-15bf-418a-9a72-01e5ab2353c6",
+    "name": "PipelineTerraformPolicyCheck",
+    "friendlyName": "Pipeline Terraform policy check",
+    "description": "Evaluate OPA or Sentinel policies from a directory or git repo against Terraform plan JSON",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Utility",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "0",
+        "Patch": "0"
+    },
+    "instanceNameFormat": "Policy check ($(engine))",
+    "groups": [
+        {
+            "name": "policySource",
+            "displayName": "Policy source",
+            "isExpanded": true
+        },
+        {
+            "name": "engineOptions",
+            "displayName": "Engine options",
+            "isExpanded": true
+        },
+        {
+            "name": "results",
+            "displayName": "Results",
+            "isExpanded": false
+        }
+    ],
+    "inputs": [
+        {
+            "name": "engine",
+            "type": "pickList",
+            "label": "Policy engine",
+            "defaultValue": "opa",
+            "required": true,
+            "helpMarkDown": "Which policy engine to evaluate with. Install it first with the Pipeline policy agent installer task.",
+            "options": {
+                "opa": "Open Policy Agent (OPA)",
+                "sentinel": "HashiCorp Sentinel"
+            }
+        },
+        {
+            "name": "inputFile",
+            "type": "string",
+            "label": "Input file (plan JSON)",
+            "defaultValue": "",
+            "required": true,
+            "helpMarkDown": "Path to the JSON to evaluate, typically the output of 'terraform show -json <plan>' (e.g. $(TerraformShow.showFilePath))."
+        },
+        {
+            "name": "policyAgentPath",
+            "type": "string",
+            "label": "Policy agent path",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Optional explicit path to the opa/sentinel binary. Defaults to the binary on the PATH."
+        },
+        {
+            "name": "policySource",
+            "type": "pickList",
+            "label": "Policy source",
+            "defaultValue": "path",
+            "required": true,
+            "groupName": "policySource",
+            "helpMarkDown": "Where the policies come from.",
+            "options": {
+                "path": "Local path (already on the agent)",
+                "gitUrl": "Clone a git repository"
+            }
+        },
+        {
+            "name": "policyPath",
+            "type": "filePath",
+            "label": "Policy directory",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "policySource",
+            "visibleRule": "policySource = path",
+            "helpMarkDown": "Directory containing the policies (e.g. from a multi-repo checkout)."
+        },
+        {
+            "name": "policyRepoUrl",
+            "type": "string",
+            "label": "Policy repo URL",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "policySource",
+            "visibleRule": "policySource = gitUrl",
+            "helpMarkDown": "HTTPS git URL of the policy repository."
+        },
+        {
+            "name": "policyRepoRef",
+            "type": "string",
+            "label": "Ref (branch, tag, or SHA)",
+            "defaultValue": "main",
+            "required": false,
+            "groupName": "policySource",
+            "visibleRule": "policySource = gitUrl",
+            "helpMarkDown": "Branch, tag, or full 40-character commit SHA to check out. Pin a SHA for supply-chain integrity."
+        },
+        {
+            "name": "policyRepoSubdir",
+            "type": "string",
+            "label": "Subdirectory",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "policySource",
+            "visibleRule": "policySource = gitUrl",
+            "helpMarkDown": "Optional subdirectory within the cloned repo that holds the policies."
+        },
+        {
+            "name": "policyRepoToken",
+            "type": "string",
+            "label": "Repo access token",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "policySource",
+            "visibleRule": "policySource = gitUrl",
+            "helpMarkDown": "Optional token for a private repo. Pass a pipeline secret variable; it is injected via http.extraheader and never written to the clone URL or logs."
+        },
+        {
+            "name": "decisionPath",
+            "type": "string",
+            "label": "Decision path",
+            "defaultValue": "terraform/deny",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = opa",
+            "helpMarkDown": "OPA decision to evaluate (data.<path>), e.g. terraform/deny."
+        },
+        {
+            "name": "failMode",
+            "type": "pickList",
+            "label": "Fail mode",
+            "defaultValue": "nonEmpty",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = opa",
+            "helpMarkDown": "When to fail the task based on the decision result.",
+            "options": {
+                "nonEmpty": "Fail when the decision set/array is non-empty (deny convention)",
+                "defined": "Fail when the decision is defined and truthy"
+            }
+        },
+        {
+            "name": "defaultEnforcementLevel",
+            "type": "pickList",
+            "label": "Enforcement level",
+            "defaultValue": "soft-mandatory",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = sentinel",
+            "helpMarkDown": "Enforcement level applied to generated policy config (ignored when a custom sentinel.hcl is supplied).",
+            "options": {
+                "advisory": "advisory (warn only)",
+                "soft-mandatory": "soft-mandatory (fail unless overridden)",
+                "hard-mandatory": "hard-mandatory (always fail)"
+            }
+        },
+        {
+            "name": "overrideSoftMandatory",
+            "type": "boolean",
+            "label": "Override soft-mandatory failures",
+            "defaultValue": "false",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = sentinel",
+            "helpMarkDown": "When enabled, soft-mandatory policy failures warn but do not fail the task."
+        },
+        {
+            "name": "sentinelImportName",
+            "type": "string",
+            "label": "Static import name",
+            "defaultValue": "tfplan",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = sentinel",
+            "helpMarkDown": "Name of the static import that exposes the plan JSON to policies (import \"<name>\")."
+        },
+        {
+            "name": "sentinelConfigPath",
+            "type": "string",
+            "label": "Custom sentinel.hcl path",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = sentinel",
+            "helpMarkDown": "Optional. Use an existing sentinel.hcl instead of generating one. The task then gates purely on the exit code."
+        },
+        {
+            "name": "traceOutput",
+            "type": "boolean",
+            "label": "Trace output",
+            "defaultValue": "false",
+            "required": false,
+            "groupName": "engineOptions",
+            "visibleRule": "engine = sentinel",
+            "helpMarkDown": "Run sentinel apply with -trace for verbose debugging output."
+        },
+        {
+            "name": "publishTestResults",
+            "type": "boolean",
+            "label": "Publish results to Tests tab",
+            "defaultValue": "true",
+            "required": false,
+            "groupName": "results",
+            "helpMarkDown": "Publish a JUnit report so policy outcomes appear in the pipeline Tests tab."
+        }
+    ],
+    "execution": {
+        "Node20_1": {
+            "target": "src/index.js"
+        },
+        "Node24": {
+            "target": "src/index.js"
+        }
+    },
+    "outputVariables": [
+        {
+            "name": "policyResult",
+            "description": "'passed' or 'failed'."
+        },
+        {
+            "name": "violationCount",
+            "description": "The number of policy violations found."
+        },
+        {
+            "name": "resultsFilePath",
+            "description": "Path to the raw engine output written to the agent temp directory."
+        }
+    ],
+    "messages": {
+        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed."
+    }
+}
