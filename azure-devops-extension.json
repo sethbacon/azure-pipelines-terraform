@@ -82,6 +82,12 @@
             "path": "Tasks/TerraformModulePublish"
         },
         {
+            "path": "Tasks/PolicyAgentInstaller"
+        },
+        {
+            "path": "Tasks/TerraformPolicyCheck"
+        },
+        {
             "path": "tab",
             "addressable": true
         },
@@ -177,6 +183,26 @@
             ],
             "properties": {
                 "name": "Tasks/TerraformTask/TerraformTaskV5"
+            }
+        },
+        {
+            "id": "custom-policy-agent-installer-task",
+            "type": "ms.vss-distributed-task.task",
+            "targets": [
+                "ms.vss-distributed-task.tasks"
+            ],
+            "properties": {
+                "name": "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
+            }
+        },
+        {
+            "id": "custom-terraform-policy-check-task",
+            "type": "ms.vss-distributed-task.task",
+            "targets": [
+                "ms.vss-distributed-task.tasks"
+            ],
+            "properties": {
+                "name": "Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
             }
         },
         {

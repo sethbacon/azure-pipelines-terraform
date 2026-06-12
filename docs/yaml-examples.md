@@ -677,3 +677,110 @@ steps:
       commandOptions: 'tfplan'
       environmentServiceNameAzureRM: 'my-azure-service-connection'
 ```
+
+---
+
+## Policy as code
+
+The `PipelinePolicyAgentInstaller@1` and `PipelineTerraformPolicyCheck@1` tasks
+evaluate OPA or Sentinel policies against Terraform plan JSON. The natural chain
+is plan → show -json → policy check.
+
+### Install a policy engine
+
+```yaml
+# OPA from GitHub releases (default)
+- task: PipelinePolicyAgentInstaller@1
+  inputs:
+    policyAgent: 'opa'
+    version: 'latest'
+
+# Sentinel from releases.hashicorp.com (GPG-verified)
+- task: PipelinePolicyAgentInstaller@1
+  inputs:
+    policyAgent: 'sentinel'
+    version: 'latest'
+
+# From a private registry mirror
+- task: PipelinePolicyAgentInstaller@1
+  inputs:
+    policyAgent: 'opa'
+    version: 'latest'
+    downloadSource: 'registry'
+    registryUrl: 'https://registry.example.com'
+    registryMirrorName: 'opa'
+```
+
+### Evaluate OPA policies from a checked-out path
+
+```yaml
+- task: PipelineTerraformTask@5
+  inputs:
+    command: 'plan'
+    provider: 'azurerm'
+    environmentServiceNameAzureRM: 'my-azure-connection'
+    commandOptions: '-out=tfplan'
+
+- task: PipelineTerraformTask@5
+  name: tfshow
+  inputs:
+    command: 'show'
+    provider: 'azurerm'
+    environmentServiceNameAzureRM: 'my-azure-connection'
+    outputTo: 'file'
+    outputFormat: 'json'
+    filename: 'plan.json'
+    commandOptions: 'tfplan'
+
+- task: PipelineTerraformPolicyCheck@1
+  inputs:
+    engine: 'opa'
+    inputFile: '$(tfshow.showFilePath)'
+    policySource: 'path'
+    policyPath: '$(Build.SourcesDirectory)/policies'
+    decisionPath: 'terraform/deny'
+    failMode: 'nonEmpty'
+```
+
+A `terraform/deny` rule that returns a non-empty set of message strings fails the
+task and surfaces each message as an error. Policies evaluate the raw
+`terraform show -json` document as `input`.
+
+### Evaluate Sentinel policies with enforcement levels
+
+```yaml
+- task: PipelineTerraformPolicyCheck@1
+  inputs:
+    engine: 'sentinel'
+    inputFile: '$(tfshow.showFilePath)'
+    policySource: 'path'
+    policyPath: '$(Build.SourcesDirectory)/sentinel-policies'
+    defaultEnforcementLevel: 'soft-mandatory'   # advisory | soft-mandatory | hard-mandatory
+    overrideSoftMandatory: false
+    sentinelImportName: 'tfplan'
+```
+
+The task generates a `sentinel.hcl` that wires the plan JSON in as a static
+import (`import "static" "tfplan" { source = "...", format = "json" }`) and lists
+every `*.sentinel` policy at the chosen enforcement level. **Policies are
+evaluated against the raw `terraform show -json` schema, not the TFC/TFE
+`tfplan/v2` mock schema** — policies written for HCP Terraform need adaptation.
+Bring your own config with `sentinelConfigPath` to manage imports yourself.
+
+### Clone policies from a git repository
+
+```yaml
+- task: PipelineTerraformPolicyCheck@1
+  inputs:
+    engine: 'opa'
+    inputFile: '$(tfshow.showFilePath)'
+    policySource: 'gitUrl'
+    policyRepoUrl: 'https://github.com/example/policies'
+    policyRepoRef: '0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3'   # pin a SHA
+    policyRepoSubdir: 'terraform'
+    policyRepoToken: '$(POLICY_REPO_PAT)'   # secret variable, injected via http.extraheader
+```
+
+The check task sets output variables `policyResult` (`passed`/`failed`),
+`violationCount`, and `resultsFilePath`, and (by default) publishes a JUnit
+report so outcomes appear in the pipeline **Tests** tab.

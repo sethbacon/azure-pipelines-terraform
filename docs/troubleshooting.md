@@ -213,3 +213,48 @@ variables:
   HTTPS_PROXY: http://proxy.example.com:8080
   NO_PROXY: ".local,169.254.169.254"
 ```
+
+## Policy tasks
+
+### "Policy agent executable not found" / engine not on PATH
+
+Add the `PipelinePolicyAgentInstaller@1` task before `PipelineTerraformPolicyCheck@1`,
+or set the check task's `policyAgentPath` to the binary explicitly.
+
+### OPA: no violations reported when you expect some
+
+- Confirm `decisionPath` matches your package/rule (e.g. `terraform/deny` →
+  `package terraform` + `deny` rule). The check evaluates `data.<decisionPath>`.
+- Confirm your rule reads the plan from `input` (the raw `terraform show -json`
+  document), not from a wrapper object.
+- For a boolean `allow`-style rule, set `failMode: defined` instead of the
+  default `nonEmpty`.
+
+### OPA: "Failed to parse 'opa exec' output as JSON"
+
+The task expects machine-readable `opa exec` output. Ensure the installed binary
+is OPA (not the legacy `conftest`) and that policies compile — a Rego compile
+error surfaces here.
+
+### Sentinel: policies pass locally but the task reports failure (or vice versa)
+
+The standalone `sentinel` CLI returns exit 0 = pass, 1 = fail, 2 = undefined
+(treated as fail), 3 = runtime error. Enforcement levels (`advisory`,
+`soft-mandatory`, `hard-mandatory`) are applied by this task, not by the CLI, so
+an advisory failure still exits 1 from Sentinel but the task succeeds with a
+warning. A result of 2 (undefined) usually means a policy's `main` rule was not
+satisfied by the data — check the static import name (`sentinelImportName`)
+matches the `import` statement in your policy.
+
+### Sentinel: policies written for HCP Terraform don't work
+
+This task wires the **raw** `terraform show -json` document as the static import.
+HCP Terraform exposes a different `tfplan/v2` mock schema. Adapt the import paths
+in your policies, or supply your own `sentinelConfigPath` with matching mock data.
+
+### Private policy repo clone fails (gitUrl source)
+
+- The URL must be HTTPS. Provide `policyRepoToken` (a pipeline secret variable)
+  for private repos; it is injected via `http.extraheader` and masked in logs.
+- When pinning a commit, use the full 40-character SHA — short SHAs are treated
+  as branch/tag names and shallow-cloned.

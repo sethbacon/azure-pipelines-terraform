@@ -1,0 +1,133 @@
+{
+    "id": "f9b4b4b7-7199-4884-ad45-591f491217fc",
+    "name": "PipelinePolicyAgentInstaller",
+    "friendlyName": "Pipeline policy agent installer",
+    "description": "Find in cache or download a specific version of a policy engine (Sentinel or OPA) and prepend it to the PATH",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Tool",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "0",
+        "Patch": "0"
+    },
+    "instanceNameFormat": "Install $(policyAgent) $(version)",
+    "inputs": [
+        {
+            "name": "policyAgent",
+            "type": "pickList",
+            "label": "Policy agent",
+            "defaultValue": "opa",
+            "required": true,
+            "helpMarkDown": "Which policy engine to install.",
+            "options": {
+                "opa": "Open Policy Agent (OPA)",
+                "sentinel": "HashiCorp Sentinel"
+            }
+        },
+        {
+            "name": "version",
+            "type": "string",
+            "label": "Version",
+            "defaultValue": "latest",
+            "required": true,
+            "helpMarkDown": "The version to install. Use 'latest' to install the current latest release."
+        },
+        {
+            "name": "downloadSource",
+            "type": "pickList",
+            "label": "Download source",
+            "defaultValue": "official",
+            "required": true,
+            "helpMarkDown": "Where to download the policy agent from. Sentinel installs from releases.hashicorp.com; OPA from GitHub releases.",
+            "options": {
+                "official": "Official releases (HashiCorp / GitHub)",
+                "registry": "Private registry (terraform-registry-backend)",
+                "mirror": "Custom mirror URL"
+            }
+        },
+        {
+            "name": "registryUrl",
+            "type": "string",
+            "label": "Registry base URL",
+            "defaultValue": "",
+            "required": true,
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "Base URL of your terraform-registry-backend instance. Must use HTTPS. Example: https://registry.example.com"
+        },
+        {
+            "name": "registryMirrorName",
+            "type": "string",
+            "label": "Mirror configuration name",
+            "defaultValue": "opa",
+            "required": true,
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/... (e.g. 'opa' or 'sentinel')."
+        },
+        {
+            "name": "mirrorBaseUrl",
+            "type": "string",
+            "label": "Mirror base URL",
+            "defaultValue": "",
+            "required": true,
+            "visibleRule": "downloadSource = mirror",
+            "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as the official releases for the selected agent."
+        },
+        {
+            "name": "requireGpgSignature",
+            "type": "boolean",
+            "label": "Require GPG signature verification",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "policyAgent = sentinel && downloadSource != registry",
+            "helpMarkDown": "Sentinel only. When enabled, fail if the GPG signature of SHA256SUMS is unavailable. Disable for mirrors that do not serve .sig files."
+        },
+        {
+            "name": "requireChecksum",
+            "type": "boolean",
+            "label": "Require checksum verification",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "policyAgent = opa || downloadSource = mirror",
+            "helpMarkDown": "When enabled, fail if a SHA256 checksum is not available for the requested version/platform."
+        }
+    ],
+    "execution": {
+        "Node20_1": {
+            "target": "src/index.js"
+        },
+        "Node24": {
+            "target": "src/index.js"
+        }
+    },
+    "outputVariables": [
+        {
+            "name": "policyAgentLocation",
+            "description": "The location of the policy agent binary that was installed on the agent."
+        },
+        {
+            "name": "policyAgentDownloadedFrom",
+            "description": "The source from which the agent was downloaded: 'official', 'registry:<url>', 'mirror:<url>', or 'cache'."
+        }
+    ],
+    "messages": {
+        "VerifyInstallation": "Verifying %s installation...",
+        "InputVersionNotValidSemanticVersion": "Input version %s is not a valid semantic version",
+        "PolicyAgentNotFoundInFolder": "Policy agent executable not found in path %s",
+        "OperatingSystemNotSupported": "Operating system %s is not supported",
+        "ArchitectureNotSupported": "Architecture %s is not supported",
+        "PolicyAgentDownloadFailed": "Failed to download policy agent from url %s. Error: %s",
+        "VersionNotFound": "Unable to get latest version from source, using fallback version",
+        "GettingLatestVersion": "Getting latest %s version.",
+        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+        "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
+        "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
+        "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
+        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
+    }
+}
