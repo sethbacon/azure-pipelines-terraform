@@ -1,0 +1,6 @@
+{
+  "loc.friendlyName": "Pipeline Terraform drift report",
+  "loc.helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+  "loc.description": "Parse a Terraform/OpenTofu plan JSON into drift counts + a changed-resource summary and optionally POST it to a Terraform State Manager (TSM) drift callback",
+  "loc.instanceNameFormat": "Drift report"
+}
