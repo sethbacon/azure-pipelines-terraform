@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.4.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.3.0...v1.4.0) (2026-06-20)
+
+
+### Features
+
+* add TerraformDriftReport task sharing the drift contract ([#217](https://github.com/sethbacon/azure-pipelines-terraform/issues/217)) ([c00e59a](https://github.com/sethbacon/azure-pipelines-terraform/commit/c00e59a66d1fb41402776d3d8fbae5992e1a49c6))
+
+
+### Documentation
+
+* resolve initiative-6 drifted rule; point to the GitHub twin ([#213](https://github.com/sethbacon/azure-pipelines-terraform/issues/213)) ([e719011](https://github.com/sethbacon/azure-pipelines-terraform/commit/e71901181c83cb435e31f3878f2957391d4e0cd0))
+
+
+### Security
+
+* bump undici to ^6.27.0 in TerraformInstallerV1 (GHSA-p88m-4jfj-68fv) ([#215](https://github.com/sethbacon/azure-pipelines-terraform/issues/215)) ([616d488](https://github.com/sethbacon/azure-pipelines-terraform/commit/616d488bbc60b9be74808144fa023d7c78b7ca13))
+
 ## [1.3.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.2.0...v1.3.0) (2026-06-12)
 
 
