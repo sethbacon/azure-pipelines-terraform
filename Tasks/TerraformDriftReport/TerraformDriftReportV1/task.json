@@ -1,0 +1,95 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
+  "id": "be1fbb66-ab13-42ce-a8ee-eadad57cb308",
+  "name": "PipelineTerraformDriftReport",
+  "friendlyName": "Pipeline Terraform drift report",
+  "description": "Parse a Terraform/OpenTofu plan JSON into drift counts + a changed-resource summary and optionally POST it to a Terraform State Manager (TSM) drift callback",
+  "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+  "category": "Utility",
+  "author": "sethbacon",
+  "version": {
+    "Major": "1",
+    "Minor": "0",
+    "Patch": "0"
+  },
+  "instanceNameFormat": "Drift report",
+  "inputs": [
+    {
+      "name": "planJsonFile",
+      "type": "filePath",
+      "label": "Plan JSON file",
+      "required": true,
+      "helpMarkDown": "Path to the JSON output of `terraform show -json <plan>` (or `tofu show -json <plan>`)."
+    },
+    {
+      "name": "includeModuleProvenance",
+      "type": "boolean",
+      "label": "Include module provenance",
+      "defaultValue": "true",
+      "required": false,
+      "helpMarkDown": "Include the configuration's module_calls (+ module lockfile) in the report/callback."
+    },
+    {
+      "name": "moduleManifest",
+      "type": "filePath",
+      "label": "Module manifest",
+      "defaultValue": ".terraform/modules/modules.json",
+      "required": false,
+      "visibleRule": "includeModuleProvenance = true",
+      "helpMarkDown": "Resolved module lockfile used to report locked module versions."
+    },
+    {
+      "name": "failOnDrift",
+      "type": "boolean",
+      "label": "Fail on drift",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "Fail the task when drift is detected."
+    },
+    {
+      "name": "detail",
+      "type": "string",
+      "label": "Detail",
+      "required": false,
+      "helpMarkDown": "Free-text run label forwarded as the callback `detail` field (e.g. `$(Build.BuildId)`)."
+    },
+    {
+      "name": "callbackUrl",
+      "type": "string",
+      "label": "TSM callback URL",
+      "required": false,
+      "helpMarkDown": "TSM drift callback URL. The result is POSTed only when both callbackUrl and callbackToken are set."
+    },
+    {
+      "name": "callbackToken",
+      "type": "string",
+      "label": "TSM callback token",
+      "required": false,
+      "helpMarkDown": "Per-run one-shot TSM callback token, sent as the X-TSM-Callback-Token header."
+    },
+    {
+      "name": "rejectUnauthorized",
+      "type": "boolean",
+      "label": "Verify callback TLS",
+      "defaultValue": "true",
+      "required": false,
+      "visibleRule": "callbackUrl != \"\"",
+      "helpMarkDown": "Verify the callback's TLS certificate. Set false only for a private-CA endpoint the agent does not trust."
+    }
+  ],
+  "OutputVariables": [
+    { "name": "driftDetected", "description": "'true' when any non-no-op, non-read change was planned." },
+    { "name": "addedCount", "description": "Count of resources whose plan contains a create." },
+    { "name": "changedCount", "description": "Count of resources whose plan contains an update." },
+    { "name": "destroyedCount", "description": "Count of resources whose plan contains a delete." },
+    { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." }
+  ],
+  "execution": {
+    "Node20_1": {
+      "target": "src/index.js"
+    },
+    "Node24": {
+      "target": "src/index.js"
+    }
+  }
+}
