@@ -6,7 +6,12 @@ inline runner script and into a first-class extension task.
 
 ## Implementation Status
 
-**Not started.** Plan only. Supersedes nothing; additive to the extension.
+**Built** (`Tasks/TerraformDriftReport/TerraformDriftReportV1`). The parsing is
+**not** a re-implementation — the task consumes the shared
+[`terraform-drift-contract`](https://github.com/sethbacon/terraform-drift-contract)
+package (the same `summarize()` the `terraform-drift-report` GitHub Action
+bundles), so the §5 "share one parser" end state is realized: one contract, three
+runtimes (ADO task, GitHub Action, backend `driftingest`).
 
 ## Goal
 
