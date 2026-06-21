@@ -170,6 +170,9 @@ jobs:
     needs: draft-release
     runs-on: ubuntu-latest
     environment: marketplace
+    permissions:
+      id-token: write   # GitHub OIDC -> Microsoft Entra federated credential
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -181,10 +184,24 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vsix
-      - name: Publish extension
+      # Authenticate to Microsoft Entra via GitHub OIDC (federated credential) —
+      # no stored secret. The service principal is a member of the 'sethbacon'
+      # Marketplace publisher. Replaces the deprecated full-scoped TFX_PAT.
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.AZDO_PUBLISH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZDO_PUBLISH_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Publish extension with a Microsoft Entra token
         run: |
           VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
-          ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --token "${{ secrets.TFX_PAT }}"
+          # 499b84ac-1321-427f-aa17-267ca6975798 is the Azure DevOps resource app.
+          ENTRA_TOKEN=$(az account get-access-token \
+            --tenant "${{ vars.AZDO_PUBLISH_TENANT_ID }}" \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken -o tsv)
+          ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat --token "$ENTRA_TOKEN"
 
   undraft-release:
     name: Undraft GitHub Release
