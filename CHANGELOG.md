@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.4.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.0...v1.4.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **deps:** bump @babel/core and js-yaml, scope dev uuid override ([#219](https://github.com/sethbacon/azure-pipelines-terraform/issues/219)) ([65cdd44](https://github.com/sethbacon/azure-pipelines-terraform/commit/65cdd446cd57c7a5b40ce1afda593211b3613087))
+
 ## [1.4.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.3.0...v1.4.0) (2026-06-20)
 
 
