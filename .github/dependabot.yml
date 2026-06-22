@@ -92,3 +92,6 @@ updates:
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # tfx-cli 0.23.3 pulls in lodash with HIGH advisories; pinned to 0.23.2.
+      - dependency-name: "tfx-cli"
+        versions: [">=0.23.3"]
