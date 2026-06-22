@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.4.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.1...v1.4.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* bump task versions to refresh ADO task cache ([#221](https://github.com/sethbacon/azure-pipelines-terraform/issues/221)) ([919f5a1](https://github.com/sethbacon/azure-pipelines-terraform/commit/919f5a19fb13ac99debcef25151ae7a8d8882ce5))
+
 ## [1.4.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.0...v1.4.1) (2026-06-21)
 
 
