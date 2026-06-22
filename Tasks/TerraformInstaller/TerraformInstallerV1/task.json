@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "224",
+        "Minor": "225",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
@@ -108,9 +108,6 @@
         }
     ],
     "execution": {
-        "Node20_1": {
-            "target": "src/index.js"
-        },
         "Node24": {
             "target": "src/index.js"
         }

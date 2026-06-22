@@ -54,7 +54,7 @@
         "react-dom": "^18.3.1",
         "rimraf": "^5.0.0",
         "style-loader": "^3.3.2",
-        "tfx-cli": "0.23.1",
+        "tfx-cli": "0.23.3",
         "ts-jest": "^29.4.9",
         "ts-loader": "^9.5.0",
         "tslib": "^2.6.0",
