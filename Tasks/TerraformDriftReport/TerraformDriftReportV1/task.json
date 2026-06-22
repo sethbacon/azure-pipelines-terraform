@@ -9,7 +9,7 @@
   "author": "sethbacon",
   "version": {
     "Major": "1",
-    "Minor": "1",
+    "Minor": "2",
     "Patch": "0"
   },
   "instanceNameFormat": "Drift report",
@@ -85,9 +85,6 @@
     { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." }
   ],
   "execution": {
-    "Node20_1": {
-      "target": "src/index.js"
-    },
     "Node24": {
       "target": "src/index.js"
     }
