@@ -65,8 +65,12 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
    - `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json` — if PolicyAgentInstallerV1 changed
    - `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json` — if TerraformPolicyCheckV1 changed
+   - `Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json` — if TerraformDriftReportV1 changed
+   - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
+
+   **Verify before bumping:** when a change must reach agents immediately (e.g. dropping a Node execution handler), the `Minor` may be bumped in the feature PR instead. If a task's `Minor` was already incremented in a merged feature PR since the last release, do **not** bump it again here — compare against the last release tag first to avoid a double-increment.
 
 4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
 5. The `release.yml` workflow fires on the tag:
@@ -236,7 +240,7 @@ The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — 
 ## task.json Schema Key Points
 
 - `id` is shared across all versions of TerraformTask (`FE504ACC-6115-40CB-89FF-191386B5E7BF`)
-- `execution` targets `Node20_1` and `Node24` in V5; `Node24` is preferred on modern agents, `Node20_1` retained for agent backward compatibility
+- `execution` targets `Node24` only across all tasks — Node 24 is the floor. The legacy `Node20_1` handler was dropped on 2026-06-21 (Node 20 reached EOL April 2026), so a task's `Minor` must be bumped for agents to re-fetch a handler change
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
 - Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `showFilePath`, `customFilePath`
