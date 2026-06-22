@@ -237,7 +237,7 @@ All other commands (`plan`, `apply`, `destroy`, `show`, `output`, `import`, `ref
 
 ## Agent Compatibility
 
-Tasks run on Windows, macOS, and Linux build agents using Node 20.
+Tasks run on Windows, macOS, and Linux build agents using Node 24.
 
 ---
 
