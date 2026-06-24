@@ -388,10 +388,17 @@ export abstract class BaseTerraformCommandHandler {
             });
             result = commandOutput.code;
 
-            const attachmentPath = path.join(os.tmpdir(), `terraform-plan-${uuidV4()}.txt`);
+            // Write the attachment into the agent-managed temp directory, which the
+            // agent cleans automatically at job end. The agent uploads attachment
+            // files asynchronously after reading the ##vso[task.addattachment] line
+            // from stdout, so we must NOT add this path to `tempFiles`: cleanupTempFiles()
+            // runs in the finally of the parent handler milliseconds later and would
+            // unlink the file before the agent has uploaded it, causing the upload to
+            // fail with "attachment file does not exist on disk".
+            const attachmentDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+            const attachmentPath = path.join(attachmentDir, `terraform-plan-${uuidV4()}.txt`);
             fs.writeFileSync(attachmentPath, commandOutput.stdout, "utf-8");
             tasks.addAttachment("terraform-plan-results", publishPlanResults, attachmentPath);
-            this.tempFiles.push(attachmentPath);
         } else {
             result = await terraformTool.execAsync(<IExecOptions>{
                 cwd: planCommand.workingDirectory,
