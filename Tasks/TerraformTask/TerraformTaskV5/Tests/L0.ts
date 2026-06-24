@@ -2258,6 +2258,17 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('azure plan publish results attachment survives temp-file cleanup', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsAttachmentSurvivesCleanup.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishResultsAttachmentSurvivesCleanupL0 should have succeeded.'));
+        }, tr);
+    });
+
     /* parent handler error tests */
 
     it('unknown provider should fail with descriptive error', async () => {
