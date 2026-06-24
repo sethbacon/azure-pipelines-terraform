@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.5.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.3...v1.5.0) (2026-06-22)
+
+
+### Features
+
+* require Node 24 agent runtime, bump deps ([#225](https://github.com/sethbacon/azure-pipelines-terraform/issues/225)) ([5bc2bf7](https://github.com/sethbacon/azure-pipelines-terraform/commit/5bc2bf743751419eadf910f3f18f8deb15624817))
+
+
+### Documentation
+
+* reflect Node24-only execution floor ([#227](https://github.com/sethbacon/azure-pipelines-terraform/issues/227)) ([a64eb40](https://github.com/sethbacon/azure-pipelines-terraform/commit/a64eb4004fc6fc1125377f379465d54cfa6dd848))
+
+
+### Security
+
+* pin tfx-cli 0.23.2, overrides + drop glob-exec ([#228](https://github.com/sethbacon/azure-pipelines-terraform/issues/228)) ([7fa1f31](https://github.com/sethbacon/azure-pipelines-terraform/commit/7fa1f316f9a6f8e7132a3dd20eb0072501ca71e0))
+
 ## [1.4.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.2...v1.4.3) (2026-06-22)
 
 
