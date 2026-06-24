@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.5.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.5.0...v1.5.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* prevent publishPlanResults attachment race ([#229](https://github.com/sethbacon/azure-pipelines-terraform/issues/229)) ([4f54662](https://github.com/sethbacon/azure-pipelines-terraform/commit/4f5466271554f4fd1b26135028e81c664cb52f2c))
+
 ## [1.5.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.4.3...v1.5.0) (2026-06-22)
 
 
