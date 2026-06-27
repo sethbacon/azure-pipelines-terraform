@@ -2,6 +2,9 @@ import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
 
+// Direct unit tests for the http-client timeout guard.
+import './HttpClientL0';
+
 describe('PolicyAgentInstaller Test Suite', function () {
 
     before(() => {

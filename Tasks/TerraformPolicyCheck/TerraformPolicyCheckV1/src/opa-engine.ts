@@ -22,11 +22,20 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
     tool.arg(inputFile);
 
     let stdout = '';
+    let stderr = '';
     tool.on('stdout', (data: string | Buffer) => { stdout += data.toString(); });
+    tool.on('stderr', (data: string | Buffer) => { stderr += data.toString(); });
 
     // opa exec returns 0 even when the decision contains violations; we gate on the
     // parsed result, not the exit code.
     const code = await tool.execAsync(<IExecOptions>{ ignoreReturnCode: true });
+
+    // A non-zero exit is a real failure (bad bundle, malformed input, opa crash),
+    // not a policy violation — surface stderr instead of failing later on empty JSON.
+    if (code !== 0) {
+        const detail = stderr.trim() || stdout.trim() || '(no output)';
+        throw new Error(`'opa exec' failed (exit code ${code}): ${detail.slice(0, 500)}`);
+    }
 
     let parsed: { result?: Array<{ path?: string; result?: unknown; error?: unknown }> };
     try {

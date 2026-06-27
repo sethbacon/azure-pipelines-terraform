@@ -132,13 +132,19 @@ export class HcpPublisher implements RegistryPublisher {
     private async waitForOk(headers: Record<string, string>): Promise<boolean> {
         const deadline = Date.now() + this.options.timeoutSeconds * 1000;
         for (;;) {
-            const resp = await this.http('GET', moduleUrl(this.options), headers);
-            if (
-                resp.status >= 200 &&
-                resp.status < 300 &&
-                versionStatus(resp.body, this.options.version) === 'ok'
-            ) {
-                return true;
+            // A single poll failing (e.g. a per-request timeout or transient 5xx)
+            // must not abort the wait; keep polling until the wall-clock deadline.
+            try {
+                const resp = await this.http('GET', moduleUrl(this.options), headers);
+                if (
+                    resp.status >= 200 &&
+                    resp.status < 300 &&
+                    versionStatus(resp.body, this.options.version) === 'ok'
+                ) {
+                    return true;
+                }
+            } catch (err) {
+                this.log(`Polling version status failed, will retry: ${err instanceof Error ? err.message : String(err)}`);
             }
             if (Date.now() >= deadline) {
                 return false;

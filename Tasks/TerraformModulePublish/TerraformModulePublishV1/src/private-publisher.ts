@@ -90,9 +90,15 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
     private async waitForVersion(modUrl: string, authHeader: Record<string, string>): Promise<boolean> {
         const deadline = Date.now() + this.options.timeoutSeconds * 1000;
         for (;;) {
-            const resp = await this.http('GET', modUrl, authHeader);
-            if (resp.status >= 200 && resp.status < 300 && hasVersion(resp.body, this.options.version)) {
-                return true;
+            // A single poll failing (e.g. a per-request timeout or transient 5xx)
+            // must not abort the wait; keep polling until the wall-clock deadline.
+            try {
+                const resp = await this.http('GET', modUrl, authHeader);
+                if (resp.status >= 200 && resp.status < 300 && hasVersion(resp.body, this.options.version)) {
+                    return true;
+                }
+            } catch (err) {
+                this.log(`Polling registry failed, will retry: ${err instanceof Error ? err.message : String(err)}`);
             }
             if (Date.now() >= deadline) {
                 return false;

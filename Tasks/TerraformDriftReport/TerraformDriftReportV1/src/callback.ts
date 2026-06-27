@@ -1,6 +1,12 @@
 import * as https from 'https';
 import { URL } from 'url';
 
+/**
+ * Per-request socket timeout (ms). Without it a hung TCP connection leaves the
+ * callback POST waiting until the agent job timeout.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
+
 export interface HttpResponse {
     status: number;
     body: string;
@@ -16,6 +22,7 @@ export function postJson(
     headers: Record<string, string>,
     body: string,
     rejectUnauthorized = true,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<HttpResponse> {
     return new Promise<HttpResponse>((resolve, reject) => {
         const parsed = new URL(url);
@@ -43,6 +50,9 @@ export function postJson(
             res.setEncoding('utf8');
             res.on('data', (chunk) => { chunks += chunk; });
             res.on('end', () => resolve({ status: res.statusCode ?? 0, body: chunks }));
+        });
+        req.setTimeout(timeoutMs, () => {
+            req.destroy(new Error(`Callback request to ${parsed.host} timed out after ${timeoutMs}ms.`));
         });
         req.on('error', reject);
         req.write(body);

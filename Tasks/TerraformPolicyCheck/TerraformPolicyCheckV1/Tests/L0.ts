@@ -54,6 +54,17 @@ describe('TerraformPolicyCheck Test Suite', function () {
     expectFailure('OpaFailPath');
     expectFailure('OpaFailDefined');
 
+    it('OpaExecError — non-zero opa exit surfaces stderr and the exit code', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'OpaExecError.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/'opa exec' failed \(exit code 1\)/.test(output), `error should name the exit code; got: ${output}`);
+            assert(/rego_parse_error/.test(output), 'error should include the stderr diagnostic');
+        }, tr);
+    });
+
     // --- Sentinel engine (enforcement levels) ---
     expectSuccess('SentinelPassPath');
     expectFailure('SentinelHardFail');

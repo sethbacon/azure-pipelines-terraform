@@ -3,6 +3,7 @@ import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as net from 'net';
 import { postJson, truncateBody } from '../src/callback';
 
 describe('TerraformDriftReport callback transport', function () {
@@ -11,6 +12,22 @@ describe('TerraformDriftReport callback transport', function () {
             postJson('http://insecure.example.com/drift', { 'X-TSM-Callback-Token': 't' }, '{}'),
             /non-HTTPS/,
         );
+    });
+
+    it('times out a hung callback connection instead of hanging', async () => {
+        // A bare TCP server that accepts the socket but never completes the TLS
+        // handshake — req.setTimeout must fire and reject.
+        const server = net.createServer(() => { /* accept and stall */ });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            await assert.rejects(
+                postJson(`https://127.0.0.1:${port}/drift`, { 'X-TSM-Callback-Token': 't' }, '{}', true, 150),
+                /timed out after 150ms/,
+            );
+        } finally {
+            server.close();
+        }
     });
 
     it('truncates a long response body and passes a short one through', () => {

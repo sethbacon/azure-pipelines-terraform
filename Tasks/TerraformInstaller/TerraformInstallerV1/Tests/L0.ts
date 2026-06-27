@@ -5,6 +5,8 @@ import * as path from 'path';
 // Direct unit tests for the cosign verifier (certificate-identity anchoring +
 // fail-closed behavior). Registered alongside the integration suite below.
 import './CosignVerifierL0';
+// Direct unit tests for the http-client timeout guard.
+import './HttpClientL0';
 
 describe('TerraformInstaller Test Suite', function () {
 
