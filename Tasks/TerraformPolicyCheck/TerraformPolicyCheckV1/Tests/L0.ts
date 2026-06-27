@@ -4,6 +4,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
+// Direct unit tests for the reporting helpers (SARIF/JUnit branch coverage).
+import './ResultsL0';
+
 describe('TerraformPolicyCheck Test Suite', function () {
 
     before(() => {

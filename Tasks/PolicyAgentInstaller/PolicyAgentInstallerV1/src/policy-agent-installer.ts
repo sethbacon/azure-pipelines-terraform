@@ -297,7 +297,7 @@ function placeBinaryInDir(binaryPath: string, agent: string): string {
     return destDir;
 }
 
-function parseSha256(sha256SumsContent: string, fileName: string): string {
+export function parseSha256(sha256SumsContent: string, fileName: string): string {
     for (const line of sha256SumsContent.split('\n')) {
         const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
         if (match && match[2].trim() === fileName) {
@@ -308,7 +308,7 @@ function parseSha256(sha256SumsContent: string, fileName: string): string {
 }
 
 /** Extracts the first 64-hex digest from a single-asset .sha256 file. */
-function parseFirstSha256(content: string): string {
+export function parseFirstSha256(content: string): string {
     const match = content.match(/[a-fA-F0-9]{64}/);
     if (!match) {
         throw new Error("SHA256 checksum not found in .sha256 file");
@@ -316,7 +316,7 @@ function parseFirstSha256(content: string): string {
     return match[0];
 }
 
-async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
+export async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
     const fileBuffer = fs.readFileSync(filePath);
     const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
     if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
@@ -325,7 +325,7 @@ async function verifySha256(filePath: string, expectedHash: string): Promise<voi
     tasks.debug(`SHA256 verification passed: ${actualHash}`);
 }
 
-function getPlatformString(): string {
+export function getPlatformString(): string {
     switch (os.type()) {
         case "Darwin": return "darwin";
         case "Linux": return "linux";
@@ -334,7 +334,7 @@ function getPlatformString(): string {
     }
 }
 
-function getArchString(): string {
+export function getArchString(): string {
     switch (os.arch()) {
         case "x64": return "amd64";
         case "ia32": return "386";
@@ -345,7 +345,7 @@ function getArchString(): string {
 }
 
 /** OPA only publishes amd64 and arm64 binaries; reject other architectures. */
-function getOpaAssetName(): string {
+export function getOpaAssetName(): string {
     const osPlatform = getPlatformString();
     const arch = getArchString();
     if (arch !== "amd64" && arch !== "arm64") {

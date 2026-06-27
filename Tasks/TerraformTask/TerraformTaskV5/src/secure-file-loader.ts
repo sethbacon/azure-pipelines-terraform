@@ -13,7 +13,12 @@ export class SecureFileLoader implements ISecureFileLoader {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic require of untyped securefiles-common
     private helpers: any;
 
-    constructor() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional injection of the untyped securefiles-common helper for testing
+    constructor(helpers?: any) {
+        if (helpers) {
+            this.helpers = helpers;
+            return;
+        }
         const { SecureFileHelpers } = require('azure-pipelines-tasks-securefiles-common/securefiles-common');
         this.helpers = new SecureFileHelpers();
     }
