@@ -92,10 +92,10 @@
             "name": "requireCosignVerification",
             "type": "boolean",
             "label": "Require cosign signature verification",
-            "defaultValue": "false",
+            "defaultValue": "true",
             "required": false,
             "visibleRule": "binary = tofu",
-            "helpMarkDown": "When enabled, fail if cosign is not available on the agent or the signature cannot be verified. When disabled (default), cosign verification is attempted but skipped if cosign is not installed."
+            "helpMarkDown": "When enabled (default), fail the install if cosign is not available on the agent or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. Install cosign on the agent (e.g. sigstore/cosign-installer) to satisfy this. Set to false only to fall back to checksum-only verification on agents without cosign."
         },
         {
             "name": "requireChecksum",

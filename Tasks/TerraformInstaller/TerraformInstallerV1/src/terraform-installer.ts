@@ -362,8 +362,14 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     const sha256SumsUrl = `https://github.com/opentofu/opentofu/releases/download/v${version}/tofu_${version}_SHA256SUMS`;
     const sha256SumsContent = await fetchText(sha256SumsUrl);
 
-    // Cosign verification of SHA256SUMS
-    const requireCosign = tasks.getBoolInput("requireCosignVerification", false) === true;
+    // Cosign verification of SHA256SUMS. Fail closed: require a verified signature
+    // unless the operator has explicitly opted out (requireCosignVerification=false).
+    // The task.json default is "true"; reading the raw input keeps the default fail-
+    // closed even on an agent that does not materialize task input defaults.
+    const requireCosignInput = tasks.getInput("requireCosignVerification", false);
+    const requireCosign = requireCosignInput === undefined || requireCosignInput.trim() === ''
+        ? true
+        : requireCosignInput.trim().toLowerCase() !== 'false';
     const signatureUrl = `${sha256SumsUrl}.sig`;
     const certificateUrl = `${sha256SumsUrl}.pem`;
     await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, requireCosign);

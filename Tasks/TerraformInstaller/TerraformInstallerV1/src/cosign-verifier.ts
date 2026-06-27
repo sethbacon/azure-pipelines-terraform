@@ -7,10 +7,25 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { fetchBuffer } from './http-client';
 
 /**
+ * Anchored, escaped regular expression for the Fulcio certificate identity (SAN)
+ * that OpenTofu's keyless release signing produces. OpenTofu signs each release's
+ * SHA256SUMS from its `release.yml` workflow on a tag ref, yielding a SAN of the
+ * form `https://github.com/opentofu/opentofu/.github/workflows/<wf>@refs/tags/v<n>`.
+ *
+ * cosign matches `--certificate-identity-regexp` unanchored (Go `regexp.MatchString`),
+ * so the pattern is anchored with `^`/`$` and its dots are escaped. This prevents a
+ * look-alike certificate whose SAN merely *contains* the OpenTofu identity (or sits
+ * on a different host/org/repo, a branch ref, or http) from satisfying the match.
+ */
+export const OPENTOFU_CERT_IDENTITY_REGEXP =
+    '^https://github\\.com/opentofu/opentofu/\\.github/workflows/.+@refs/tags/v[0-9].*$';
+
+/**
  * Verifies the cosign signature of a SHA256SUMS file against OpenTofu's Sigstore identity.
  *
  * - Downloads the `.sig` (signature) and `.pem` (certificate) files.
- * - Shells out to the `cosign` binary to run `verify-blob`.
+ * - Shells out to the `cosign` binary to run `verify-blob`, pinning both the OIDC
+ *   issuer (exact) and the certificate identity (anchored regexp, see above).
  * - If cosign is not installed and `required` is false, warns and returns (unverified).
  * - If cosign is not installed and `required` is true, throws (hard fail).
  * - If signature verification fails, throws (hard fail).
@@ -60,7 +75,7 @@ export async function verifyCosignSignature(
         toolRunner.arg('verify-blob');
         toolRunner.arg(['--certificate', certificatePath]);
         toolRunner.arg(['--signature', signaturePath]);
-        toolRunner.arg(['--certificate-identity-regexp', 'https://github.com/opentofu/opentofu']);
+        toolRunner.arg(['--certificate-identity-regexp', OPENTOFU_CERT_IDENTITY_REGEXP]);
         toolRunner.arg(['--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com']);
         toolRunner.arg(sha256SumsPath);
 
