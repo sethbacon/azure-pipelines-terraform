@@ -100,10 +100,14 @@ describe('policy-agent-installer: platform & architecture mapping', () => {
     });
 
     it('getOpaAssetName builds the asset name for amd64 and arm64', () => {
+        // The platform/arch portion comes from the monkeypatched os.type/os.arch,
+        // but the .exe suffix is driven by the host (the source's isWindows constant),
+        // which the test cannot override — so mirror it here.
+        const exe = process.platform === 'win32' ? '.exe' : '';
         setType('Linux'); setArch('x64');
-        assert.strictEqual(getOpaAssetName(), 'opa_linux_amd64');
+        assert.strictEqual(getOpaAssetName(), `opa_linux_amd64${exe}`);
         setArch('arm64');
-        assert.strictEqual(getOpaAssetName(), 'opa_linux_arm64');
+        assert.strictEqual(getOpaAssetName(), `opa_linux_arm64${exe}`);
     });
 
     it('getOpaAssetName rejects architectures OPA does not publish', () => {
