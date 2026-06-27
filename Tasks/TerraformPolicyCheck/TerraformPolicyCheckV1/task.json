@@ -215,6 +215,16 @@
             "helpMarkDown": "Publish a JUnit report so policy outcomes appear in the pipeline Tests tab."
         }
     ],
+    "restrictions": {
+        "settableVariables": {
+            "allowed": [
+                "policyResult",
+                "violationCount",
+                "resultsFilePath",
+                "sarifFilePath"
+            ]
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"

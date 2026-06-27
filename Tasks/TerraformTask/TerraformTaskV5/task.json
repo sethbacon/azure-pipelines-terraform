@@ -18,6 +18,19 @@
         "Patch": "0"
     },
     "instanceNameFormat": "Terraform : $(provider)",
+    "restrictions": {
+        "settableVariables": {
+            "allowed": [
+                "TF_OUT_*",
+                "jsonPlanFilePath",
+                "jsonOutputVariablesPath",
+                "changesPresent",
+                "destroyChangesPresent",
+                "showFilePath",
+                "customFilePath"
+            ]
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"

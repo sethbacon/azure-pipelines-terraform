@@ -84,6 +84,21 @@
     { "name": "destroyedCount", "description": "Count of resources whose plan contains a delete." },
     { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." }
   ],
+  "restrictions": {
+    "commands": {
+      "mode": "restricted"
+    },
+    "settableVariables": {
+      "allowed": [
+        "driftDetected",
+        "addedCount",
+        "changedCount",
+        "destroyedCount",
+        "summaryFilePath",
+        "sarifFilePath"
+      ]
+    }
+  },
   "execution": {
     "Node24": {
       "target": "src/index.js"
