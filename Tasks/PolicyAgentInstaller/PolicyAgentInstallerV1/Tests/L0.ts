@@ -53,8 +53,21 @@ describe('PolicyAgentInstaller Test Suite', function () {
     expectSuccess('OpaLatestSuccess');
     expectSuccess('OpaRegistrySuccess');
 
+    it('OpaRegistryEmptySha256Warns', async () => {
+        const tp = path.join(__dirname, 'OpaRegistryEmptySha256Warns.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(tr.stdout.includes('skipping local verification'), 'should warn that local verification was skipped');
+        }, tr);
+    });
+
     // --- Failure cases ---
     expectFailure('InsecureUrlReject');
     expectFailure('Sha256Fail');
     expectFailure('InvalidVersionFail');
+    expectFailure('OpaRegistryInsecureUrl');
+    expectFailure('OpaRegistryEmptySha256RequireChecksum');
 });

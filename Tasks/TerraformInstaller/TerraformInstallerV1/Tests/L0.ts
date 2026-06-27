@@ -92,6 +92,40 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('registry insecure download_url: should reject a non-https pre-signed URL', async () => {
+        const tp = path.join(__dirname, 'RegistryInsecureUrlReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('registry empty sha256 + requireChecksum: should fail closed', async () => {
+        const tp = path.join(__dirname, 'RegistryEmptySha256RequireChecksum.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('registry empty sha256 (not required): should succeed with a skip warning', async () => {
+        const tp = path.join(__dirname, 'RegistryEmptySha256Warns.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(tr.stdout.includes('skipping local verification'), 'should warn that local verification was skipped');
+        }, tr);
+    });
+
     // --- Failure cases ---
 
     it('insecure URL: should reject http:// mirror URL', async () => {
