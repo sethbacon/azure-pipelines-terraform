@@ -236,8 +236,9 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 function parseSha256(sha256SumsContent: string, zipFileName: string): string {
     const lines = sha256SumsContent.split('\n');
     for (const line of lines) {
-        // Format: "<hex-hash>  <filename>" (two spaces between hash and filename)
-        const match = line.match(/^([a-fA-F0-9]{64})\s+(.+)$/);
+        // Format: "<hex-hash>  <filename>"; the optional leading "*" marks
+        // binary mode (canonical regex shared with PolicyAgentInstaller).
+        const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
         if (match && match[2].trim() === zipFileName) {
             tasks.debug(`Found SHA256 for ${zipFileName}: ${match[1]}`);
             return match[1];
