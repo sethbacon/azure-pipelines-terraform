@@ -4,6 +4,10 @@ import * as path from 'path';
 
 // Direct unit tests for OCI WIF token-exchange URL validation & transport.
 import './OciTokenExchangeL0';
+// Direct unit tests for the OIDC ID-token generator (WIF fallback).
+import './IdTokenGeneratorL0';
+// Direct unit tests for the secure var-file loader.
+import './SecureFileLoaderL0';
 
 describe('Terraform Test Suite', function () {
 

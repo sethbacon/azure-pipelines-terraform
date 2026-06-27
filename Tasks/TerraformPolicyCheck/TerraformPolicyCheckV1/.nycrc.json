@@ -12,7 +12,7 @@
         "src/**/*.d.ts",
         "src/**/*.map",
         "src/index.js",
-        "src/parent-handler.js"
+        "src/types.js"
     ],
     "check-coverage": true,
     "lines": 75,

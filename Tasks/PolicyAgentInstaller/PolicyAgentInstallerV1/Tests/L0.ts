@@ -4,6 +4,10 @@ import * as path from 'path';
 
 // Direct unit tests for the http-client timeout guard.
 import './HttpClientL0';
+// Direct unit tests for the checksum/platform helpers.
+import './InstallerHelpersL0';
+// Direct unit tests for the GPG signature gate (real openpgp).
+import './GpgVerifierL0';
 
 describe('PolicyAgentInstaller Test Suite', function () {
 
@@ -55,6 +59,20 @@ describe('PolicyAgentInstaller Test Suite', function () {
     expectSuccess('OpaOfficialSuccess');
     expectSuccess('OpaLatestSuccess');
     expectSuccess('OpaRegistrySuccess');
+    expectSuccess('RegistrySentinelSuccess');
+    expectSuccess('MirrorSentinelSuccess');
+    expectSuccess('MirrorOpaSuccess');
+
+    it('OpaOfficialChecksumSkip warns when the .sha256 is unavailable', async () => {
+        const tp = path.join(__dirname, 'OpaOfficialChecksumSkip.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(tr.stdout.includes('verification skipped'), 'should warn that SHA256 verification was skipped');
+        }, tr);
+    });
 
     it('OpaRegistryEmptySha256Warns', async () => {
         const tp = path.join(__dirname, 'OpaRegistryEmptySha256Warns.js');
