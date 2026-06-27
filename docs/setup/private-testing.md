@@ -12,9 +12,9 @@ This guide covers how to build, publish, and test the extension privately in you
 4. Accept the Marketplace Publisher Agreement
 5. Click **Create**
 
-## Get a Marketplace PAT (one-time)
+## Get a Marketplace PAT (for manual CLI publishing)
 
-This PAT is used both for the automated release workflow and for manual publishing via CLI.
+You only need a PAT for **manual** publishing of a private dev build from your own machine (Option B below). The automated release workflow does **not** use a PAT — it authenticates to the Marketplace via GitHub OIDC federated to Microsoft Entra (see [CONTRIBUTING.md](../../CONTRIBUTING.md#release-process)).
 
 1. Go to `https://marketplace.visualstudio.com` and sign in
 2. Click your profile icon → **Security**
@@ -23,7 +23,7 @@ This PAT is used both for the automated release workflow and for manual publishi
 5. Set **Scopes** → select **Marketplace** → check **Publish**
 6. Copy the token — you will not see it again
 
-This is the same token stored as the `TFX_PAT` GitHub Actions secret.
+Keep this token local to your machine; it is not stored as a GitHub Actions secret.
 
 ## Build and Package (each dev cycle)
 

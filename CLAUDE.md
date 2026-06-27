@@ -85,11 +85,14 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 **Required secrets/variables:**
 
-| Name                       | Type     | Purpose                                               |
-| -------------------------- | -------- | ----------------------------------------------------- |
-| `TFX_PAT`                  | Secret   | VS Marketplace PAT with `Marketplace (publish)` scope |
-| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please               |
-| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please             |
+| Name                       | Type     | Purpose                                                                            |
+| -------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app federated to GitHub for the Marketplace publish login  |
+| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                             |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                           |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                          |
+
+As of PR #218, `release.yml` publishes via **GitHub OIDC federated to Microsoft Entra** — there is no stored `TFX_PAT`. The publish job (under the `marketplace` environment, `id-token: write`) signs in with `azure/login` using the two `AZDO_PUBLISH_*` variables, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app needs a federated credential with subject `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 
 The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 
@@ -101,7 +104,7 @@ To publish to the VS Marketplace:
 2. Sign in with a Microsoft account
 3. Publisher ID: `sethbacon`
 4. Accept the Marketplace Publisher Agreement
-5. The `TFX_PAT` secret must have `Marketplace (publish)` scope to enable automated publishing
+5. Automated publishing uses the GitHub OIDC → Entra federated credential (no PAT). A Marketplace PAT is only needed for manual CLI publishing of private dev builds (see `docs/setup/private-testing.md`).
 
 ## Extension Naming — HashiCorp Trademark
 
@@ -115,11 +118,19 @@ HashiCorp's trademark policy prohibits using "Terraform" as a standalone product
 azure-pipelines-terraform/
 ├── Tasks/
 │   ├── TerraformInstaller/
-│   │   └── TerraformInstallerV1/      # Current installer task
+│   │   └── TerraformInstallerV1/        # Terraform / OpenTofu installer
 │   ├── TerraformProviderMirror/
-│   │   └── TerraformProviderMirrorV1/ # Provider mirror configuration task
-│   └── TerraformTask/
-│       └── TerraformTaskV5/           # Current development target
+│   │   └── TerraformProviderMirrorV1/   # Provider mirror configuration task
+│   ├── TerraformTask/
+│   │   └── TerraformTaskV5/             # Current development target
+│   ├── PolicyAgentInstaller/
+│   │   └── PolicyAgentInstallerV1/      # OPA / Sentinel installer
+│   ├── TerraformPolicyCheck/
+│   │   └── TerraformPolicyCheckV1/      # OPA / Sentinel policy evaluation
+│   ├── TerraformDriftReport/
+│   │   └── TerraformDriftReportV1/      # Plan-JSON drift summary + TSM callback
+│   └── TerraformModulePublish/
+│       └── TerraformModulePublishV1/    # Module publish to HCP / private registry
 ├── src/
 │   └── tab/                           # Terraform Plan tab UI (React + ADO Extension SDK)
 │       ├── tabContent.tsx             # Tab component with ANSI rendering

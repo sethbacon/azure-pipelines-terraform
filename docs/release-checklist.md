@@ -26,7 +26,7 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] Upload the `.vsix` to a test ADO org via **Organization Settings → Extensions → Browse local extensions → Upload**
 - [ ] Extension installs without errors
-- [ ] Both tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, and `PipelineTerraformTask@5`
+- [ ] All seven tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, `PipelineTerraformTask@5`, `PipelineTerraformModulePublish@1`, `PipelinePolicyAgentInstaller@1`, `PipelineTerraformPolicyCheck@1`, and `PipelineTerraformDriftReport@1`
 
 ## 4. Installer task smoke test
 
@@ -39,6 +39,30 @@ npm run package:release   # or package:self for a private test extension
 - [ ] `PipelineTerraformProviderMirror@1` with a valid mirror URL — generates `.terraformrc` and sets `TF_CLI_CONFIG_FILE`
 - [ ] `PipelineTerraformProviderMirror@1` with `allowDirectFallback: false` — config contains only `network_mirror` block
 - [ ] Subsequent `terraform init` downloads providers from the configured mirror
+
+## 4c. Policy agent installer smoke test
+
+- [ ] `PipelinePolicyAgentInstaller@1` with `policyAgent: opa`, `version: latest` — installs and reports version
+- [ ] `PipelinePolicyAgentInstaller@1` with `policyAgent: sentinel`, `version: latest` — installs and reports version
+- [ ] Output variables `policyAgentLocation` and `policyAgentDownloadedFrom` are set
+
+## 4d. Policy check smoke test
+
+- [ ] `PipelineTerraformPolicyCheck@1` with `engine: opa` against a plan JSON and a local policy directory — sets `policyResult`/`violationCount` and publishes JUnit results
+- [ ] `PipelineTerraformPolicyCheck@1` with `engine: sentinel` — exit-code-driven enforcement maps correctly
+- [ ] `policySource: git` clones the policy repo at the requested ref
+
+## 4e. Drift report smoke test
+
+- [ ] `PipelineTerraformDriftReport@1` with a plan JSON — reports drift counts and a changed-resource summary
+- [ ] `failOnDrift: true` fails the task when drift is present
+- [ ] With `callbackUrl` set (HTTPS), the summary POSTs to the TSM drift callback
+
+## 4f. Module publish smoke test
+
+- [ ] `PipelineTerraformModulePublish@1` with `registryType: private` — publishes a version to a terraform-registry-backend instance
+- [ ] `PipelineTerraformModulePublish@1` with `registryType: hcp` — publishes a version to HCP Terraform / TFE
+- [ ] `waitForPublish: true` blocks until the version is available (bounded by `timeoutSeconds`)
 
 ## 5. Core commands smoke test (AzureRM)
 

@@ -203,6 +203,10 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
    - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
    - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
+   - `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json` — if PolicyAgentInstallerV1 changed
+   - `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json` — if TerraformPolicyCheckV1 changed
+   - `Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json` — if TerraformDriftReportV1 changed
+   - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
 
@@ -219,11 +223,14 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 **Required secrets/variables:**
 
-| Name                       | Type     | Purpose                                               |
-| -------------------------- | -------- | ----------------------------------------------------- |
-| `TFX_PAT`                  | Secret   | VS Marketplace PAT with `Marketplace (publish)` scope |
-| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please               |
-| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please             |
+| Name                       | Type     | Purpose                                                                         |
+| -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app whose federated credential publishes to the Marketplace |
+| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                           |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                         |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                        |
+
+The Marketplace publish uses **GitHub OIDC federated to Microsoft Entra** — there is no stored Marketplace PAT. The `release.yml` publish job runs under the `marketplace` environment with `id-token: write`, signs in via `azure/login` using `AZDO_PUBLISH_CLIENT_ID`/`AZDO_PUBLISH_TENANT_ID`, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app must have a federated credential whose subject is `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 
 The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 

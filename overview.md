@@ -10,6 +10,7 @@ This extension provides:
 - **PipelineTerraformModulePublish** -- Publish a module version to HCP Terraform or a private Terraform registry
 - **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA or Sentinel) on the pipeline agent
 - **PipelineTerraformPolicyCheck** -- Evaluate OPA or Sentinel policies against Terraform plan JSON
+- **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.
@@ -111,7 +112,7 @@ The `backendType` input on `init` selects the state backend independently of the
 | `generic`    | Any backend via `-backend-config` file or key=value arguments |
 | `local`      | Local state file (no remote backend)                          |
 
-If `backendType` is not specified, it defaults to `azurerm`. For backward compatibility, if `backendType` is not set in a pre-existing pipeline, it falls back to the value of `provider`.
+If `backendType` is not set, it defaults to the value of the `provider` input, preserving the original behaviour where the state backend matched the deployment provider.
 
 ## Output Variables
 
@@ -130,3 +131,7 @@ Reference output variables using the task `name` prefix: `$(taskName.changesPres
 - **Examples**: See [docs/yaml-examples.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/docs/yaml-examples.md)
 - **Contributing**: See [CONTRIBUTING.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/CHANGELOG.md)
+
+## Trademarks
+
+Terraform is a registered trademark of HashiCorp. OpenTofu is a trademark of the Linux Foundation. This extension is an independent, community-maintained fork and is **not** affiliated with, endorsed by, or sponsored by HashiCorp or the Linux Foundation. Product names are used under nominative fair use solely to describe compatibility.

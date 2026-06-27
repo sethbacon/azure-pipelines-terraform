@@ -104,9 +104,19 @@ Most inputs carry over verbatim. Known differences:
 | DevLabs input             | This fork                                | Notes                                                                                      |
 | ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `allowTelemetryCollection` | _removed_                               | No telemetry is collected in this fork.                                                    |
-| `runAzLogin`              | _removed_                                | The AzureRM handler always authenticates via the service connection without `az login`.   |
+| `runAzLogin`              | `runAzLogin` (opt-in)                    | Still a live boolean input, default `false`. See the security note below.                  |
 | `commandOptions`           | `commandOptions`                         | Unchanged.                                                                                 |
 | `secureVarsFile`           | `secureVarsFile`                         | Unchanged. Secure Files library reference.                                                 |
+
+> **Security note on `runAzLogin`.** Set this to `true` only when a `local-exec`
+> provisioner or an external data source genuinely needs Azure CLI
+> authentication. When enabled, the task runs `az login --service-principal`,
+> which passes the federated OIDC token (Workload Identity Federation) or the
+> service principal secret (Service Principal scheme) as `az` command-line
+> arguments. The task masks those values in the logs (`setSecret`) and runs the
+> login silently, but command-line arguments are briefly visible in the agent's
+> process table (e.g. `/proc/<pid>/cmdline`). On ephemeral hosted agents this is
+> low risk; on shared self-hosted agents, leave it `false` unless required.
 
 ### New inputs introduced by this fork
 
