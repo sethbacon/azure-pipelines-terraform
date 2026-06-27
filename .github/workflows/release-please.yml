@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   release-please:
@@ -22,10 +23,12 @@ jobs:
           client-id: ${{ vars.RELEASE_DISPATCH_APP_ID }}
           private-key: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
           # Scope the installation token to exactly what release-please needs
-          # (open/update the release PR + push the version-bump commit/tag)
-          # instead of inheriting the app's blanket installation permissions.
+          # (open/update the release PR + push the version-bump commit/tag,
+          # and manage the autorelease:* labels) instead of inheriting the
+          # app's blanket installation permissions.
           permission-contents: write
           permission-pull-requests: write
+          permission-issues: write
 
       - name: Run release-please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
