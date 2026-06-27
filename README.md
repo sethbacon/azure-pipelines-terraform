@@ -84,6 +84,80 @@ Runs Terraform commands. Supports 16 commands:
 
 ---
 
+### `PipelineTerraformModulePublish@1` — Module Publisher
+
+Publishes a module version to HCP Terraform / Terraform Enterprise or a private Terraform registry (`terraform-registry-backend`) from a release pipeline.
+
+| Input              | Default                  | Description                                                                                  |
+| ------------------ | ------------------------ | -------------------------------------------------------------------------------------------- |
+| `registryType`     | `private`                | `private` (terraform-registry-backend) or `hcp` (HCP Terraform / TFE).                       |
+| `namespace`        | —                        | Module namespace.                                                                            |
+| `name`             | —                        | Module name.                                                                                 |
+| `provider`         | —                        | Provider / target system the module is for.                                                  |
+| `version`          | —                        | Semantic version to publish.                                                                 |
+| `registryUrl`      | —                        | Base HTTPS URL of the private registry. Required when `registryType=private`.                |
+| `apiKey`           | —                        | Private-registry API key. Treat as a secret variable.                                        |
+| `hcpAddress`       | `https://app.terraform.io` | HCP Terraform / TFE address. Used when `registryType=hcp`.                                  |
+| `hcpToken`         | —                        | HCP API token. Treat as a secret variable. Used when `registryType=hcp`.                      |
+| `waitForPublish`   | `true`                   | Poll until the version is available before completing.                                        |
+| `timeoutSeconds`   | `180`                    | Wall-clock bound for `waitForPublish`.                                                        |
+
+HCP VCS-backed publishing also accepts `vcsRepoIdentifier`, `vcsBranch`, `vcsOauthTokenId`, and `commitSha`.
+
+---
+
+### `PipelinePolicyAgentInstaller@1` — Policy Agent Installer
+
+Installs a policy engine — **OPA** (sha256-verified binary from the `open-policy-agent/opa` GitHub releases) or **Sentinel** (GPG-signed zip from `releases.hashicorp.com`) — and prepends it to the `PATH`.
+
+| Input                 | Default    | Description                                                                                      |
+| --------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| `policyAgent`         | `opa`      | `opa` or `sentinel`.                                                                              |
+| `version`             | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API. |
+| `downloadSource`      | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).          |
+| `requireGpgSignature` | `true`     | Fail if a Sentinel GPG signature is unavailable.                                                  |
+| `requireChecksum`     | `true`     | Fail if a SHA256 checksum is unavailable.                                                         |
+
+**Output variables:** `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA ships `amd64`/`arm64` only.
+
+---
+
+### `PipelineTerraformPolicyCheck@1` — Policy Check
+
+Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terraform show -json` output) and gates the pipeline on the result.
+
+| Input                     | Default          | Description                                                                                   |
+| ------------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| `engine`                  | `opa`            | `opa` or `sentinel`.                                                                           |
+| `inputFile`               | —                | Path to the plan JSON to evaluate.                                                             |
+| `policySource`            | `path`           | `path` (local directory) or `git` (HTTPS shallow clone / ref checkout).                        |
+| `policyPath`              | —                | Policy directory when `policySource=path`.                                                     |
+| `policyRepoUrl`           | —                | Policy repo URL when `policySource=git`. Pairs with `policyRepoRef`/`policyRepoSubdir`/`policyRepoToken`. |
+| `decisionPath`            | `terraform/deny` | OPA decision path to query.                                                                    |
+| `failMode`                | `nonEmpty`       | OPA gate: fail when the decision is `nonEmpty` or `defined`.                                    |
+| `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                     |
+| `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                     |
+
+**Output variables:** `policyResult`, `violationCount`, `resultsFilePath`.
+
+---
+
+### `PipelineTerraformDriftReport@1` — Drift Report
+
+Parses a Terraform/OpenTofu plan JSON into drift counts plus a changed-resource summary, and optionally POSTs the summary to a [Terraform State Manager](https://github.com/sethbacon/terraform-state-manager) (TSM) drift callback.
+
+| Input                | Default                              | Description                                                                  |
+| -------------------- | ------------------------------------ | ---------------------------------------------------------------------------- |
+| `planJsonFile`       | —                                    | Path to the plan JSON to analyse.                                            |
+| `includeModuleProvenance` | `true`                          | Include module source provenance from the module manifest.                  |
+| `moduleManifest`     | `.terraform/modules/modules.json`    | Module manifest path used for provenance.                                    |
+| `failOnDrift`        | `false`                              | Fail the task when drift is detected.                                        |
+| `callbackUrl`        | —                                    | TSM drift-callback URL. Must be HTTPS.                                       |
+| `callbackToken`      | —                                    | TSM callback bearer token. Treat as a secret variable.                       |
+| `rejectUnauthorized` | `true`                               | Verify the callback endpoint's TLS certificate (leave enabled in production). |
+
+---
+
 ## Providers
 
 | Provider | `provider` value | Service Connection Type                                      | Auth Methods                                      |
@@ -264,6 +338,12 @@ See [docs/troubleshooting.md](docs/troubleshooting.md) for solutions to common i
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, local development setup, and the release process.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history of changes since the fork.
+
+---
+
+## Trademarks
+
+Terraform is a registered trademark of HashiCorp. OpenTofu is a trademark of the Linux Foundation. This extension is an independent, community-maintained fork and is **not** affiliated with, endorsed by, or sponsored by HashiCorp or the Linux Foundation. Product names are used under nominative fair use solely to describe compatibility.
 
 ---
 

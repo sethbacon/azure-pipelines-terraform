@@ -6,6 +6,9 @@
 - [`PipelineTerraformProviderMirror@1`](#pipelineterraformprovidermirror1) — Configure provider network mirror
 - [`PipelineTerraformTask@5`](#pipelineterraformtask5) — Run Terraform commands (init, plan, apply, destroy, etc.)
 - [Cross-cloud examples](#cross-cloud-examples) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
+- [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON
+- [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
+- [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
 
 ---
 
@@ -784,3 +787,186 @@ Bring your own config with `sentinelConfigPath` to manage imports yourself.
 The check task sets output variables `policyResult` (`passed`/`failed`),
 `violationCount`, and `resultsFilePath`, and (by default) publishes a JUnit
 report so outcomes appear in the pipeline **Tests** tab.
+
+---
+
+## PipelineTerraformDriftReport@1
+
+Parse a Terraform/OpenTofu plan JSON into drift counts and a changed-resource
+summary, and optionally POST it to a Terraform State Manager (TSM) drift
+callback. Like the policy check, it consumes the `terraform show -json` document,
+so the natural chain is plan → show -json → drift report.
+
+### Report drift from a plan
+
+```yaml
+- task: PipelineTerraformTask@5
+  inputs:
+    command: 'plan'
+    provider: 'azurerm'
+    environmentServiceNameAzureRM: 'my-azure-connection'
+    commandOptions: '-out=tfplan'
+
+- task: PipelineTerraformTask@5
+  name: tfshow
+  inputs:
+    command: 'show'
+    provider: 'azurerm'
+    environmentServiceNameAzureRM: 'my-azure-connection'
+    outputTo: 'file'
+    outputFormat: 'json'
+    filename: 'plan.json'
+    commandOptions: 'tfplan'
+
+- task: PipelineTerraformDriftReport@1
+  name: drift
+  inputs:
+    planJsonFile: '$(tfshow.showFilePath)'
+```
+
+The task sets output variables `driftDetected` (`true`/`false`), `addedCount`,
+`changedCount`, `destroyedCount`, and `summaryFilePath` (the JSON report, which
+is also the exact callback body). Reference them by the task `name`, e.g.
+`$(drift.driftDetected)`.
+
+### Fail the build on drift
+
+```yaml
+- task: PipelineTerraformDriftReport@1
+  inputs:
+    planJsonFile: '$(tfshow.showFilePath)'
+    failOnDrift: true               # default false
+```
+
+### Report to Terraform State Manager
+
+```yaml
+- task: PipelineTerraformDriftReport@1
+  inputs:
+    planJsonFile: '$(tfshow.showFilePath)'
+    detail: '$(Build.BuildId)'                 # free-text run label, forwarded as the callback detail
+    callbackUrl: 'https://tsm.example.com/api/v1/drift/ingest'
+    callbackToken: '$(tsm-callback-token)'     # per-run one-shot secret; sent as X-TSM-Callback-Token
+    rejectUnauthorized: true                   # default; set false only for an untrusted private-CA endpoint
+```
+
+The result is POSTed **only when both `callbackUrl` and `callbackToken` are
+set**. `callbackToken` is a per-run one-shot token sent as the
+`X-TSM-Callback-Token` header — pass it as a secret variable. `rejectUnauthorized`
+(default `true`) verifies the callback's TLS certificate; set it `false` only for
+a private-CA endpoint the agent does not trust.
+
+### Emit a SARIF report
+
+```yaml
+- task: PipelineTerraformDriftReport@1
+  name: drift
+  inputs:
+    planJsonFile: '$(tfshow.showFilePath)'
+    sarifOutput: true               # default false
+    # sarifPath: '$(Build.ArtifactStagingDirectory)/drift.sarif'  # optional; defaults to the agent temp dir
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(drift.sarifFilePath)'
+    ArtifactName: 'CodeAnalysisLogs'           # picked up by SARIF-aware viewers
+```
+
+With `sarifOutput: true` the task writes a SARIF 2.1.0 report of the drifted
+resources and exposes its path via the `sarifFilePath` output variable. When
+`sarifPath` is empty a file is written to the agent temp directory; either way
+the path is exposed via `sarifFilePath`. Publish it as a build artifact to
+surface drift in SARIF-aware tooling.
+
+Module provenance: `includeModuleProvenance` (default `true`) adds the
+configuration's `module_calls` and locked module versions — read from
+`moduleManifest` (default `.terraform/modules/modules.json`) — to the report and
+callback body. Set it `false` to omit them.
+
+---
+
+## PipelineTerraformModulePublish@1
+
+Publish a module version to HCP Terraform / Terraform Enterprise or a private
+`terraform-registry-backend`. Typically the last step of a module's release
+pipeline.
+
+### Publish to a private registry
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Publish module to private registry'
+  inputs:
+    registryType: 'private'
+    registryUrl: 'https://registry.example.com'
+    namespace: 'platform'
+    name: 'networking-vpc'          # module name without the terraform-<provider>- prefix
+    provider: 'aws'
+    version: '1.2.3'
+    apiKey: '$(tfregistry-api-key)' # secret variable; needs the modules:write scope
+```
+
+`apiKey` must be a **secret** pipeline variable with the `modules:write` scope —
+never inline the literal. For an internal registry fronted by a private CA the
+agent does not trust, prefer installing the CA via `NODE_EXTRA_CA_CERTS`;
+`skipTlsVerify: true` is a last resort.
+
+### Publish to HCP Terraform
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Publish module to HCP Terraform'
+  inputs:
+    registryType: 'hcp'
+    namespace: 'my-org'             # HCP organization name
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'   # secret variable
+    # hcpAddress defaults to https://app.terraform.io; point it at your TFE host for Terraform Enterprise
+```
+
+For HCP Terraform / TFE the `namespace` is the organization name. `hcpToken` is a
+team or user API token and must be a secret variable.
+
+### Create a VCS-connected module on first publish
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Publish (create VCS-connected module if missing)'
+  inputs:
+    registryType: 'hcp'
+    namespace: 'my-org'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'
+    vcsRepoIdentifier: 'my-org/my-project/_git/terraform-aws-networking-vpc'
+    vcsOauthTokenId: 'ot-xxxxxxxxxxxxxxxx'
+    vcsBranch: 'main'               # defaults to main
+```
+
+`vcsRepoIdentifier` and `vcsOauthTokenId` apply **only when the module does not
+yet exist** and HCP should create a VCS-connected module for it; for modules that
+already exist they are ignored. `commitSha` defaults to `$(Build.SourceVersion)`.
+
+### Wait behaviour
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  inputs:
+    registryType: 'private'
+    registryUrl: 'https://registry.example.com'
+    namespace: 'platform'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    apiKey: '$(tfregistry-api-key)'
+    waitForPublish: true            # default; poll until the version is queryable
+    timeoutSeconds: '300'           # default 180
+```
+
+With `waitForPublish: true` (the default) the task polls the registry until the
+published version is available, failing if it is not ready within
+`timeoutSeconds`. Set `waitForPublish: false` to return as soon as the publish
+request is accepted.
