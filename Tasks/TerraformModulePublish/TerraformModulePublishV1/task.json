@@ -181,6 +181,14 @@
             "helpMarkDown": "Maximum time to wait for the version to become available."
         }
     ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": []
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"

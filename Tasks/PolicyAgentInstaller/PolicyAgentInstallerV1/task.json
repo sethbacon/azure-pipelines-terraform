@@ -97,6 +97,17 @@
             "helpMarkDown": "When enabled, fail if a SHA256 checksum is not available for the requested version/platform."
         }
     ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": [
+                "policyAgentLocation",
+                "policyAgentDownloadedFrom"
+            ]
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"

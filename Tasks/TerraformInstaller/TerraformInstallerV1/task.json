@@ -107,6 +107,17 @@
             "helpMarkDown": "When enabled, fail if the mirror does not serve a SHA256SUMS file for the requested version. When disabled (default), checksum verification is attempted but skipped if the mirror does not publish a SHA256SUMS file."
         }
     ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": [
+                "terraformLocation",
+                "terraformDownloadedFrom"
+            ]
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"

@@ -61,6 +61,17 @@
             }
         }
     ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": [
+                "TF_CLI_CONFIG_FILE",
+                "configFilePath"
+            ]
+        }
+    },
     "execution": {
         "Node24": {
             "target": "src/index.js"
