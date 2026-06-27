@@ -115,6 +115,31 @@ jobs:
           cd Tasks/TerraformInstaller/TerraformInstallerV1
           npm ci --omit=dev
           npx --no-install cyclonedx-npm --output-file ../../../sbom-terraform-installer-v1.cdx.json --omit dev
+      - name: Generate SBOM for TerraformProviderMirrorV1
+        run: |
+          cd Tasks/TerraformProviderMirror/TerraformProviderMirrorV1
+          npm ci --omit=dev
+          npx --no-install cyclonedx-npm --output-file ../../../sbom-terraform-provider-mirror-v1.cdx.json --omit dev
+      - name: Generate SBOM for PolicyAgentInstallerV1
+        run: |
+          cd Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1
+          npm ci --omit=dev
+          npx --no-install cyclonedx-npm --output-file ../../../sbom-policy-agent-installer-v1.cdx.json --omit dev
+      - name: Generate SBOM for TerraformPolicyCheckV1
+        run: |
+          cd Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1
+          npm ci --omit=dev
+          npx --no-install cyclonedx-npm --output-file ../../../sbom-terraform-policy-check-v1.cdx.json --omit dev
+      - name: Generate SBOM for TerraformDriftReportV1
+        run: |
+          cd Tasks/TerraformDriftReport/TerraformDriftReportV1
+          npm ci --omit=dev
+          npx --no-install cyclonedx-npm --output-file ../../../sbom-terraform-drift-report-v1.cdx.json --omit dev
+      - name: Generate SBOM for TerraformModulePublishV1
+        run: |
+          cd Tasks/TerraformModulePublish/TerraformModulePublishV1
+          npm ci --omit=dev
+          npx --no-install cyclonedx-npm --output-file ../../../sbom-terraform-module-publish-v1.cdx.json --omit dev
       - name: Download vsix artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -141,6 +166,31 @@ jobs:
         with:
           subject-path: '*.vsix'
           sbom-path: 'sbom-terraform-installer-v1.cdx.json'
+      - name: Attest SBOM (TerraformProviderMirrorV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-provider-mirror-v1.cdx.json'
+      - name: Attest SBOM (PolicyAgentInstallerV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-policy-agent-installer-v1.cdx.json'
+      - name: Attest SBOM (TerraformPolicyCheckV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-policy-check-v1.cdx.json'
+      - name: Attest SBOM (TerraformDriftReportV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-drift-report-v1.cdx.json'
+      - name: Attest SBOM (TerraformModulePublishV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-module-publish-v1.cdx.json'
       - name: Upload SBOM and signature artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
