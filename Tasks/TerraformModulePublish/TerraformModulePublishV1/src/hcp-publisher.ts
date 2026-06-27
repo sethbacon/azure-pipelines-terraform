@@ -1,4 +1,4 @@
-import { HttpClient, parseJson, delay } from './http';
+import { HttpClient, parseJson, delay, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
 
 /** Inputs for publishing to HCP Terraform / Terraform Enterprise. */
@@ -108,7 +108,7 @@ export class HcpPublisher implements RegistryPublisher {
             this.log(`Module not found; creating VCS-connected module ${o.namespace}/${o.name}/${o.provider}.`);
             const created = await this.http('POST', vcsUrl(o.address, o.namespace), headers, vcsModuleBody(o));
             if (created.status < 200 || created.status >= 300) {
-                throw new Error(`Failed to create HCP module (HTTP ${created.status}): ${created.body}`);
+                throw new Error(`Failed to create HCP module (HTTP ${created.status}): ${truncateBody(created.body)}`);
             }
         } else {
             this.log(`Could not check existing module (HTTP ${check.status}); attempting to publish version.`);
@@ -118,7 +118,7 @@ export class HcpPublisher implements RegistryPublisher {
         if (versionResp.status === 422) {
             this.log(`Version ${o.version} already exists.`);
         } else if (versionResp.status < 200 || versionResp.status >= 300) {
-            throw new Error(`Failed to create version (HTTP ${versionResp.status}): ${versionResp.body}`);
+            throw new Error(`Failed to create version (HTTP ${versionResp.status}): ${truncateBody(versionResp.body)}`);
         } else {
             this.log(`Version ${o.version} created.`);
         }

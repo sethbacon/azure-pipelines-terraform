@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
-import { HttpClient, HttpResponse } from '../src/http';
+import { HttpClient, HttpResponse, createHttpsClient, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 
@@ -26,6 +26,25 @@ function fakeClient(responses: HttpResponse[]): { client: HttpClient; calls: Cal
     };
     return { client, calls };
 }
+
+describe('http client transport', () => {
+    it('refuses to send credentials over a non-HTTPS URL', async () => {
+        const client = createHttpsClient(true);
+        await assert.rejects(
+            client('GET', 'http://insecure.example.com/api', { Authorization: 'Bearer k' }),
+            /non-HTTPS/,
+        );
+    });
+
+    it('truncates a long response body and passes a short one through', () => {
+        assert.strictEqual(truncateBody(''), '');
+        assert.strictEqual(truncateBody('short body'), 'short body');
+        const long = 'x'.repeat(600);
+        const out = truncateBody(long);
+        assert.ok(out.length < long.length, 'long body should be truncated');
+        assert.ok(out.endsWith('… (truncated)'), 'should mark truncation');
+    });
+});
 
 describe('private-publisher', () => {
     describe('url builders', () => {
