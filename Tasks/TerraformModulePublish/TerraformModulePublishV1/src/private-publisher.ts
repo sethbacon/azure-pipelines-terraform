@@ -1,4 +1,4 @@
-import { HttpClient, parseJson, delay } from './http';
+import { HttpClient, parseJson, delay, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
 
 /** Inputs for publishing to a private registry (terraform-registry-backend). */
@@ -62,7 +62,7 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
             );
         }
         if (moduleResp.status < 200 || moduleResp.status >= 300) {
-            throw new Error(`Failed to resolve module (HTTP ${moduleResp.status}): ${moduleResp.body}`);
+            throw new Error(`Failed to resolve module (HTTP ${moduleResp.status}): ${truncateBody(moduleResp.body)}`);
         }
         const moduleId = parseJson<ModuleResponse>(moduleResp.body).id;
         if (!moduleId) {
@@ -71,7 +71,7 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
 
         const syncResp = await this.http('POST', syncUrl(registryUrl, moduleId), authHeader);
         if (syncResp.status !== 202) {
-            throw new Error(`Failed to trigger sync (HTTP ${syncResp.status}): ${syncResp.body}`);
+            throw new Error(`Failed to trigger sync (HTTP ${syncResp.status}): ${truncateBody(syncResp.body)}`);
         }
         this.log(`Sync triggered for ${namespace}/${name}/${provider}.`);
 

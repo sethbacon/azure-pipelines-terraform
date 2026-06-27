@@ -1,6 +1,25 @@
 import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
+import { postJson, truncateBody } from '../src/callback';
+
+describe('TerraformDriftReport callback transport', function () {
+    it('refuses to POST the callback token over a non-HTTPS URL', async () => {
+        await assert.rejects(
+            postJson('http://insecure.example.com/drift', { 'X-TSM-Callback-Token': 't' }, '{}'),
+            /non-HTTPS/,
+        );
+    });
+
+    it('truncates a long response body and passes a short one through', () => {
+        assert.strictEqual(truncateBody(''), '');
+        assert.strictEqual(truncateBody('short body'), 'short body');
+        const long = 'x'.repeat(600);
+        const out = truncateBody(long);
+        assert.ok(out.length < long.length, 'long body should be truncated');
+        assert.ok(out.endsWith('… (truncated)'), 'should mark truncation');
+    });
+});
 
 describe('TerraformDriftReport Test Suite', function () {
 

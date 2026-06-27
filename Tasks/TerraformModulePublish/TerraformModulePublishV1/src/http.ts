@@ -22,6 +22,13 @@ export function createHttpsClient(rejectUnauthorized = true): HttpClient {
     return (method, url, headers, body) =>
         new Promise<HttpResponse>((resolve, reject) => {
             const parsed = new URL(url);
+            // Never send the registry credential over a non-HTTPS connection.
+            if (parsed.protocol !== 'https:') {
+                reject(new Error(
+                    `Refusing to send credentials over a non-HTTPS URL (scheme '${parsed.protocol}//' on host '${parsed.host}'). Use an https:// registry URL.`,
+                ));
+                return;
+            }
             const payload = body ?? '';
             const options: https.RequestOptions = {
                 method,
@@ -52,6 +59,19 @@ export function createHttpsClient(rejectUnauthorized = true): HttpClient {
 /** Parses a JSON response body into the requested shape. */
 export function parseJson<T>(body: string): T {
     return JSON.parse(body) as T;
+}
+
+/**
+ * Bounds a remote response body before it is interpolated into a thrown error
+ * or log line, so a large — or credential-reflecting — body cannot be dumped
+ * wholesale. The credential itself is also registered with setSecret(), so the
+ * agent masks it; this is defense-in-depth against verbose error bodies.
+ */
+export function truncateBody(body: string, max = 500): string {
+    if (!body) {
+        return '';
+    }
+    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
 }
 
 /** Resolves after the given number of milliseconds. */

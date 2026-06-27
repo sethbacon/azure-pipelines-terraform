@@ -3,7 +3,7 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
-import { postJson } from './callback';
+import { postJson, truncateBody } from './callback';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
 // module_locks field; null when absent/unreadable (the backend then records
@@ -67,8 +67,20 @@ async function run(): Promise<void> {
 
         const callbackUrl = tasks.getInput('callbackUrl', false);
         const callbackToken = tasks.getInput('callbackToken', false);
+        // Mask the one-shot callback token as soon as it is read, regardless of
+        // whether the callback ends up being made.
+        if (callbackToken) {
+            tasks.setSecret(callbackToken);
+        }
         if (callbackUrl && callbackToken) {
             const rejectUnauthorized = tasks.getBoolInput('rejectUnauthorized', false);
+            if (!rejectUnauthorized) {
+                tasks.warning(
+                    'rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, ' +
+                    'so the callback token is sent over an unverified TLS channel. Use only for an internal TSM ' +
+                    'endpoint fronted by a private CA the agent does not trust.',
+                );
+            }
             const resp = await postJson(
                 callbackUrl,
                 { 'X-TSM-Callback-Token': callbackToken },
@@ -76,7 +88,7 @@ async function run(): Promise<void> {
                 rejectUnauthorized,
             );
             if (resp.status < 200 || resp.status >= 300) {
-                throw new Error(`Drift callback failed (HTTP ${resp.status}): ${resp.body}`);
+                throw new Error(`Drift callback failed (HTTP ${resp.status}): ${truncateBody(resp.body)}`);
             }
             console.log(`Drift result posted to TSM (HTTP ${resp.status}).`);
         } else if (callbackUrl || callbackToken) {

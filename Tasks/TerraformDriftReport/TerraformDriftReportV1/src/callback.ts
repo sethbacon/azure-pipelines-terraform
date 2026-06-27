@@ -19,6 +19,13 @@ export function postJson(
 ): Promise<HttpResponse> {
     return new Promise<HttpResponse>((resolve, reject) => {
         const parsed = new URL(url);
+        // Never send the callback token over a non-HTTPS connection.
+        if (parsed.protocol !== 'https:') {
+            reject(new Error(
+                `Refusing to send the callback token over a non-HTTPS URL (scheme '${parsed.protocol}//' on host '${parsed.host}'). Use an https:// callback URL.`,
+            ));
+            return;
+        }
         const options: https.RequestOptions = {
             method: 'POST',
             hostname: parsed.hostname,
@@ -41,4 +48,17 @@ export function postJson(
         req.write(body);
         req.end();
     });
+}
+
+/**
+ * Bounds a remote response body before it is interpolated into a thrown error
+ * or log line, so a large — or token-reflecting — body cannot be dumped
+ * wholesale. The token is also registered with setSecret() for masking; this is
+ * defense-in-depth against verbose error bodies.
+ */
+export function truncateBody(body: string, max = 500): string {
+    if (!body) {
+        return '';
+    }
+    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
 }

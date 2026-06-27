@@ -30,20 +30,31 @@ function buildPublisher(): RegistryPublisher {
 
     if (registryType === 'private') {
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
+        if (skipTlsVerify) {
+            tasks.warning(
+                'skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, ' +
+                'so the API key is sent over an unverified TLS channel. Use only for an internal registry fronted by a ' +
+                'private CA the agent does not trust.',
+            );
+        }
+        const apiKey = requireInput('apiKey');
+        tasks.setSecret(apiKey);
         return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify), {
             ...coordinates,
             registryUrl: requireInput('registryUrl'),
-            apiKey: requireInput('apiKey'),
+            apiKey,
             waitForPublish,
             timeoutSeconds,
         });
     }
 
     if (registryType === 'hcp') {
+        const token = requireInput('hcpToken');
+        tasks.setSecret(token);
         return new HcpPublisher(createHttpsClient(true), {
             ...coordinates,
             address: tasks.getInput('hcpAddress', false) || 'https://app.terraform.io',
-            token: requireInput('hcpToken'),
+            token,
             vcsRepoIdentifier: tasks.getInput('vcsRepoIdentifier', false) || '',
             vcsBranch: tasks.getInput('vcsBranch', false) || 'main',
             vcsOauthTokenId: tasks.getInput('vcsOauthTokenId', false) || '',
