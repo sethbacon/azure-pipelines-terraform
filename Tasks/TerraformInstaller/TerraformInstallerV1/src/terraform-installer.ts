@@ -164,6 +164,11 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
     // data.download_url = pre-signed storage URL (15-minute TTL)
     // data.sha256       = hex SHA256 of the zip (may be empty if registry verified server-side)
+    // The download URL is registry-controlled and fetched outside fetchJson's HTTPS
+    // guard, so pin it to HTTPS before downloading — as the mirror path already does.
+    if (!data.download_url.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
+    }
 
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
@@ -175,8 +180,12 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
 
     if (data.sha256) {
         await verifySha256(zipPath, data.sha256);
+    } else if (tasks.getBoolInput("requireChecksum", false)) {
+        // Empty sha256 means no local integrity check is possible. Fail closed when
+        // the operator requires checksum verification rather than trusting the binary.
+        throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
     } else {
-        tasks.debug(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (registry performed server-side verification)`);
+        tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
     return zipPath;
 }

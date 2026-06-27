@@ -202,14 +202,23 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     if (!data.download_url) {
         throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
     }
+    // The download URL is registry-controlled and fetched outside fetchJson's HTTPS
+    // guard, so pin it to HTTPS before downloading — as the mirror path already does.
+    if (!data.download_url.startsWith('https://')) {
+        throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
+    }
 
     const ext = agent === "sentinel" ? ".zip" : (isWindows ? ".exe" : "");
     const filePath = await downloadTo(data.download_url, `${agent}-${version}-${uuidV4()}${ext}`);
 
     if (data.sha256) {
         await verifySha256(filePath, data.sha256);
+    } else if (tasks.getBoolInput("requireChecksum", false)) {
+        // Empty sha256 means no local integrity check is possible. Fail closed when
+        // the operator requires checksum verification rather than trusting the binary.
+        throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
     } else {
-        tasks.debug(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (registry performed server-side verification)`);
+        tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
     return filePath;
 }
