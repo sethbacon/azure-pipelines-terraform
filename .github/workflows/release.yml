@@ -96,6 +96,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write   # required by attest-build-provenance / attest-sbom
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -124,6 +125,22 @@ jobs:
         run: |
           VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
           cosign sign-blob --yes "$VSIX_FILE" --bundle "${VSIX_FILE}.bundle"
+      # GitHub-native build provenance + SBOM attestations for the published .vsix.
+      # Verifiable with: gh attestation verify <file.vsix> --repo sethbacon/azure-pipelines-terraform
+      - name: Attest build provenance for VSIX
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: '*.vsix'
+      - name: Attest SBOM (TerraformTaskV5) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-task-v5.cdx.json'
+      - name: Attest SBOM (TerraformInstallerV1) for VSIX
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: '*.vsix'
+          sbom-path: 'sbom-terraform-installer-v1.cdx.json'
       - name: Upload SBOM and signature artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -201,6 +218,8 @@ jobs:
             --tenant "${{ vars.AZDO_PUBLISH_TENANT_ID }}" \
             --resource 499b84ac-1321-427f-aa17-267ca6975798 \
             --query accessToken -o tsv)
+          # Mask the runtime-minted token so it is redacted from any log output.
+          echo "::add-mask::$ENTRA_TOKEN"
           ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat --token "$ENTRA_TOKEN"
 
   undraft-release:
