@@ -2,6 +2,10 @@ import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
 
+// Direct unit tests for the cosign verifier (certificate-identity anchoring +
+// fail-closed behavior). Registered alongside the integration suite below.
+import './CosignVerifierL0';
+
 describe('TerraformInstaller Test Suite', function () {
 
     before(() => {
