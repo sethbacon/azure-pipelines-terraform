@@ -4,7 +4,7 @@ import fs = require('fs');
 import { resolvePolicyDir } from './policy-source';
 import { runOpa } from './opa-engine';
 import { runSentinel } from './sentinel-engine';
-import { writeResultsFile, writeJUnit, publishJUnit } from './results';
+import { writeResultsFile, writeJUnit, publishJUnit, writeSarif } from './results';
 import { PolicyResult } from './types';
 
 function cleanup(tempDirs: string[]): void {
@@ -48,6 +48,11 @@ async function run() {
         if (tasks.getBoolInput('publishTestResults', false) && result.cases.length > 0) {
             const xmlPath = writeJUnit(result.cases, engine);
             publishJUnit(xmlPath, engine);
+        }
+
+        if (tasks.getBoolInput('sarifOutput', false)) {
+            const sarifFilePath = writeSarif(result, engine, tasks.getInput('sarifPath', false));
+            tasks.setVariable('sarifFilePath', sarifFilePath, false, true);
         }
 
         if (result.passed) {

@@ -4,6 +4,7 @@ import fs = require('fs');
 import os = require('os');
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
 import { postJson, truncateBody } from './callback';
+import { writeSarif } from './sarif';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
 // module_locks field; null when absent/unreadable (the backend then records
@@ -59,6 +60,11 @@ async function run(): Promise<void> {
         tasks.setVariable('changedCount', String(result.changed), false, true);
         tasks.setVariable('destroyedCount', String(result.destroyed), false, true);
         tasks.setVariable('summaryFilePath', summaryFile, false, true);
+
+        if (tasks.getBoolInput('sarifOutput', false)) {
+            const sarifFilePath = writeSarif(result, tasks.getInput('sarifPath', false));
+            tasks.setVariable('sarifFilePath', sarifFilePath, false, true);
+        }
 
         console.log(
             `Drift: drifted=${result.drifted} added=${result.added} changed=${result.changed} ` +

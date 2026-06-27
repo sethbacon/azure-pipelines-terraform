@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { postJson, truncateBody } from '../src/callback';
 
 describe('TerraformDriftReport callback transport', function () {
@@ -77,6 +79,46 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('DriftReportSarif — writes a SARIF 2.1.0 report of drifted resources', async () => {
+        const sarifPath = path.join(os.tmpdir(), 'tdr-sarif', 'drift.sarif');
+        fs.rmSync(sarifPath, { force: true });
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportSarif.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (failOnDrift=false)');
+            assert(fs.existsSync(sarifPath), `SARIF report should exist at ${sarifPath}`);
+            const sarif = JSON.parse(fs.readFileSync(sarifPath, 'utf-8')) as {
+                $schema: string;
+                version: string;
+                runs: Array<{
+                    tool: { driver: { name: string; rules: Array<{ id: string }> } };
+                    results: Array<{
+                        ruleId: string;
+                        level: string;
+                        message: { text: string };
+                        locations: Array<{ logicalLocations: Array<{ fullyQualifiedName: string }> }>;
+                    }>;
+                }>;
+            };
+            assert.strictEqual(sarif.version, '2.1.0', 'SARIF version must be 2.1.0');
+            assert(/sarif-2\.1\.0/.test(sarif.$schema), 'SARIF $schema should reference 2.1.0');
+            assert.strictEqual(sarif.runs.length, 1, 'exactly one run');
+            const run = sarif.runs[0];
+            assert.strictEqual(run.tool.driver.name, 'TerraformDriftReport', 'driver name');
+            assert.strictEqual(run.results.length, 2, 'one result per drifted resource (read entry skipped)');
+            const byAddr = new Map(run.results.map(r => [r.locations[0].logicalLocations[0].fullyQualifiedName, r]));
+            assert(byAddr.has('aws_instance.web'), 'update resource present');
+            assert(byAddr.has('aws_s3_bucket.gone'), 'delete resource present');
+            assert.strictEqual(byAddr.get('aws_instance.web')!.ruleId, 'terraform-drift/update', 'update rule id');
+            assert.strictEqual(byAddr.get('aws_s3_bucket.gone')!.ruleId, 'terraform-drift/delete', 'delete rule id');
+            run.results.forEach(r => {
+                assert.strictEqual(r.level, 'warning', 'drift maps to warning level');
+                assert(r.message.text.length > 0, 'message text is set');
+                assert(run.tool.driver.rules.some(rule => rule.id === r.ruleId), 'result references a catalogued rule');
+            });
         }, tr);
     });
 });

@@ -213,6 +213,25 @@
             "required": false,
             "groupName": "results",
             "helpMarkDown": "Publish a JUnit report so policy outcomes appear in the pipeline Tests tab."
+        },
+        {
+            "name": "sarifOutput",
+            "type": "boolean",
+            "label": "Write a SARIF report",
+            "defaultValue": "false",
+            "required": false,
+            "groupName": "results",
+            "helpMarkDown": "Write a SARIF 2.1.0 report of policy violations and expose its path via the `sarifFilePath` output variable. Publish it as a build artifact to surface findings in SARIF-aware tooling."
+        },
+        {
+            "name": "sarifPath",
+            "type": "string",
+            "label": "SARIF output path",
+            "defaultValue": "",
+            "required": false,
+            "groupName": "results",
+            "visibleRule": "sarifOutput = true",
+            "helpMarkDown": "Optional explicit path for the SARIF report. When empty, a file is written to the agent temp directory; either way its path is exposed via the `sarifFilePath` output variable."
         }
     ],
     "restrictions": {
@@ -242,6 +261,10 @@
         {
             "name": "resultsFilePath",
             "description": "Path to the raw engine output written to the agent temp directory."
+        },
+        {
+            "name": "sarifFilePath",
+            "description": "Path to the SARIF 2.1.0 report (set only when 'Write a SARIF report' is enabled)."
         }
     ],
     "messages": {
