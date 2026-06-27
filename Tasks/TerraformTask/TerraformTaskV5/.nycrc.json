@@ -14,8 +14,7 @@
         "src/index.js",
         "src/parent-handler.js",
         "src/id-token-generator.js",
-        "src/secure-file-loader.js",
-        "src/oci-token-exchange.js"
+        "src/secure-file-loader.js"
     ],
     "check-coverage": true,
     "lines": 75,

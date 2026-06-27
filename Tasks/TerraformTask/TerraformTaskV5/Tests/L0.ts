@@ -2,6 +2,9 @@ import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
 
+// Direct unit tests for OCI WIF token-exchange URL validation & transport.
+import './OciTokenExchangeL0';
+
 describe('Terraform Test Suite', function () {
 
     before(() => {
@@ -1622,6 +1625,19 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: OCIPlanWIFSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('oci plan should fail with an invalid WIF identity domain url', async () => {
+        let tp = path.join(__dirname, './PlanTests/OCI/OCIPlanWIFFailInvalidDomainUrl.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have errors');
+            assert(tr.stdOutContained('OCIPlanWIFFailInvalidDomainUrlL0 should have failed.'), 'Should have printed: OCIPlanWIFFailInvalidDomainUrlL0 should have failed.');
         }, tr);
     });
 
