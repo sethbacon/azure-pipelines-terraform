@@ -2,6 +2,48 @@ import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
 
 /**
+ * Hostname suffixes that identify a genuine OCI Identity Domains endpoint.
+ * The federated OIDC bearer JWT is POSTed to this host, so it is constrained
+ * to Oracle-owned realms to prevent the token from being exfiltrated to an
+ * operator-supplied or mistyped third-party origin.
+ */
+const OCI_IDENTITY_DOMAIN_SUFFIXES = [
+    '.identity.oraclecloud.com',   // OC1 commercial
+    '.identity.oraclegovcloud.com', // OC2/OC3 US government
+    '.identity.oraclegovcloud.uk',  // OC4 UK government
+    '.identity.oraclecloud.eu',     // OC5/EU sovereign
+];
+
+/**
+ * Validate an operator-supplied OCI Identity Domains base URL before any token
+ * is sent to it. Rejects non-HTTPS schemes and hosts outside the OCI Identity
+ * Domains realms. Returns the parsed URL so the caller can build the endpoint
+ * from a value that has actually been verified.
+ */
+export function validateIdentityDomainUrl(identityDomainUrl: string): URL {
+    let parsed: URL;
+    try {
+        parsed = new URL(identityDomainUrl);
+    } catch {
+        throw new Error(`OCI identity domain URL is not a valid URL: ${identityDomainUrl}`);
+    }
+    if (parsed.protocol !== 'https:') {
+        throw new Error('OCI identity domain URL must use HTTPS scheme.');
+    }
+    const host = parsed.hostname.toLowerCase();
+    const allowed = OCI_IDENTITY_DOMAIN_SUFFIXES.some(
+        (suffix) => host.endsWith(suffix) && host.length > suffix.length
+    );
+    if (!allowed) {
+        throw new Error(
+            `OCI identity domain URL host '${parsed.hostname}' is not an OCI Identity Domains endpoint ` +
+            `(expected a host under ${OCI_IDENTITY_DOMAIN_SUFFIXES.join(', ')}).`
+        );
+    }
+    return parsed;
+}
+
+/**
  * Exchange an OIDC JWT for an OCI User Principal Session Token (UPST)
  * using the OCI Identity Domains token exchange endpoint (RFC 8693).
  *
@@ -20,7 +62,10 @@ export async function exchangeOidcForUpst(
     clientId: string,
     publicKeyPem: string
 ): Promise<string> {
-    const tokenEndpoint = `${identityDomainUrl.replace(/\/+$/, '')}/oauth2/v1/token`;
+    // Validate the destination BEFORE the federated JWT is sent anywhere.
+    const validated = validateIdentityDomainUrl(identityDomainUrl);
+    const base = `${validated.origin}${validated.pathname.replace(/\/+$/, '')}`;
+    const tokenEndpoint = `${base}/oauth2/v1/token`;
 
     // The ephemeral public key is sent so OCI can bind the issued UPST to it; the
     // caller signs subsequent API requests with the matching private key. OCI
@@ -50,6 +95,9 @@ export async function exchangeOidcForUpst(
             },
             body: body.toString(),
             signal: controller.signal,
+            // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
+            // (preserved with the POST body) to a different, unvalidated origin.
+            redirect: 'manual',
         });
         clearTimeout(timeoutId);
     } catch (error) {
@@ -57,6 +105,16 @@ export async function exchangeOidcForUpst(
             throw new Error(`Timed out exchanging OIDC token for OCI UPST (30s timeout).`);
         }
         throw new Error(`Failed to exchange OIDC token for OCI UPST: ${error instanceof Error ? error.message : error}`);
+    }
+
+    // With redirect:'manual', fetch surfaces a redirect as an opaque response
+    // (type 'opaqueredirect', status 0) or, on some runtimes, the raw 3xx.
+    // Treat either as a refusal — do not chase it with the token in hand.
+    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+        throw new Error(
+            `OCI token exchange endpoint returned a redirect (status ${response.status}); ` +
+            `refusing to forward the OIDC token to another origin.`
+        );
     }
 
     if (!response.ok) {
