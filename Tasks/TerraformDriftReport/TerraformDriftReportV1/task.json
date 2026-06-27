@@ -75,6 +75,23 @@
       "required": false,
       "visibleRule": "callbackUrl != \"\"",
       "helpMarkDown": "Verify the callback's TLS certificate. Set false only for a private-CA endpoint the agent does not trust."
+    },
+    {
+      "name": "sarifOutput",
+      "type": "boolean",
+      "label": "Write a SARIF report",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "Write a SARIF 2.1.0 report of drifted resources and expose its path via the `sarifFilePath` output variable. Publish it as a build artifact to surface drift in SARIF-aware tooling."
+    },
+    {
+      "name": "sarifPath",
+      "type": "string",
+      "label": "SARIF output path",
+      "defaultValue": "",
+      "required": false,
+      "visibleRule": "sarifOutput = true",
+      "helpMarkDown": "Optional explicit path for the SARIF report. When empty, a file is written to the agent temp directory; either way its path is exposed via the `sarifFilePath` output variable."
     }
   ],
   "OutputVariables": [
@@ -82,7 +99,8 @@
     { "name": "addedCount", "description": "Count of resources whose plan contains a create." },
     { "name": "changedCount", "description": "Count of resources whose plan contains an update." },
     { "name": "destroyedCount", "description": "Count of resources whose plan contains a delete." },
-    { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." }
+    { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." },
+    { "name": "sarifFilePath", "description": "Path to the SARIF 2.1.0 report (set only when 'Write a SARIF report' is enabled)." }
   ],
   "restrictions": {
     "commands": {

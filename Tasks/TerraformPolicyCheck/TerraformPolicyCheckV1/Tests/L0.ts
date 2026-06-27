@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
@@ -64,4 +66,38 @@ describe('TerraformPolicyCheck Test Suite', function () {
 
     // --- Results publishing ---
     expectSuccess('PublishResults');
+
+    // --- SARIF output ---
+    it('OpaSarifOutput — writes a SARIF 2.1.0 report of violations', async () => {
+        const sarifPath = path.join(os.tmpdir(), 'tpc-sarif', 'policy.sarif');
+        fs.rmSync(sarifPath, { force: true });
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'OpaSarifOutput.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed (policy violations)');
+            assert(fs.existsSync(sarifPath), `SARIF report should exist at ${sarifPath}`);
+            const sarif = JSON.parse(fs.readFileSync(sarifPath, 'utf-8')) as {
+                $schema: string;
+                version: string;
+                runs: Array<{
+                    tool: { driver: { name: string; rules: Array<{ id: string }> } };
+                    results: Array<{ ruleId: string; ruleIndex: number; level: string; message: { text: string } }>;
+                }>;
+            };
+            assert.strictEqual(sarif.version, '2.1.0', 'SARIF version must be 2.1.0');
+            assert(/sarif-2\.1\.0/.test(sarif.$schema), 'SARIF $schema should reference 2.1.0');
+            assert.strictEqual(sarif.runs.length, 1, 'exactly one run');
+            const run = sarif.runs[0];
+            assert.strictEqual(run.tool.driver.name, 'TerraformPolicyCheck', 'driver name');
+            assert.strictEqual(run.results.length, 2, 'one result per violation');
+            run.results.forEach(r => {
+                assert.strictEqual(r.level, 'error', 'OPA violations map to error level');
+                assert(r.ruleId.length > 0, 'ruleId is set');
+                assert(r.message.text.length > 0, 'message text is set');
+                assert(run.tool.driver.rules.some(rule => rule.id === r.ruleId), 'result references a catalogued rule');
+            });
+            const messages = run.results.map(r => r.message.text);
+            assert(messages.includes('S3 bucket must not be public'), 'violation message preserved verbatim');
+        }, tr);
+    });
 });
