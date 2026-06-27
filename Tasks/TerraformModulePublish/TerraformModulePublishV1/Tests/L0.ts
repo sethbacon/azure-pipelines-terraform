@@ -1,5 +1,6 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
+import * as net from 'net';
 import { HttpClient, HttpResponse, createHttpsClient, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
@@ -34,6 +35,23 @@ describe('http client transport', () => {
             client('GET', 'http://insecure.example.com/api', { Authorization: 'Bearer k' }),
             /non-HTTPS/,
         );
+    });
+
+    it('times out a hung connection instead of hanging', async () => {
+        // A bare TCP server that accepts the socket but never completes the TLS
+        // handshake — req.setTimeout must fire and reject.
+        const server = net.createServer(() => { /* accept and stall */ });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(true, 150);
+            await assert.rejects(
+                client('GET', `https://127.0.0.1:${port}/api`, {}),
+                /timed out after 150ms/,
+            );
+        } finally {
+            server.close();
+        }
     });
 
     it('truncates a long response body and passes a short one through', () => {
@@ -122,6 +140,32 @@ describe('private-publisher', () => {
             assert.strictEqual(calls.length, 3);
             assert.match(result.message, /available/);
         });
+
+        it('bounds the wait by the deadline and throws on timeout', async () => {
+            const { client } = fakeClient([
+                { status: 200, body: '{"id":"mod-1","versions":[]}' }, // resolve module
+                { status: 202, body: '' },                              // trigger sync
+                { status: 200, body: '{"id":"mod-1","versions":[]}' },  // poll: still absent
+            ]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
+                /Timed out after 0s/,
+            );
+        });
+
+        it('swallows a failing poll and still bounds by the deadline', async () => {
+            let n = 0;
+            const client: HttpClient = () => {
+                n += 1;
+                if (n === 1) return Promise.resolve({ status: 200, body: '{"id":"mod-1","versions":[]}' });
+                if (n === 2) return Promise.resolve({ status: 202, body: '' });
+                return Promise.reject(new Error('ECONNRESET')); // poll fails, must not propagate
+            };
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
+                (err: Error) => /Timed out after 0s/.test(err.message) && !/ECONNRESET/.test(err.message),
+            );
+        });
     });
 });
 
@@ -204,6 +248,20 @@ describe('hcp-publisher', () => {
             ]);
             const result = await new hcp.HcpPublisher(client, base, noop).publish();
             assert.strictEqual(result.published, true);
+        });
+
+        it('swallows a failing status poll and bounds by the deadline', async () => {
+            let n = 0;
+            const client: HttpClient = () => {
+                n += 1;
+                if (n === 1) return Promise.resolve({ status: 200, body: '{"data":{"attributes":{"version-statuses":[]}}}' });
+                if (n === 2) return Promise.resolve({ status: 201, body: '{}' });
+                return Promise.reject(new Error('ETIMEDOUT')); // poll fails, must not propagate
+            };
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
+                (err: Error) => /Timed out after 0s/.test(err.message) && !/ETIMEDOUT/.test(err.message),
+            );
         });
     });
 });

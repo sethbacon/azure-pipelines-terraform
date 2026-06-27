@@ -39,7 +39,7 @@ function buildPublisher(): RegistryPublisher {
         }
         const apiKey = requireInput('apiKey');
         tasks.setSecret(apiKey);
-        return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify), {
+        return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify, timeoutSeconds * 1000), {
             ...coordinates,
             registryUrl: requireInput('registryUrl'),
             apiKey,
@@ -51,7 +51,7 @@ function buildPublisher(): RegistryPublisher {
     if (registryType === 'hcp') {
         const token = requireInput('hcpToken');
         tasks.setSecret(token);
-        return new HcpPublisher(createHttpsClient(true), {
+        return new HcpPublisher(createHttpsClient(true, timeoutSeconds * 1000), {
             ...coordinates,
             address: tasks.getInput('hcpAddress', false) || 'https://app.terraform.io',
             token,

@@ -1,6 +1,12 @@
 import * as https from 'https';
 import { URL } from 'url';
 
+/**
+ * Per-request socket timeout (ms). Without it a hung TCP connection makes the
+ * task's own timeoutSeconds silently ineffective until the agent job timeout.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
+
 export interface HttpResponse {
     status: number;
     body: string;
@@ -17,8 +23,10 @@ export type HttpClient = (
  * Creates an HTTPS client backed by Node's built-in https module.
  * @param rejectUnauthorized when false, TLS certificate validation is disabled
  *        (only appropriate for internal registries fronted by a private CA the agent does not trust).
+ * @param timeoutMs per-request socket timeout; a stalled connection is destroyed
+ *        and rejected rather than hanging until the agent job timeout.
  */
-export function createHttpsClient(rejectUnauthorized = true): HttpClient {
+export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): HttpClient {
     return (method, url, headers, body) =>
         new Promise<HttpResponse>((resolve, reject) => {
             const parsed = new URL(url);
@@ -47,6 +55,9 @@ export function createHttpsClient(rejectUnauthorized = true): HttpClient {
                     chunks += chunk;
                 });
                 res.on('end', () => resolve({ status: res.statusCode ?? 0, body: chunks }));
+            });
+            req.setTimeout(timeoutMs, () => {
+                req.destroy(new Error(`Request to ${parsed.host} timed out after ${timeoutMs}ms.`));
             });
             req.on('error', reject);
             if (body) {
