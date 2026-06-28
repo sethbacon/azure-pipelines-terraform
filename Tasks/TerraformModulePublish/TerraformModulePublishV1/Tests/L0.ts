@@ -1,6 +1,8 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
 import * as net from 'net';
+import * as path from 'path';
+import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import { HttpClient, HttpResponse, createHttpsClient, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
@@ -263,5 +265,61 @@ describe('hcp-publisher', () => {
                 (err: Error) => /Timed out after 0s/.test(err.message) && !/ETIMEDOUT/.test(err.message),
             );
         });
+    });
+});
+
+// Mock-run tests that actually execute src/index.ts (the orchestrator). The publisher
+// modules and the http transport are stubbed in each data file so no real network call
+// is made; we assert the credential is masked via setSecret on both routing paths.
+describe('index orchestrator (setSecret masking + publisher routing)', () => {
+    before(() => {
+        // MockTestRunner spawns the data file as a child process; make sure it uses the
+        // same node binary running the tests rather than a NODE_OPTIONS-tainted one.
+        delete process.env.NODE_OPTIONS;
+        (ttm.MockTestRunner.prototype as unknown as { getNodePath: () => string }).getNodePath = function () {
+            return process.execPath;
+        };
+    });
+
+    it('masks the apiKey and routes to the private publisher', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishPrivateApiKey.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.indexOf('##vso[task.setsecret]') >= 0,
+                'apiKey should be registered as a secret via setSecret',
+            );
+            // The private publisher mock returns this message; proves the private branch ran.
+            assert.ok(
+                tr.stdout.indexOf('Sync triggered for version 1.0.0.') >= 0,
+                'private publisher branch should have been taken',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('masks the hcpToken and routes to the HCP publisher', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpToken.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.indexOf('##vso[task.setsecret]') >= 0,
+                'hcpToken should be registered as a secret via setSecret',
+            );
+            // The HCP publisher mock returns this message; proves the HCP branch ran.
+            assert.ok(
+                tr.stdout.indexOf('Version 1.0.0 published to HCP Terraform.') >= 0,
+                'HCP publisher branch should have been taken',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
     });
 });

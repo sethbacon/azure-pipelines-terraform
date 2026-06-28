@@ -86,8 +86,8 @@ jobs:
         run: npx eslint src/
       - name: Compile TypeScript
         run: npm run compile
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
   build-and-test-mirror-v1:
     name: Build and Test Provider Mirror V1 (${{ matrix.os }})
@@ -114,8 +114,8 @@ jobs:
         run: npx eslint src/
       - name: Compile TypeScript
         run: npm run compile
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
   build-and-test-publish-v1:
     name: Build and Test Module Publish V1 (${{ matrix.os }})
@@ -142,8 +142,8 @@ jobs:
         run: npx eslint src/
       - name: Compile TypeScript
         run: npm run compile
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
   build-and-test-policy-installer-v1:
     name: Build and Test Policy Agent Installer V1 (${{ matrix.os }})
@@ -226,8 +226,8 @@ jobs:
         run: npx eslint src/
       - name: Compile TypeScript
         run: npm run compile
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
   build-and-test-tab:
     name: Build and Test Tab

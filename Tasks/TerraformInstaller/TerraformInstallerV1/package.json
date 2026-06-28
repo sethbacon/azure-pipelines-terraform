@@ -8,6 +8,7 @@
     "compile:tests": "tsc -p tsconfig.tests.json",
     "compile:all": "npm run compile && npm run compile:tests",
     "test": "npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
+    "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --require ts-node/register --require ./Tests/coverage-warmup.cjs Tests/L0.ts",
     "lint": "npx eslint src/"
   },
   "author": "",
@@ -32,6 +33,7 @@
     "@types/uuid": "^9.0.8",
     "eslint": "^9.0.0",
     "mocha": "^11.2.0",
+    "nyc": "^17.1.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.0.0"
