@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "225",
+        "Minor": "226",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
@@ -103,8 +103,8 @@
             "label": "Require checksum verification",
             "defaultValue": "false",
             "required": false,
-            "visibleRule": "binary = terraform && downloadSource = mirror",
-            "helpMarkDown": "When enabled, fail if the mirror does not serve a SHA256SUMS file for the requested version. When disabled (default), checksum verification is attempted but skipped if the mirror does not publish a SHA256SUMS file."
+            "visibleRule": "binary = terraform && downloadSource != hashicorp",
+            "helpMarkDown": "When enabled, fail if the mirror or registry does not serve a SHA256SUMS file for the requested version. When disabled (default), checksum verification is attempted but skipped if no SHA256SUMS file is published."
         }
     ],
     "restrictions": {
