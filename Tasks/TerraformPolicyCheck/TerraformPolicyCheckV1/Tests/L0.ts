@@ -76,7 +76,47 @@ describe('TerraformPolicyCheck Test Suite', function () {
 
     // --- Policy source ---
     expectSuccess('GitSourceClone');
+    expectSuccess('GitShaCheckout');
     expectFailure('InsecureGitUrlReject');
+
+    it('GitRefInjectionReject — a leading-dash ref is rejected before git runs', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitRefInjectionReject.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/loc_mock_InvalidPolicyRepoRef/.test(output), `ref should be rejected; got: ${output}`);
+        }, tr);
+    });
+
+    it('SubdirTraversalReject — a `../` subdir escaping the clone dir is rejected', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'SubdirTraversalReject.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/loc_mock_PolicySubdirOutsideRepo/.test(output), `subdir should be rejected; got: ${output}`);
+        }, tr);
+    });
+
+    it('GitCloneFailure — a non-zero git clone surfaces as a task failure', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitCloneFailure.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('MissingSubdir — an absent subdir in the clone surfaces a clear error', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'MissingSubdir.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/Policy subdirectory does not exist in the cloned repo/.test(output), `should report missing subdir; got: ${output}`);
+        }, tr);
+    });
 
     // --- Results publishing ---
     expectSuccess('PublishResults');

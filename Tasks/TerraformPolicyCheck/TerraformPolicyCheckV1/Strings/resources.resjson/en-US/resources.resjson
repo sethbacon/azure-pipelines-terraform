@@ -3,5 +3,8 @@
   "loc.helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
   "loc.description": "Evaluate OPA or Sentinel policies from a directory or git repo against Terraform plan JSON",
   "loc.instanceNameFormat": "Policy check ($(engine))",
-  "loc.messages.InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed."
+  "loc.messages.InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+  "loc.messages.InvalidPolicyRepoRef": "Invalid policy repo ref rejected: %s. Refs must not start with '-' and may contain only letters, digits, '.', '_', '/', and '-'.",
+  "loc.messages.PolicySubdirOutsideRepo": "Policy subdirectory escapes the cloned repository: %s",
+  "loc.messages.PolicyRepoCloneTimedOut": "Cloning the policy repository timed out after %s ms."
 }

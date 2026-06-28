@@ -1,9 +1,19 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
+import { IExecOptions, ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
+
+// Wall-clock bound for each git invocation. git's HTTP transport has no built-in
+// connect/idle timeout, so an unreachable, slow, or credential-prompting host
+// would otherwise hang until the ADO job timeout.
+const GIT_TIMEOUT_MS = 300_000;
+
+// A git ref we are willing to hand to `git clone --branch` / `git checkout`.
+// Rejects leading-dash refs (e.g. `--upload-pack=<cmd>`) and anything outside a
+// conservative branch/tag/SHA charset, closing the argument-injection vector.
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 /**
  * Resolves the directory containing the policies to evaluate.
@@ -32,6 +42,9 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
         throw new Error(tasks.loc('InsecureUrlRejected', url));
     }
     const ref = tasks.getInput('policyRepoRef') || 'main';
+    if (!SAFE_REF.test(ref)) {
+        throw new Error(tasks.loc('InvalidPolicyRepoRef', ref));
+    }
     const subdir = tasks.getInput('policyRepoSubdir');
     const token = tasks.getInput('policyRepoToken');
 
@@ -39,7 +52,13 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     await cloneRepo(url, ref, token, cloneDir);
     tempDirs.push(cloneDir);
 
-    const policyDir = subdir ? path.join(cloneDir, subdir) : cloneDir;
+    // Resolve the subdir against the clone root and assert containment, so a
+    // `../../x` (or absolute) subdir cannot point the policy bundle at an
+    // arbitrary readable directory on the agent.
+    const policyDir = subdir ? path.resolve(cloneDir, subdir) : cloneDir;
+    if (policyDir !== cloneDir && !policyDir.startsWith(cloneDir + path.sep)) {
+        throw new Error(tasks.loc('PolicySubdirOutsideRepo', subdir));
+    }
     if (!fs.existsSync(policyDir)) {
         throw new Error(`Policy subdirectory does not exist in the cloned repo: ${policyDir}`);
     }
@@ -59,19 +78,52 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
     }
 
     if (isSha) {
-        // Full clone (no checkout), then check out the exact commit.
+        // Full clone (no checkout), then check out the exact commit. `--` stops
+        // git option-parsing before the url/dir positionals; `ref` is a
+        // validated 40-char SHA here, so the checkout positional is safe.
         const clone = tasks.tool(gitPath);
         clone.arg(authArgs);
-        clone.arg(['clone', '--no-checkout', url, cloneDir]);
-        await clone.execAsync(<IExecOptions>{});
+        clone.arg(['clone', '--no-checkout', '--', url, cloneDir]);
+        await execGit(clone);
 
         const checkout = tasks.tool(gitPath);
         checkout.arg(['-C', cloneDir, 'checkout', ref]);
-        await checkout.execAsync(<IExecOptions>{});
+        await execGit(checkout);
     } else {
+        // `--` stops option-parsing before url/dir; `ref` is the `--branch`
+        // value and is constrained by SAFE_REF (no leading dash).
         const clone = tasks.tool(gitPath);
         clone.arg(authArgs);
-        clone.arg(['clone', '--depth', '1', '--branch', ref, url, cloneDir]);
-        await clone.execAsync(<IExecOptions>{});
+        clone.arg(['clone', '--depth', '1', '--branch', ref, '--', url, cloneDir]);
+        await execGit(clone);
+    }
+}
+
+/**
+ * Runs a git ToolRunner with a hard wall-clock timeout and a fail-fast
+ * environment (never prompt for credentials; abort a stalled HTTP transfer).
+ */
+async function execGit(tool: ToolRunner): Promise<void> {
+    const options = <IExecOptions>{
+        env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0',
+            GIT_HTTP_LOW_SPEED_LIMIT: '1000',
+            GIT_HTTP_LOW_SPEED_TIME: '60'
+        }
+    };
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            tool.killChildProcess();
+            reject(new Error(tasks.loc('PolicyRepoCloneTimedOut', GIT_TIMEOUT_MS)));
+        }, GIT_TIMEOUT_MS);
+    });
+    try {
+        await Promise.race([tool.execAsync(options), deadline]);
+    } finally {
+        if (timer) {
+            clearTimeout(timer);
+        }
     }
 }

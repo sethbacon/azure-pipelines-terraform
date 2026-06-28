@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "2",
+        "Minor": "3",
         "Patch": "0"
     },
     "instanceNameFormat": "Policy check ($(engine))",
@@ -268,6 +268,9 @@
         }
     ],
     "messages": {
-        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed."
+        "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+        "InvalidPolicyRepoRef": "Invalid policy repo ref rejected: %s. Refs must not start with '-' and may contain only letters, digits, '.', '_', '/', and '-'.",
+        "PolicySubdirOutsideRepo": "Policy subdirectory escapes the cloned repository: %s",
+        "PolicyRepoCloneTimedOut": "Cloning the policy repository timed out after %s ms."
     }
 }
