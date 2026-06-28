@@ -4,6 +4,48 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.6.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.5.1...v1.6.0) (2026-06-28)
+
+
+### Features
+
+* SARIF 2.1.0 output for PolicyCheck and DriftReport ([#246](https://github.com/sethbacon/azure-pipelines-terraform/issues/246)) ([b5c5c83](https://github.com/sethbacon/azure-pipelines-terraform/commit/b5c5c8366eaa3ee7b567255d68c9a32abeaac0bc)), closes [#244](https://github.com/sethbacon/azure-pipelines-terraform/issues/244)
+
+
+### Bug Fixes
+
+* add network timeouts and bounded poll loops ([#256](https://github.com/sethbacon/azure-pipelines-terraform/issues/256)) ([a3b407e](https://github.com/sethbacon/azure-pipelines-terraform/commit/a3b407e0e67130e9ce9795253cade711ee83c439)), closes [#236](https://github.com/sethbacon/azure-pipelines-terraform/issues/236)
+* bound V5 secure-file download with a timeout ([f889517](https://github.com/sethbacon/azure-pipelines-terraform/commit/f8895175d4d6748cc6b7255fec40d04af571d6ca)), closes [#273](https://github.com/sethbacon/azure-pipelines-terraform/issues/273)
+* drop release-please issues:write request ([#262](https://github.com/sethbacon/azure-pipelines-terraform/issues/262)) ([e2c2b45](https://github.com/sethbacon/azure-pipelines-terraform/commit/e2c2b450d34157f18bad31cfb96476f15b92c145))
+* grant release-please issues:write for labels ([#261](https://github.com/sethbacon/azure-pipelines-terraform/issues/261)) ([3279945](https://github.com/sethbacon/azure-pipelines-terraform/commit/32799459ee57396f04060d73dd1fd7cd3851a66f))
+* show requireChecksum for the registry source ([1a11b08](https://github.com/sethbacon/azure-pipelines-terraform/commit/1a11b0831b907ad4f1624447fe67b87566db0752)), closes [#274](https://github.com/sethbacon/azure-pipelines-terraform/issues/274)
+
+
+### Dependencies
+
+* patch serialize-javascript and js-yaml ([#260](https://github.com/sethbacon/azure-pipelines-terraform/issues/260)) ([8d76bb7](https://github.com/sethbacon/azure-pipelines-terraform/commit/8d76bb7e194443de90b9fcfaf04eb92246aab583))
+
+
+### Documentation
+
+* fix documentation drift ([#254](https://github.com/sethbacon/azure-pipelines-terraform/issues/254)) ([52a4549](https://github.com/sethbacon/azure-pipelines-terraform/commit/52a4549fd2bd3e7649fde7f49c79e3d0c028f25c)), closes [#240](https://github.com/sethbacon/azure-pipelines-terraform/issues/240)
+
+
+### Refactor
+
+* enforce installer shared-module parity ([be0e333](https://github.com/sethbacon/azure-pipelines-terraform/commit/be0e3333fb0f9eec185fb0f25af5acd8bfbad550)), closes [#238](https://github.com/sethbacon/azure-pipelines-terraform/issues/238)
+* unify credential-bearing HTTPS client ([9fcef2b](https://github.com/sethbacon/azure-pipelines-terraform/commit/9fcef2baeebbb10450b027140b8da65553bd8bb6)), closes [#271](https://github.com/sethbacon/azure-pipelines-terraform/issues/271) [#272](https://github.com/sethbacon/azure-pipelines-terraform/issues/272)
+
+
+### Security
+
+* add task.json restrictions to all tasks ([#245](https://github.com/sethbacon/azure-pipelines-terraform/issues/245)) ([f228362](https://github.com/sethbacon/azure-pipelines-terraform/commit/f22836224b798545c3c3cb8a1bb3320b8f416919)), closes [#235](https://github.com/sethbacon/azure-pipelines-terraform/issues/235)
+* anchor OpenTofu cosign cert identity ([#251](https://github.com/sethbacon/azure-pipelines-terraform/issues/251)) ([199337e](https://github.com/sethbacon/azure-pipelines-terraform/commit/199337e001832ec7effc18c935282038e62e15cf)), closes [#233](https://github.com/sethbacon/azure-pipelines-terraform/issues/233)
+* harden PolicyCheck git policy source ([#275](https://github.com/sethbacon/azure-pipelines-terraform/issues/275)) ([611dbed](https://github.com/sethbacon/azure-pipelines-terraform/commit/611dbed7e8c78300854f6c6f6af771f95f33496b)), closes [#263](https://github.com/sethbacon/azure-pipelines-terraform/issues/263) [#264](https://github.com/sethbacon/azure-pipelines-terraform/issues/264) [#265](https://github.com/sethbacon/azure-pipelines-terraform/issues/265) [#266](https://github.com/sethbacon/azure-pipelines-terraform/issues/266)
+* harden registry download path ([d37478d](https://github.com/sethbacon/azure-pipelines-terraform/commit/d37478dead92037e94ec5c458e80598e7e1bef3b)), closes [#234](https://github.com/sethbacon/azure-pipelines-terraform/issues/234)
+* mask secrets + harden transport in publish/drift ([#250](https://github.com/sethbacon/azure-pipelines-terraform/issues/250)) ([221c669](https://github.com/sethbacon/azure-pipelines-terraform/commit/221c669edcf03630eac1f97d0b1c2e279ce80a8f)), closes [#232](https://github.com/sethbacon/azure-pipelines-terraform/issues/232)
+* validate OCI WIF identity domain URL ([#249](https://github.com/sethbacon/azure-pipelines-terraform/issues/249)) ([a2f2b9e](https://github.com/sethbacon/azure-pipelines-terraform/commit/a2f2b9e68a71b50951d57996a1515e41274fe2ff)), closes [#231](https://github.com/sethbacon/azure-pipelines-terraform/issues/231)
+
 ## [1.5.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.5.0...v1.5.1) (2026-06-24)
 
 
