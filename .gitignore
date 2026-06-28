@@ -19,3 +19,13 @@ output-*.json
 # Code coverage artifacts
 .nyc_output/
 coverage/
+
+# Screenshots harness (build tooling, not for publishing)
+screenshots/dist/
+screenshots/out/
+screenshots/webpack.harness.js
+screenshots/harness.html
+screenshots/capture.mjs
+screenshots/mocks/
+screenshots/.gitignore
+screenshots/README.md
