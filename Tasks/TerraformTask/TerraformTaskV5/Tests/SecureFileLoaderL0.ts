@@ -37,6 +37,22 @@ describe('Secure var-file loader', function () {
         assert.strictEqual(requested, 'file-1');
     });
 
+    it('downloadSecureFile fails fast when the download exceeds the timeout', async () => {
+        // The vendored securefiles-common download has no socket timeout, so a
+        // stalled download would hang the task indefinitely; the loader bounds it.
+        const loader = new SecureFileLoader(
+            {
+                downloadSecureFile: () => new Promise<string>(() => { /* never resolves */ }),
+                deleteSecureFile: () => { /* unused */ },
+            },
+            50,
+        );
+        await assert.rejects(
+            loader.downloadSecureFile('hung-file'),
+            /Secure file download timed out after 50ms/,
+        );
+    });
+
     it('deleteSecureFile delegates to the injected helper', () => {
         let deleted = '';
         const loader = new SecureFileLoader({
