@@ -4,7 +4,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
+import * as https from 'https';
 import { postJson, truncateBody } from '../src/callback';
+import { createHttpsClient } from '../src/https-client';
+import { TLS_CERT, TLS_KEY } from './loopback-tls';
 
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {
@@ -12,6 +15,37 @@ describe('TerraformDriftReport callback transport', function () {
             postJson('http://insecure.example.com/drift', { 'X-TSM-Callback-Token': 't' }, '{}'),
             /non-HTTPS/,
         );
+    });
+
+    it('completes a POST and a bodyless GET against a loopback HTTPS server', async () => {
+        // Exercises the shared client end-to-end: TLS request, response read
+        // (data/end + status), the body-present Content-Length path (POST) and
+        // the body-absent path (GET).
+        const seen: Array<{ method?: string; body: string }> = [];
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (req, res) => {
+            let body = '';
+            req.on('data', (c) => { body += c; });
+            req.on('end', () => {
+                seen.push({ method: req.method, body });
+                res.statusCode = 200;
+                res.end('{"ok":true}');
+            });
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false); // accept the self-signed cert
+            const post = await client('POST', `https://127.0.0.1:${port}/drift`, { 'Content-Type': 'application/json' }, '{"drift":true}');
+            assert.strictEqual(post.status, 200);
+            assert.strictEqual(post.body, '{"ok":true}');
+            const get = await client('GET', `https://127.0.0.1:${port}/health`, {});
+            assert.strictEqual(get.status, 200);
+            assert.deepStrictEqual(seen.map(s => s.method).sort(), ['GET', 'POST']);
+            assert.strictEqual(seen.find(s => s.method === 'POST')!.body, '{"drift":true}');
+            assert.strictEqual(seen.find(s => s.method === 'GET')!.body, '');
+        } finally {
+            server.close();
+        }
     });
 
     it('times out a hung callback connection instead of hanging', async () => {
