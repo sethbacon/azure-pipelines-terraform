@@ -36,28 +36,37 @@
   },
   "screenshots": [
     {
-      "path": "images/1_AWS_service_endpoint.PNG"
+      "path": "images/terraform_inputs.png"
     },
     {
-      "path": "images/2_GCP_service_endpoint.PNG"
+      "path": "images/terraform_commands.png"
     },
     {
-      "path": "images/3_Terraform_tool_installer_search.PNG"
+      "path": "images/installer_inputs.png"
     },
     {
-      "path": "images/4_Terraform_tool_installer_inputs.PNG"
+      "path": "images/provider_mirror_inputs.png"
     },
     {
-      "path": "images/5_Terraform_search.PNG"
+      "path": "images/policy_agent_installer_inputs.png"
     },
     {
-      "path": "images/6_Terraform_all_inputs.PNG"
+      "path": "images/policy_check_inputs.png"
     },
     {
-      "path": "images/7_Terraform_plan_apply_destroy.png"
+      "path": "images/drift_report_inputs.png"
     },
     {
-      "path": "images/8_OCI_service_endpoint.PNG"
+      "path": "images/module_publish_inputs.png"
+    },
+    {
+      "path": "images/aws_service_connection.png"
+    },
+    {
+      "path": "images/gcp_service_connection.png"
+    },
+    {
+      "path": "images/oci_service_connection.png"
     }
   ],
   "content": {
@@ -95,35 +104,47 @@
       "addressable": true
     },
     {
-      "path": "images/1_AWS_service_endpoint.PNG",
+      "path": "images/terraform_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/2_GCP_service_endpoint.PNG",
+      "path": "images/terraform_commands.png",
       "addressable": true
     },
     {
-      "path": "images/3_Terraform_tool_installer_search.PNG",
+      "path": "images/installer_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/4_Terraform_tool_installer_inputs.PNG",
+      "path": "images/provider_mirror_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/5_Terraform_search.PNG",
+      "path": "images/policy_agent_installer_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/6_Terraform_all_inputs.PNG",
+      "path": "images/policy_check_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/7_Terraform_plan_apply_destroy.png",
+      "path": "images/drift_report_inputs.png",
       "addressable": true
     },
     {
-      "path": "images/8_OCI_service_endpoint.PNG",
+      "path": "images/module_publish_inputs.png",
+      "addressable": true
+    },
+    {
+      "path": "images/aws_service_connection.png",
+      "addressable": true
+    },
+    {
+      "path": "images/gcp_service_connection.png",
+      "addressable": true
+    },
+    {
+      "path": "images/oci_service_connection.png",
       "addressable": true
     }
   ],
