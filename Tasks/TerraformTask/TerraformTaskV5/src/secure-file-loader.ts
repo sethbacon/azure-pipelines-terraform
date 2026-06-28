@@ -6,15 +6,24 @@ export interface ISecureFileLoader {
 }
 
 /**
+ * Default bound on a Secure Files download. The vendored securefiles-common
+ * helper performs the download with no socket timeout, so a stalled transfer
+ * would otherwise hang the task indefinitely.
+ */
+export const DEFAULT_SECURE_FILE_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/**
  * Downloads a secure file from the ADO Secure Files library and returns its temp path.
  * Wraps azure-pipelines-tasks-securefiles-common for mockability.
  */
 export class SecureFileLoader implements ISecureFileLoader {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic require of untyped securefiles-common
     private helpers: any;
+    private readonly timeoutMs: number;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional injection of the untyped securefiles-common helper for testing
-    constructor(helpers?: any) {
+    constructor(helpers?: any, timeoutMs: number = DEFAULT_SECURE_FILE_DOWNLOAD_TIMEOUT_MS) {
+        this.timeoutMs = timeoutMs;
         if (helpers) {
             this.helpers = helpers;
             return;
@@ -25,9 +34,22 @@ export class SecureFileLoader implements ISecureFileLoader {
 
     public async downloadSecureFile(secureFileId: string): Promise<string> {
         tasks.debug(`Downloading secure file: ${secureFileId}`);
-        const filePath = await this.helpers.downloadSecureFile(secureFileId);
-        tasks.debug(`Secure file downloaded to: ${filePath}`);
-        return filePath;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+                () => reject(new Error(`Secure file download timed out after ${this.timeoutMs}ms.`)),
+                this.timeoutMs,
+            );
+        });
+        try {
+            const filePath = await Promise.race([this.helpers.downloadSecureFile(secureFileId), timeout]);
+            tasks.debug(`Secure file downloaded to: ${filePath}`);
+            return filePath;
+        } finally {
+            if (timer) {
+                clearTimeout(timer);
+            }
+        }
     }
 
     public deleteSecureFile(secureFileId: string): void {
