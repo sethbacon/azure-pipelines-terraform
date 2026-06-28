@@ -3,7 +3,7 @@ import assert = require('assert');
 import * as net from 'net';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
-import { HttpClient, HttpResponse, createHttpsClient, truncateBody } from '../src/http';
+import { HttpClient, HttpResponse, createHttpsClient, parseJson, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 
@@ -63,6 +63,16 @@ describe('http client transport', () => {
         const out = truncateBody(long);
         assert.ok(out.length < long.length, 'long body should be truncated');
         assert.ok(out.endsWith('… (truncated)'), 'should mark truncation');
+    });
+
+    it('parseJson parses a JSON body but surfaces a non-JSON 2xx body as a truncating error', () => {
+        assert.deepStrictEqual(parseJson<{ id: string }>('{"id":"mod-1"}'), { id: 'mod-1' });
+        // A captive portal / auth proxy can answer 200 with HTML — must not escape as a raw SyntaxError.
+        const html = '<!doctype html><html><body>captive portal login</body></html>';
+        assert.throws(
+            () => parseJson(html),
+            (err: Error) => /non-JSON response body/.test(err.message) && err.message.includes('captive portal'),
+        );
     });
 });
 
