@@ -138,4 +138,57 @@ describe('TerraformDriftReport Test Suite', function () {
             });
         }, tr);
     });
+
+    it('DriftReportCallbackSuccess — 2xx callback succeeds and masks the callback token', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackSuccess.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.stdout.includes('##vso[task.setsecret]super-secret-callback-token'),
+                'callback token should be registered as a secret',
+            );
+            assert(tr.stdout.includes('Drift result posted to TSM (HTTP 200).'), 'should log a successful POST');
+        }, tr);
+    });
+
+    it('DriftReportCallbackFails — non-2xx callback fails the task', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackFails.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('Drift callback failed (HTTP 500)')),
+                'should report the failed callback HTTP status',
+            );
+        }, tr);
+    });
+
+    it('DriftReportCallbackPartial — only callbackUrl set warns and skips the callback', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackPartial.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some(w => w.includes('Both callbackUrl and callbackToken are required')),
+                'should warn that the callback was skipped',
+            );
+            assert(
+                !tr.stdout.includes('Drift result posted to TSM'),
+                'callback must not be POSTed when only one of url/token is set',
+            );
+        }, tr);
+    });
+
+    it('DriftReportCallbackTlsOff — rejectUnauthorized=false emits the TLS-off warning', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackTlsOff.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some(w => w.includes('rejectUnauthorized is disabled')),
+                'should warn that TLS verification is off',
+            );
+        }, tr);
+    });
 });

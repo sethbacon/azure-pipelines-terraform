@@ -5,8 +5,7 @@
         "skipLibCheck": true,
         "strict": true,
         "noImplicitReturns": true,
-        "noFallthroughCasesInSwitch": true,
-        "noEmit": true
+        "noFallthroughCasesInSwitch": true
     },
     "include": [
         "Tests/**/*",

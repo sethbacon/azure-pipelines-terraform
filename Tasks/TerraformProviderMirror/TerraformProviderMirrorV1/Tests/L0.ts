@@ -1,5 +1,9 @@
-import { describe, it } from 'mocha';
+import { before, describe, it } from 'mocha';
 import assert = require('assert');
+import * as ttm from 'azure-pipelines-task-lib/mock-test';
+import path = require('path');
+import os = require('os');
+import fs = require('fs');
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from '../src/config-generator';
 
 describe('config-generator', () => {
@@ -173,5 +177,53 @@ describe('config-generator', () => {
 
             assert.ok(result.includes('url = "https://registry.example.com/"'));
         });
+    });
+});
+
+describe('index entrypoint (mock run)', function () {
+    this.timeout(20000);
+
+    before(() => {
+        // MockTestRunner shells out to node; point it at the current interpreter.
+        (ttm.MockTestRunner.prototype as unknown as { getNodePath: () => string }).getNodePath = function () {
+            return process.execPath;
+        };
+    });
+
+    it('writes .terraformrc, sets TF_CLI_CONFIG_FILE, and succeeds for a valid mirror URL', async () => {
+        const tp = path.join(__dirname, 'MirrorConfigSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        assert.ok(tr.succeeded, 'task should have succeeded. stderr: ' + tr.stderr);
+        assert.strictEqual(tr.errorIssues.length, 0, 'should have no error issues: ' + tr.errorIssues);
+
+        // The TF_CLI_CONFIG_FILE variable is emitted as a logging command on stdout.
+        assert.ok(
+            tr.stdout.indexOf('##vso[task.setvariable variable=TF_CLI_CONFIG_FILE') >= 0,
+            'stdout should set the TF_CLI_CONFIG_FILE variable. stdout: ' + tr.stdout
+        );
+
+        // The task wrote .terraformrc into the mocked Agent.TempDirectory.
+        const configPath = path.join(os.tmpdir(), 'tpm-success', '.terraformrc');
+        assert.ok(fs.existsSync(configPath), 'expected .terraformrc at ' + configPath);
+        const written = fs.readFileSync(configPath, 'utf8');
+        assert.ok(
+            written.includes('provider_installation {'),
+            'generated config should contain a provider_installation block. got: ' + written
+        );
+    });
+
+    it('fails with an error issue for an invalid mirror URL', async () => {
+        const tp = path.join(__dirname, 'MirrorConfigInvalidUrlFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        assert.ok(tr.failed, 'task should have failed. stdout: ' + tr.stdout);
+        assert.ok(tr.errorIssues.length > 0, 'should have at least one error issue');
+        assert.ok(
+            tr.errorIssues.some(e => e.indexOf('Invalid mirror URL') >= 0),
+            'error should mention an invalid mirror URL: ' + tr.errorIssues
+        );
     });
 });
