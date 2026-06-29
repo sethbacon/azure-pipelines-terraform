@@ -99,9 +99,28 @@ function applyEnforcement(
     }
 }
 
+const SENTINEL_IMPORT_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * The Sentinel import name is embedded verbatim into the generated sentinel.hcl as
+ * an HCL identifier — `import "static" "<name>" { ... }`. Unlike the source paths,
+ * which `hcl()` escapes, the identifier is not escapable; an unconstrained value
+ * could close the import block and inject arbitrary HCL. Constrain it to a valid
+ * identifier (the only thing Sentinel accepts in that position anyway).
+ */
+export function validateSentinelImportName(name: string): string {
+    if (!SENTINEL_IMPORT_NAME_RE.test(name)) {
+        throw new Error(
+            `Invalid sentinelImportName '${name}': must be a valid identifier ` +
+            `(letters, digits, and underscores; not starting with a digit).`
+        );
+    }
+    return name;
+}
+
 /** Generates a sentinel.hcl in a temp dir; returns that dir. */
 function generateConfig(policyDir: string, inputFile: string, level: string, tempFiles: string[]): string {
-    const importName = tasks.getInput('sentinelImportName') || 'tfplan';
+    const importName = validateSentinelImportName(tasks.getInput('sentinelImportName') || 'tfplan');
     const policies = findSentinelPolicies(policyDir);
     if (policies.length === 0) {
         throw new Error(`No .sentinel policy files found in ${policyDir}.`);
