@@ -188,8 +188,8 @@ The tab is declared in `azure-devops-extension.json` as a `ms.vss-build-web.buil
 
 - Run `npm run webpack` for fast iteration (skips re-running task compilation). Errors surface immediately in the webpack output.
 - The bundle uses **React 18** with the `createRoot` API in `tabContent.tsx`.
-- The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. See the roadmap item **P3.2 · plan tab hardening** for the planned state-machine rewrite.
-- There is no Jest harness in `src/tab/` yet (planned in roadmap item **P4.1**). Until then, end-to-end verification requires a private publish.
+- The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. A state-machine rewrite of the converter is the planned hardening here.
+- There is no Jest harness in `src/tab/` yet (planned). Until then, end-to-end verification requires a private publish.
 
 ## Release process
 

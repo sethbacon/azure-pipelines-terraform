@@ -29,6 +29,12 @@ function buildPublisher(): RegistryPublisher {
     const timeoutSeconds = parseTimeout();
 
     if (registryType === 'private') {
+        // skipTlsVerify is an accepted, opt-in last resort for an internal registry
+        // fronted by a private CA the agent does not trust. It is deliberately
+        // guarded, not silent: the apiKey is setSecret-masked below, the warning
+        // names the exact consequence, and createHttpsClient still hard-enforces the
+        // https:// scheme (see http.ts / https-client.ts) so the bearer is never sent
+        // over a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         if (skipTlsVerify) {
             tasks.warning(

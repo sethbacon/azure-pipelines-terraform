@@ -1,3 +1,8 @@
+// SHARED MODULE — intentionally duplicated across TerraformInstallerV1/src and
+// PolicyAgentInstallerV1/src. CI (scripts/check-shared-modules.js) enforces that
+// the copies stay byte-identical, failing the build on any divergence, so a fix or
+// key rotation here MUST be applied to BOTH copies. This duplication is deliberate
+// (each task bundles independently) — not drift to be flagged.
 import tasks = require('azure-pipelines-task-lib/task');
 import * as openpgp from 'openpgp';
 
