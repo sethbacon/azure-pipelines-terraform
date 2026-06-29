@@ -19,6 +19,12 @@ export class TokenGenerator implements ITokenGenerator {
             throw new Error("SYSTEM_OIDCREQUESTURI is not set. Ensure the pipeline is running on an agent that supports OIDC token generation.");
         }
 
+        // The federated token is requested with only the service-connection id; no
+        // custom audience/aud is set, so ADO issues its default-audience OIDC JWT.
+        // This single requester is reused for Azure/AWS/GCP/OCI by design — each
+        // cloud's relying-party federation config must constrain the token's issuer,
+        // audience, and subject to this org/project/service-connection. See the WIF
+        // setup guides under docs/setup/.
         const url = oidcRequestUri + "?api-version=7.1&serviceConnectionId=" + encodeURIComponent(serviceConnectionID);
 
         let lastError: Error | undefined;

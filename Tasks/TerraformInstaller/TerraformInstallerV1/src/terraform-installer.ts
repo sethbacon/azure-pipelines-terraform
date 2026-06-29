@@ -233,6 +233,9 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 
 // --- Helpers ---
 
+// NOTE: the OS/arch/checksum/exec-discovery helpers below are intentionally
+// mirrored in PolicyAgentInstallerV1 (each task bundles independently); keep the two
+// copies in sync — the parseSha256 binary-mode regex especially.
 function parseSha256(sha256SumsContent: string, zipFileName: string): string {
     const lines = sha256SumsContent.split('\n');
     for (const line of lines) {

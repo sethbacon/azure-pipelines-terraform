@@ -145,6 +145,8 @@ At runtime, the task:
 
 The access token is valid for 1 hour, which is sufficient for any Terraform operation.
 
+> **Security note:** the task mints the same Azure DevOps OIDC token (ADO's default `api://AzureADTokenV2` audience) for every cloud — it does not set a per-cloud custom audience. The provider's `--allowed-audiences` and the `sub` attribute condition (Step 3) are therefore the security boundary: they **must** pin the audience and the exact service-connection `sub` so that only this org/project/service connection can impersonate the service account.
+
 ## Troubleshooting
 
 ### "Error creating service account token: googleapi: Error 403: Permission iam.serviceAccounts.getAccessToken denied"

@@ -97,6 +97,7 @@ Publishes a module version to HCP Terraform / Terraform Enterprise or a private 
 | `version`          | —                        | Semantic version to publish.                                                                 |
 | `registryUrl`      | —                        | Base HTTPS URL of the private registry. Required when `registryType=private`.                |
 | `apiKey`           | —                        | Private-registry API key. Treat as a secret variable.                                        |
+| `skipTlsVerify`    | `false`                  | **Security-sensitive.** Disables TLS certificate validation for the private-registry connection while the `apiKey` bearer is transmitted. Use only for an internal registry behind a private CA the agent does not trust; prefer installing that CA via `NODE_EXTRA_CA_CERTS`. |
 | `hcpAddress`       | `https://app.terraform.io` | HCP Terraform / TFE address. Used when `registryType=hcp`.                                  |
 | `hcpToken`         | —                        | HCP API token. Treat as a secret variable. Used when `registryType=hcp`.                      |
 | `waitForPublish`   | `true`                   | Poll until the version is available before completing.                                        |
@@ -250,6 +251,10 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 | Terraform task name                            | `TerraformTaskV4` (YAML)                                       | `PipelineTerraformTask@5`                                             |
 | Installer task name                            | `TerraformInstallerV0` (YAML)                                  | `PipelineTerraformInstaller@1`                                        |
 | Provider mirror task                           | Not available                                                  | `PipelineTerraformProviderMirror@1`                                   |
+| Policy agent installer (OPA / Sentinel)        | Not available                                                  | `PipelinePolicyAgentInstaller@1`                                     |
+| Policy evaluation (plan-JSON gate)             | Not available                                                  | `PipelineTerraformPolicyCheck@1`                                     |
+| Drift reporting                                | Not available                                                  | `PipelineTerraformDriftReport@1`                                     |
+| Module publishing (HCP / private registry)     | Not available                                                  | `PipelineTerraformModulePublish@1`                                   |
 | Commands                                       | 8 (init, validate, plan, apply, destroy, show, output, custom) | 16 — adds workspace, state, fmt, test, get, refresh, import, unlock   |
 | `-replace` flag                                | Not available                                                  | `replaceAddress` input on `plan`                                      |
 | Backend/provider coupling                      | Backend always matches provider                                | `backendType` input decouples them                                    |

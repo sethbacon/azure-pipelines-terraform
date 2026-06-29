@@ -175,6 +175,11 @@ async function downloadOpaOfficial(version: string): Promise<string> {
     const binaryPath = await downloadTo(downloadUrl, `opa-${version}-${uuidV4()}${isWindows ? '.exe' : ''}`);
 
     // OPA publishes a per-asset .sha256 file containing the hex digest.
+    // Accepted limitation: OPA ships no detached GPG/cosign signature like the
+    // HashiCorp (Sentinel/Terraform) path, so this checksum and the binary come from
+    // the same GitHub release origin — it guarantees transport integrity, not
+    // authenticity against a poisoned release. requireChecksum (default true) keeps
+    // the check mandatory; HTTPS + GitHub's release infrastructure is the trust root.
     const sha256Url = `${downloadUrl}.sha256`;
     const requireChecksum = tasks.getBoolInput("requireChecksum", false);
     try {
@@ -297,8 +302,13 @@ function placeBinaryInDir(binaryPath: string, agent: string): string {
     return destDir;
 }
 
+// NOTE: the OS/arch/checksum/exec-discovery helpers below are intentionally
+// mirrored in TerraformInstallerV1 (each task bundles independently); keep the two
+// copies in sync — the parseSha256 binary-mode regex especially.
 export function parseSha256(sha256SumsContent: string, fileName: string): string {
     for (const line of sha256SumsContent.split('\n')) {
+        // Format: "<hex-hash>  <filename>"; the optional leading "*" marks binary
+        // mode (canonical regex shared with TerraformInstaller — keep in sync).
         const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
         if (match && match[2].trim() === fileName) {
             return match[1];
