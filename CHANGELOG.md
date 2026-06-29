@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.6.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.1...v1.6.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* crop marketplace screenshots ([ef568ad](https://github.com/sethbacon/azure-pipelines-terraform/commit/ef568ad9676e5d0797be3c4dfdd6dc58b7cb5e5c))
+* **deps:** pin js-yaml &gt;=4.2.0 to resolve DoS advisory (4 tasks) ([57f1b4a](https://github.com/sethbacon/azure-pipelines-terraform/commit/57f1b4a3657ef23fdd94b69f3e2eb7bef2a2110a))
+
+
+### Documentation
+
+* document accepted security residuals ([#315](https://github.com/sethbacon/azure-pipelines-terraform/issues/315)) ([58d2409](https://github.com/sethbacon/azure-pipelines-terraform/commit/58d240979ca0258b26ad3756b3607790b55b4838)), closes [#286](https://github.com/sethbacon/azure-pipelines-terraform/issues/286) [#290](https://github.com/sethbacon/azure-pipelines-terraform/issues/290) [#292](https://github.com/sethbacon/azure-pipelines-terraform/issues/292) [#293](https://github.com/sethbacon/azure-pipelines-terraform/issues/293) [#294](https://github.com/sethbacon/azure-pipelines-terraform/issues/294) [#300](https://github.com/sethbacon/azure-pipelines-terraform/issues/300) [#304](https://github.com/sethbacon/azure-pipelines-terraform/issues/304) [#311](https://github.com/sethbacon/azure-pipelines-terraform/issues/311) [#312](https://github.com/sethbacon/azure-pipelines-terraform/issues/312) [#313](https://github.com/sethbacon/azure-pipelines-terraform/issues/313) [#314](https://github.com/sethbacon/azure-pipelines-terraform/issues/314)
+
+
+### Security
+
+* fail-secure drift callback TLS verify ([#318](https://github.com/sethbacon/azure-pipelines-terraform/issues/318)) ([76351d0](https://github.com/sethbacon/azure-pipelines-terraform/commit/76351d00d9b0b94e8b60a2e2bfb8e78c27b88024)), closes [#307](https://github.com/sethbacon/azure-pipelines-terraform/issues/307)
+* harden OCI WIF temp-dir and cleanup ([#316](https://github.com/sethbacon/azure-pipelines-terraform/issues/316)) ([2c08708](https://github.com/sethbacon/azure-pipelines-terraform/commit/2c0870897503eb10a4a589f757a629848a273148))
+* pin per-task deps with npm ci in build ([#284](https://github.com/sethbacon/azure-pipelines-terraform/issues/284)) ([1b5e6ff](https://github.com/sethbacon/azure-pipelines-terraform/commit/1b5e6ffab633915a62506d47f99380e59fe39ed5)), closes [#239](https://github.com/sethbacon/azure-pipelines-terraform/issues/239)
+* validate sentinel import name ([#317](https://github.com/sethbacon/azure-pipelines-terraform/issues/317)) ([42e8ae9](https://github.com/sethbacon/azure-pipelines-terraform/commit/42e8ae9549f0566df86edc235cd68f60bc56f7e9))
+
 ## [1.6.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.0...v1.6.1) (2026-06-28)
 
 
