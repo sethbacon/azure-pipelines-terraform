@@ -37,6 +37,17 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
     return lines.map(a => `-target=${a}`);
 }
 
+/**
+ * Single abstract base carrying every terraform sub-command (init/plan/apply/...)
+ * plus the auth/temp-file plumbing shared by all provider handlers. The size is a
+ * deliberate cohesion trade-off: the provider subclasses (azure/aws/gcp/oci/hcp/
+ * generic) override only handleBackend()/handleProvider() and inherit one identical
+ * command-execution path, which is exactly what keeps provider behavior consistent.
+ * Known separable concerns, if this is ever decomposed: argv/flag building, the
+ * per-command implementations, provider-detection output parsing, plan-result
+ * inspection, and temp-file lifecycle. Splitting them is a pure refactor with no
+ * behavior change — intentionally deferred, not an oversight.
+ */
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
     terraformToolHandler: ITerraformToolHandler;
