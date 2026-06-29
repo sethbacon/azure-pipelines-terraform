@@ -3,7 +3,7 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
-import { postJson, truncateBody } from './callback';
+import { postJson, truncateBody, resolveRejectUnauthorized } from './callback';
 import { writeSarif } from './sarif';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
@@ -79,7 +79,9 @@ async function run(): Promise<void> {
             tasks.setSecret(callbackToken);
         }
         if (callbackUrl && callbackToken) {
-            const rejectUnauthorized = tasks.getBoolInput('rejectUnauthorized', false);
+            // Fail-secure: an absent/blank rejectUnauthorized verifies TLS (see
+            // resolveRejectUnauthorized); only an explicit "false" disables it.
+            const rejectUnauthorized = resolveRejectUnauthorized(tasks.getInput('rejectUnauthorized', false));
             if (!rejectUnauthorized) {
                 tasks.warning(
                     'rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, ' +

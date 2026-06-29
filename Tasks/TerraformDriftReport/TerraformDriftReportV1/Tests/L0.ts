@@ -9,6 +9,9 @@ import { postJson, truncateBody } from '../src/callback';
 import { createHttpsClient } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
 
+// Direct unit tests for the fail-secure rejectUnauthorized default.
+import './RejectUnauthorizedDefaultL0';
+
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {
         await assert.rejects(

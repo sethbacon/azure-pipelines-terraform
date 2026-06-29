@@ -9,7 +9,7 @@
   "author": "sethbacon",
   "version": {
     "Major": "1",
-    "Minor": "3",
+    "Minor": "4",
     "Patch": "0"
   },
   "instanceNameFormat": "Drift report",
