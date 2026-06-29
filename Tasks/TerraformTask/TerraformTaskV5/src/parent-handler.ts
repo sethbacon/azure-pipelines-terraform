@@ -39,9 +39,16 @@ export class ParentCommandHandler implements IParentCommandHandler {
     }
 
     public emergencyCleanup(): void {
+        // Called from the SIGTERM/SIGINT/uncaughtException handlers, which can fire
+        // during execute() before activeHandler is assigned (handler construction,
+        // input resolution) — or even before execute() is reached at all. Tracked
+        // credential env vars must be cleared unconditionally in that window:
+        // clearTrackedVariables() operates on a process-wide static Set and is
+        // independent of any handler. Only the per-handler temp-file sweep depends
+        // on a handler existing, so that alone stays guarded.
+        EnvironmentVariableHelper.clearTrackedVariables();
         if (this.activeHandler) {
             this.activeHandler.cleanupTempFiles();
-            EnvironmentVariableHelper.clearTrackedVariables();
         }
     }
 

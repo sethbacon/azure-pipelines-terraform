@@ -15,6 +15,18 @@ import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
+/**
+ * Resolves the directory for the ephemeral WIF credential files (private key,
+ * UPST, synthetic OCI config). Prefer Agent.TempDirectory — which the agent
+ * auto-purges at job end — over os.tmpdir() so the residual-on-disk window for
+ * these short-lived secrets is bounded to the job, even if both the finally
+ * cleanup and the signal handlers are bypassed (SIGKILL/host crash). Falls back
+ * to os.tmpdir() when running off a pipeline agent (no Agent.TempDirectory set).
+ */
+export function resolveWifTempDir(): string {
+    return tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+}
+
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     constructor() {
         super();
@@ -146,7 +158,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const fingerprint = md5.match(/.{2}/g)!.join(':');
 
         // 5. Write ephemeral private key, UPST, and synthetic OCI config to temp files
-        const tempDir = os.tmpdir();
+        const tempDir = resolveWifTempDir();
         const sessionId = uuidV4();
 
         const privateKeyPath = path.join(tempDir, `oci-wif-key-${sessionId}.pem`);

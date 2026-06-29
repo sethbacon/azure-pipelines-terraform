@@ -8,6 +8,10 @@ import './OciTokenExchangeL0';
 import './IdTokenGeneratorL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
+// Direct unit tests for OCI WIF temp-dir resolution (Agent.TempDirectory).
+import './OciWifTempDirL0';
+// Direct unit test for emergency cleanup before a handler is assigned.
+import './EmergencyCleanupNoHandlerL0';
 
 describe('Terraform Test Suite', function () {
 
