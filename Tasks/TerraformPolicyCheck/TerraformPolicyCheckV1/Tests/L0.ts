@@ -6,6 +6,8 @@ import * as os from 'os';
 
 // Direct unit tests for the reporting helpers (SARIF/JUnit branch coverage).
 import './ResultsL0';
+// Direct unit tests for sentinel import-name validation (HCL injection guard).
+import './SentinelImportNameL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
