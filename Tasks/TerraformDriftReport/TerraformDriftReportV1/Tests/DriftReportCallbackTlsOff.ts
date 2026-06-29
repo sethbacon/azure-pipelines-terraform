@@ -2,6 +2,7 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
+import { resolveRejectUnauthorized } from '../src/callback';
 
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
@@ -30,6 +31,7 @@ tr.setInput('rejectUnauthorized', 'false');
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 200, body: '{}' }),
     truncateBody: (body: string) => body,
+    resolveRejectUnauthorized,
 });
 
 tr.run();
