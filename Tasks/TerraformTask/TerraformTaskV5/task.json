@@ -452,7 +452,7 @@
             "type": "boolean",
             "defaultValue": "false",
             "label": "Run az login",
-            "helpMarkDown": "Run 'az login' using the provider service connection credentials before executing the terraform command. Enables Azure CLI authentication for local-exec provisioners, external data sources, and modules that use CLI-based auth (e.g. azapi). Requires the Azure CLI to be installed on the agent.",
+            "helpMarkDown": "Run 'az login' using the provider service connection credentials before executing the terraform command. Enables Azure CLI authentication for local-exec provisioners, external data sources, and modules that use CLI-based auth (e.g. azapi). Requires the Azure CLI to be installed on the agent. Security note: for WorkloadIdentityFederation/ServicePrincipal connections, the federated token or client secret is passed as an 'az login' command-line argument (an inherent az CLI limitation, not specific to this task), briefly visible to other processes on a shared self-hosted agent via the process list. ManagedServiceIdentity connections are unaffected.",
             "groupName": "providerAzureRm"
         },
         {

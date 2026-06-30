@@ -79,6 +79,18 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         tasks.debug("Finished up provider for authorization scheme: " + authorizationScheme + ".");
     }
 
+    // ACCEPTED RESIDUAL: --federated-token and --password below put the WIF token /
+    // service-principal secret on this process's argv, visible to any other process
+    // on the agent via ps / /proc/<pid>/cmdline for az login's short lifetime. az CLI
+    // has no file/stdin/env alternative for these specific flags - every documented
+    // usage pattern (including Microsoft's own "$env:AZURE_FEDERATED_TOKEN" examples)
+    // still substitutes the value into a literal argv string before az sees it; the
+    // env var only sources where the value comes FROM, not how az receives it. This
+    // is bounded: runAzLogin is opt-in (default false, only for local-exec/external
+    // data sources), and the primary terraform-provider auth path never touches argv -
+    // it sets ARM_CLIENT_SECRET/ARM_OIDC_TOKEN/etc. as environment variables exclusively
+    // (see setCommonVariables). Residual risk concentrates on shared self-hosted agents;
+    // ManagedServiceIdentity's `az login --identity` carries no secret in argv at all.
     private async runAzLogin(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, subscriptionId: string): Promise<void> {
         tasks.debug("Running az login for local-exec / external data source support.");
 
