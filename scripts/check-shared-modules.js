@@ -39,6 +39,16 @@ const FAMILIES = [
     },
 ];
 
+// These two families are deliberately NOT merged into one shared client, even
+// though both enforce an https-only guard: they sit on different transport
+// primitives (fetch+AbortController vs raw https.request+req.setTimeout) and
+// different trust models (the installer family downloads public release
+// artifacts and sends no credential; the second family attaches a bearer
+// token/API key to every request). Each family is independently guarded
+// end-to-end by this script, which is the property that actually matters;
+// collapsing them into a single abstraction would be a large, risky rewrite
+// of working transport code for no behavior change.
+
 // Normalize line endings so a CRLF checkout never reads as drift; the bytes that
 // matter (the key material, the verification logic) are still compared exactly.
 function read(relDir, file) {
