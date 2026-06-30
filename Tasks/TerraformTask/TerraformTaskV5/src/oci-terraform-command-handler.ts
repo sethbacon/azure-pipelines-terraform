@@ -27,6 +27,31 @@ export function resolveWifTempDir(): string {
     return tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
 }
 
+const OCI_TENANCY_OCID_RE = /^ocid1\.tenancy\.[a-z0-9.-]+$/;
+const OCI_REGION_RE = /^[a-z0-9-]+$/;
+
+/**
+ * Validates the tenancy OCID before it is interpolated into the synthetic OCI
+ * INI config (consumed via OCI_CLI_CONFIG_FILE). Without this, an embedded
+ * newline could inject or override config keys (e.g. a crafted tenancy value
+ * introducing its own key_file= line). The character set matches the OCID
+ * grammar OCI itself uses, so no legitimate tenancy OCID is rejected.
+ */
+export function validateOciTenancyOcid(value: string): string {
+    if (!OCI_TENANCY_OCID_RE.test(value)) {
+        throw new Error(`Invalid ociWifTenancyOcid '${value}': must match the tenancy OCID grammar (ocid1.tenancy.<realm>...<unique-id>), with no embedded newlines or special characters.`);
+    }
+    return value;
+}
+
+/** Same INI-injection concern as validateOciTenancyOcid, for the region field. */
+export function validateOciRegion(value: string): string {
+    if (!OCI_REGION_RE.test(value)) {
+        throw new Error(`Invalid ociWifRegion '${value}': must contain only lowercase letters, digits, and hyphens.`);
+    }
+    return value;
+}
+
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     constructor() {
         super();
@@ -169,8 +194,8 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         writeSecretFile(upstPath, upst);
         this.tempFiles.push(upstPath);
 
-        const tenancyOcid = tasks.getInput("ociWifTenancyOcid", true)!;
-        const region = tasks.getInput("ociWifRegion", true)!;
+        const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
+        const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
 
         const configContent = [
             '[DEFAULT]',
