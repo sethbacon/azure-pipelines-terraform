@@ -1,4 +1,4 @@
-import { TerraformToolHandler, ITerraformToolHandler, getBinaryName } from './terraform';
+import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
@@ -220,12 +220,7 @@ export abstract class BaseTerraformCommandHandler {
     public async warnIfMultipleProviders(): Promise<void> {
         try {
             const binaryName = getBinaryName(tasks);
-            let toolPath;
-            try {
-                toolPath = tasks.which(binaryName, true);
-            } catch {
-                throw new Error(tasks.loc("TerraformToolNotFound"));
-            }
+            const toolPath = resolveToolPath(tasks, binaryName);
 
             const terraformToolRunner: ToolRunner = tasks.tool(toolPath);
             terraformToolRunner.arg("providers");
