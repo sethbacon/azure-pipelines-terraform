@@ -12,6 +12,8 @@ import './SecureFileLoaderL0';
 import './OciWifTempDirL0';
 // Direct unit test for emergency cleanup before a handler is assigned.
 import './EmergencyCleanupNoHandlerL0';
+// Direct unit tests for tool-path resolution (terraformLocation vs PATH).
+import './ResolveToolPathL0';
 
 describe('Terraform Test Suite', function () {
 
