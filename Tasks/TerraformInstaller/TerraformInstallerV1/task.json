@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "227",
+        "Minor": "228",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
@@ -123,7 +123,8 @@
         "settableVariables": {
             "allowed": [
                 "terraformLocation",
-                "terraformDownloadedFrom"
+                "terraformDownloadedFrom",
+                "PATH"
             ]
         }
     },
