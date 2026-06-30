@@ -1,3 +1,5 @@
+import fs = require('fs');
+import path = require('path');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner'
 import { TerraformBaseCommandInitializer } from './terraform-commands'
 
@@ -9,6 +11,31 @@ export function getBinaryName(tasks: typeof import('azure-pipelines-task-lib/tas
         throw new Error(`Invalid binaryName '${name}'. Allowed values: ${ALLOWED_BINARY_NAMES.join(', ')}`);
     }
     return name;
+}
+
+/**
+ * Resolves the binary to invoke, preferring the path PipelineTerraformInstaller
+ * recorded in terraformLocation over a bare PATH lookup. terraformLocation is
+ * job-scoped the same way PATH itself is (set via tasks.setVariable, not an
+ * output variable), so this is same-job defense-in-depth — it helps when a PATH
+ * lookup would otherwise fail (e.g. tools.prependPath not honored on some
+ * agent/container configuration) while the installer's own variable is still
+ * intact, not a cross-job handoff. The recorded path is only trusted when its
+ * filename matches the requested binary, so installing tofu in one step can't
+ * make a `terraform` command silently run the tofu binary.
+ */
+export function resolveToolPath(tasks: typeof import('azure-pipelines-task-lib/task'), binaryName: string): string {
+    const installerLocation = tasks.getVariable('terraformLocation');
+    if (installerLocation
+        && fs.existsSync(installerLocation)
+        && path.basename(installerLocation).toLowerCase().startsWith(binaryName.toLowerCase())) {
+        return installerLocation;
+    }
+    try {
+        return tasks.which(binaryName, true);
+    } catch {
+        throw new Error(tasks.loc("TerraformToolNotFound"));
+    }
 }
 
 export interface ITerraformToolHandler {
@@ -24,12 +51,7 @@ export class TerraformToolHandler implements ITerraformToolHandler {
 
     public createToolRunner(command?: TerraformBaseCommandInitializer): ToolRunner {
         const binaryName = getBinaryName(this.tasks);
-        let toolPath;
-        try {
-            toolPath = this.tasks.which(binaryName, true);
-        } catch {
-            throw new Error(this.tasks.loc("TerraformToolNotFound"));
-        }
+        const toolPath = resolveToolPath(this.tasks, binaryName);
 
         const toolRunner: ToolRunner = this.tasks.tool(toolPath);
         if (command) {
