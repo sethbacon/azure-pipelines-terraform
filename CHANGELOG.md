@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.6.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.3...v1.6.4) (2026-06-30)
+
+
+### Bug Fixes
+
+* allow PATH in installer restricted allowlists ([#330](https://github.com/sethbacon/azure-pipelines-terraform/issues/330)) ([672a086](https://github.com/sethbacon/azure-pipelines-terraform/commit/672a086a2aee56627fe0181f4c84f749288ef79a)), closes [#329](https://github.com/sethbacon/azure-pipelines-terraform/issues/329)
+
 ## [1.6.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.2...v1.6.3) (2026-06-30)
 
 
