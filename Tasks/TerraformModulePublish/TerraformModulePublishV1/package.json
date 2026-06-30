@@ -21,7 +21,8 @@
     "azure-pipelines-task-lib": "^5.2.10"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.0"
+    "serialize-javascript": "^7.0.0",
+    "js-yaml": "^4.2.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
