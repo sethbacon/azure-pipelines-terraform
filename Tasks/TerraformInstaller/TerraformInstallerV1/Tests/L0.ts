@@ -7,6 +7,8 @@ import * as path from 'path';
 import './CosignVerifierL0';
 // Direct unit tests for the http-client timeout guard.
 import './HttpClientL0';
+// Direct unit tests for the optional registry download_url host allowlist.
+import './RegistryAllowedHostsL0';
 
 describe('TerraformInstaller Test Suite', function () {
 
@@ -92,6 +94,35 @@ describe('TerraformInstaller Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('registry allowed host: should succeed when download_url host matches the allowlist', async () => {
+        const tp = path.join(__dirname, 'RegistryAllowedHostAccept.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('registry disallowed host: should reject a download_url host not in the allowlist', async () => {
+        const tp = path.join(__dirname, 'RegistryAllowedHostReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            // Hostname-matching correctness (exact match / *.suffix wildcard, parsed via
+            // new URL().hostname rather than a raw substring check) is proven directly by
+            // RegistryAllowedHostsL0's isRegistryHostAllowed unit tests; this only needs
+            // to confirm the disallowed-host error path is the one that actually fired.
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostNotAllowed')),
+                'should fail via the disallowed-host check. errors: ' + tr.errorIssues,
+            );
         }, tr);
     });
 

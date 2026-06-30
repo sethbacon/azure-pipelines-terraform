@@ -175,6 +175,19 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
     }
 
+    // Optional opt-in host pin: a compromised registry could still point
+    // download_url at an arbitrary HTTPS host (and tools.downloadTool follows
+    // redirects with no way to disable that), so an operator who wants to
+    // constrain the trusted storage host(s) can set registryAllowedHosts.
+    // Default (empty) preserves the existing trust-the-registry behavior.
+    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+    if (allowedHosts.length > 0) {
+        const downloadHost = new URL(data.download_url).hostname;
+        if (!isRegistryHostAllowed(downloadHost, allowedHosts)) {
+            throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", downloadHost, allowedHosts.join(', ')));
+        }
+    }
+
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
     try {
@@ -193,6 +206,30 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
     return zipPath;
+}
+
+/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
+export function parseAllowedHosts(raw: string | undefined): string[] {
+    if (!raw) {
+        return [];
+    }
+    return raw
+        .split(/[\n,]/)
+        .map(h => h.trim().toLowerCase())
+        .filter(h => h.length > 0);
+}
+
+/**
+ * Matches a download_url hostname against the allowlist. A `*.` prefix on an
+ * allowlist entry matches only its subdomains (not the bare host itself),
+ * mirroring TLS wildcard-SAN semantics — useful for registry-controlled
+ * storage hosts like *.s3.amazonaws.com.
+ */
+export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
+    const host = hostname.toLowerCase();
+    return allowedHosts.some(allowed =>
+        allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
+    );
 }
 
 async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<string> {
