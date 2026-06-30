@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "226",
+        "Minor": "227",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
@@ -69,6 +69,15 @@
             "required": true,
             "visibleRule": "downloadSource = registry",
             "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/..."
+        },
+        {
+            "name": "registryAllowedHosts",
+            "type": "string",
+            "label": "Allowed download_url hosts",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "binary = terraform && downloadSource = registry",
+            "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the registry's pre-signed download_url is permitted to use (e.g. storage.example.com, or *.s3.amazonaws.com to allow any subdomain). When empty (default), the download_url host is trusted as returned by the registry. Set this to pin a compromised or misbehaving registry from redirecting downloads to an arbitrary HTTPS host."
         },
         {
             "name": "mirrorBaseUrl",
@@ -147,6 +156,7 @@
         "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
         "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
-        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
+        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
+        "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s"
     }
 }
