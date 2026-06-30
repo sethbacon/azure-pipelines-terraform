@@ -5,6 +5,19 @@ import { BaseTerraformCommandHandler } from "./base-terraform-command-handler";
 import { EnvironmentVariableHelper } from "./environment-variables";
 import { generateIdToken } from './id-token-generator';
 
+/**
+ * Reads the user-assigned managed identity's client ID from an MSI-scheme
+ * service connection, if the connection carries one. Returns undefined for a
+ * system-assigned identity (the connection's "Service Principal Id" field is
+ * left blank), which preserves the existing system-assigned-only behavior.
+ */
+export function getManagedIdentityClientId(serviceConnectionID: string): string | undefined {
+    // getEndpointAuthorizationParameter's 3rd param is named `optional` (true =
+    // don't throw when absent) - the opposite convention from getInput's
+    // `required`. true here is what makes this genuinely optional.
+    return tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true) || undefined;
+}
+
 export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler {
     constructor() {
         super();
@@ -142,7 +155,15 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             }
             case AuthorizationScheme.ManagedServiceIdentity: {
                 const loginTool: ToolRunner = tasks.tool(azPath);
-                loginTool.arg(["login", "--identity"]);
+                const loginArgs = ["login", "--identity"];
+                // A user-assigned identity's client ID, when the connection carries one
+                // (see the matching comment in setCommonVariables) - omitted falls back
+                // to the agent's system-assigned identity, unchanged from before.
+                const msiClientId = getManagedIdentityClientId(serviceConnectionID);
+                if (msiClientId) {
+                    loginArgs.push("--username", msiClientId);
+                }
+                loginTool.arg(loginArgs);
 
                 const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
                 if (loginResult !== 0) {
@@ -165,9 +186,21 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false) ?? '');
 
         switch (authorizationScheme) {
-            case AuthorizationScheme.ManagedServiceIdentity:
+            case AuthorizationScheme.ManagedServiceIdentity: {
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_MSI", "true");
+                // ARM_USE_MSI alone authenticates as the agent's system-assigned identity.
+                // If the connection targets a user-assigned identity instead, the azurerm
+                // provider needs ARM_CLIENT_ID to disambiguate which identity to use - the
+                // connection's "Service Principal Id" field carries that client ID for an
+                // MSI-scheme connection (same endpoint parameter the WorkloadIdentityFederation
+                // and ServicePrincipal schemes already read below). Optional: omitted falls
+                // back to system-assigned MSI, unchanged from before.
+                const msiClientId = getManagedIdentityClientId(serviceConnectionID);
+                if (msiClientId) {
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", msiClientId);
+                }
                 break;
+            }
 
             case AuthorizationScheme.WorkloadIdentityFederation: {
                 const workloadIdentityFederationCredentials = await this.getWorkloadIdentityFederationCredentials(serviceConnectionID, fallbackToIdTokenGeneration);

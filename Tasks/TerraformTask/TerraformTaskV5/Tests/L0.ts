@@ -16,6 +16,8 @@ import './EmergencyCleanupNoHandlerL0';
 import './ResolveToolPathL0';
 // Direct unit tests for OCI WIF synthetic-config field validation.
 import './OciWifConfigValidationL0';
+// Direct unit tests for the optional MSI user-assigned client ID.
+import './ManagedIdentityClientIdL0';
 
 describe('Terraform Test Suite', function () {
 
@@ -126,6 +128,21 @@ describe('Terraform Test Suite', function () {
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AzureInitSuccessAuthenticationSchemeManagedServiceIdentityL0 should have succeeded.'), 'Should have printed: AzureInitSuccessAuthenticationSchemeManagedServiceIdentityL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('azure init should set ARM_CLIENT_ID for a user-assigned MSI identity', async () => {
+        let tp = path.join(__dirname, './InitTests/Azure/AzureInitSuccessManagedServiceIdentityUserAssigned.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.stdOutContained('Set environment variable: ARM_CLIENT_ID'),
+                'ARM_CLIENT_ID should be set when the MSI connection carries a user-assigned identity client ID',
+            );
         }, tr);
     });
 
