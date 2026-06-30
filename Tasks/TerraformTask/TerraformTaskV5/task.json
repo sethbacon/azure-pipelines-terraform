@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "272",
+        "Minor": "273",
         "Patch": "0"
     },
     "instanceNameFormat": "Terraform : $(provider)",
@@ -959,7 +959,7 @@
         }
     ],
     "messages": {
-        "TerraformToolNotFound": "Failed to find terraform/tofu binary in PATH. Ensure the selected binary is installed on the agent.",
+        "TerraformToolNotFound": "Could not locate the terraform/tofu binary. Run PipelineTerraformInstaller in the same job as this task, or ensure the binary is installed on the agent's PATH.",
         "TerraformPlanFailed": "Terraform plan failed with exit code %s"
     }
 }
