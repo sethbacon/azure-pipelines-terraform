@@ -57,6 +57,20 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('path prepended: installed terraform directory is added to PATH', async () => {
+        const tp = path.join(__dirname, 'PathPrependedOnInstall.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.stdout.includes('PREPEND_PATH_CALLED:/tmp/terraform-cached'),
+                'installed terraform directory should be prepended to PATH so PipelineTerraformTask can find it via tasks.which()',
+            );
+        }, tr);
+    });
+
     // --- Cache hit ---
 
     it('cached install: should use cached tool and skip download', async () => {
@@ -272,6 +286,20 @@ describe('TerraformInstaller Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('opentofu path prepended: installed tofu directory is added to PATH', async () => {
+        const tp = path.join(__dirname, 'TofuPathPrependedOnInstall.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.stdout.includes('PREPEND_PATH_CALLED:/tmp/tofu-cached'),
+                'installed tofu directory should be prepended to PATH so PipelineTerraformTask can find it via tasks.which()',
+            );
         }, tr);
     });
 });
