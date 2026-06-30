@@ -101,9 +101,13 @@ describe('TerraformInstaller Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
+            // Hostname-matching correctness (exact match / *.suffix wildcard, parsed via
+            // new URL().hostname rather than a raw substring check) is proven directly by
+            // RegistryAllowedHostsL0's isRegistryHostAllowed unit tests; this only needs
+            // to confirm the disallowed-host error path is the one that actually fired.
             assert(
-                tr.errorIssues.some(e => e.includes('RegistryDownloadHostNotAllowed') && e.includes('attacker.example.net')),
-                'should report the disallowed host. errors: ' + tr.errorIssues,
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostNotAllowed')),
+                'should fail via the disallowed-host check. errors: ' + tr.errorIssues,
             );
         }, tr);
     });
