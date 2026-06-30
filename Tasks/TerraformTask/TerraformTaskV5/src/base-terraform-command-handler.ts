@@ -287,7 +287,7 @@ export abstract class BaseTerraformCommandHandler {
     // --- Command implementations ---
 
     public async init(): Promise<number> {
-        let commandOptions = tasks.getInput("commandOptions");
+        let commandOptions = this.getCommandOptions();
 
         if (tasks.getBoolInput("lockfileReadonly", false)) {
             commandOptions = commandOptions ? `-lockfile=readonly ${commandOptions}` : '-lockfile=readonly';
@@ -310,12 +310,13 @@ export abstract class BaseTerraformCommandHandler {
     public async show(): Promise<number> {
         const outputTo = tasks.getInput("outputTo");
         const outputFormat = tasks.getInput("outputFormat");
+        const commandOptions = this.getCommandOptions();
 
         let cmd: string;
         if (outputFormat === "json") {
-            cmd = tasks.getInput("commandOptions") ? `-json ${tasks.getInput("commandOptions")}` : `-json`;
+            cmd = commandOptions ? `-json ${commandOptions}` : `-json`;
         } else {
-            cmd = tasks.getInput("commandOptions") ? tasks.getInput("commandOptions")! : ``;
+            cmd = commandOptions ? commandOptions : ``;
         }
 
         const showCommand = this.createAuthCommand("show", cmd);
@@ -347,7 +348,8 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async output(): Promise<number> {
-        const commandOptions = tasks.getInput("commandOptions") ? `-json ${tasks.getInput("commandOptions")}` : `-json`
+        const rawCommandOptions = this.getCommandOptions();
+        const commandOptions = rawCommandOptions ? `-json ${rawCommandOptions}` : `-json`
 
         const outputCommand = this.createAuthCommand("output", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
@@ -375,7 +377,7 @@ export abstract class BaseTerraformCommandHandler {
             replaceFlag: true, refreshOnly: true, varFiles: true,
             targetResources: true, secureVarFile: true,
         }));
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
         if (commandOptions) terraformTool.line(commandOptions);
         terraformTool.arg("-detailed-exitcode");
         this.applyTokens(terraformTool, this.parallelismTokens());
@@ -423,7 +425,7 @@ export abstract class BaseTerraformCommandHandler {
         const outputTo = tasks.getInput("outputTo");
         const customCommand = this.createAuthCommand(
             tasks.getInput("customCommand", true)!,
-            tasks.getInput("commandOptions")
+            this.getCommandOptions()
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
@@ -491,7 +493,7 @@ export abstract class BaseTerraformCommandHandler {
      * `commandOptions`, it is not added a second time.
      */
     private applyAutoApprove(terraformTool: ToolRunner): void {
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
         if (!commandOptions || !commandOptions.includes('-auto-approve')) {
             terraformTool.arg('-auto-approve');
         }
@@ -514,7 +516,7 @@ export abstract class BaseTerraformCommandHandler {
     public async workspace(): Promise<number> {
         const subCommand = tasks.getInput("workspaceSubCommand", true)!;
         const workspaceName = tasks.getInput("workspaceName", false);
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
 
         const additionalArgs = workspaceName
             ? `${workspaceName}${commandOptions ? ` ${commandOptions}` : ''}`
@@ -534,7 +536,7 @@ export abstract class BaseTerraformCommandHandler {
     public async state(): Promise<number> {
         const subCommand = tasks.getInput("stateSubCommand", true)!;
         const stateAddress = tasks.getInput("stateAddress", false);
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
 
         if (subCommand === 'push') {
             tasks.warning("terraform state push is a potentially destructive operation. Ensure you have a current backup of your state file.");
@@ -560,7 +562,7 @@ export abstract class BaseTerraformCommandHandler {
         if (tasks.getBoolInput("fmtCheck", false)) { args += " -check"; }
         if (tasks.getBoolInput("fmtRecursive", false)) { args += " -recursive"; }
         if (tasks.getBoolInput("fmtDiff", false)) { args += " -diff"; }
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
         if (commandOptions) { args += ` ${commandOptions}`; }
 
         const fmtCommand = this.createBaseCommand(
@@ -575,7 +577,7 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async test(): Promise<number> {
-        let commandOptions = tasks.getInput("commandOptions");
+        let commandOptions = this.getCommandOptions();
 
         const junitPath = tasks.getInput("testJunitXmlPath", false);
         if (junitPath) {
@@ -628,7 +630,7 @@ export abstract class BaseTerraformCommandHandler {
         this.applyTokens(terraformTool, await this.buildLeadingArgs({
             varFiles: true, secureVarFile: true,
         }));
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
         if (commandOptions) terraformTool.line(commandOptions);
         // Address and id are passed as discrete argv entries so an id containing
         // spaces is not split.
@@ -645,7 +647,7 @@ export abstract class BaseTerraformCommandHandler {
 
     public async forceUnlock(): Promise<number> {
         const lockId = tasks.getInput("lockId", true)!;
-        const commandOptions = tasks.getInput("commandOptions");
+        const commandOptions = this.getCommandOptions();
 
         tasks.warning("terraform force-unlock removes the lock on the state for the current configuration. This will allow other users or automation to acquire the lock and potentially modify the state.");
 
