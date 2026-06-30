@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "226",
+        "Minor": "227",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",

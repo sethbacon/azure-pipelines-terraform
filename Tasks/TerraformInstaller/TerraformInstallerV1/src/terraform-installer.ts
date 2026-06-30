@@ -88,6 +88,11 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         fs.chmodSync(terraformPath, "755");
     }
 
+    // PipelineTerraformTask locates the binary via tasks.which() (a PATH lookup),
+    // not the terraformLocation variable, so the installed directory must be on
+    // PATH for the rest of the job — matching the convention of other
+    // azure-pipelines-tool-lib-based installers.
+    tools.prependPath(path.dirname(terraformPath));
     tasks.setVariable('terraformLocation', terraformPath);
     return terraformPath;
 }
@@ -335,6 +340,9 @@ async function downloadTofu(inputVersion: string): Promise<string> {
         fs.chmodSync(tofuPath, "755");
     }
 
+    // See the matching comment in downloadTerraform: PipelineTerraformTask finds
+    // the binary via PATH, not the terraformLocation variable.
+    tools.prependPath(path.dirname(tofuPath));
     tasks.setVariable('terraformLocation', tofuPath);
     return tofuPath;
 }
