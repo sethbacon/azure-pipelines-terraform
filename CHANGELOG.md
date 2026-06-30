@@ -4,6 +4,32 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.6.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.2...v1.6.3) (2026-06-30)
+
+
+### Bug Fixes
+
+* prefer installer terraformLocation over PATH lookup ([#321](https://github.com/sethbacon/azure-pipelines-terraform/issues/321)) ([90c2e3d](https://github.com/sethbacon/azure-pipelines-terraform/commit/90c2e3d1eccf1c23cdefb74624cc47ff30447031))
+* prepend installed Terraform/OpenTofu dir to PATH ([#320](https://github.com/sethbacon/azure-pipelines-terraform/issues/320)) ([b6e2650](https://github.com/sethbacon/azure-pipelines-terraform/commit/b6e2650dc3dfe1ad6670b8e0280dac806a0c871d)), closes [#319](https://github.com/sethbacon/azure-pipelines-terraform/issues/319)
+
+
+### Documentation
+
+* document accepted az login argv credential exposure ([#327](https://github.com/sethbacon/azure-pipelines-terraform/issues/327)) ([2a62b7e](https://github.com/sethbacon/azure-pipelines-terraform/commit/2a62b7efb8a33ae6e23af08a88bfb5d27a983dc6)), closes [#288](https://github.com/sethbacon/azure-pipelines-terraform/issues/288)
+* document why the two HTTP client families stay separate ([#324](https://github.com/sethbacon/azure-pipelines-terraform/issues/324)) ([c6bd90d](https://github.com/sethbacon/azure-pipelines-terraform/commit/c6bd90d5046f4ad7998d9fd9f94d2e82b4d7c5b8)), closes [#301](https://github.com/sethbacon/azure-pipelines-terraform/issues/301)
+
+
+### Refactor
+
+* single chokepoint for commandOptions input ([#328](https://github.com/sethbacon/azure-pipelines-terraform/issues/328)) ([98b56eb](https://github.com/sethbacon/azure-pipelines-terraform/commit/98b56eb0d3e87bb85038b4182cec4a3c76ac07ff)), closes [#302](https://github.com/sethbacon/azure-pipelines-terraform/issues/302)
+
+
+### Security
+
+* opt-in host allowlist for registry download_url ([#322](https://github.com/sethbacon/azure-pipelines-terraform/issues/322)) ([22cd89b](https://github.com/sethbacon/azure-pipelines-terraform/commit/22cd89bcb8b02f33f190cafe8eee89ae8342881a))
+* support user-assigned MSI client ID ([#326](https://github.com/sethbacon/azure-pipelines-terraform/issues/326)) ([855a8c3](https://github.com/sethbacon/azure-pipelines-terraform/commit/855a8c3ad7d95d26b0bb8fe7edc76ae2c93a6e6b)), closes [#289](https://github.com/sethbacon/azure-pipelines-terraform/issues/289)
+* validate OCI WIF tenancy OCID and region ([#325](https://github.com/sethbacon/azure-pipelines-terraform/issues/325)) ([3164521](https://github.com/sethbacon/azure-pipelines-terraform/commit/316452172d5576810296fd54608afe5779a8c758)), closes [#296](https://github.com/sethbacon/azure-pipelines-terraform/issues/296)
+
 ## [1.6.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.1...v1.6.2) (2026-06-29)
 
 
