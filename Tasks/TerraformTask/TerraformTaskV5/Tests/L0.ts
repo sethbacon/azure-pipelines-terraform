@@ -14,6 +14,8 @@ import './OciWifTempDirL0';
 import './EmergencyCleanupNoHandlerL0';
 // Direct unit tests for tool-path resolution (terraformLocation vs PATH).
 import './ResolveToolPathL0';
+// Direct unit tests for OCI WIF synthetic-config field validation.
+import './OciWifConfigValidationL0';
 
 describe('Terraform Test Suite', function () {
 
