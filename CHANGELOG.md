@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.7.1...v1.8.0) (2026-07-01)
+
+
+### Features
+
+* add Markdown2Html task ([#337](https://github.com/sethbacon/azure-pipelines-terraform/issues/337)) ([1d6a4b8](https://github.com/sethbacon/azure-pipelines-terraform/commit/1d6a4b8ae45d1dfb28b552f372a79c1e6c51866c))
+* add PublishKbArticle task ([#339](https://github.com/sethbacon/azure-pipelines-terraform/issues/339)) ([51d0863](https://github.com/sethbacon/azure-pipelines-terraform/commit/51d08633cf7f8dd441992e5568b2159c7dd1c926))
+
+
+### Documentation
+
+* document Markdown2Html and PublishKbArticle ([#340](https://github.com/sethbacon/azure-pipelines-terraform/issues/340)) ([3a6d764](https://github.com/sethbacon/azure-pipelines-terraform/commit/3a6d7645fcd8d451f65377ed16358054aa6cdd94))
+
 ## [1.7.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.7.0...v1.7.1) (2026-07-01)
 
 
