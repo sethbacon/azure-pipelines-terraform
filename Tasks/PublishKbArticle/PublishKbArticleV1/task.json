@@ -1,0 +1,255 @@
+{
+    "id": "ea38750c-69f1-4e02-8328-6247491297fa",
+    "name": "PublishKbArticle",
+    "friendlyName": "Publish KB Article to ServiceNow",
+    "description": "Publish or update a knowledge base article in ServiceNow",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Utility",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "0",
+        "Patch": "0"
+    },
+    "minimumAgentVersion": "3.232.1",
+    "instanceNameFormat": "Publish KB Article $(title)",
+    "inputs": [
+        {
+            "name": "serviceConnection",
+            "type": "connectedService:ServiceNowKb",
+            "label": "ServiceNow Service Connection",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Optional. A service connection for the ServiceNow instance. If not set, provide instance and credentials inline."
+        },
+        {
+            "name": "instance",
+            "type": "string",
+            "label": "ServiceNow Instance",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "ServiceNow instance name (e.g. 'mycompany'). Required when no service connection is provided."
+        },
+        {
+            "name": "authType",
+            "type": "pickList",
+            "label": "Authentication Type",
+            "defaultValue": "oauth",
+            "required": false,
+            "options": {
+                "oauth": "OAuth (Client Credentials)",
+                "basic": "Basic (Username/Password)"
+            },
+            "helpMarkDown": "Authentication method to use when no service connection is provided."
+        },
+        {
+            "name": "clientId",
+            "type": "string",
+            "label": "OAuth Client ID",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "authType = oauth",
+            "helpMarkDown": "OAuth client application ID."
+        },
+        {
+            "name": "clientSecret",
+            "type": "string",
+            "label": "OAuth Client Secret",
+            "defaultValue": "",
+            "required": false,
+            "isSecret": true,
+            "visibleRule": "authType = oauth",
+            "helpMarkDown": "OAuth client application secret."
+        },
+        {
+            "name": "username",
+            "type": "string",
+            "label": "Username",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "authType = basic",
+            "helpMarkDown": "ServiceNow username for basic authentication."
+        },
+        {
+            "name": "password",
+            "type": "string",
+            "label": "Password",
+            "defaultValue": "",
+            "required": false,
+            "isSecret": true,
+            "visibleRule": "authType = basic",
+            "helpMarkDown": "ServiceNow password for basic authentication."
+        },
+        {
+            "name": "kbId",
+            "type": "string",
+            "label": "Knowledge Base ID",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Knowledge base sys_id. Use 'list' to print available knowledge bases."
+        },
+        {
+            "name": "articleId",
+            "type": "string",
+            "label": "Article ID",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Existing article sys_id to update. If not provided, the task auto-detects via source key or JSON file."
+        },
+        {
+            "name": "title",
+            "type": "string",
+            "label": "Article Title",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Article title (short_description). Required when creating a new article."
+        },
+        {
+            "name": "htmlFile",
+            "type": "string",
+            "label": "HTML File",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Path to an HTML file whose contents become the article body."
+        },
+        {
+            "name": "author",
+            "type": "string",
+            "label": "Author",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "ServiceNow username of the article author. Required when creating a new article."
+        },
+        {
+            "name": "category",
+            "type": "string",
+            "label": "Category",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Category name. Prefix with 'sys_id:' to provide a raw sys_id. Auto-created if not found."
+        },
+        {
+            "name": "subcategory",
+            "type": "string",
+            "label": "Subcategory",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Subcategory name (requires Category to be set). Auto-created under the parent category if not found."
+        },
+        {
+            "name": "workflowState",
+            "type": "pickList",
+            "label": "Workflow State",
+            "defaultValue": "draft",
+            "required": false,
+            "options": {
+                "draft": "Draft",
+                "review": "Review",
+                "publish": "Published"
+            },
+            "helpMarkDown": "Target workflow state for the article."
+        },
+        {
+            "name": "sourceKey",
+            "type": "string",
+            "label": "Source Key",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Stable correlation key for idempotent create/update (e.g. 'aws-connect-to-servers'). Stored as 'wiki-source: <key>' in meta_description."
+        },
+        {
+            "name": "readKeyFrom",
+            "type": "string",
+            "label": "Read Key From File",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Path to a Markdown file whose 'kb-key:' YAML front-matter field is used as the source key."
+        },
+        {
+            "name": "emitManifest",
+            "type": "string",
+            "label": "Emit Manifest Path",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Path to a JSON manifest file to append article metadata. When set, no KB*.json file is written."
+        },
+        {
+            "name": "force",
+            "type": "boolean",
+            "label": "Force",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Continue processing even if HTML validation fails."
+        },
+        {
+            "name": "skipJsonLookup",
+            "type": "boolean",
+            "label": "Skip JSON Lookup",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Skip looking for KB article JSON files in the current directory."
+        },
+        {
+            "name": "dryRun",
+            "type": "boolean",
+            "label": "Dry run",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Preview the publish without writing to ServiceNow. Converts and validates content, performs read-only lookups (source key, existing article), and logs the planned create/update action and target — but performs no POST/PATCH, no category creation, and writes no manifest. Useful for PR builds."
+        },
+        {
+            "name": "uploadImages",
+            "type": "boolean",
+            "label": "Upload images as attachments",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "When enabled, relative <img> images in the article body are uploaded as ServiceNow attachments on the article, and their src is rewritten to a sys_attachment.do?sys_id=... URL. Re-publishing reuses unchanged images and replaces changed ones (matched by file name)."
+        },
+        {
+            "name": "imageBaseDir",
+            "type": "string",
+            "label": "Image base directory",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "uploadImages = true",
+            "helpMarkDown": "Directory that relative image paths in the HTML are resolved against (e.g. the module repo root). Defaults to the directory of the HTML file."
+        }
+    ],
+    "outputVariables": [
+        {
+            "name": "kbArticleId",
+            "description": "The sys_id of the created or updated KB article."
+        },
+        {
+            "name": "kbArticleNumber",
+            "description": "The article number (e.g. KB0001234) of the created or updated article."
+        },
+        {
+            "name": "kbWorkflowState",
+            "description": "The workflow state of the article after this task runs."
+        }
+    ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": [
+                "kbArticleId",
+                "kbArticleNumber",
+                "kbWorkflowState"
+            ]
+        }
+    },
+    "execution": {
+        "Node24": {
+            "target": "src/index.js"
+        }
+    },
+    "messages": {}
+}

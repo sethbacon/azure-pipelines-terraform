@@ -16,6 +16,7 @@ const files = [
     { path: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json', type: 'task' },
     { path: 'Tasks/TerraformDocs/TerraformDocsV1/task.json', type: 'task' },
     { path: 'Tasks/Markdown2Html/Markdown2HtmlV1/task.json', type: 'task' },
+    { path: 'Tasks/PublishKbArticle/PublishKbArticleV1/task.json', type: 'task' },
 ];
 
 let hasError = false;

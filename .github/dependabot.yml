@@ -129,6 +129,18 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
+  # npm — PublishKbArticleV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/PublishKbArticle/PublishKbArticleV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   # npm — root (build tooling)
   - package-ecosystem: "npm"
     directory: "/"
