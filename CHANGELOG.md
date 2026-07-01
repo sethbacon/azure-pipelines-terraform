@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.7.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.7.0...v1.7.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* **deps:** patch js-yaml ReDoS + bump nyc to 18 ([#335](https://github.com/sethbacon/azure-pipelines-terraform/issues/335)) ([ce4ee92](https://github.com/sethbacon/azure-pipelines-terraform/commit/ce4ee928a2d14b4ff9bfde7cd3d09ae904b49db9))
+
 ## [1.7.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.4...v1.7.0) (2026-07-01)
 
 
