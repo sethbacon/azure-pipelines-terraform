@@ -1,0 +1,152 @@
+{
+  "id": "711b4eb5-a279-46f5-be9d-f78d1ffcbaaa",
+  "name": "PipelineTerraformDocs",
+  "friendlyName": "Pipeline terraform-docs",
+  "description": "Generate documentation for Terraform modules using terraform-docs",
+  "author": "sethbacon",
+  "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+  "category": "Utility",
+  "visibility": [
+    "Build",
+    "Release"
+  ],
+  "demands": [],
+  "version": {
+    "Major": "1",
+    "Minor": "0",
+    "Patch": "0"
+  },
+  "instanceNameFormat": "terraform-docs $(formatter)",
+  "inputs": [
+    {
+      "name": "formatter",
+      "type": "pickList",
+      "label": "Output format",
+      "defaultValue": "markdown-table",
+      "required": true,
+      "helpMarkDown": "The terraform-docs formatter to run. Determines the generated documentation format.",
+      "options": {
+        "markdown-table": "Markdown table",
+        "markdown-document": "Markdown document",
+        "json": "JSON",
+        "yaml": "YAML",
+        "toml": "TOML",
+        "pretty": "Pretty (colored text)",
+        "asciidoc-table": "AsciiDoc table",
+        "asciidoc-document": "AsciiDoc document",
+        "tfvars-hcl": "tfvars HCL",
+        "tfvars-json": "tfvars JSON"
+      }
+    },
+    {
+      "name": "modulePath",
+      "type": "filePath",
+      "label": "Module directory",
+      "defaultValue": ".",
+      "required": true,
+      "helpMarkDown": "The directory containing the Terraform module to document. terraform-docs scans this path. Defaults to the repository root."
+    },
+    {
+      "name": "outputFile",
+      "type": "string",
+      "label": "Output file",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Optional file (relative to the module directory) to write the documentation to, e.g. README.md. When empty, the output is written to the console."
+    },
+    {
+      "name": "outputMode",
+      "type": "pickList",
+      "label": "Output mode",
+      "defaultValue": "inject",
+      "required": false,
+      "visibleRule": "outputFile != \"\"",
+      "helpMarkDown": "How to write the output file. 'inject' updates content between the terraform-docs markers; 'replace' overwrites the whole file.",
+      "options": {
+        "inject": "Inject (between markers)",
+        "replace": "Replace (whole file)"
+      }
+    },
+    {
+      "name": "outputCheck",
+      "type": "boolean",
+      "label": "Check only (fail if out of date)",
+      "defaultValue": "false",
+      "required": false,
+      "visibleRule": "outputFile != \"\"",
+      "helpMarkDown": "When enabled, terraform-docs does not write the file; it fails the task if the output file is out of date. Useful as a CI gate to enforce that committed documentation is current."
+    },
+    {
+      "name": "configFile",
+      "type": "filePath",
+      "label": "Config file",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Optional path to a terraform-docs configuration file (e.g. .terraform-docs.yml)."
+    },
+    {
+      "name": "sortBy",
+      "type": "pickList",
+      "label": "Sort by",
+      "defaultValue": "default",
+      "required": false,
+      "helpMarkDown": "Sort the documented inputs/outputs by the given criteria. 'default' leaves terraform-docs' default ordering.",
+      "options": {
+        "default": "Default",
+        "name": "Name",
+        "required": "Required",
+        "type": "Type"
+      }
+    },
+    {
+      "name": "recursive",
+      "type": "boolean",
+      "label": "Recursive",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "Recursively generate documentation for submodules found under the module directory."
+    },
+    {
+      "name": "recursivePath",
+      "type": "string",
+      "label": "Recursive submodule path",
+      "defaultValue": "modules",
+      "required": false,
+      "visibleRule": "recursive = true",
+      "helpMarkDown": "The submodule directory (relative to the module directory) to recurse into when 'Recursive' is enabled."
+    },
+    {
+      "name": "additionalArgs",
+      "type": "string",
+      "label": "Additional arguments",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Additional command-line arguments passed verbatim to terraform-docs (e.g. --hide-empty --show inputs)."
+    }
+  ],
+  "restrictions": {
+    "commands": {
+      "mode": "restricted"
+    },
+    "settableVariables": {
+      "allowed": [
+        "generatedFilePath"
+      ]
+    }
+  },
+  "execution": {
+    "Node24": {
+      "target": "src/index.js"
+    }
+  },
+  "outputVariables": [
+    {
+      "name": "generatedFilePath",
+      "description": "The path to the generated documentation file, when an output file was configured."
+    }
+  ],
+  "messages": {
+    "TerraformDocsFailed": "terraform-docs failed with exit code %s.",
+    "GeneratedFile": "terraform-docs documentation written to: %s"
+  }
+}

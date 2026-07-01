@@ -26,7 +26,7 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] Upload the `.vsix` to a test ADO org via **Organization Settings → Extensions → Browse local extensions → Upload**
 - [ ] Extension installs without errors
-- [ ] All seven tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, `PipelineTerraformTask@5`, `PipelineTerraformModulePublish@1`, `PipelinePolicyAgentInstaller@1`, `PipelineTerraformPolicyCheck@1`, and `PipelineTerraformDriftReport@1`
+- [ ] All nine tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, `PipelineTerraformTask@5`, `PipelineTerraformModulePublish@1`, `PipelinePolicyAgentInstaller@1`, `PipelineTerraformPolicyCheck@1`, `PipelineTerraformDriftReport@1`, `PipelineTerraformDocsInstaller@1`, and `PipelineTerraformDocs@1`
 
 ## 4. Installer task smoke test
 
@@ -63,6 +63,17 @@ npm run package:release   # or package:self for a private test extension
 - [ ] `PipelineTerraformModulePublish@1` with `registryType: private` — publishes a version to a terraform-registry-backend instance
 - [ ] `PipelineTerraformModulePublish@1` with `registryType: hcp` — publishes a version to HCP Terraform / TFE
 - [ ] `waitForPublish: true` blocks until the version is available (bounded by `timeoutSeconds`)
+
+## 4g. terraform-docs installer smoke test
+
+- [ ] `PipelineTerraformDocsInstaller@1` with `version: latest` — installs and reports version
+- [ ] `PipelineTerraformDocsInstaller@1` with a pinned version (e.g. `0.20.0`) — installs correct version
+- [ ] Output variables `terraformDocsLocation` and `terraformDocsDownloadedFrom` are set
+
+## 4h. terraform-docs smoke test
+
+- [ ] `PipelineTerraformDocs@1` with `formatter: markdown-table`, `outputFile: README.md` — writes documentation and sets `generatedFilePath`
+- [ ] `PipelineTerraformDocs@1` with `outputCheck: true` against stale docs — fails the task
 
 ## 5. Core commands smoke test (AzureRM)
 

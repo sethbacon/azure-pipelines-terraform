@@ -11,6 +11,8 @@ This extension provides:
 - **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA or Sentinel) on the pipeline agent
 - **PipelineTerraformPolicyCheck** -- Evaluate OPA or Sentinel policies against Terraform plan JSON
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
+- **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
+- **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs
 - Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.
@@ -24,6 +26,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Flexible installer**: Download Terraform from HashiCorp releases, a private registry, or a custom mirror with SHA256 verification
 - **Provider network mirroring**: Route provider downloads through a private mirror for air-gapped environments, caching, or compliance
 - **Module publishing**: Publish module versions to HCP Terraform or a private registry (terraform-registry-backend) from a release pipeline
+- **Documentation generation**: Install terraform-docs and generate — or `--output-check`-gate — Terraform module documentation in a pipeline
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources

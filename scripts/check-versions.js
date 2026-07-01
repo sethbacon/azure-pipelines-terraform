@@ -13,6 +13,8 @@ const files = [
     { path: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json', type: 'task' },
     { path: 'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json', type: 'task' },
     { path: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json', type: 'task' },
+    { path: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json', type: 'task' },
+    { path: 'Tasks/TerraformDocs/TerraformDocsV1/task.json', type: 'task' },
 ];
 
 let hasError = false;

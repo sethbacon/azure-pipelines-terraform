@@ -88,20 +88,20 @@ Runs Terraform commands. Supports 16 commands:
 
 Publishes a module version to HCP Terraform / Terraform Enterprise or a private Terraform registry (`terraform-registry-backend`) from a release pipeline.
 
-| Input              | Default                  | Description                                                                                  |
-| ------------------ | ------------------------ | -------------------------------------------------------------------------------------------- |
-| `registryType`     | `private`                | `private` (terraform-registry-backend) or `hcp` (HCP Terraform / TFE).                       |
-| `namespace`        | —                        | Module namespace.                                                                            |
-| `name`             | —                        | Module name.                                                                                 |
-| `provider`         | —                        | Provider / target system the module is for.                                                  |
-| `version`          | —                        | Semantic version to publish.                                                                 |
-| `registryUrl`      | —                        | Base HTTPS URL of the private registry. Required when `registryType=private`.                |
-| `apiKey`           | —                        | Private-registry API key. Treat as a secret variable.                                        |
-| `skipTlsVerify`    | `false`                  | **Security-sensitive.** Disables TLS certificate validation for the private-registry connection while the `apiKey` bearer is transmitted. Use only for an internal registry behind a private CA the agent does not trust; prefer installing that CA via `NODE_EXTRA_CA_CERTS`. |
-| `hcpAddress`       | `https://app.terraform.io` | HCP Terraform / TFE address. Used when `registryType=hcp`.                                  |
-| `hcpToken`         | —                        | HCP API token. Treat as a secret variable. Used when `registryType=hcp`.                      |
-| `waitForPublish`   | `true`                   | Poll until the version is available before completing.                                        |
-| `timeoutSeconds`   | `180`                    | Wall-clock bound for `waitForPublish`.                                                        |
+| Input            | Default                    | Description                                                                                                                                                                                                                                                                    |
+| ---------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `registryType`   | `private`                  | `private` (terraform-registry-backend) or `hcp` (HCP Terraform / TFE).                                                                                                                                                                                                         |
+| `namespace`      | —                          | Module namespace.                                                                                                                                                                                                                                                              |
+| `name`           | —                          | Module name.                                                                                                                                                                                                                                                                   |
+| `provider`       | —                          | Provider / target system the module is for.                                                                                                                                                                                                                                    |
+| `version`        | —                          | Semantic version to publish.                                                                                                                                                                                                                                                   |
+| `registryUrl`    | —                          | Base HTTPS URL of the private registry. Required when `registryType=private`.                                                                                                                                                                                                  |
+| `apiKey`         | —                          | Private-registry API key. Treat as a secret variable.                                                                                                                                                                                                                          |
+| `skipTlsVerify`  | `false`                    | **Security-sensitive.** Disables TLS certificate validation for the private-registry connection while the `apiKey` bearer is transmitted. Use only for an internal registry behind a private CA the agent does not trust; prefer installing that CA via `NODE_EXTRA_CA_CERTS`. |
+| `hcpAddress`     | `https://app.terraform.io` | HCP Terraform / TFE address. Used when `registryType=hcp`.                                                                                                                                                                                                                     |
+| `hcpToken`       | —                          | HCP API token. Treat as a secret variable. Used when `registryType=hcp`.                                                                                                                                                                                                       |
+| `waitForPublish` | `true`                     | Poll until the version is available before completing.                                                                                                                                                                                                                         |
+| `timeoutSeconds` | `180`                      | Wall-clock bound for `waitForPublish`.                                                                                                                                                                                                                                         |
 
 HCP VCS-backed publishing also accepts `vcsRepoIdentifier`, `vcsBranch`, `vcsOauthTokenId`, and `commitSha`.
 
@@ -111,11 +111,11 @@ HCP VCS-backed publishing also accepts `vcsRepoIdentifier`, `vcsBranch`, `vcsOau
 
 Installs a policy engine — **OPA** (sha256-verified binary from the `open-policy-agent/opa` GitHub releases) or **Sentinel** (GPG-signed zip from `releases.hashicorp.com`) — and prepends it to the `PATH`.
 
-| Input                 | Default    | Description                                                                                      |
-| --------------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| Input                 | Default    | Description                                                                                       |
+| --------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
 | `policyAgent`         | `opa`      | `opa` or `sentinel`.                                                                              |
 | `version`             | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API. |
-| `downloadSource`      | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).          |
+| `downloadSource`      | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).           |
 | `requireGpgSignature` | `true`     | Fail if a Sentinel GPG signature is unavailable.                                                  |
 | `requireChecksum`     | `true`     | Fail if a SHA256 checksum is unavailable.                                                         |
 
@@ -127,17 +127,17 @@ Installs a policy engine — **OPA** (sha256-verified binary from the `open-poli
 
 Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terraform show -json` output) and gates the pipeline on the result.
 
-| Input                     | Default          | Description                                                                                   |
-| ------------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `engine`                  | `opa`            | `opa` or `sentinel`.                                                                           |
-| `inputFile`               | —                | Path to the plan JSON to evaluate.                                                             |
-| `policySource`            | `path`           | `path` (local directory) or `git` (HTTPS shallow clone / ref checkout).                        |
-| `policyPath`              | —                | Policy directory when `policySource=path`.                                                     |
+| Input                     | Default          | Description                                                                                               |
+| ------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `engine`                  | `opa`            | `opa` or `sentinel`.                                                                                      |
+| `inputFile`               | —                | Path to the plan JSON to evaluate.                                                                        |
+| `policySource`            | `path`           | `path` (local directory) or `git` (HTTPS shallow clone / ref checkout).                                   |
+| `policyPath`              | —                | Policy directory when `policySource=path`.                                                                |
 | `policyRepoUrl`           | —                | Policy repo URL when `policySource=git`. Pairs with `policyRepoRef`/`policyRepoSubdir`/`policyRepoToken`. |
-| `decisionPath`            | `terraform/deny` | OPA decision path to query.                                                                    |
-| `failMode`                | `nonEmpty`       | OPA gate: fail when the decision is `nonEmpty` or `defined`.                                    |
-| `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                     |
-| `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                     |
+| `decisionPath`            | `terraform/deny` | OPA decision path to query.                                                                               |
+| `failMode`                | `nonEmpty`       | OPA gate: fail when the decision is `nonEmpty` or `defined`.                                              |
+| `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                                |
+| `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                               |
 
 **Output variables:** `policyResult`, `violationCount`, `resultsFilePath`.
 
@@ -147,15 +147,62 @@ Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terrafo
 
 Parses a Terraform/OpenTofu plan JSON into drift counts plus a changed-resource summary, and optionally POSTs the summary to a [Terraform State Manager](https://github.com/sethbacon/terraform-state-manager) (TSM) drift callback.
 
-| Input                | Default                              | Description                                                                  |
-| -------------------- | ------------------------------------ | ---------------------------------------------------------------------------- |
-| `planJsonFile`       | —                                    | Path to the plan JSON to analyse.                                            |
-| `includeModuleProvenance` | `true`                          | Include module source provenance from the module manifest.                  |
-| `moduleManifest`     | `.terraform/modules/modules.json`    | Module manifest path used for provenance.                                    |
-| `failOnDrift`        | `false`                              | Fail the task when drift is detected.                                        |
-| `callbackUrl`        | —                                    | TSM drift-callback URL. Must be HTTPS.                                       |
-| `callbackToken`      | —                                    | TSM callback bearer token. Treat as a secret variable.                       |
-| `rejectUnauthorized` | `true`                               | Verify the callback endpoint's TLS certificate (leave enabled in production). |
+| Input                     | Default                           | Description                                                                   |
+| ------------------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| `planJsonFile`            | —                                 | Path to the plan JSON to analyse.                                             |
+| `includeModuleProvenance` | `true`                            | Include module source provenance from the module manifest.                    |
+| `moduleManifest`          | `.terraform/modules/modules.json` | Module manifest path used for provenance.                                     |
+| `failOnDrift`             | `false`                           | Fail the task when drift is detected.                                         |
+| `callbackUrl`             | —                                 | TSM drift-callback URL. Must be HTTPS.                                        |
+| `callbackToken`           | —                                 | TSM callback bearer token. Treat as a secret variable.                        |
+| `rejectUnauthorized`      | `true`                            | Verify the callback endpoint's TLS certificate (leave enabled in production). |
+
+---
+
+### `PipelineTerraformDocsInstaller@1` — terraform-docs Installer
+
+Installs a specific version of [terraform-docs](https://terraform-docs.io) on the build agent and prepends it to the `PATH`.
+
+| Input                | Default          | Description                                                                                                          |
+| -------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `version`            | `latest`         | Version to install, e.g. `0.20.0`. `latest` resolves to the current latest release.                                  |
+| `downloadSource`     | `official`       | Where to download terraform-docs from: `official` (GitHub releases), `registry`, or `mirror`.                        |
+| `registryUrl`        | —                | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                    |
+| `registryMirrorName` | `terraform-docs` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                         |
+| `mirrorBaseUrl`      | —                | Base HTTPS URL of a custom mirror that replicates the release path structure. Required when `downloadSource=mirror`. |
+| `requireChecksum`    | `true`           | Fail if a SHA256 checksum is not available for the requested version/platform.                                       |
+
+**Output variables:**
+
+| Variable                      | Description                                                            |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| `terraformDocsLocation`       | Path to the installed `terraform-docs` binary.                         |
+| `terraformDocsDownloadedFrom` | Source used: `official`, `registry:<url>`, `mirror:<url>`, or `cache`. |
+
+Downloads are verified against the published `terraform-docs-v<version>.sha256sum` file over HTTPS. terraform-docs does not publish a GPG/cosign signature, so — as with OPA — integrity is anchored to the GitHub release origin.
+
+### `PipelineTerraformDocs@1` — terraform-docs
+
+Generates documentation for a Terraform module using terraform-docs. Requires terraform-docs on the `PATH` (run `PipelineTerraformDocsInstaller@1` first).
+
+| Input            | Default          | Description                                                                                                       |
+| ---------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `formatter`      | `markdown-table` | Output format: markdown table/document, json, yaml, toml, pretty, asciidoc table/document, or tfvars hcl/json.    |
+| `modulePath`     | `.`              | Directory containing the module to document.                                                                      |
+| `outputFile`     | —                | File (relative to the module directory) to write documentation to, e.g. `README.md`. Empty writes to the console. |
+| `outputMode`     | `inject`         | How to write the output file: `inject` (between markers) or `replace` (whole file).                               |
+| `outputCheck`    | `false`          | Fail the task if the output file is out of date instead of writing it (CI gate for stale docs).                   |
+| `configFile`     | —                | Path to a terraform-docs configuration file (e.g. `.terraform-docs.yml`).                                         |
+| `sortBy`         | `default`        | Sort inputs/outputs by `name`, `required`, or `type`.                                                             |
+| `recursive`      | `false`          | Recurse into submodules.                                                                                          |
+| `recursivePath`  | `modules`        | Submodule directory to recurse into when `recursive` is enabled.                                                  |
+| `additionalArgs` | —                | Additional arguments passed verbatim to terraform-docs.                                                           |
+
+**Output variables:**
+
+| Variable            | Description                                                                   |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `generatedFilePath` | Path to the generated documentation file, when an output file was configured. |
 
 ---
 
@@ -251,10 +298,10 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
 | Terraform task name                            | `TerraformTaskV4` (YAML)                                       | `PipelineTerraformTask@5`                                             |
 | Installer task name                            | `TerraformInstallerV0` (YAML)                                  | `PipelineTerraformInstaller@1`                                        |
 | Provider mirror task                           | Not available                                                  | `PipelineTerraformProviderMirror@1`                                   |
-| Policy agent installer (OPA / Sentinel)        | Not available                                                  | `PipelinePolicyAgentInstaller@1`                                     |
-| Policy evaluation (plan-JSON gate)             | Not available                                                  | `PipelineTerraformPolicyCheck@1`                                     |
-| Drift reporting                                | Not available                                                  | `PipelineTerraformDriftReport@1`                                     |
-| Module publishing (HCP / private registry)     | Not available                                                  | `PipelineTerraformModulePublish@1`                                   |
+| Policy agent installer (OPA / Sentinel)        | Not available                                                  | `PipelinePolicyAgentInstaller@1`                                      |
+| Policy evaluation (plan-JSON gate)             | Not available                                                  | `PipelineTerraformPolicyCheck@1`                                      |
+| Drift reporting                                | Not available                                                  | `PipelineTerraformDriftReport@1`                                      |
+| Module publishing (HCP / private registry)     | Not available                                                  | `PipelineTerraformModulePublish@1`                                    |
 | Commands                                       | 8 (init, validate, plan, apply, destroy, show, output, custom) | 16 — adds workspace, state, fmt, test, get, refresh, import, unlock   |
 | `-replace` flag                                | Not available                                                  | `replaceAddress` input on `plan`                                      |
 | Backend/provider coupling                      | Backend always matches provider                                | `backendType` input decouples them                                    |
