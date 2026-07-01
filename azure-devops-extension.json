@@ -106,6 +106,9 @@
       "path": "Tasks/TerraformDocs"
     },
     {
+      "path": "Tasks/Markdown2Html"
+    },
+    {
       "path": "tab",
       "addressable": true
     },
@@ -263,6 +266,16 @@
       ],
       "properties": {
         "name": "Tasks/TerraformDocs/TerraformDocsV1"
+      }
+    },
+    {
+      "id": "custom-markdown2html-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
+      "properties": {
+        "name": "Tasks/Markdown2Html/Markdown2HtmlV1"
       }
     },
     {

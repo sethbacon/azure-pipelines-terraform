@@ -117,6 +117,18 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
+  # npm — Markdown2HtmlV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/Markdown2Html/Markdown2HtmlV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   # npm — root (build tooling)
   - package-ecosystem: "npm"
     directory: "/"

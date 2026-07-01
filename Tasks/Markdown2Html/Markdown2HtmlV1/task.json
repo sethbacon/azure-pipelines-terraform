@@ -1,0 +1,111 @@
+{
+    "id": "f267cf0d-1301-476d-9d4e-ab0072af5775",
+    "name": "Markdown2Html",
+    "friendlyName": "Markdown to HTML Converter",
+    "description": "Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles",
+    "author": "sethbacon",
+    "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+    "category": "Utility",
+    "visibility": [
+        "Build",
+        "Release"
+    ],
+    "demands": [],
+    "version": {
+        "Major": "1",
+        "Minor": "1",
+        "Patch": "0"
+    },
+    "minimumAgentVersion": "3.232.1",
+    "instanceNameFormat": "Markdown to HTML",
+    "inputs": [
+        {
+            "name": "mode",
+            "type": "pickList",
+            "label": "Conversion mode",
+            "required": true,
+            "helpMarkDown": "Choose how to supply input files.",
+            "options": {
+                "filelist": "File list",
+                "frontMatter": "Front-matter driven"
+            }
+        },
+        {
+            "name": "primaryFile",
+            "type": "string",
+            "label": "Primary Markdown file",
+            "required": true,
+            "visibleRule": "mode = frontMatter",
+            "helpMarkDown": "Path to the primary Markdown file whose YAML front-matter drives multi-file composition."
+        },
+        {
+            "name": "inputFiles",
+            "type": "multiLine",
+            "label": "Input files (one path per line)",
+            "required": true,
+            "visibleRule": "mode = filelist",
+            "helpMarkDown": "Paths to Markdown files to convert and combine. Separate paths with a newline or a comma."
+        },
+        {
+            "name": "outputFile",
+            "type": "string",
+            "label": "Output HTML file",
+            "required": true,
+            "helpMarkDown": "Path to the output HTML file."
+        },
+        {
+            "name": "title",
+            "type": "string",
+            "label": "Document title",
+            "required": false,
+            "defaultValue": "Combined Markdown Files",
+            "helpMarkDown": "Title for the generated HTML document."
+        },
+        {
+            "name": "sections",
+            "type": "boolean",
+            "label": "Add file sections",
+            "required": false,
+            "defaultValue": "false",
+            "helpMarkDown": "Add file names as section headers before each file's content."
+        },
+        {
+            "name": "dividers",
+            "type": "boolean",
+            "label": "Add dividers between files",
+            "required": false,
+            "defaultValue": "false",
+            "helpMarkDown": "Add horizontal rules between files."
+        },
+        {
+            "name": "debug",
+            "type": "boolean",
+            "label": "Debug output",
+            "required": false,
+            "defaultValue": "false",
+            "helpMarkDown": "Print additional debug information during conversion."
+        }
+    ],
+    "outputVariables": [
+        {
+            "name": "htmlFilePath",
+            "description": "Absolute path to the generated HTML file."
+        }
+    ],
+    "restrictions": {
+        "commands": {
+            "mode": "restricted"
+        },
+        "settableVariables": {
+            "allowed": [
+                "htmlFilePath"
+            ]
+        }
+    },
+    "execution": {
+        "Node24": {
+            "target": "src/index.js"
+        }
+    },
+    "messages": {}
+}
