@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.7.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.4...v1.7.0) (2026-07-01)
+
+
+### Features
+
+* add terraform-docs installer and docs tasks ([#332](https://github.com/sethbacon/azure-pipelines-terraform/issues/332)) ([4cddcec](https://github.com/sethbacon/azure-pipelines-terraform/commit/4cddcec02bca2bac620edc99cedcec16707face5))
+
 ## [1.6.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.6.3...v1.6.4) (2026-06-30)
 
 
