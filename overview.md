@@ -27,6 +27,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Provider network mirroring**: Route provider downloads through a private mirror for air-gapped environments, caching, or compliance
 - **Module publishing**: Publish module versions to HCP Terraform or a private registry (terraform-registry-backend) from a release pipeline
 - **Documentation generation**: Install terraform-docs and generate — or `--output-check`-gate — Terraform module documentation in a pipeline
+- **Documentation publishing**: Convert Markdown docs to HTML and publish them as ServiceNow knowledge base articles (idempotent create/update, image attachments) directly from a pipeline
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
