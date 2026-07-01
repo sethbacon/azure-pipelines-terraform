@@ -11,6 +11,9 @@
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
 - [`PipelineTerraformDocsInstaller@1`](#pipelineterraformdocsinstaller1) — Install terraform-docs
 - [`PipelineTerraformDocs@1`](#pipelineterraformdocs1) — Generate Terraform module documentation with terraform-docs
+- [`Markdown2Html@1`](#markdown2html1) — Convert Markdown docs to a single styled HTML file
+- [`PublishKbArticle@1`](#publishkbarticle1) — Create or update a ServiceNow knowledge base article
+- [End-to-end: docs to ServiceNow KB](#end-to-end-docs-to-servicenow-kb) — terraform-docs → Markdown2Html → PublishKbArticle
 
 ---
 
@@ -1135,3 +1138,161 @@ Available formatters: `markdown-table`, `markdown-document`, `json`, `yaml`,
 `toml`, `pretty`, `asciidoc-table`, `asciidoc-document`, `tfvars-hcl`,
 `tfvars-json`. Pass any other terraform-docs flag the task does not surface as a
 dedicated input via `additionalArgs` (e.g. `--hide-empty`).
+
+## Markdown2Html@1
+
+Converts Markdown to a single styled HTML document (markdown-it + highlight.js).
+Runs locally — no network access. Sets the `htmlFilePath` output variable.
+
+### Convert a single generated doc file
+
+```yaml
+steps:
+  - task: Markdown2Html@1
+    displayName: 'Render module docs to HTML'
+    inputs:
+      mode: 'filelist'
+      inputFiles: 'MODULE.md'
+      outputFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      title: 'My Terraform Module'
+```
+
+### Combine several files with section headings and dividers
+
+```yaml
+steps:
+  - task: Markdown2Html@1
+    displayName: 'Combine docs'
+    inputs:
+      mode: 'filelist'
+      inputFiles: |
+        README.md
+        docs/inputs.md
+        docs/outputs.md
+      outputFile: '$(Build.ArtifactStagingDirectory)/combined.html'
+      title: 'Module Reference'
+      sections: true
+      dividers: true
+```
+
+### Front-matter-driven composition
+
+The primary file's YAML front-matter declares the included files and options
+(`toc`, `separator`, `heading-shift`, `section-anchors`):
+
+```yaml
+steps:
+  - task: Markdown2Html@1
+    displayName: 'Render KB page from front matter'
+    inputs:
+      mode: 'frontMatter'
+      primaryFile: 'kb/index.md'
+      outputFile: '$(Build.ArtifactStagingDirectory)/kb.html'
+```
+
+## PublishKbArticle@1
+
+Creates or updates a ServiceNow knowledge base article from an HTML file.
+Authenticates via a `ServiceNowKb` service connection (OAuth client credentials
+or basic) or inline credentials. All requests are HTTPS-only; the token/password
+are masked in logs. Sets `kbArticleId`, `kbArticleNumber`, and `kbWorkflowState`.
+
+### Create or update via a service connection (idempotent)
+
+`sourceKey` correlates re-runs to the same article, so this create-or-updates:
+
+```yaml
+steps:
+  - task: PublishKbArticle@1
+    displayName: 'Publish module docs to ServiceNow'
+    inputs:
+      serviceConnection: 'my-servicenow'
+      kbId: '$(kbSysId)'
+      title: 'My Terraform Module'
+      htmlFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      author: 'svc-docs'
+      category: 'Infrastructure'
+      sourceKey: 'my-terraform-module'
+      workflowState: 'publish'
+```
+
+### Dry-run on PR builds, publish on main
+
+`dryRun` converts, validates, and logs the planned action without writing to
+ServiceNow — ideal for pull-request validation:
+
+```yaml
+steps:
+  - task: PublishKbArticle@1
+    displayName: 'Publish (dry-run off main)'
+    inputs:
+      serviceConnection: 'my-servicenow'
+      kbId: '$(kbSysId)'
+      title: 'My Terraform Module'
+      htmlFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      author: 'svc-docs'
+      sourceKey: 'my-terraform-module'
+      workflowState: 'publish'
+      dryRun: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
+```
+
+### Upload images and use inline OAuth credentials
+
+Relative `<img>` images are uploaded as attachments and their `src` rewritten:
+
+```yaml
+steps:
+  - task: PublishKbArticle@1
+    displayName: 'Publish with images'
+    inputs:
+      instance: 'mycompany'
+      authType: 'oauth'
+      clientId: '$(snClientId)'
+      clientSecret: '$(snClientSecret)'
+      kbId: '$(kbSysId)'
+      title: 'My Terraform Module'
+      htmlFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      author: 'svc-docs'
+      sourceKey: 'my-terraform-module'
+      uploadImages: true
+      imageBaseDir: '$(System.DefaultWorkingDirectory)'
+```
+
+## End-to-end: docs to ServiceNow KB
+
+Generate module docs with terraform-docs, render them to HTML, and publish to a
+ServiceNow knowledge base — publishing only on `main`, dry-running elsewhere:
+
+```yaml
+steps:
+  - task: PipelineTerraformDocsInstaller@1
+    displayName: 'Install terraform-docs'
+
+  - task: PipelineTerraformDocs@1
+    displayName: 'Generate module docs'
+    inputs:
+      formatter: 'markdown-document'
+      modulePath: '$(System.DefaultWorkingDirectory)'
+      outputFile: 'MODULE.md'
+      outputMode: 'replace'
+
+  - task: Markdown2Html@1
+    displayName: 'Render docs to HTML'
+    inputs:
+      mode: 'filelist'
+      inputFiles: 'MODULE.md'
+      outputFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      title: 'My Terraform Module'
+
+  - task: PublishKbArticle@1
+    displayName: 'Publish to ServiceNow KB'
+    inputs:
+      serviceConnection: 'my-servicenow'
+      kbId: '$(kbSysId)'
+      title: 'My Terraform Module'
+      htmlFile: '$(Build.ArtifactStagingDirectory)/module.html'
+      author: 'svc-docs'
+      sourceKey: 'my-terraform-module'
+      workflowState: 'publish'
+      dryRun: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
+```
