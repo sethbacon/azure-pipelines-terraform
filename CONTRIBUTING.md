@@ -102,6 +102,22 @@ npm run compile
 npm test
 ```
 
+### TerraformDocsInstallerV1
+
+```bash
+cd Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1
+npm run compile
+npm test
+```
+
+### TerraformDocsV1
+
+```bash
+cd Tasks/TerraformDocs/TerraformDocsV1
+npm run compile
+npm test
+```
+
 ### Test structure
 
 Test files come in pairs under `Tests/`:
@@ -223,12 +239,12 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 **Required secrets/variables:**
 
-| Name                       | Type     | Purpose                                                                         |
-| -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| Name                       | Type     | Purpose                                                                            |
+| -------------------------- | -------- | ---------------------------------------------------------------------------------- |
 | `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app whose federated credential publishes to the Marketplace |
-| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                           |
-| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                         |
-| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                        |
+| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                              |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                            |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                          |
 
 The Marketplace publish uses **GitHub OIDC federated to Microsoft Entra** — there is no stored Marketplace PAT. The `release.yml` publish job runs under the `marketplace` environment with `id-token: write`, signs in via `azure/login` using `AZDO_PUBLISH_CLIENT_ID`/`AZDO_PUBLISH_TENANT_ID`, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app must have a federated credential whose subject is `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 

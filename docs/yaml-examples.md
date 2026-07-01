@@ -9,6 +9,8 @@
 - [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON
 - [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
+- [`PipelineTerraformDocsInstaller@1`](#pipelineterraformdocsinstaller1) — Install terraform-docs
+- [`PipelineTerraformDocs@1`](#pipelineterraformdocs1) — Generate Terraform module documentation with terraform-docs
 
 ---
 
@@ -970,3 +972,166 @@ With `waitForPublish: true` (the default) the task polls the registry until the
 published version is available, failing if it is not ready within
 `timeoutSeconds`. Set `waitForPublish: false` to return as soon as the publish
 request is accepted.
+
+---
+
+## PipelineTerraformDocsInstaller@1
+
+Install [terraform-docs](https://terraform-docs.io) on the pipeline agent and
+prepend it to `PATH`. Run this before `PipelineTerraformDocs@1`. Like the other
+installers it verifies the download's SHA256 checksum over HTTPS and supports
+official (GitHub releases), private-registry, and custom-mirror sources.
+
+### Install latest terraform-docs
+
+```yaml
+- task: PipelineTerraformDocsInstaller@1
+  displayName: 'Install terraform-docs (latest)'
+  inputs:
+    version: 'latest'
+```
+
+### Install a pinned version
+
+```yaml
+- task: PipelineTerraformDocsInstaller@1
+  displayName: 'Install terraform-docs 0.20.0'
+  inputs:
+    version: '0.20.0'
+```
+
+### Download terraform-docs from a custom mirror
+
+```yaml
+- task: PipelineTerraformDocsInstaller@1
+  displayName: 'Install terraform-docs from mirror'
+  inputs:
+    version: '0.20.0'
+    downloadSource: 'mirror'
+    mirrorBaseUrl: 'https://mirror.example.com/terraform-docs'
+    requireChecksum: true
+```
+
+### Download terraform-docs from a private registry backend
+
+```yaml
+- task: PipelineTerraformDocsInstaller@1
+  displayName: 'Install terraform-docs from private registry'
+  inputs:
+    version: '0.20.0'
+    downloadSource: 'registry'
+    registryUrl: 'https://registry.example.com'
+    registryMirrorName: 'terraform-docs'
+```
+
+The task sets output variables `terraformDocsLocation` (the installed binary
+path) and `terraformDocsDownloadedFrom` (`official`, `registry:<url>`,
+`mirror:<url>`, or `cache`).
+
+---
+
+## PipelineTerraformDocs@1
+
+Generate documentation for a Terraform module with terraform-docs. Requires
+terraform-docs on `PATH` — run `PipelineTerraformDocsInstaller@1` first.
+terraform-docs exits non-zero on error and, with `outputCheck`, when the target
+file is out of date — either fails the task.
+
+### Inject a Markdown table into README.md
+
+The most common use — refresh the content between the terraform-docs markers in
+`README.md`. The module's `README.md` must already contain the marker comments:
+
+```markdown
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
+```
+
+```yaml
+- task: PipelineTerraformDocs@1
+  displayName: 'Generate module docs'
+  inputs:
+    formatter: 'markdown-table'
+    modulePath: '$(System.DefaultWorkingDirectory)/modules/vpc'
+    outputFile: 'README.md'
+    outputMode: 'inject'
+```
+
+The written file path is exposed via the `generatedFilePath` output variable.
+
+### Print documentation to the build log
+
+Omit `outputFile` to write the generated docs to the console instead of a file.
+
+```yaml
+- task: PipelineTerraformDocs@1
+  displayName: 'Show module docs (JSON)'
+  inputs:
+    formatter: 'json'
+    modulePath: '$(System.DefaultWorkingDirectory)/modules/vpc'
+```
+
+### Fail the build when docs are out of date (CI gate)
+
+`outputCheck` makes terraform-docs compare the generated output with the file
+without writing it, failing the task when the committed documentation is stale —
+a useful pull-request gate.
+
+```yaml
+- task: PipelineTerraformDocs@1
+  displayName: 'Check module docs are current'
+  inputs:
+    formatter: 'markdown-table'
+    modulePath: '$(System.DefaultWorkingDirectory)/modules/vpc'
+    outputFile: 'README.md'
+    outputCheck: true
+```
+
+### Recurse across submodules
+
+```yaml
+- task: PipelineTerraformDocs@1
+  displayName: 'Generate docs for all submodules'
+  inputs:
+    formatter: 'markdown-table'
+    modulePath: '$(System.DefaultWorkingDirectory)'
+    outputFile: 'README.md'
+    outputMode: 'inject'
+    recursive: true
+    recursivePath: 'modules'
+```
+
+### Use a terraform-docs config file
+
+```yaml
+- task: PipelineTerraformDocs@1
+  displayName: 'Generate docs from config'
+  inputs:
+    formatter: 'markdown-document'
+    modulePath: '$(System.DefaultWorkingDirectory)/modules/vpc'
+    configFile: '.terraform-docs.yml'
+    sortBy: 'required'                 # default | name | required | type
+```
+
+### Full pipeline — install, then gate on current docs
+
+```yaml
+steps:
+  - task: PipelineTerraformDocsInstaller@1
+    displayName: 'Install terraform-docs'
+    inputs:
+      version: 'latest'
+
+  - task: PipelineTerraformDocs@1
+    displayName: 'Verify docs are current'
+    inputs:
+      formatter: 'markdown-table'
+      modulePath: '$(System.DefaultWorkingDirectory)'
+      outputFile: 'README.md'
+      outputCheck: true
+```
+
+Available formatters: `markdown-table`, `markdown-document`, `json`, `yaml`,
+`toml`, `pretty`, `asciidoc-table`, `asciidoc-document`, `tfvars-hcl`,
+`tfvars-json`. Pass any other terraform-docs flag the task does not surface as a
+dedicated input via `additionalArgs` (e.g. `--hide-empty`).

@@ -1,0 +1,120 @@
+{
+  "id": "49632480-1576-41dd-be23-655ffca5b79b",
+  "name": "PipelineTerraformDocsInstaller",
+  "friendlyName": "Pipeline terraform-docs installer",
+  "description": "Find in cache or download a specific version of terraform-docs and prepend it to the PATH",
+  "author": "sethbacon",
+  "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+  "category": "Tool",
+  "visibility": [
+    "Build",
+    "Release"
+  ],
+  "demands": [],
+  "version": {
+    "Major": "1",
+    "Minor": "0",
+    "Patch": "0"
+  },
+  "instanceNameFormat": "Install terraform-docs $(version)",
+  "inputs": [
+    {
+      "name": "version",
+      "type": "string",
+      "label": "Version",
+      "defaultValue": "latest",
+      "required": true,
+      "helpMarkDown": "The terraform-docs version to install (e.g. 0.20.0). Use 'latest' to install the current latest release."
+    },
+    {
+      "name": "downloadSource",
+      "type": "pickList",
+      "label": "Download source",
+      "defaultValue": "official",
+      "required": true,
+      "helpMarkDown": "Where to download terraform-docs from. Official downloads from GitHub releases (github.com/terraform-docs/terraform-docs).",
+      "options": {
+        "official": "Official releases (GitHub)",
+        "registry": "Private registry (terraform-registry-backend)",
+        "mirror": "Custom mirror URL"
+      }
+    },
+    {
+      "name": "registryUrl",
+      "type": "string",
+      "label": "Registry base URL",
+      "defaultValue": "",
+      "required": true,
+      "visibleRule": "downloadSource = registry",
+      "helpMarkDown": "Base URL of your terraform-registry-backend instance. Must use HTTPS. Example: https://registry.example.com"
+    },
+    {
+      "name": "registryMirrorName",
+      "type": "string",
+      "label": "Mirror configuration name",
+      "defaultValue": "terraform-docs",
+      "required": true,
+      "visibleRule": "downloadSource = registry",
+      "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/... (e.g. 'terraform-docs')."
+    },
+    {
+      "name": "mirrorBaseUrl",
+      "type": "string",
+      "label": "Mirror base URL",
+      "defaultValue": "",
+      "required": true,
+      "visibleRule": "downloadSource = mirror",
+      "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as the official releases (e.g. https://artifacts.example.com/terraform-docs, serving {base}/{version}/terraform-docs-v{version}-{os}-{arch}.{ext})."
+    },
+    {
+      "name": "requireChecksum",
+      "type": "boolean",
+      "label": "Require checksum verification",
+      "defaultValue": "true",
+      "required": false,
+      "helpMarkDown": "When enabled (default), fail if a SHA256 checksum is not available for the requested version/platform. Disable only for mirrors or registries that do not publish checksums."
+    }
+  ],
+  "restrictions": {
+    "commands": {
+      "mode": "restricted"
+    },
+    "settableVariables": {
+      "allowed": [
+        "terraformDocsLocation",
+        "terraformDocsDownloadedFrom",
+        "PATH"
+      ]
+    }
+  },
+  "execution": {
+    "Node24": {
+      "target": "src/index.js"
+    }
+  },
+  "outputVariables": [
+    {
+      "name": "terraformDocsLocation",
+      "description": "The location of the terraform-docs binary that was installed on the agent."
+    },
+    {
+      "name": "terraformDocsDownloadedFrom",
+      "description": "The source from which terraform-docs was downloaded: 'official', 'registry:<url>', 'mirror:<url>', or 'cache'."
+    }
+  ],
+  "messages": {
+    "VerifyInstallation": "Verifying terraform-docs installation...",
+    "InputVersionNotValidSemanticVersion": "Input version %s is not a valid semantic version",
+    "TerraformDocsNotFoundInFolder": "terraform-docs executable not found in path %s",
+    "OperatingSystemNotSupported": "Operating system %s is not supported",
+    "ArchitectureNotSupported": "Architecture %s is not supported",
+    "TerraformDocsDownloadFailed": "Failed to download terraform-docs from url %s. Error: %s",
+    "VersionNotFound": "Unable to get latest version from source, using fallback version",
+    "GettingLatestVersion": "Getting latest terraform-docs version.",
+    "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+    "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
+    "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
+    "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
+    "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
+  }
+}

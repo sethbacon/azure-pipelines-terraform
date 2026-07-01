@@ -67,6 +67,8 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json` — if TerraformPolicyCheckV1 changed
    - `Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json` — if TerraformDriftReportV1 changed
    - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
+   - `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json` — if TerraformDocsInstallerV1 changed
+   - `Tasks/TerraformDocs/TerraformDocsV1/task.json` — if TerraformDocsV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
 
@@ -85,12 +87,12 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 **Required secrets/variables:**
 
-| Name                       | Type     | Purpose                                                                            |
-| -------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app federated to GitHub for the Marketplace publish login  |
-| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                             |
-| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                           |
-| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                          |
+| Name                       | Type     | Purpose                                                                          |
+| -------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app federated to GitHub for the Marketplace publish login |
+| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                            |
+| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                          |
+| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                        |
 
 As of PR #218, `release.yml` publishes via **GitHub OIDC federated to Microsoft Entra** — there is no stored `TFX_PAT`. The publish job (under the `marketplace` environment, `id-token: write`) signs in with `azure/login` using the two `AZDO_PUBLISH_*` variables, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app needs a federated credential with subject `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 
@@ -129,8 +131,12 @@ azure-pipelines-terraform/
 │   │   └── TerraformPolicyCheckV1/      # OPA / Sentinel policy evaluation
 │   ├── TerraformDriftReport/
 │   │   └── TerraformDriftReportV1/      # Plan-JSON drift summary + TSM callback
-│   └── TerraformModulePublish/
-│       └── TerraformModulePublishV1/    # Module publish to HCP / private registry
+│   ├── TerraformModulePublish/
+│   │   └── TerraformModulePublishV1/    # Module publish to HCP / private registry
+│   ├── TerraformDocsInstaller/
+│   │   └── TerraformDocsInstallerV1/    # terraform-docs installer
+│   └── TerraformDocs/
+│       └── TerraformDocsV1/             # terraform-docs documentation generator
 ├── src/
 │   └── tab/                           # Terraform Plan tab UI (React + ADO Extension SDK)
 │       ├── tabContent.tsx             # Tab component with ANSI rendering
@@ -230,6 +236,14 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 | `index.ts`            | Entry point — reads inputs, validates URL, writes config   |
 | `config-generator.ts` | Pure function generating HCL `provider_installation` block |
 
+## TerraformDocsInstaller Task (TerraformDocsInstallerV1)
+
+Source: `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/`. Installs **terraform-docs** from `official` (GitHub releases `terraform-docs/terraform-docs`), `registry` (terraform-registry-backend), or `mirror` sources. terraform-docs ships as a `.tar.gz` (Unix) / `.zip` (Windows) archive with a single `terraform-docs-v{version}.sha256sum` file and **no** detached GPG/cosign signature, so — like OPA — it is sha256-verified against the same GitHub release origin (HTTPS + GitHub's release infrastructure is the trust root). Reuses the HTTPS-pinned `http-client.ts` from TerraformInstallerV1 (byte-identical, enforced by `scripts/check-shared-modules.js`); it does not use `gpg-verifier.ts`/`hashicorp-gpg-key.ts`. `latest` resolves via the GitHub releases API. Output variables: `terraformDocsLocation`, `terraformDocsDownloadedFrom`.
+
+## TerraformDocs Task (TerraformDocsV1)
+
+Source: `Tasks/TerraformDocs/TerraformDocsV1/src/`. Runs terraform-docs to generate module documentation. `args-builder.ts` is a pure function mapping the `formatter` picklist (markdown table/document, json, yaml, toml, pretty, asciidoc table/document, tfvars hcl/json) plus the `outputFile`/`outputMode`/`configFile`/`sortBy`/`recursive`/`outputCheck` inputs to an ordered terraform-docs argument list; `index.ts` locates the binary via `tasks.which`, runs it with `ignoreReturnCode`, and fails on a non-zero exit (so `--output-check` can gate a pipeline on stale docs). No cloud auth. Output variable: `generatedFilePath`.
+
 ## PolicyAgentInstaller Task (PolicyAgentInstallerV1)
 
 Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** (GPG-signed zip from releases.hashicorp.com) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1. `latest` resolves via the checkpoint API (Sentinel) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
@@ -238,13 +252,13 @@ Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a pol
 
 Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates policies against Terraform plan JSON (`terraform show -json` output). Engine dispatch in `index.ts`:
 
-| File | Role |
-| --- | --- |
-| `index.ts` | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs |
-| `opa-engine.ts` | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined) |
+| File                 | Role                                                                                                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`           | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs                                                                   |
+| `opa-engine.ts`      | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined)                                                   |
 | `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override) |
-| `policy-source.ts` | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token via `http.extraheader`) |
-| `results.ts` | Raw output file + JUnit XML + `results.publish` logging command |
+| `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token via `http.extraheader`)                                                                 |
+| `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                   |
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`. See [Initiative 5](docs/initiatives/initiative-5-policy-evaluation.md).
 
@@ -315,7 +329,7 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## CI/CD
 
-- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Tab`, `Lint GitHub Actions`.
+- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Tab`, `Lint GitHub Actions`.
 - `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
@@ -362,7 +376,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`
+- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (23 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1), `Build and Test Tab`, `Lint GitHub Actions`, and `Scan Workflows (zizmor)`. Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)

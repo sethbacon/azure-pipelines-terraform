@@ -100,6 +100,12 @@
       "path": "Tasks/TerraformDriftReport"
     },
     {
+      "path": "Tasks/TerraformDocsInstaller"
+    },
+    {
+      "path": "Tasks/TerraformDocs"
+    },
+    {
       "path": "tab",
       "addressable": true
     },
@@ -237,6 +243,26 @@
       ],
       "properties": {
         "name": "Tasks/TerraformDriftReport/TerraformDriftReportV1"
+      }
+    },
+    {
+      "id": "custom-terraform-docs-installer-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
+      "properties": {
+        "name": "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
+      }
+    },
+    {
+      "id": "custom-terraform-docs-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
+      "properties": {
+        "name": "Tasks/TerraformDocs/TerraformDocsV1"
       }
     },
     {

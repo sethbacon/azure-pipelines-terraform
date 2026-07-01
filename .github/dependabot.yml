@@ -81,6 +81,42 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
+  # npm — TerraformDriftReportV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformDriftReport/TerraformDriftReportV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # npm — TerraformDocsInstallerV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # npm — TerraformDocsV1
+  - package-ecosystem: "npm"
+    directory: "/Tasks/TerraformDocs/TerraformDocsV1"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   # npm — root (build tooling)
   - package-ecosystem: "npm"
     directory: "/"

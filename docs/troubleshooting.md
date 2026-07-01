@@ -258,3 +258,58 @@ in your policies, or supply your own `sentinelConfigPath` with matching mock dat
   for private repos; it is injected via `http.extraheader` and masked in logs.
 - When pinning a commit, use the full 40-character SHA — short SHAs are treated
   as branch/tag names and shallow-cloned.
+
+## terraform-docs
+
+### "Unable to locate executable file: 'terraform-docs'"
+
+**Cause:** terraform-docs is not installed on the agent, or not on `PATH`.
+
+**Fix:** Add `PipelineTerraformDocsInstaller@1` before `PipelineTerraformDocs@1`:
+
+```yaml
+- task: PipelineTerraformDocsInstaller@1
+  inputs:
+    version: 'latest'
+- task: PipelineTerraformDocs@1
+  inputs:
+    formatter: 'markdown-table'
+    modulePath: '$(System.DefaultWorkingDirectory)/modules/vpc'
+    outputFile: 'README.md'
+```
+
+### The task fails with a non-zero exit code when `outputCheck` is enabled
+
+**Cause:** This is by design — `outputCheck: true` makes terraform-docs fail when
+the output file is out of date, i.e. the committed documentation does not match
+what terraform-docs would generate.
+
+**Fix:** Regenerate the docs locally and commit the result, then re-run:
+
+```bash
+terraform-docs markdown table --output-file README.md --output-mode inject ./modules/vpc
+```
+
+Drop `outputCheck` (or set it `false`) if you want the task to write the file
+in-pipeline instead of gating on it.
+
+### Injected content does not appear in README.md
+
+**Cause:** `outputMode: inject` (the default) only updates content between the
+terraform-docs marker comments; if they are missing, nothing is inserted.
+
+**Fix:** Add the markers where the table should go, or use `outputMode: replace`
+to overwrite the whole file:
+
+```markdown
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
+```
+
+### Empty output for a directory
+
+**Cause:** `modulePath` points at a directory with no `.tf` files (terraform-docs
+ignores directories without Terraform configuration).
+
+**Fix:** Point `modulePath` at the module directory containing the `.tf` files,
+or enable `recursive` to walk submodules under `recursivePath`.

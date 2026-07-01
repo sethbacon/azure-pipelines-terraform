@@ -37,6 +37,19 @@ const FAMILIES = [
             'https-client.ts',
         ],
     },
+    {
+        // The terraform-docs installer downloads sha256-verified archives from
+        // GitHub releases (no GPG/cosign signature), so it shares only the
+        // HTTPS-pinned fetch client with the other installers — not the GPG key or
+        // verifier. Keep this copy byte-identical with the canonical installer.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'http-client.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even
