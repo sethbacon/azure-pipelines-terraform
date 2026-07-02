@@ -103,7 +103,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      attestations: write # required by attest-build-provenance / attest-sbom
+      attestations: write # required by attest-build-provenance / attest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -186,57 +186,57 @@ jobs:
         with:
           subject-path: "*.vsix"
       - name: Attest SBOM (TerraformTaskV5) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-task-v5.cdx.json"
       - name: Attest SBOM (TerraformInstallerV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-installer-v1.cdx.json"
       - name: Attest SBOM (TerraformProviderMirrorV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-provider-mirror-v1.cdx.json"
       - name: Attest SBOM (PolicyAgentInstallerV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-policy-agent-installer-v1.cdx.json"
       - name: Attest SBOM (TerraformPolicyCheckV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-policy-check-v1.cdx.json"
       - name: Attest SBOM (TerraformDriftReportV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-drift-report-v1.cdx.json"
       - name: Attest SBOM (TerraformModulePublishV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-module-publish-v1.cdx.json"
       - name: Attest SBOM (TerraformDocsInstallerV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-docs-installer-v1.cdx.json"
       - name: Attest SBOM (TerraformDocsV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-terraform-docs-v1.cdx.json"
       - name: Attest SBOM (Markdown2HtmlV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-markdown2html-v1.cdx.json"
       - name: Attest SBOM (PublishKbArticleV1) for VSIX
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-publish-kb-article-v1.cdx.json"
