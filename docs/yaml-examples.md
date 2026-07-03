@@ -5,7 +5,7 @@
 - [`PipelineTerraformInstaller@1`](#pipelineterraforminstaller1) — Install Terraform or OpenTofu
 - [`PipelineTerraformProviderMirror@1`](#pipelineterraformprovidermirror1) — Configure provider network mirror
 - [`PipelineTerraformTask@5`](#pipelineterraformtask5) — Run Terraform commands (init, plan, apply, destroy, etc.)
-- [Cross-cloud examples](#cross-cloud-examples) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
+- [Cross-cloud state backends](#cross-cloud-state-backends) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
 - [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON
 - [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
@@ -543,11 +543,28 @@ stages:
 
 ---
 
-## Cross-cloud examples
+## Cross-cloud state backends
 
 These examples combine a remote state backend from one cloud with provider credentials for another.
 The `provider` input controls which cloud authenticates for the Terraform *provider* (resources).
 The `backendType` input (on `init`) controls which cloud stores *state*.
+
+**Every state-accessing command needs backend credentials, not just `init`.** The
+task detects the initialized backend from `.terraform/terraform.tfstate` and, when
+it differs from the `provider` input, automatically supplies that backend's
+credentials as environment variables on `plan`, `apply`, `destroy`, `refresh`,
+`import`, `output`, `state`, `workspace`, and `forceunlock` — so add the backend
+inputs (`backendServiceArm`/`backendAzureRm*`, `backendServiceAWS`/`backendAWS*`,
+`backendServiceGCP`/`backendGCP*`, or `backendHCP*`) to **every** step below that
+runs one of those commands, not just `init`. (`show` and `custom` are not
+auto-injected — they commonly operate on a saved plan file or run backend-agnostic
+commands like `terraform providers`, so requiring backend inputs there would be
+confusing; add them manually if a particular `custom` command needs backend access.)
+
+If a state-accessing step is missing the required backend inputs, the task fails
+fast with an actionable error naming the detected backend, the provider, and the
+command — instead of the opaque `Please run 'az login'`-style failure this gap
+used to produce.
 
 ---
 
@@ -584,6 +601,12 @@ steps:
       commandOptions: '-out=tfplan'
       environmentServiceNameAWS: 'my-aws-service-connection'
       publishPlanResults: 'AWSPlan'
+      # Required because the state backend (azurerm) differs from the provider (aws) —
+      # without these, plan fails trying to authenticate the azurerm backend.
+      backendServiceArm: 'my-azure-service-connection'
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'aws-prod.terraform.tfstate'
 
   - task: PipelineTerraformTask@5
     displayName: 'Terraform Apply'
@@ -593,6 +616,11 @@ steps:
       command: 'apply'
       commandOptions: 'tfplan'
       environmentServiceNameAWS: 'my-aws-service-connection'
+      # Same reasoning as the plan step above — apply also re-reads state.
+      backendServiceArm: 'my-azure-service-connection'
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'aws-prod.terraform.tfstate'
 ```
 
 ---
@@ -630,6 +658,11 @@ steps:
       commandOptions: '-out=tfplan'
       environmentServiceNameGCP: 'my-gcp-service-connection'
       publishPlanResults: 'GCPPlan'
+      # Required because the state backend (azurerm) differs from the provider (gcp).
+      backendServiceArm: 'my-azure-service-connection'
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'gcp-prod.terraform.tfstate'
 
   - task: PipelineTerraformTask@5
     displayName: 'Terraform Apply'
@@ -639,6 +672,10 @@ steps:
       command: 'apply'
       commandOptions: 'tfplan'
       environmentServiceNameGCP: 'my-gcp-service-connection'
+      backendServiceArm: 'my-azure-service-connection'
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'gcp-prod.terraform.tfstate'
 ```
 
 ---
@@ -675,6 +712,10 @@ steps:
       commandOptions: '-out=tfplan'
       environmentServiceNameAzureRM: 'my-azure-service-connection'
       publishPlanResults: 'AzurePlan'
+      # Required because the state backend (hcp) differs from the provider (azurerm).
+      backendHCPToken: '$(HCP_TOKEN)'
+      backendHCPOrganization: 'my-org'
+      backendHCPWorkspace: 'azure-prod'
 
   - task: PipelineTerraformTask@5
     displayName: 'Terraform Apply'
@@ -684,6 +725,9 @@ steps:
       command: 'apply'
       commandOptions: 'tfplan'
       environmentServiceNameAzureRM: 'my-azure-service-connection'
+      backendHCPToken: '$(HCP_TOKEN)'
+      backendHCPOrganization: 'my-org'
+      backendHCPWorkspace: 'azure-prod'
 ```
 
 ---

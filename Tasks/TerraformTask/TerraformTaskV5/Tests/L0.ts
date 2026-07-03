@@ -18,6 +18,15 @@ import './ResolveToolPathL0';
 import './OciWifConfigValidationL0';
 // Direct unit tests for the optional MSI user-assigned client ID.
 import './ManagedIdentityClientIdL0';
+// Direct unit tests for cross-cloud state backend detection.
+import './BackendDetectionTests/BackendDetectionL0';
+// Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.
+import './ParentHandlerTests/CrossCloudInjectionL0';
+// Direct unit tests for each handler's cross-cloud configureBackendCredentials().
+import './CrossCloudBackendCredentialTests/AzureConfigureBackendCredentialsL0';
+import './CrossCloudBackendCredentialTests/AwsConfigureBackendCredentialsL0';
+import './CrossCloudBackendCredentialTests/GcpConfigureBackendCredentialsL0';
+import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredentialsL0';
 
 describe('Terraform Test Suite', function () {
 
@@ -2016,6 +2025,40 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('S3BackendAzureProviderInitSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* cross-cloud state backend credential injection tests (plan/apply/...) */
+
+    it('aws provider + azurerm backend plan should succeed via cross-cloud backend credential injection', async () => {
+        let tp = path.join(__dirname, './PlanTests/BackendDecoupling/CrossCloudAwsProviderAzurermBackendPlanSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('CrossCloudAwsProviderAzurermBackendPlanSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('aws provider + s3 backend plan should succeed without any azurerm inputs (same-cloud, no injection)', async () => {
+        let tp = path.join(__dirname, './PlanTests/BackendDecoupling/SameCloudAwsProviderS3BackendPlanSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('SameCloudAwsProviderS3BackendPlanSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('aws provider + azurerm backend plan should fail with an actionable error when azurerm backend inputs are missing', async () => {
+        let tp = path.join(__dirname, './PlanTests/BackendDecoupling/CrossCloudAwsProviderAzurermBackendPlanMissingBackendInputsFail.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.stdOutContained("Cross-cloud state backend credential setup failed for command 'plan'"), 'should show the actionable cross-cloud error');
         }, tr);
     });
 

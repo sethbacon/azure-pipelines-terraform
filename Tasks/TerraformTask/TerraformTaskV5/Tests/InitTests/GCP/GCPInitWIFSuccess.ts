@@ -20,16 +20,13 @@ tr.setInput('backendGCPWorkloadIdentityPoolId', 'my-wif-pool');
 tr.setInput('backendGCPWorkloadIdentityProviderId', 'my-oidc-provider');
 tr.setInput('backendGCPServiceAccountEmail', 'terraform@my-project.iam.gserviceaccount.com');
 
-let credentialsFilePath = path.join(os.tmpdir(), 'gcp-backend-wif-credentials-test-uuid-1234.json');
-
 var mock = {
-    "generateIdToken": function(_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
+    "generateIdToken": function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 };
 
 tr.registerMock('./id-token-generator', mock);
-tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 
-let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
+let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {
         "terraform": "terraform"
     },
@@ -37,7 +34,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers> {
         "terraform": true
     },
     "exec": {
-        [`terraform init -backend-config=bucket=DummyBucket -backend-config=prefix=DummyPrefix -backend-config=credentials=${credentialsFilePath}`]: {
+        "terraform init -backend-config=bucket=DummyBucket -backend-config=prefix=DummyPrefix": {
             "code": 0,
             "stdout": "Executed Successfully"
         }

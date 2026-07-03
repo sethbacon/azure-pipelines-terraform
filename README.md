@@ -208,50 +208,50 @@ Generates documentation for a Terraform module using terraform-docs. Requires te
 
 Converts Markdown files to a single styled HTML document (via markdown-it with highlight.js syntax highlighting) — typically the module docs produced by `PipelineTerraformDocs@1` — ready to publish as a ServiceNow knowledge base article. Pure local processing; no network access.
 
-| Input        | Default                  | Description                                                                                              |
-| ------------ | ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `mode`       | —                        | `filelist` (combine an explicit list of files) or `frontMatter` (a primary file whose YAML front-matter declares includes). |
-| `primaryFile`| —                        | Primary Markdown file whose front-matter drives composition. Required when `mode=frontMatter`.           |
-| `inputFiles` | —                        | Newline- or comma-separated Markdown paths to convert and combine. Required when `mode=filelist`.        |
-| `outputFile` | —                        | Path to write the generated HTML file.                                                                   |
-| `title`      | `Combined Markdown Files`| Title for the generated HTML document.                                                                   |
-| `sections`   | `false`                  | Add each file's name as a section heading.                                                               |
-| `dividers`   | `false`                  | Add horizontal rules between files.                                                                       |
+| Input         | Default                   | Description                                                                                                                 |
+| ------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `mode`        | —                         | `filelist` (combine an explicit list of files) or `frontMatter` (a primary file whose YAML front-matter declares includes). |
+| `primaryFile` | —                         | Primary Markdown file whose front-matter drives composition. Required when `mode=frontMatter`.                              |
+| `inputFiles`  | —                         | Newline- or comma-separated Markdown paths to convert and combine. Required when `mode=filelist`.                           |
+| `outputFile`  | —                         | Path to write the generated HTML file.                                                                                      |
+| `title`       | `Combined Markdown Files` | Title for the generated HTML document.                                                                                      |
+| `sections`    | `false`                   | Add each file's name as a section heading.                                                                                  |
+| `dividers`    | `false`                   | Add horizontal rules between files.                                                                                         |
 
 **Output variables:**
 
-| Variable       | Description                             |
-| -------------- | --------------------------------------- |
+| Variable       | Description                               |
+| -------------- | ----------------------------------------- |
 | `htmlFilePath` | Absolute path to the generated HTML file. |
 
 ### `PublishKbArticle@1` — Publish KB Article to ServiceNow
 
 Creates or updates a ServiceNow knowledge base article from an HTML file. Idempotent: a stable `sourceKey` (or a `kb-key:` front-matter field) correlates re-runs to the same article. Optionally auto-creates categories/subcategories and uploads relative `<img>` images as attachments. Authenticates via a `ServiceNowKb` service connection (OAuth client credentials or basic) or inline credentials.
 
-| Input               | Default | Description                                                                                                   |
-| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
-| `serviceConnection` | —       | A `ServiceNowKb` service connection. If unset, provide `instance` + credentials inline.                       |
+| Input               | Default | Description                                                                                                      |
+| ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `serviceConnection` | —       | A `ServiceNowKb` service connection. If unset, provide `instance` + credentials inline.                          |
 | `instance`          | —       | ServiceNow instance name (e.g. `mycompany` for `mycompany.service-now.com`). Required when no connection is set. |
-| `authType`          | `oauth` | `oauth` (client credentials) or `basic`, when using inline credentials.                                        |
-| `kbId`              | —       | Knowledge base `sys_id`. Use `list` to print available knowledge bases.                                        |
-| `title`             | —       | Article title (`short_description`). Required when creating a new article.                                     |
-| `htmlFile`          | —       | Path to the HTML file whose contents become the article body.                                                 |
-| `author`            | —       | ServiceNow username of the article author. Required when creating.                                            |
-| `category`          | —       | Category name (auto-created if missing). Prefix with `sys_id:` for a raw sys_id.                               |
-| `workflowState`     | `draft` | Target state: `draft`, `review`, or `publish`.                                                                |
-| `sourceKey`         | —       | Stable correlation key for idempotent create/update.                                                          |
-| `uploadImages`      | `false` | Upload relative `<img>` images as attachments and rewrite their `src`.                                         |
-| `dryRun`            | `false` | Convert, validate, and log the planned action without writing to ServiceNow (useful on PR builds).            |
+| `authType`          | `oauth` | `oauth` (client credentials) or `basic`, when using inline credentials.                                          |
+| `kbId`              | —       | Knowledge base `sys_id`. Use `list` to print available knowledge bases.                                          |
+| `title`             | —       | Article title (`short_description`). Required when creating a new article.                                       |
+| `htmlFile`          | —       | Path to the HTML file whose contents become the article body.                                                    |
+| `author`            | —       | ServiceNow username of the article author. Required when creating.                                               |
+| `category`          | —       | Category name (auto-created if missing). Prefix with `sys_id:` for a raw sys_id.                                 |
+| `workflowState`     | `draft` | Target state: `draft`, `review`, or `publish`.                                                                   |
+| `sourceKey`         | —       | Stable correlation key for idempotent create/update.                                                             |
+| `uploadImages`      | `false` | Upload relative `<img>` images as attachments and rewrite their `src`.                                           |
+| `dryRun`            | `false` | Convert, validate, and log the planned action without writing to ServiceNow (useful on PR builds).               |
 
 Advanced inputs (`articleId`, `subcategory`, `readKeyFrom`, `emitManifest`, `imageBaseDir`, `force`, `skipJsonLookup`) are documented in the task's help text.
 
 **Output variables:**
 
-| Variable          | Description                                                        |
-| ----------------- | ----------------------------------------------------------------- |
-| `kbArticleId`     | `sys_id` of the created or updated article.                       |
-| `kbArticleNumber` | Article number (e.g. `KB0001234`).                                |
-| `kbWorkflowState` | Workflow state of the article after the task runs.                |
+| Variable          | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| `kbArticleId`     | `sys_id` of the created or updated article.        |
+| `kbArticleNumber` | Article number (e.g. `KB0001234`).                 |
+| `kbWorkflowState` | Workflow state of the article after the task runs. |
 
 All ServiceNow requests are sent over HTTPS only (the task refuses to transmit credentials over a non-HTTPS URL); the OAuth token and password are masked in logs via `setSecret`.
 
@@ -312,6 +312,17 @@ If `backendType` is not set, it defaults to the value of the `provider` input (p
 | `hcp`         | HCP Terraform Cloud  | Requires `backendHCPToken`, `backendHCPOrganization`, `backendHCPWorkspace`.                     |
 | `generic`     | Any backend          | Pass a `.tfbackend` file via `backendConfigFile` and/or key=value pairs via `backendConfigArgs`. |
 | `local`       | Local filesystem     | No remote state.                                                                                 |
+
+**Cross-cloud credentials aren't just an `init`-time concern.** When the backend
+detected from the initialized working directory differs from the `provider`
+input, the task automatically supplies that backend's credentials (as
+environment variables) on every state-accessing command — `plan`, `apply`,
+`destroy`, `refresh`, `import`, `output`, `state`, `workspace`, and
+`forceunlock`. Add the matching backend inputs (`backendServiceArm`, `backendServiceAWS`,
+`backendServiceGCP`, `backendHCP*`, ...) to **each** of those steps, not only
+`init` — see [Cross-cloud state backends](docs/yaml-examples.md#cross-cloud-state-backends)
+for complete examples. A step missing the required backend inputs fails fast
+with an actionable error naming the detected backend, the provider, and the command.
 
 ---
 
@@ -415,6 +426,13 @@ Most commands that interact with cloud resources require a provider service conn
 | `test`        | **Optional**       | Unit/validation tests run without auth. Integration tests that provision real resources (test files with `run` blocks using `command = apply`) need a service connection — provide it in YAML and the task will use it. |
 
 All other commands (`plan`, `apply`, `destroy`, `show`, `output`, `import`, `refresh`, `custom`) require a provider service connection.
+
+> **Cross-cloud state:** the "Not required" commands above assume the state
+> backend is on the *same* cloud as `provider`. If the backend detected from
+> the working directory is on a *different* cloud (e.g. an `azurerm` backend
+> with `provider: aws`), that backend's service connection inputs are still
+> required on `state`, `workspace`, and `forceunlock` — see
+> [Cross-cloud state backends](docs/yaml-examples.md#cross-cloud-state-backends).
 
 ### Running `terraform test` without a service connection
 

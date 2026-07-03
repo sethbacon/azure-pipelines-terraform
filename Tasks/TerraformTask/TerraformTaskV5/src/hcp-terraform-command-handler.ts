@@ -10,7 +10,8 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         this.providerName = "hcp";
     }
 
-    public async handleBackend(_terraformToolRunner: ToolRunner): Promise<void> {
+    /** Shared by `handleBackend` (init) and `configureBackendCredentials` (cross-cloud). */
+    private applyBackendEnv(): void {
         const token = tasks.getInput("backendHCPToken", true)!;
         if (token) { tasks.setSecret(token); }
         EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token, true);
@@ -24,6 +25,22 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         if (workspace && workspace.trim()) {
             EnvironmentVariableHelper.setEnvironmentVariable("TF_WORKSPACE", workspace.trim());
         }
+    }
+
+    public async handleBackend(_terraformToolRunner: ToolRunner): Promise<void> {
+        this.applyBackendEnv();
+    }
+
+    /**
+     * Cross-cloud path: called instead of `handleBackend` on state-accessing
+     * commands (plan/apply/...) when this HCP Terraform/Terraform Cloud
+     * backend is paired with a *different* cloud's `provider` input. Sets the
+     * same TF_TOKEN_app_terraform_io/TF_CLOUD_ORGANIZATION/TF_WORKSPACE
+     * environment variables as init.
+     */
+    public async configureBackendCredentials(): Promise<void> {
+        tasks.debug("Configuring cross-cloud HCP backend credentials (environment variables only).");
+        this.applyBackendEnv();
     }
 
     public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {

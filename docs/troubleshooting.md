@@ -165,6 +165,16 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 **Fix:** Valid `backendType` values are: `azurerm`, `s3`, `gcs`, `oci`, `hcp`, `generic`, `local`. If you don't set `backendType`, it defaults to the `provider` value.
 
+### Cross-cloud state backend — "unable to build authorizer" / "Please run 'az login'" / "NoCredentialProviders" on `plan`/`apply`
+
+**Cause:** `init` succeeded (it uses `backendType` to pick the right backend handler), but a later state-accessing command — `plan`, `apply`, `destroy`, `refresh`, `import`, `output`, `state`, `workspace`, or `forceunlock` — is missing the backend's credential inputs. This is the classic symptom when the state backend is on a *different* cloud than `provider` (e.g. an `azurerm` backend with `provider: aws`): the step only had AWS credentials, so the azurerm backend had no way to authenticate.
+
+**Fix:** Add the backend's inputs to **every** state-accessing step, not just `init` — `backendServiceArm`/`backendAzureRm*` for azurerm, `backendServiceAWS`/`backendAWS*` for s3, `backendServiceGCP`/`backendGCP*` for gcs, or `backendHCP*` for HCP Terraform. See [Cross-cloud state backends](yaml-examples.md#cross-cloud-state-backends) for full examples of every combination.
+
+Since this fix, a step missing the required backend inputs fails immediately with an actionable error (naming the detected backend, the provider, and the command) instead of the opaque authorizer/login error above — if you still see the opaque error, you're on an older task version; update to the latest `PipelineTerraformTask@5`.
+
+**Note on `local-exec`/`external` data sources:** when using Workload Identity Federation for the azurerm backend/provider with `runAzLogin: true`, the ADO pipeline OIDC access token (`ARM_OIDC_REQUEST_TOKEN`) is present in the process environment for the whole Terraform run and is therefore inherited by any `local-exec` provisioner or `external` data source. Avoid combining `runAzLogin` with untrusted modules on shared agents.
+
 ### Multiple provider blocks warning
 
 **Cause:** The task runs `terraform providers` after `handleProvider` and greps the output for names of _other_ cloud providers the extension supports. When a match is found, it emits a non-fatal warning so the pipeline author is aware that credentials for only the selected provider have been configured.
