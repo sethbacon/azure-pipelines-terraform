@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.0...v1.8.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* support cross-cloud Terraform state backend credentials on plan/apply/etc. ([#342](https://github.com/sethbacon/azure-pipelines-terraform/issues/342)) ([c73dec0](https://github.com/sethbacon/azure-pipelines-terraform/commit/c73dec0291b72f1c6ea3cab1fbfe4601e43fad36))
+
 ## [1.8.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.7.1...v1.8.0) (2026-07-01)
 
 
