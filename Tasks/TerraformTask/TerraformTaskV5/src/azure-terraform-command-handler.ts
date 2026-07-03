@@ -24,11 +24,35 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         this.providerName = "azurerm";
     }
 
-    public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
+    /**
+     * Resolves the backend service connection's auth scheme and sets the
+     * shared ARM_* credential environment variables (tenant, and whichever of
+     * client-id/secret/OIDC-token/MSI the scheme needs), plus ARM_SUBSCRIPTION_ID
+     * when resolvable. Shared by `handleBackend` (init, where
+     * `useCliFlagsForBackend` may route some values into cached backend-config
+     * instead) and `configureBackendCredentials` (every later state-accessing
+     * command, which always passes `false` — cross-cloud injection is env-only,
+     * per HashiCorp's guidance against caching backend credentials on disk).
+     */
+    private async applyBackendCredentialEnv(serviceConnectionID: string, useCliFlagsForBackend: boolean): Promise<AuthorizationScheme> {
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
 
-        tasks.debug("Setting up backend for authorization scheme: " + authorizationScheme + ".");
+        let subscriptionId = tasks.getInput("backendAzureRmOverrideSubscriptionID", false);
+        if (!subscriptionId) {
+            subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
+        }
+        if (subscriptionId) {
+            EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
+        }
+
+        const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
+        await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, useCliFlagsForBackend);
+
+        return authorizationScheme;
+    }
+
+    public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
+        const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
 
         // Setup required backend configuration for storage account blob location
         this.backendConfig.set("storage_account_name", tasks.getInput("backendAzureRmStorageAccountName", true)!);
@@ -55,14 +79,32 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             this.backendConfig.set("use_azuread_auth", "true");
         }
 
-        const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
         const backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
 
-        await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, backendAzureRmUseCliFlagsForAuthentication);
+        tasks.debug("Setting up backend for authorization scheme.");
+        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, backendAzureRmUseCliFlagsForAuthentication);
 
         this.applyBackendConfig(terraformToolRunner);
 
         tasks.debug("Finished setting up backend for authorization scheme: " + authorizationScheme + ".");
+    }
+
+    /**
+     * Cross-cloud path: called instead of `handleBackend` on state-accessing
+     * commands (plan/apply/...) when this azurerm backend is paired with a
+     * *different* cloud's `provider` input. Sets the same ARM_* credential
+     * environment variables as init — never `-backend-config`, since that
+     * would be silently ignored here anyway (this method never touches a tool
+     * runner) and would only risk confusion. The non-secret location fields
+     * (storage account, container, key, resource group, subscription,
+     * use_azuread_auth) were already cached by `terraform init` and need not
+     * be resupplied.
+     */
+    public async configureBackendCredentials(): Promise<void> {
+        const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
+        tasks.debug("Configuring cross-cloud azurerm backend credentials (environment variables only).");
+        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, /* useCliFlagsForBackend */ false);
+        tasks.debug("Finished configuring cross-cloud azurerm backend credentials for authorization scheme: " + authorizationScheme + ".");
     }
 
     public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {

@@ -5,8 +5,8 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import { writeSecretFile } from './secure-temp';
+import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
-import os = require('os');
 import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
@@ -25,7 +25,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
     private getJsonKeyFilePath(serviceName: string) {
         // Get credentials for json file
-        const jsonKeyFilePath = path.join(os.tmpdir(), `credentials-${uuidV4()}.json`);
+        const jsonKeyFilePath = path.join(resolveWifTempDir(), `credentials-${uuidV4()}.json`);
 
         const clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
         const tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
@@ -51,6 +51,22 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         return jsonKeyFilePath;
     }
 
+    /**
+     * Points the gcs backend at a credentials file via the `GOOGLE_BACKEND_CREDENTIALS`
+     * environment variable — NEVER via `-backend-config=credentials=<path>`. A
+     * cached backend-config `credentials` path is written in plain text into
+     * `.terraform/terraform.tfstate` *and* any saved plan file, and (per
+     * HashiCorp's own precedence rules) OVERRIDES the environment variable —
+     * so it also goes stale the moment this task's temp file is cleaned up,
+     * breaking any later command (plan/apply) that reuses the cached backend
+     * config, even within the same gcp+gcs pipeline. `bucket`/`prefix` are
+     * non-secret location fields and stay as backend-config.
+     * See https://developer.hashicorp.com/terraform/language/backend#credentials-and-sensitive-data
+     */
+    private applyBackendCredentialFile(credentialsFilePath: string): void {
+        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_BACKEND_CREDENTIALS", credentialsFilePath);
+    }
+
     private setupBackend(backendServiceName: string) {
         this.backendConfig.set('bucket', tasks.getInput("backendGCPBucketName", true)!);
         const prefix = tasks.getInput("backendGCPPrefix", false);
@@ -58,9 +74,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             this.backendConfig.set('prefix', prefix);
         }
 
-        const jsonKeyFilePath = this.getJsonKeyFilePath(backendServiceName);
-
-        this.backendConfig.set('credentials', jsonKeyFilePath);
+        this.applyBackendCredentialFile(this.getJsonKeyFilePath(backendServiceName));
     }
 
     /**
@@ -81,7 +95,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         const oidcToken = await generateIdToken(params.serviceConnection);
         tasks.setSecret(oidcToken);
 
-        const tokenFilePath = path.join(os.tmpdir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
+        const tokenFilePath = path.join(resolveWifTempDir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
@@ -96,11 +110,24 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${params.serviceAccountEmail}:generateAccessToken`
         };
 
-        const credentialsFilePath = path.join(os.tmpdir(), `${params.credentialsFilePrefix}-${uuidV4()}.json`);
+        const credentialsFilePath = path.join(resolveWifTempDir(), `${params.credentialsFilePrefix}-${uuidV4()}.json`);
         writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
         this.tempFiles.push(credentialsFilePath);
 
         return credentialsFilePath;
+    }
+
+    /** Shared by `setupBackendWIF` (init) and `configureBackendCredentials` (cross-cloud). */
+    private async writeBackendWifCredentials(backendServiceName: string): Promise<string> {
+        return this.writeWifCredentials({
+            serviceConnection: backendServiceName,
+            projectNumber: tasks.getInput("backendGCPProjectNumber", true)!,
+            poolId: tasks.getInput("backendGCPWorkloadIdentityPoolId", true)!,
+            providerId: tasks.getInput("backendGCPWorkloadIdentityProviderId", true)!,
+            serviceAccountEmail: tasks.getInput("backendGCPServiceAccountEmail", true)!,
+            tokenFilePrefix: "gcp-backend-oidc-token",
+            credentialsFilePrefix: "gcp-backend-wif-credentials",
+        });
     }
 
     private async setupBackendWIF(backendServiceName: string): Promise<void> {
@@ -110,17 +137,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             this.backendConfig.set('prefix', prefix);
         }
 
-        const credentialsFilePath = await this.writeWifCredentials({
-            serviceConnection: backendServiceName,
-            projectNumber: tasks.getInput("backendGCPProjectNumber", true)!,
-            poolId: tasks.getInput("backendGCPWorkloadIdentityPoolId", true)!,
-            providerId: tasks.getInput("backendGCPWorkloadIdentityProviderId", true)!,
-            serviceAccountEmail: tasks.getInput("backendGCPServiceAccountEmail", true)!,
-            tokenFilePrefix: "gcp-backend-oidc-token",
-            credentialsFilePrefix: "gcp-backend-wif-credentials",
-        });
-
-        this.backendConfig.set('credentials', credentialsFilePath);
+        this.applyBackendCredentialFile(await this.writeBackendWifCredentials(backendServiceName));
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
@@ -136,6 +153,27 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         }
         this.applyBackendConfig(terraformToolRunner);
         tasks.debug('Finished setting up backend GCP.');
+    }
+
+    /**
+     * Cross-cloud path: called instead of `handleBackend` on state-accessing
+     * commands (plan/apply/...) when this gcs backend is paired with a
+     * *different* cloud's `provider` input. Writes a fresh credentials file
+     * and points GOOGLE_BACKEND_CREDENTIALS at it; `bucket`/`prefix` were
+     * already cached by `terraform init` and need not be resupplied.
+     */
+    public async configureBackendCredentials(): Promise<void> {
+        tasks.debug('Configuring cross-cloud gcs backend credentials (environment variable only).');
+        const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
+        const authScheme = tasks.getInput("backendAuthSchemeGCP", false) || "ServiceConnection";
+        this.validateAuthScheme(authScheme, "backendAuthSchemeGCP");
+
+        if (authScheme === "WorkloadIdentityFederation") {
+            this.applyBackendCredentialFile(await this.writeBackendWifCredentials(backendServiceName));
+        } else {
+            this.applyBackendCredentialFile(this.getJsonKeyFilePath(backendServiceName));
+        }
+        tasks.debug('Finished configuring cross-cloud gcs backend credentials.');
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
@@ -171,3 +209,4 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);
     }
 }
+

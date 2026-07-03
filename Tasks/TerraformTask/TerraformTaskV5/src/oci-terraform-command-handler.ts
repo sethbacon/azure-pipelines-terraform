@@ -7,25 +7,20 @@ import { generateIdToken } from './id-token-generator';
 import { exchangeOidcForUpst } from './oci-token-exchange';
 import { writeSecretFile } from './secure-temp';
 import { normalizePem } from './pem-normalizer';
+import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
-import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
-/**
- * Resolves the directory for the ephemeral WIF credential files (private key,
- * UPST, synthetic OCI config). Prefer Agent.TempDirectory — which the agent
- * auto-purges at job end — over os.tmpdir() so the residual-on-disk window for
- * these short-lived secrets is bounded to the job, even if both the finally
- * cleanup and the signal handlers are bypassed (SIGKILL/host crash). Falls back
- * to os.tmpdir() when running off a pipeline agent (no Agent.TempDirectory set).
- */
-export function resolveWifTempDir(): string {
-    return tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
-}
+// Re-exported for backward compatibility: existing tests and any external
+// consumers import `resolveWifTempDir` from this module. The implementation
+// now lives in `./temp-dir` and is shared with the AWS/GCP handlers, whose
+// ephemeral WIF token/credential files follow the same Agent.TempDirectory
+// preference.
+export { resolveWifTempDir } from './temp-dir';
 
 const OCI_TENANCY_OCID_RE = /^ocid1\.tenancy\.[a-z0-9.-]+$/;
 const OCI_REGION_RE = /^[a-z0-9-]+$/;
@@ -67,7 +62,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     private getPrivateKeyFilePath(privateKey: string) {
         tasks.setSecret(privateKey);
         const normalized = normalizePem(privateKey);
-        const privateKeyFilePath = path.join(os.tmpdir(), `keyfile-${uuidV4()}.pem`);
+        const privateKeyFilePath = path.join(resolveWifTempDir(), `keyfile-${uuidV4()}.pem`);
         writeSecretFile(privateKeyFilePath, normalized);
         this.tempFiles.push(privateKeyFilePath);
         return privateKeyFilePath;
@@ -131,6 +126,18 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const backendServiceName = tasks.getInput("backendServiceOCI", true)!;
         this.setupBackend(backendServiceName);
         this.applyBackendConfig(terraformToolRunner);
+    }
+
+    /**
+     * Cross-cloud path: called instead of `handleBackend` on state-accessing
+     * commands (plan/apply/...) when this OCI backend is paired with a
+     * *different* cloud's `provider` input. No-op: OCI's http/PAR backend
+     * authentication is embedded in the pre-authenticated request URL, which
+     * was already generated into a cached backend config file at init — there
+     * is no separate cloud-credential identity to (re-)supply on later commands.
+     */
+    public async configureBackendCredentials(): Promise<void> {
+        tasks.debug('OCI backend requires no cross-cloud credential injection (PAR URL is self-authenticating).');
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {

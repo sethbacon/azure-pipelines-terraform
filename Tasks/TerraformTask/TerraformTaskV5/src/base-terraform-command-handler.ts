@@ -58,6 +58,20 @@ export abstract class BaseTerraformCommandHandler {
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
     abstract handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void>;
 
+    /**
+     * Configures this handler's cloud credentials as environment variables
+     * ONLY — never `-backend-config` args, never a tool-runner argument — so a
+     * *different* cloud's state backend can authenticate on a state-accessing
+     * command (plan/apply/destroy/refresh/import/output/state/workspace/
+     * forceunlock). Invoked by ParentCommandHandler exclusively when
+     * `backend-detection.ts` finds the initialized backend is a managed cloud
+     * backend that differs from the `provider` input — never during `init`
+     * (handleBackend already owns backend auth there) and never for the
+     * provider's own handler. Implementations that have no cloud identity to
+     * inject (OCI's PAR-based http backend, generic/local) are no-ops.
+     */
+    abstract configureBackendCredentials(): Promise<void>;
+
     constructor() {
         this.providerName = "";
         this.terraformToolHandler = new TerraformToolHandler(tasks);
