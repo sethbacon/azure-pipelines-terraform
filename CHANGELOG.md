@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.1...v1.8.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* remove unused os import from GCP init test fixtures ([#344](https://github.com/sethbacon/azure-pipelines-terraform/issues/344)) ([9a3d80f](https://github.com/sethbacon/azure-pipelines-terraform/commit/9a3d80f5c3660e5b96f3de2b0a2c2f5e8dd4a855))
+
 ## [1.8.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.0...v1.8.1) (2026-07-03)
 
 
