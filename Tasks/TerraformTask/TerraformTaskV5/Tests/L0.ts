@@ -8,6 +8,8 @@ import './OciTokenExchangeL0';
 import './IdTokenGeneratorL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
+// Direct unit tests for post-hoc chmod on third-party secure-file downloads.
+import './SecureTempL0';
 // Direct unit tests for OCI WIF temp-dir resolution (Agent.TempDirectory).
 import './OciWifTempDirL0';
 // Direct unit test for emergency cleanup before a handler is assigned.
@@ -1909,6 +1911,29 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPOutputSuccessL0 should have succeeded.'), 'Should have printed: GCPOutputSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('aws output rejects a control-character-laced value instead of forwarding it unsanitized', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputControlCharsRejected.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the command itself should still succeed');
+            assert(
+                tr.warningIssues.some((w) => w.includes("Output 'malicious_output' failed output-variable validation")),
+                'should warn that the malicious output was rejected. warnings: ' + tr.warningIssues
+            );
+            // terraform's own raw command output is always echoed to the log by
+            // the ToolRunner regardless of sanitization -- that's unavoidable and
+            // not the risk this guards against. The actual security property is
+            // that the malicious value never reaches an ADO ##vso[task.setvariable]
+            // logging command, which is what a downstream step actually consumes.
+            assert(!tr.stdout.includes('##vso[task.setvariable variable=TF_OUT_malicious_output'),
+                'the control-character value must never reach a ##vso[task.setvariable] line');
+            assert(tr.stdout.includes('##vso[task.setvariable variable=TF_OUT_safe_output'), 'the well-formed sibling output should still be set');
         }, tr);
     });
 

@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
 import { SecureFileLoader, getSecureVarFileArgs, ISecureFileLoader } from '../src/secure-file-loader';
 
@@ -26,15 +29,23 @@ describe('Secure var-file loader', function () {
 
     /* SecureFileLoader class (helpers injected) */
 
-    it('downloadSecureFile delegates to the injected helper and returns the path', async () => {
+    it('downloadSecureFile delegates to the injected helper, returns the path, and tightens its permissions', async () => {
+        // A real file: downloadSecureFile chmods the path after "download",
+        // which needs an actual file on disk to chmod (#355).
+        const realPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-securefile-')), 'vars.tfvars');
+        fs.writeFileSync(realPath, 'secret = "value"\n', { mode: 0o644 });
+
         let requested = '';
         const loader = new SecureFileLoader({
-            downloadSecureFile: async (id: string) => { requested = id; return '/tmp/vars.tfvars'; },
+            downloadSecureFile: async (id: string) => { requested = id; return realPath; },
             deleteSecureFile: () => { /* unused */ },
         });
         const filePath = await loader.downloadSecureFile('file-1');
-        assert.strictEqual(filePath, '/tmp/vars.tfvars');
+        assert.strictEqual(filePath, realPath);
         assert.strictEqual(requested, 'file-1');
+        if (process.platform !== 'win32') {
+            assert.strictEqual(fs.statSync(realPath).mode & 0o777, 0o600, 'downloaded secure file should be chmod 0600');
+        }
     });
 
     it('downloadSecureFile fails fast when the download exceeds the timeout', async () => {

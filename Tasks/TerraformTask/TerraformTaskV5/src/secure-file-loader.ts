@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { tightenFilePermissions } from './secure-temp';
 
 export interface ISecureFileLoader {
     downloadSecureFile(secureFileId: string): Promise<string>;
@@ -43,6 +44,10 @@ export class SecureFileLoader implements ISecureFileLoader {
         });
         try {
             const filePath = await Promise.race([this.helpers.downloadSecureFile(secureFileId), timeout]);
+            // The secure file (which may carry secrets in a .pkrvars/.tfvars
+            // file) is downloaded by the upstream library with its own
+            // default (often 0644) permissions and never tightened.
+            tightenFilePermissions(filePath);
             tasks.debug(`Secure file downloaded to: ${filePath}`);
             return filePath;
         } finally {
@@ -57,7 +62,9 @@ export class SecureFileLoader implements ISecureFileLoader {
             this.helpers.deleteSecureFile(secureFileId);
             tasks.debug(`Deleted secure file: ${secureFileId}`);
         } catch (err) {
-            tasks.debug(`Failed to delete secure file ${secureFileId}: ${err}`);
+            // A leftover secure file (which can hold -var-file secrets) is a
+            // real exposure on a self-hosted agent -- surface it above debug.
+            tasks.warning(`Failed to delete secure file ${secureFileId}: ${err}`);
         }
     }
 }
