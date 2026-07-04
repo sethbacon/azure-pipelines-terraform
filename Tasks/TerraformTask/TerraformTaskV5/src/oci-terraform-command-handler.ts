@@ -60,8 +60,22 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     private getPrivateKeyFilePath(privateKey: string) {
-        tasks.setSecret(privateKey);
+        // Mask the raw value first: a service connection may deliver the key
+        // flattened to a single line (which itself starts with "-----BEGIN"),
+        // so no boundary-line filtering here.
+        for (const line of privateKey.split('\n')) {
+            const trimmed = line.trim();
+            if (trimmed) tasks.setSecret(trimmed);
+        }
         const normalized = normalizePem(privateKey);
+        // ADO's log masker matches per line, not across embedded newlines, so
+        // the normalized (always multi-line) form needs its own per-line
+        // masking too -- registering the raw string alone would never match
+        // this byte-different on-disk form if it were ever echoed to a log.
+        for (const line of normalized.split('\n')) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('-----')) tasks.setSecret(trimmed);
+        }
         const privateKeyFilePath = path.join(resolveWifTempDir(), `keyfile-${uuidV4()}.pem`);
         writeSecretFile(privateKeyFilePath, normalized);
         this.tempFiles.push(privateKeyFilePath);

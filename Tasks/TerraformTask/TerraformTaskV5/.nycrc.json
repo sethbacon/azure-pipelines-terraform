@@ -15,7 +15,7 @@
         "src/parent-handler.js"
     ],
     "check-coverage": true,
-    "lines": 75,
-    "functions": 75,
-    "branches": 70
+    "lines": 85,
+    "functions": 80,
+    "branches": 71
 }

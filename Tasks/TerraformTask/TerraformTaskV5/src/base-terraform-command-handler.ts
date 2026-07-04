@@ -54,6 +54,7 @@ export abstract class BaseTerraformCommandHandler {
     backendConfig: Map<string, string>;
     protected tempFiles: string[];
     private secureFileId: string | null = null;
+    private static readonly OUTPUT_VAR_MAX_LENGTH = 1024;
 
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
     abstract handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void>;
@@ -205,7 +206,10 @@ export abstract class BaseTerraformCommandHandler {
                     tasks.debug(`Cleaned up temp file: ${filePath}`);
                 }
             } catch (err) {
-                tasks.debug(`Failed to clean up temp file ${filePath}: ${err}`);
+                // A leftover credential temp file (OIDC token / GCP or OCI key)
+                // is a real exposure on a self-hosted agent -- surface it
+                // above debug.
+                tasks.warning(`Failed to clean up temp file ${filePath}: ${err}`);
             }
         }
         this.tempFiles = [];
@@ -214,7 +218,7 @@ export abstract class BaseTerraformCommandHandler {
             try {
                 new SecureFileLoader().deleteSecureFile(this.secureFileId);
             } catch (err) {
-                tasks.debug(`Failed to clean up secure file: ${err}`);
+                tasks.warning(`Failed to clean up secure file: ${err}`);
             }
             this.secureFileId = null;
         }
@@ -697,6 +701,18 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Pipeline variable helpers ---
 
+    /**
+     * State/output content a compromised module or provider can fully
+     * control must not reach tasks.setVariable() unsanitized: a value
+     * containing control characters (e.g. an embedded newline) could forge
+     * additional ADO logging commands in the console output that consumes
+     * this variable downstream. Also caps length as a sanity bound.
+     */
+    private sanitizeOutputVariableValue(value: string): string | null {
+        if (!value || value.length > BaseTerraformCommandHandler.OUTPUT_VAR_MAX_LENGTH) return null;
+        return /^[\x20-\x7E]+$/.test(value) ? value : null;
+    }
+
     private setOutputVariables(jsonOutput: string): void {
         try {
             const outputs = JSON.parse(jsonOutput);
@@ -708,8 +724,14 @@ export abstract class BaseTerraformCommandHandler {
                     ? JSON.stringify(def.value)
                     : String(def.value);
 
+                const safeValue = this.sanitizeOutputVariableValue(stringValue);
+                if (safeValue === null) {
+                    tasks.warning(`Output '${key}' failed output-variable validation (length/printable-ASCII); skipping TF_OUT_${key}.`);
+                    continue;
+                }
+
                 const isSecret = def.sensitive === true;
-                tasks.setVariable(`TF_OUT_${key}`, stringValue, isSecret, true);
+                tasks.setVariable(`TF_OUT_${key}`, safeValue, isSecret, true);
                 tasks.debug(`Set pipeline variable TF_OUT_${key}${isSecret ? ' (secret)' : ''}`);
             }
         } catch (err) {
