@@ -27,7 +27,7 @@ The `publish-marketplace` job in `release.yml` mints a Microsoft Entra access to
 
 **Mitigated by a 10-minute token lifetime.** A Microsoft Graph `tokenLifetimePolicy` (`AccessTokenLifetime: 00:10:00`, the platform minimum) is assigned to the `tsm-azdo-marketplace-publisher` service principal — shared with the `azure-pipelines-packer` extension's identical publish flow — capping the token well below the platform default of ~60-90 minutes. The `tfx extension publish` step completes in seconds, so this costs nothing operationally while sharply narrowing the window in which an exfiltrated token would still be valid.
 
-**Not yet mitigated here: dependency-script isolation.** The sibling `azure-pipelines-packer` extension additionally runs `npm ci --ignore-scripts` in its `sbom-and-sign` and `publish-marketplace` jobs, denying a compromised transitive dependency a foothold to go looking for the token in the first place. This repository's equivalent jobs still run a plain `npm ci` with lifecycle scripts enabled — that hardening has not yet been ported here.
+**Also mitigated by dependency-script isolation.** The `sbom-and-sign` and `publish-marketplace` jobs run `npm ci --ignore-scripts`, denying a compromised transitive dependency (e.g. one accepted via a routine version bump) a foothold to go looking for the token in the first place.
 
 If a future `tfx-cli` release adds a non-argv token option, this job should switch to it.
 
