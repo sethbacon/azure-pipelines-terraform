@@ -6,7 +6,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import * as openpgp from 'openpgp';
 
-import { fetchBuffer } from './http-client';
+import { fetchBufferAllow404 } from './http-client';
 import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
 
 /**
@@ -14,15 +14,16 @@ import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
  * Fetches the `.sig` file from the same base URL as the SHA256SUMS file.
  *
  * - If verification succeeds, returns the SHA256SUMS content (already fetched).
- * - If the `.sig` file is unavailable and `required` is false, warns and returns unverified.
+ * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is false, warns
+ *   and returns unverified. Any OTHER fetch error (5xx / network / timeout) is
+ *   transient and propagates fatally even when `required` is false -- only a
+ *   confirmed absence should downgrade to a warning.
  * - If the `.sig` file is unavailable and `required` is true, throws (hard fail).
  * - If the signature is invalid, throws (hard fail).
  */
 export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean = false): Promise<void> {
-    let signatureBytes: Uint8Array;
-    try {
-        signatureBytes = await fetchBuffer(signatureUrl);
-    } catch {
+    const signatureBytes = await fetchBufferAllow404(signatureUrl);
+    if (signatureBytes === null) {
         if (required) {
             throw new Error(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
         }

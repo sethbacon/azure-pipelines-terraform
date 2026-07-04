@@ -57,6 +57,35 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // --- 'latest' checkpoint resolution (#359): a transient failure still falls
+    // back, but a malformed API response is now fatal instead of silently
+    // downgrading ---
+
+    it('hashicorp latest checkpoint down: falls back to the pinned version with a warning', async () => {
+        const tp = path.join(__dirname, 'HashiCorpLatestCheckpointDownFallback.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some((w) => /could not|not found|version/i.test(w)),
+                'should warn that the latest version could not be resolved. warnings: ' + tr.warningIssues
+            );
+        }, tr);
+    });
+
+    it('hashicorp latest checkpoint invalid response: fails instead of silently downgrading', async () => {
+        const tp = path.join(__dirname, 'HashiCorpLatestCheckpointInvalidResponseFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
     it('path prepended: installed terraform directory is added to PATH', async () => {
         const tp = path.join(__dirname, 'PathPrependedOnInstall.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -94,6 +123,41 @@ describe('TerraformInstaller Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    // --- Registry pre-signed download-URL token masking (#352) ---
+    // The registry download_url carries a live storage credential in its query
+    // string and tool-lib logs the URL at INFO. Assert every token component is
+    // registered as a secret (so the agent masks it) while benign params stay
+    // visible.
+    it('registry download token masking: sensitive query params are registered as secrets', async () => {
+        const tp = path.join(__dirname, 'RegistryDownloadTokenMasked.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            const maskedTokens = [
+                'AWSSIGNATUREtoken1111',   // X-Amz-Signature
+                'AWSCREDENTIALtoken2222',  // X-Amz-Credential
+                'AWSSECURITYtoken3333',    // X-Amz-Security-Token
+                'GOOGSIGNATUREtoken4444',  // X-Goog-Signature
+                'GOOGCREDENTIALtoken5555', // X-Goog-Credential
+                'AZURESIGtoken6666'        // Azure SAS sig
+            ];
+            for (const token of maskedTokens) {
+                assert(
+                    tr.stdout.includes('##vso[task.setsecret]' + token),
+                    `expected ##vso[task.setsecret] for token ${token}. stdout: ${tr.stdout}`
+                );
+            }
+            // Benign query parameters must NOT be masked (guards against over-redaction).
+            assert(!tr.stdout.includes('##vso[task.setsecret]20260703T000000Z'),
+                'benign X-Amz-Date must not be registered as a secret');
+            assert(!tr.stdout.includes('##vso[task.setsecret]host'),
+                'benign X-Amz-SignedHeaders must not be registered as a secret');
         }, tr);
     });
 
