@@ -7,8 +7,10 @@ import { describe, it, before, after, afterEach } from 'mocha';
 import assert = require('assert');
 import nock = require('nock');
 import tasks = require('azure-pipelines-task-lib/task');
+import * as ttm from 'azure-pipelines-task-lib/mock-test';
 
 import * as fs from 'fs';
+import * as net from 'net';
 import * as os from 'os';
 import * as nodePath from 'path';
 import * as auth from '../src/auth';
@@ -605,6 +607,30 @@ describe('image-rewrite', () => {
         const html = '<img src="a.png">';
         assert.strictEqual(rewriteImageSrcs(html, new Map()), html);
     });
+
+    it('skips a path-traversal src (../) that resolves outside the base dir', () => {
+        const warnings: string[] = [];
+        const html = '<img src="../outside.png">';
+        const refs = extractLocalImageRefs(html, baseDir, (m) => warnings.push(m));
+        assert.deepStrictEqual(refs, []);
+        assert.ok(warnings.some((w) => w.includes('outside the image base directory')), `expected a warning; got: ${warnings}`);
+    });
+
+    it('skips a URL-encoded path-traversal src (..%2f) that resolves outside the base dir', () => {
+        const warnings: string[] = [];
+        const html = '<img src="..%2f..%2foutside.png">';
+        const refs = extractLocalImageRefs(html, baseDir, (m) => warnings.push(m));
+        assert.deepStrictEqual(refs, []);
+        assert.ok(warnings.length > 0, 'expected a warning to be logged');
+    });
+
+    it('still includes an in-bounds nested src alongside a rejected traversal src', () => {
+        const html = '<img src="sub/img.png"><img src="../outside.png">';
+        const refs = extractLocalImageRefs(html, baseDir, () => { });
+        assert.strictEqual(refs.length, 1);
+        assert.strictEqual(refs[0].fileName, 'img.png');
+        assert.strictEqual(refs[0].absPath, nodePath.resolve(baseDir, 'sub/img.png'));
+    });
 });
 
 // ===========================================================================
@@ -704,7 +730,7 @@ describe('processArticleImages', () => {
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(
-            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => {},
+            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { },
         );
         assert.strictEqual(result.uploaded, 1);
         assert.ok(result.html.includes('src="/sys_attachment.do?sys_id=att_d"'));
@@ -716,7 +742,7 @@ describe('processArticleImages', () => {
 
         const html = '<img src="./images/nope.png">';
         const result = await processArticleImages(
-            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => {},
+            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { },
         );
         assert.strictEqual(result.uploaded, 0);
         assert.deepStrictEqual(result.missing, ['./images/nope.png']);
@@ -728,7 +754,7 @@ describe('processArticleImages', () => {
 
         await assert.rejects(
             () => processArticleImages(
-                INSTANCE, HEADERS, 'art1', '<img src="gone.png">', baseDir, true, () => {},
+                INSTANCE, HEADERS, 'art1', '<img src="gone.png">', baseDir, true, () => { },
             ),
             /Image not found/,
         );
@@ -737,7 +763,7 @@ describe('processArticleImages', () => {
     it('returns body unchanged when there are no local images', async () => {
         const html = '<p>No images here, just <img src="https://x/y.png"></p>';
         const result = await processArticleImages(
-            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => {},
+            INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { },
         );
         assert.strictEqual(result.uploaded, 0);
         assert.strictEqual(result.html, html);
@@ -889,5 +915,99 @@ describe('servicenow-http.snRequest', () => {
             body: 'grant_type=client_credentials',
         });
         assert.strictEqual(res.data.access_token, 'tok');
+    });
+
+    it('rejects and destroys the request when the response body exceeds the byte cap', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/big')
+            .reply(200, 'x'.repeat(11 * 1024 * 1024));
+        await assert.rejects(
+            snRequest('GET', `${BASE_URL}/api/now/table/kb_knowledge/big`, { headers: HEADERS }),
+            /exceeded \d+ bytes/,
+        );
+    });
+
+    it('rejects when the socket times out (server accepts the connection but never responds)', async function () {
+        // nock's mock socket doesn't independently fire req.setTimeout() timers, so
+        // this exercises the real Node socket-timeout path against a raw TCP listener
+        // that accepts the connection (so the TLS handshake never completes) and never
+        // writes anything back. nock patches the http/https modules globally even for
+        // allow-listed hosts, which can race with a mid-handshake socket destroy, so
+        // fully restore the real modules for the lifetime of this one test.
+        nock.restore();
+        const server = net.createServer(() => { /* accept and stall */ });
+        try {
+            await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+            const port = (server.address() as net.AddressInfo).port;
+            await assert.rejects(
+                snRequest('GET', `https://127.0.0.1:${port}/x`, { headers: HEADERS, timeoutMs: 50 }),
+                /timed out after 50ms/,
+            );
+        } finally {
+            server.close();
+            nock.activate();
+            nock.disableNetConnect();
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// index.ts — full-task tests (instance-name SSRF / credential-redirection guard)
+// ---------------------------------------------------------------------------
+
+describe('PublishKbArticle full-task: instance SSRF guard', () => {
+    before(() => {
+        // MockTestRunner shells out to node; point it at the current interpreter.
+        (ttm.MockTestRunner.prototype as unknown as { getNodePath: () => string }).getNodePath = function () {
+            return process.execPath;
+        };
+    });
+
+    function runValidations(validator: () => void, tr: ttm.MockTestRunner) {
+        try {
+            validator();
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    }
+
+    it('InstanceSsrfEmbeddedHostReject — an embedded-host instance value is rejected before any network client runs', async () => {
+        const tp = nodePath.join(__dirname, 'InstanceSsrfEmbeddedHostReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.errorIssues.some((e) => /Invalid ServiceNow instance/.test(e)),
+                `error should mention the invalid instance: ${tr.errorIssues}`,
+            );
+            assert.ok(!/NETWORK_CALLED/.test(tr.stdout + tr.errorIssues.join('\n')), 'no network client should have been invoked');
+        }, tr);
+    });
+
+    it('InstanceSsrfDotDotReject — a slash/dot-dot instance value is rejected before any network client runs', async () => {
+        const tp = nodePath.join(__dirname, 'InstanceSsrfDotDotReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.errorIssues.some((e) => /Invalid ServiceNow instance/.test(e)),
+                `error should mention the invalid instance: ${tr.errorIssues}`,
+            );
+            assert.ok(!/NETWORK_CALLED/.test(tr.stdout + tr.errorIssues.join('\n')), 'no network client should have been invoked');
+        }, tr);
+    });
+
+    it('InstanceValidProceeds — a well-formed instance name passes the guard and the task proceeds', async () => {
+        const tp = nodePath.join(__dirname, 'InstanceValidProceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.strictEqual(tr.errorIssues.length, 0, `should have no error issues: ${tr.errorIssues}`);
+        }, tr);
     });
 });
