@@ -22,6 +22,21 @@ export function validateMirrorUrl(url: string): void {
     }
 }
 
+/**
+ * Escape a value for safe interpolation inside a double-quoted HCL string
+ * literal. Without this, an include/exclude pattern containing a `"` or a
+ * newline could break out of the quoted string and inject arbitrary HCL into
+ * the generated .terraformrc.
+ */
+function escapeHclString(value: string): string {
+    return value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\r\n/g, '\\n')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\n');
+}
+
 export function generateProviderInstallationConfig(config: ProviderMirrorConfig): string {
     const mirrorUrl = config.mirrorUrl.replace(/\/+$/, '');
 
@@ -34,10 +49,10 @@ export function generateProviderInstallationConfig(config: ProviderMirrorConfig)
         hcl += '  direct {\n';
 
         if (config.directIncludePatterns.length > 0) {
-            const formatted = config.directIncludePatterns.map(p => `"${p}"`).join(', ');
+            const formatted = config.directIncludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
             hcl += `    include = [${formatted}]\n`;
         } else if (config.directExcludePatterns.length > 0) {
-            const formatted = config.directExcludePatterns.map(p => `"${p}"`).join(', ');
+            const formatted = config.directExcludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
             hcl += `    exclude = [${formatted}]\n`;
         }
 

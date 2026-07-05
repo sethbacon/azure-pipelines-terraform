@@ -40,6 +40,17 @@ export function resolveIncludes(
     for (const includeRel of includesList) {
         const absInclude = path.resolve(path.join(primaryDir, includeRel));
 
+        // Containment guard: an include must resolve within primaryDir (or a
+        // subdirectory of it). Without this, an `includes:` entry such as
+        // '../../secret.md' would pull an arbitrary readable file on the build
+        // agent into the rendered/published KB article.
+        const relToPrimaryDir = path.relative(primaryDir, absInclude);
+        if (relToPrimaryDir === '..' || relToPrimaryDir.startsWith(`..${path.sep}`) || path.isAbsolute(relToPrimaryDir)) {
+            throw new Error(
+                `Include '${includeRel}' resolves outside the primary file's directory ('${primaryDir}'): '${absInclude}'`
+            );
+        }
+
         if (!fs.existsSync(absInclude) || !fs.statSync(absInclude).isFile()) {
             throw new Error(
                 `Include file not found: '${includeRel}' (resolved to '${absInclude}')`
