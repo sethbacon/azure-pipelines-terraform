@@ -198,6 +198,31 @@ async function downloadOpaOfficial(version: string): Promise<string> {
     return binaryPath;
 }
 
+// --- Registry download-host allowlist (mirrors TerraformInstaller) ---
+
+/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
+export function parseAllowedHosts(raw: string | undefined): string[] {
+    if (!raw) {
+        return [];
+    }
+    return raw
+        .split(/[\n,]/)
+        .map(h => h.trim().toLowerCase())
+        .filter(h => h.length > 0);
+}
+
+/**
+ * Matches a download_url hostname against the allowlist. A `*.` prefix on an
+ * allowlist entry matches only its subdomains (not the bare host itself),
+ * mirroring TLS wildcard-SAN semantics.
+ */
+export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
+    const host = hostname.toLowerCase();
+    return allowedHosts.some(allowed =>
+        allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
+    );
+}
+
 async function downloadFromRegistry(agent: string, version: string, registryUrl: string, mirrorName: string): Promise<string> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
@@ -211,6 +236,18 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     // guard, so pin it to HTTPS before downloading — as the mirror path already does.
     if (!data.download_url.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
+    }
+
+    // Optional opt-in host pin: a compromised registry could still point download_url
+    // at an arbitrary HTTPS host (tools.downloadTool follows redirects with no way to
+    // disable that), so an operator can constrain the trusted storage host(s) via
+    // registryAllowedHosts. Default (empty) preserves the trust-the-registry behavior.
+    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+    if (allowedHosts.length > 0) {
+        const downloadHost = new URL(data.download_url).hostname;
+        if (!isRegistryHostAllowed(downloadHost, allowedHosts)) {
+            throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", downloadHost, allowedHosts.join(', ')));
+        }
     }
 
     const ext = agent === "sentinel" ? ".zip" : (isWindows ? ".exe" : "");
