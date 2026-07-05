@@ -19,11 +19,11 @@ tr.registerMock('./http-client', {
     }
     throw new Error('Unexpected fetchJson URL: ' + url);
   },
-  fetchText: async (url: string) => {
+  fetchTextAllow404: async (url: string) => {
     if (url.endsWith('.sha256sum')) {
       return `${EXPECTED_SHA256}  terraform-docs-v0.24.0-linux-amd64.tar.gz\n`;
     }
-    throw new Error('Unexpected fetchText URL: ' + url);
+    throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
   }
 });
 

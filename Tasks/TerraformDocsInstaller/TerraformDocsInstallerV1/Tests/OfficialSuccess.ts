@@ -14,11 +14,11 @@ const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccd
 
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => { throw new Error('Specific version should not call fetchJson: ' + url); },
-  fetchText: async (url: string) => {
+  fetchTextAllow404: async (url: string) => {
     if (url.endsWith('.sha256sum')) {
       return `${EXPECTED_SHA256}  terraform-docs-v0.24.0-linux-amd64.tar.gz\n`;
     }
-    throw new Error('Unexpected fetchText URL: ' + url);
+    throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
   }
 });
 
