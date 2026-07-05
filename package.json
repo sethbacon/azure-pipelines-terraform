@@ -62,7 +62,6 @@
         "copy-webpack-plugin": "^14.0.0",
         "css-loader": "^6.7.3",
         "jest": "^30.3.0",
-        "jest-environment-jsdom": "^30.4.1",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
         "rimraf": "^5.0.0",
