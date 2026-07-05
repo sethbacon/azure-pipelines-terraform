@@ -7,6 +7,15 @@ import { URL } from 'url';
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
 
+/**
+ * Upper bound on the response body buffered in memory. The socket timeout above
+ * is an *inactivity* timer, so an endpoint that streams bytes continuously never
+ * trips it and could exhaust the agent's memory; this cap makes such a response
+ * fail fast instead. Mirrors servicenow-http.ts and is kept byte-identical
+ * across the module-publish and drift-report copies by check-shared-modules.js.
+ */
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+
 export interface HttpResponse {
     status: number;
     body: string;
@@ -53,12 +62,24 @@ export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT
                 rejectUnauthorized,
             };
             const req = https.request(options, (res) => {
-                let chunks = '';
-                res.setEncoding('utf8');
-                res.on('data', (chunk) => {
-                    chunks += chunk;
+                const chunks: Buffer[] = [];
+                let total = 0;
+                let overflowed = false;
+                res.on('data', (chunk: Buffer) => {
+                    total += chunk.length;
+                    if (total > MAX_RESPONSE_BYTES) {
+                        overflowed = true;
+                        req.destroy(new Error(`Response from ${parsed.host} exceeded ${MAX_RESPONSE_BYTES} bytes.`));
+                        return;
+                    }
+                    chunks.push(chunk);
                 });
-                res.on('end', () => resolve({ status: res.statusCode ?? 0, body: chunks }));
+                res.on('end', () => {
+                    if (overflowed) {
+                        return;
+                    }
+                    resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
+                });
             });
             req.setTimeout(timeoutMs, () => {
                 req.destroy(new Error(`Request to ${parsed.host} timed out after ${timeoutMs}ms.`));
