@@ -7,6 +7,21 @@
 import { HIGHLIGHT_THEME_CSS } from './highlight-theme';
 
 /**
+ * HTML-escape a value interpolated into element text context. The document
+ * title comes from front matter or the first H1 of author markdown; without
+ * escaping, a title such as `</title><script>…` would break out of the <title>
+ * and <h1> elements and inject markup into the published KB article.
+ */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
  * Generate a complete HTML document from content blocks.
  * CSS is copied verbatim from the Python original, plus the highlight.js theme
  * for syntax-highlighted code blocks.
@@ -22,7 +37,7 @@ export function generateHtmlDocument(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -122,7 +137,7 @@ export function generateHtmlDocument(
     </style>
 </head>
 <body>
-<h1 class="document-title">${title}</h1>
+<h1 class="document-title">${escapeHtml(title)}</h1>
 ${combinedContent}
 </body>
 </html>`;
