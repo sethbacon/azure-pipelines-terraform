@@ -2,6 +2,15 @@ import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
 
 /**
+ * Bound a remote response body before it is interpolated into a thrown error,
+ * so a large or credential-reflecting body cannot be dumped wholesale into the
+ * build log.
+ */
+function truncateBody(body: string, max = 500): string {
+    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
+}
+
+/**
  * Hostname suffixes that identify a genuine OCI Identity Domains endpoint.
  * The federated OIDC bearer JWT is POSTed to this host, so it is constrained
  * to Oracle-owned realms to prevent the token from being exfiltrated to an
@@ -85,51 +94,60 @@ export async function exchangeOidcForUpst(
     tasks.debug(`Exchanging OIDC JWT for OCI UPST at ${tokenEndpoint}`);
 
     let response: Response;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        response = await fetch(tokenEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: body.toString(),
-            signal: controller.signal,
-            // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
-            // (preserved with the POST body) to a different, unvalidated origin.
-            redirect: 'manual',
-        });
-        clearTimeout(timeoutId);
-    } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-            throw new Error(`Timed out exchanging OIDC token for OCI UPST (30s timeout).`);
+        try {
+            response = await fetch(tokenEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: body.toString(),
+                signal: controller.signal,
+                // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
+                // (preserved with the POST body) to a different, unvalidated origin.
+                redirect: 'manual',
+            });
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error(`Timed out exchanging OIDC token for OCI UPST (30s timeout).`);
+            }
+            throw new Error(`Failed to exchange OIDC token for OCI UPST: ${error instanceof Error ? error.message : error}`);
         }
-        throw new Error(`Failed to exchange OIDC token for OCI UPST: ${error instanceof Error ? error.message : error}`);
-    }
 
-    // With redirect:'manual', fetch surfaces a redirect as an opaque response
-    // (type 'opaqueredirect', status 0) or, on some runtimes, the raw 3xx.
-    // Treat either as a refusal — do not chase it with the token in hand.
-    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-        throw new Error(
-            `OCI token exchange endpoint returned a redirect (status ${response.status}); ` +
-            `refusing to forward the OIDC token to another origin.`
-        );
-    }
+        // With redirect:'manual', fetch surfaces a redirect as an opaque response
+        // (type 'opaqueredirect', status 0) or, on some runtimes, the raw 3xx.
+        // Treat either as a refusal — do not chase it with the token in hand.
+        if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+            throw new Error(
+                `OCI token exchange endpoint returned a redirect (status ${response.status}); ` +
+                `refusing to forward the OIDC token to another origin.`
+            );
+        }
 
-    if (!response.ok) {
-        const errorBody = await response.text().catch(() => '(unable to read response body)');
-        throw new Error(`OCI token exchange failed: HTTP ${response.status} ${response.statusText}. Body: ${errorBody}`);
-    }
+        if (!response.ok) {
+            // Read the error body while the abort timer is still armed so a stalled
+            // body cannot hang the task, and truncate it before interpolation.
+            const errorBody = await response.text().catch(() => '(unable to read response body)');
+            throw new Error(`OCI token exchange failed: HTTP ${response.status} ${response.statusText}. Body: ${truncateBody(errorBody)}`);
+        }
 
-    const result = await response.json() as { access_token?: string; token?: string };
-    const upst = result.access_token || result.token;
-    if (!upst) {
-        throw new Error('OCI token exchange response missing access_token/token field.');
-    }
+        // Read the success body while the abort timer is still armed, so a server
+        // that sends headers then stalls the body is still bounded by the timeout.
+        const result = await response.json() as { access_token?: string; token?: string };
+        const upst = result.access_token || result.token;
+        if (!upst) {
+            throw new Error('OCI token exchange response missing access_token/token field.');
+        }
 
-    tasks.debug('Successfully exchanged OIDC JWT for OCI UPST.');
-    return upst;
+        tasks.debug('Successfully exchanged OIDC JWT for OCI UPST.');
+        return upst;
+    } finally {
+        // Always clear the abort timer — including on the error path — so it cannot
+        // leak and keep the Node event loop alive for up to 30s after the task ends.
+        clearTimeout(timeoutId);
+    }
 }
 
 /**
