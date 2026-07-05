@@ -53,6 +53,11 @@ export class TokenGenerator implements ITokenGenerator {
                     "Ensure the pipeline has 'Allow scripts to access the OAuth token' enabled and OIDC is configured for the service connection."
                 );
             }
+            // The agent OAuth token is a bearer credential. Register it as a secret
+            // in-module so masking does not depend on the agent's implicit
+            // System.AccessToken registration, matching the token-refresh path in
+            // azure-terraform-command-handler.ts.
+            tasks.setSecret(accessToken);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
             response = await fetch(url, {

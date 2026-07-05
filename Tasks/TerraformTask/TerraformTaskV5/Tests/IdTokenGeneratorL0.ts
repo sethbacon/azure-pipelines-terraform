@@ -64,7 +64,9 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         const token = await new TokenGenerator().generate('sc-123');
 
         assert.strictEqual(token, 'fed-token');
-        assert.deepStrictEqual(setSecretCalls, ['fed-token'], 'token must be registered as a secret');
+        // Both the agent OAuth access token (registered before the request) and the
+        // returned federated token must be masked as secrets (see #364).
+        assert.deepStrictEqual(setSecretCalls, ['access-token', 'fed-token'], 'access token and federated token must both be registered as secrets');
         assert.ok(seenUrl.startsWith('https://vstoken.dev.azure.com/oidc?'), 'posts to the OIDC request URI');
         assert.ok(seenUrl.includes('serviceConnectionId=sc-123'), 'includes the service connection id');
         assert.strictEqual(seenInit.method, 'POST');
@@ -137,6 +139,6 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
             new Response(JSON.stringify({ oidcToken: 'wrapper-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
         const token = await generateIdToken('sc-456');
         assert.strictEqual(token, 'wrapper-token');
-        assert.deepStrictEqual(setSecretCalls, ['wrapper-token']);
+        assert.deepStrictEqual(setSecretCalls, ['access-token', 'wrapper-token']);
     });
 });
