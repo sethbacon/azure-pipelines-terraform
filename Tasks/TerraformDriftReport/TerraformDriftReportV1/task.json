@@ -95,12 +95,30 @@
     }
   ],
   "OutputVariables": [
-    { "name": "driftDetected", "description": "'true' when any non-no-op, non-read change was planned." },
-    { "name": "addedCount", "description": "Count of resources whose plan contains a create." },
-    { "name": "changedCount", "description": "Count of resources whose plan contains an update." },
-    { "name": "destroyedCount", "description": "Count of resources whose plan contains a delete." },
-    { "name": "summaryFilePath", "description": "Path to the JSON report written to the agent temp directory (the exact callback body)." },
-    { "name": "sarifFilePath", "description": "Path to the SARIF 2.1.0 report (set only when 'Write a SARIF report' is enabled)." }
+    {
+      "name": "driftDetected",
+      "description": "'true' when any non-no-op, non-read change was planned."
+    },
+    {
+      "name": "addedCount",
+      "description": "Count of resources whose plan contains a create."
+    },
+    {
+      "name": "changedCount",
+      "description": "Count of resources whose plan contains an update."
+    },
+    {
+      "name": "destroyedCount",
+      "description": "Count of resources whose plan contains a delete."
+    },
+    {
+      "name": "summaryFilePath",
+      "description": "Path to the JSON report written to the agent temp directory (the exact callback body)."
+    },
+    {
+      "name": "sarifFilePath",
+      "description": "Path to the SARIF 2.1.0 report (set only when 'Write a SARIF report' is enabled)."
+    }
   ],
   "restrictions": {
     "commands": {
