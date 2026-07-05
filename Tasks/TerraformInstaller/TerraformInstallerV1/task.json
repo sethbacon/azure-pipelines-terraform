@@ -131,6 +131,9 @@
     "execution": {
         "Node24": {
             "target": "src/index.js"
+        },
+        "Node20_1": {
+            "target": "src/index.js"
         }
     },
     "outputVariables": [
