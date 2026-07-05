@@ -260,12 +260,12 @@ Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates poli
 | `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token via `http.extraheader`)                                                                 |
 | `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                   |
 
-The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`. See [Initiative 5](docs/initiatives/initiative-5-policy-evaluation.md).
+The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
 
 ## task.json Schema Key Points
 
 - `id` is the fork's own TerraformTask GUID (`981E87CD-B686-4A9E-B09E-B4AFDEDF126B`), deliberately distinct from the upstream MS DevLabs `FE504ACC-6115-40CB-89FF-191386B5E7BF` — that distinct GUID is what enables the documented side-by-side install. (The legacy `custom-terraform-release-task` contribution id in `azure-devops-extension.json` is a cosmetic carryover that points at the same TerraformTaskV5 folder.)
-- `execution` targets `Node24` only across all tasks — Node 24 is the floor. The legacy `Node20_1` handler was dropped on 2026-06-21 (Node 20 reached EOL April 2026), so a task's `Minor` must be bumped for agents to re-fetch a handler change
+- `execution` targets `Node24` with a `Node20_1` fallback across all tasks — Node 24 is preferred, and the `Node20_1` handler (re-added 2026-07-05, #380) lets older on-prem/air-gapped agents that lack the Node 24 runner degrade gracefully instead of failing to find a handler. A task's `Minor` must be bumped for agents to re-fetch a handler change
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
 - Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `showFilePath`, `customFilePath`
@@ -423,13 +423,13 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 ## Completed Initiatives
 
-All roadmap initiatives are complete. See `docs/initiatives/` for detailed plans:
+All six roadmap initiatives are complete and shipped:
 
-- [Initiative 1: Flexible Terraform Installer](docs/initiatives/initiative-1-flexible-installer.md) — Completed
-- [Initiative 2: Complete CLI Coverage](docs/initiatives/initiative-2-complete-cli-coverage.md) — Completed
-- [Initiative 3: Workload Identity Federation for Non-AzureRM](docs/initiatives/initiative-3-workload-identity-federation.md) — Completed
-- [Initiative 4: Workload Identity Federation for OCI](docs/initiatives/initiative-4-oci-wif.md) — Completed
-- [Initiative 5: Policy Evaluation (OPA / Sentinel)](docs/initiatives/initiative-5-policy-evaluation.md) — Completed
-- [Initiative 6: Drift Report Task](docs/initiatives/initiative-6-drift-report-task.md) — Completed
+- Initiative 1: Flexible Terraform Installer
+- Initiative 2: Complete CLI Coverage
+- Initiative 3: Workload Identity Federation for Non-AzureRM
+- Initiative 4: Workload Identity Federation for OCI
+- Initiative 5: Policy Evaluation (OPA / Sentinel)
+- Initiative 6: Drift Report Task
 
-See the per-initiative plans under [docs/initiatives/](docs/initiatives/) and [CHANGELOG.md](CHANGELOG.md) for the release history.
+The detailed planning documents (formerly under `docs/initiatives/`) were removed once every initiative shipped; see [CHANGELOG.md](CHANGELOG.md) for the release history.

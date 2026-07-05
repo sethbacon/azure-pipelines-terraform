@@ -75,6 +75,8 @@ Install a specific version of Terraform or OpenTofu on the pipeline agent.
     downloadSource: 'registry'
     registryUrl: 'https://registry.example.com'
     registryMirrorName: 'internal'
+    # Optional: pin the storage host(s) the registry may redirect downloads to.
+    registryAllowedHosts: '*.blob.core.windows.net'
 ```
 
 ---
