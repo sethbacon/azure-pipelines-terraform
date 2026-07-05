@@ -110,10 +110,10 @@
             "name": "requireChecksum",
             "type": "boolean",
             "label": "Require checksum verification",
-            "defaultValue": "false",
+            "defaultValue": "true",
             "required": false,
             "visibleRule": "binary = terraform && downloadSource != hashicorp",
-            "helpMarkDown": "When enabled, fail if the mirror or registry does not serve a SHA256SUMS file for the requested version. When disabled (default), checksum verification is attempted but skipped if no SHA256SUMS file is published."
+            "helpMarkDown": "When enabled (default), fail if the mirror or registry does not serve a SHA256SUMS file for the requested version, matching the PolicyAgentInstaller and TerraformDocsInstaller defaults. Set to false to attempt checksum verification but skip it (with a warning) when no SHA256SUMS file is published."
         }
     ],
     "restrictions": {
