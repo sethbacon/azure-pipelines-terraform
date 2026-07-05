@@ -367,7 +367,11 @@ jobs:
           persist-credentials: false
       - name: Install actionlint
         shell: bash
-        run: bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        # Installer script pinned to a commit SHA (not `main`, which is mutable
+        # and previously untracked here) and given an explicit version, so both
+        # the fetched script and the resulting binary are deterministic —
+        # matches azure-pipelines-packer's identical fix.
+        run: bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12
       - name: Run actionlint
         run: ./actionlint -color
 

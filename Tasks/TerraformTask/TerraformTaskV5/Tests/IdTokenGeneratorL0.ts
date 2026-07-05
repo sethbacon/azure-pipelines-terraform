@@ -72,11 +72,22 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(seenInit.method, 'POST');
         const headers = seenInit.headers as Record<string, string>;
         assert.strictEqual(headers['Authorization'], 'Bearer access-token');
+        // This token exchange has no legitimate redirect -- the Bearer access
+        // token must never be silently carried to a redirect target (#353).
+        assert.strictEqual(seenInit.redirect, 'error');
     });
 
     it('throws when SYSTEM_OIDCREQUESTURI is not set', async () => {
         delete process.env['SYSTEM_OIDCREQUESTURI'];
         await assert.rejects(new TokenGenerator().generate('sc-123'), /SYSTEM_OIDCREQUESTURI is not set/);
+    });
+
+    it('throws when SYSTEM_OIDCREQUESTURI is not an https:// URL (#353)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'http://vstoken.dev.azure.com/oidc';
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /must be an https:\/\/ URL/);
+        assert.strictEqual(called, false, 'must not call fetch with a non-https request URI');
     });
 
     it('throws when the SystemVssConnection access token is unavailable', async () => {
@@ -113,10 +124,24 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(calls, 3, 'should attempt MAX_RETRIES times');
     });
 
-    it('throws a clear HTTP error on a non-OK response', async () => {
-        globalThis.fetch = (async () =>
-            new Response('nope', { status: 403, statusText: 'Forbidden' })) as unknown as typeof globalThis.fetch;
+    it('throws a clear HTTP error on a non-OK response and does not retry a deterministic 4xx (#353)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            return new Response('nope', { status: 403, statusText: 'Forbidden' });
+        }) as unknown as typeof globalThis.fetch;
         await assert.rejects(new TokenGenerator().generate('sc-123'), /HTTP 403 Forbidden/);
+        assert.strictEqual(calls, 1, 'a deterministic 4xx must not be retried');
+    });
+
+    it('retries a transient 5xx and then gives up after the attempt limit (#353)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            return new Response('busy', { status: 503, statusText: 'Service Unavailable' });
+        }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /HTTP 503/);
+        assert.strictEqual(calls, 3, 'a transient 5xx should be retried up to the attempt limit');
     });
 
     it('throws the localized error when the response omits oidcToken', async () => {

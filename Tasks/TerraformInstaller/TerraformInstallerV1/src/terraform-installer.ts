@@ -32,6 +32,56 @@ function getBoolInputDefaultTrue(name: string): boolean {
     return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
 }
 
+function isSensitiveQueryParam(name: string): boolean {
+    const lower = name.toLowerCase();
+    return lower === 'sig'
+        || lower.includes('signature')
+        || lower.includes('credential')
+        || lower.includes('token');
+}
+
+/**
+ * Extracts the values of every sensitive query-string token in `url`. Values are
+ * returned in the raw form they appear in the URL (still percent-encoded) so they
+ * match the exact substring tool-lib logs at INFO; the decoded form is added too when
+ * it differs, so a consumer that logs the decoded value is masked as well. Used to
+ * setSecret() the tokens before download and to scrub them from any failure message.
+ */
+function extractUrlTokenSecrets(url: string): string[] {
+    const qIndex = url.indexOf('?');
+    if (qIndex === -1) return [];
+    const query = url.slice(qIndex + 1).split('#')[0];
+    const secrets: string[] = [];
+    for (const pair of query.split('&')) {
+        const eq = pair.indexOf('=');
+        if (eq === -1) continue;
+        const name = pair.slice(0, eq);
+        const rawValue = pair.slice(eq + 1);
+        if (!rawValue || !isSensitiveQueryParam(name)) continue;
+        secrets.push(rawValue);
+        let decoded: string;
+        try { decoded = decodeURIComponent(rawValue); } catch { decoded = rawValue; }
+        if (decoded !== rawValue) secrets.push(decoded);
+    }
+    return secrets;
+}
+
+/**
+ * Strips the ENTIRE query string (which can carry a pre-signed signature/token —
+ * Azure `sig`, AWS `X-Amz-Signature`/`X-Amz-Credential`/`X-Amz-Security-Token`,
+ * GCS `X-Goog-Signature`/`X-Goog-Credential`) from a URL for safe logging. The whole
+ * query is dropped rather than redacting known parameter names one at a time, so an
+ * unforeseen token parameter can never leak through the error path.
+ */
+function redactUrl(url: string): string {
+    try {
+        const u = new URL(url);
+        return u.origin + u.pathname + (u.search ? '?<redacted>' : '');
+    } catch {
+        return url.split('?')[0];
+    }
+}
+
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const binary = tasks.getInput("binary") || "terraform";
 
@@ -116,16 +166,23 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
         return inputVersion;
     }
     console.log(tasks.loc("GettingLatestTerraformVersion"));
+    // Only a genuine request failure (network/timeout/5xx, already retried by
+    // fetchJson) falls back to the pinned version -- that's an availability
+    // tradeoff worth keeping. A malformed response (the API contract itself
+    // broke) is NOT caught here: it throws fatally instead of silently
+    // downgrading, since trusting the fallback in that case would mask a real
+    // API-shape regression rather than a transient blip.
+    let data: { current_version: string };
     try {
-        const data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/terraform');
-        if (!data.current_version) {
-            throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
-        }
-        return data.current_version;
+        data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/terraform');
     } catch {
         tasks.warning(tasks.loc("TerraformVersionNotFound"));
         return FALLBACK_TERRAFORM_VERSION;
     }
+    if (!data.current_version) {
+        throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
+    }
+    return data.current_version;
 }
 
 async function resolveVersionFromRegistry(inputVersion: string, registryUrl: string, mirrorName: string): Promise<string> {
@@ -201,11 +258,33 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    // The pre-signed download_url carries a live, read-scoped storage credential in
+    // its query string. tools.downloadTool logs the URL at INFO and only auto-redacts
+    // Azure `sig=`, so AWS X-Amz-Signature/X-Amz-Credential/X-Amz-Security-Token and
+    // GCS X-Goog-Signature/X-Goog-Credential would otherwise print unredacted on every
+    // normal registry run. Register each token component as a secret FIRST so the
+    // agent masks it in tool-lib's log line (and in any failure message).
+    const urlTokenSecrets = extractUrlTokenSecrets(data.download_url);
+    for (const secret of urlTokenSecrets) {
+        tasks.setSecret(secret);
+    }
     let zipPath: string;
     try {
         zipPath = await tools.downloadTool(data.download_url, fileName);
     } catch (exception) {
-        throw new Error(tasks.loc("TerraformDownloadFailed", data.download_url, exception));
+        // download_url is a pre-signed URL whose query string carries the signing
+        // token; drop the whole query (redactUrl) and scrub the raw URL out of the
+        // tool-lib exception text so the live credential never reaches the build
+        // log via the failure message.
+        const safeUrl = redactUrl(data.download_url);
+        let safeMsg = String(exception instanceof Error ? exception.message : exception).split(data.download_url).join(safeUrl);
+        // Belt-and-suspenders: tool-lib may embed a URL it partially transformed
+        // (its own `sig=` redaction) that the exact-URL replace above misses, so
+        // also scrub each known token value out of the message.
+        for (const secret of urlTokenSecrets) {
+            safeMsg = safeMsg.split(secret).join('<redacted>');
+        }
+        throw new Error(tasks.loc("TerraformDownloadFailed", safeUrl, safeMsg));
     }
 
     if (data.sha256) {
@@ -401,17 +480,20 @@ async function resolveVersionFromOpenTofu(inputVersion: string): Promise<string>
         return inputVersion;
     }
     console.log(tasks.loc("GettingLatestOpenTofuVersion"));
+    // Same split as resolveVersionFromHashiCorp: only a genuine request
+    // failure falls back silently; a malformed response throws fatally.
+    let data: { tag_name: string };
     try {
-        const data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/opentofu/opentofu/releases/latest');
-        if (!data.tag_name) {
-            throw new Error("GitHub API returned invalid response: missing tag_name");
-        }
-        // tag_name is "v1.11.6" — strip the leading "v"
-        return data.tag_name.replace(/^v/, '');
+        data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/opentofu/opentofu/releases/latest');
     } catch {
         tasks.warning(tasks.loc("TerraformVersionNotFound"));
         return FALLBACK_TOFU_VERSION;
     }
+    if (!data.tag_name) {
+        throw new Error("GitHub API returned invalid response: missing tag_name");
+    }
+    // tag_name is "v1.11.6" — strip the leading "v"
+    return data.tag_name.replace(/^v/, '');
 }
 
 async function downloadZipFromOpenTofu(version: string): Promise<string> {
