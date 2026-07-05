@@ -2,8 +2,10 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// Registry returns an empty sha256 and requireChecksum is not set (default false).
-// The install proceeds but must emit a warning that local verification was skipped.
+// Registry returns an empty sha256 and the operator has explicitly opted out
+// (requireChecksum=false). The install proceeds but must emit a warning that
+// local verification was skipped. (With the fail-closed default, an unset
+// requireChecksum now throws instead — see RegistryEmptySha256RequireChecksum.)
 const tp = path.join(__dirname, 'RegistryEmptySha256WarnsL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
@@ -11,6 +13,7 @@ tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'registry');
 tr.setInput('registryUrl', 'https://registry.example.com');
 tr.setInput('registryMirrorName', 'terraform');
+tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
