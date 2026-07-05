@@ -33,14 +33,22 @@ export function baseUrl(instance: string): string {
 export async function getKnowledgeBases(instance: string, headers: Record<string, string>): Promise<unknown[]> {
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge_base`;
     const response = await snRequest('GET', url, { headers });
-    return response.data.result as unknown[];
+    const result = response.data.result;
+    if (!Array.isArray(result)) {
+        throw new Error('Unexpected ServiceNow response: the knowledge-base list endpoint did not return an array in "result".');
+    }
+    return result;
 }
 
 /** Retrieve a single knowledge article by sys_id. */
 export async function getArticle(instance: string, headers: Record<string, string>, articleId: string): Promise<KbArticle> {
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}`;
     const response = await snRequest('GET', url, { headers });
-    return response.data.result as KbArticle;
+    const result = response.data.result;
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw new Error(`Unexpected ServiceNow response: no article object in "result" for article ${articleId}.`);
+    }
+    return result as KbArticle;
 }
 
 /**
@@ -246,13 +254,11 @@ export async function createCategory(
     };
     if (parentCategoryId) payload['parent'] = parentCategoryId;
 
-    try {
-        const response = await snRequest('POST', url, { headers, body: payload });
-        const result = (response.data.result || {}) as KbCategory;
-        return result.sys_id || null;
-    } catch {
-        return null;
-    }
+    // Let a genuine HTTP/transport error propagate rather than masking it as
+    // "category not created", which would silently drop the intended category.
+    const response = await snRequest('POST', url, { headers, body: payload });
+    const result = (response.data.result || {}) as KbCategory;
+    return result.sys_id || null;
 }
 
 /**
@@ -279,35 +285,33 @@ export async function findOrCreateCategory(
         sysparm_limit: '1',
     };
 
-    try {
-        const response = await snRequest('GET', url, { headers, params });
-        const results = (response.data.result || []) as KbCategory[];
+    // Let a genuine HTTP/transport error propagate rather than masking it as
+    // "category not found", which would silently skip the intended category.
+    const response = await snRequest('GET', url, { headers, params });
+    const results = Array.isArray(response.data.result) ? (response.data.result as KbCategory[]) : [];
 
-        if (results.length === 0) {
-            if (autoCreate) {
-                return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
-            }
-            return null;
+    if (results.length === 0) {
+        if (autoCreate) {
+            return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
         }
-
-        const found = results[0];
-        const foundKbField = found.kb_knowledge_base;
-        const foundKbId = typeof foundKbField === 'object' && foundKbField !== null
-            ? (foundKbField as { value: string }).value
-            : foundKbField as string;
-
-        // If the found category belongs to a different KB, create one in the right KB
-        if (foundKbId && foundKbId !== kbId) {
-            if (autoCreate) {
-                return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
-            }
-            return null;
-        }
-
-        return found.sys_id;
-    } catch {
         return null;
     }
+
+    const found = results[0];
+    const foundKbField = found.kb_knowledge_base;
+    const foundKbId = typeof foundKbField === 'object' && foundKbField !== null
+        ? (foundKbField as { value: string }).value
+        : foundKbField as string;
+
+    // If the found category belongs to a different KB, create one in the right KB
+    if (foundKbId && foundKbId !== kbId) {
+        if (autoCreate) {
+            return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
+        }
+        return null;
+    }
+
+    return found.sys_id;
 }
 
 /** Thin wrapper: find only, no auto-creation. */
