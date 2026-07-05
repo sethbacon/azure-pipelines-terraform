@@ -90,3 +90,39 @@ export function fetchBuffer(url: string): Promise<Uint8Array> {
         return new Uint8Array(await response.arrayBuffer());
     });
 }
+
+/**
+ * Like fetchText, but returns null on a genuine HTTP 404 (resource absent)
+ * instead of throwing, so a caller can distinguish "not published" from a
+ * transient 5xx / network / TLS failure. Every other non-2xx status and any
+ * transport error still throws, keeping the caller fail-closed on anything
+ * other than a real absence.
+ */
+export function fetchTextAllow404(url: string): Promise<string | null> {
+    return fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
+        if (response.status === 404) {
+            return null;
+        }
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+        }
+        return response.text();
+    });
+}
+
+/**
+ * Like fetchBuffer, but returns null on a genuine HTTP 404 (resource absent)
+ * instead of throwing. Every other non-2xx status and any transport error still
+ * throws, so a 5xx / network / TLS failure is never mistaken for absence.
+ */
+export function fetchBufferAllow404(url: string): Promise<Uint8Array | null> {
+    return fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS, async (response) => {
+        if (response.status === 404) {
+            return null;
+        }
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+        }
+        return new Uint8Array(await response.arrayBuffer());
+    });
+}
