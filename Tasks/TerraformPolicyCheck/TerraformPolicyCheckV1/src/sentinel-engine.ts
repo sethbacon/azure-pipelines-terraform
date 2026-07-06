@@ -51,7 +51,7 @@ export async function runSentinel(
     const code = await tool.execAsync(<IExecOptions>{ cwd: workingDir, ignoreReturnCode: true });
 
     if (code === 3 || code === 9) {
-        throw new Error(`Sentinel returned a non-policy error (exit code ${code}). Output:\n${stdout}`);
+        throw new Error(`Sentinel returned a non-policy error (exit code ${code}). Output:\n${stdout.slice(0, 2000)}`);
     }
 
     const policyFailed = code === 1 || code === 2;
@@ -81,7 +81,7 @@ function applyEnforcement(
     const failedNames = cases.filter(c => !c.passed).map(c => c.name);
     const violations = failedNames.length > 0
         ? failedNames.map(n => `Policy failed: ${n}`)
-        : (policyFailed ? [`Sentinel policy evaluation failed.\n${stdout}`.trim()] : []);
+        : (policyFailed ? [`Sentinel policy evaluation failed.\n${stdout.slice(0, 2000)}`.trim()] : []);
 
     if (!policyFailed) return { passed: true, violations: [] };
 

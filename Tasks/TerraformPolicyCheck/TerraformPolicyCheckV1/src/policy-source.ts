@@ -124,8 +124,14 @@ async function execGit(tool: ToolRunner, extraEnv: Record<string, string> = {}):
             reject(new Error(tasks.loc('PolicyRepoCloneTimedOut', GIT_TIMEOUT_MS)));
         }, GIT_TIMEOUT_MS);
     });
+    // If the deadline wins the race, killChildProcess() makes this promise reject
+    // later; attach a no-op catch so that late rejection is swallowed intentionally
+    // rather than surfacing as an unhandled promise rejection (this task has no
+    // process-level unhandledRejection handler).
+    const exec = tool.execAsync(options);
+    exec.catch(() => { /* swallowed: the timeout is reported via the deadline branch */ });
     try {
-        await Promise.race([tool.execAsync(options), deadline]);
+        await Promise.race([exec, deadline]);
     } finally {
         if (timer) {
             clearTimeout(timer);

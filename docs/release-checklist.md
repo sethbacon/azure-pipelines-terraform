@@ -75,6 +75,19 @@ npm run package:release   # or package:self for a private test extension
 - [ ] `PipelineTerraformDocs@1` with `formatter: markdown-table`, `outputFile: README.md` — writes documentation and sets `generatedFilePath`
 - [ ] `PipelineTerraformDocs@1` with `outputCheck: true` against stale docs — fails the task
 
+## 4i. Markdown2Html smoke test
+
+- [ ] `PipelineMarkdown2Html@1` on a sample `.md` — writes HTML and sets `htmlFilePath`
+- [ ] Front matter (`title`, `includes`) is honored; an `includes:` entry outside the base directory is rejected
+- [ ] A raw `<script>`, an `onerror=` handler, and a `javascript:`/non-image `data:` URI in the source are stripped by the sanitizer (inspect the generated HTML)
+
+## 4j. PublishKbArticle smoke test
+
+- [ ] `PipelinePublishKbArticle@1` with `dryRun: true` — reports the planned create/update without calling ServiceNow
+- [ ] Create then update against a test ServiceNow instance — `kbArticleId`/`kbArticleNumber`/`kbWorkflowState` outputs are set
+- [ ] HTML that fails validation (inline `<script>`, `on*` handler, `javascript:`/`data:` URI) is rejected unless `force: true`
+- [ ] Image upload rewrites `<img src>` to ServiceNow attachments; a missing image fails unless `force: true`; a crafted `instance` value (not `^[a-z0-9-]+$`) is rejected
+
 ## 5. Core commands smoke test (AzureRM)
 
 Use a minimal Terraform configuration with an AzureRM backend and provider.

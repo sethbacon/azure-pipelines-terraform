@@ -1,6 +1,28 @@
 # Third-Party Notices
 
-This project incorporates or is inspired by the following open-source projects:
+This project bundles the third-party npm packages listed below into the published task
+handlers (via webpack), and is additionally inspired by the projects credited further down.
+
+## Bundled runtime dependencies
+
+These packages are compiled into one or more shipped task bundles. Each is distributed under
+a permissive OSI license; full license texts ship in each package's distribution and are
+available at the linked repositories.
+
+| Package      | Bundled into                                                          | License           |
+| ------------ | --------------------------------------------------------------------- | ----------------- |
+| markdown-it  | Markdown2Html                                                         | MIT               |
+| highlight.js | Markdown2Html                                                         | BSD-3-Clause      |
+| js-yaml      | Markdown2Html (front matter)                                          | MIT               |
+| cheerio      | Markdown2Html, PublishKbArticle (HTML sanitize/validate)              | MIT               |
+| openpgp      | TerraformInstaller, PolicyAgentInstaller (GPG signature verification) | LGPL-3.0-or-later |
+
+> Maintained manually: when adding or removing a bundled runtime dependency, update this
+> table. (A generated SPDX/license report is a tracked future improvement.)
+
+---
+
+This project is also inspired by the following open-source projects:
 
 ---
 

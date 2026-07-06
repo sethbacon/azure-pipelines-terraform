@@ -2,6 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import fs = require('fs');
 import os = require('os');
+import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
 import { postJson, truncateBody, resolveRejectUnauthorized } from './callback';
 import { writeSarif } from './sarif';
@@ -52,8 +53,14 @@ async function run(): Promise<void> {
             body.module_locks = readModuleLocks(manifest);
         }
 
-        const summaryFile = path.join(os.tmpdir(), 'tsm-drift-report.json');
-        fs.writeFileSync(summaryFile, JSON.stringify(body, null, 2), 'utf8');
+        // The summary can include plan resource values (sensitive), so write it to
+        // the agent's private temp dir with a unique name and owner-only (0600)
+        // permissions, using O_EXCL to defeat a pre-existing-symlink hazard, rather
+        // than a fixed, world-readable path in the shared OS temp directory.
+        const tempDir = tasks.getVariable('Agent.TempDirectory') || os.tmpdir();
+        const summaryFile = path.join(tempDir, `tsm-drift-report-${randomUUID()}.json`);
+        fs.writeFileSync(summaryFile, JSON.stringify(body, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+        try { fs.chmodSync(summaryFile, 0o600); } catch { /* platforms without POSIX perms */ }
 
         tasks.setVariable('driftDetected', String(result.drifted), false, true);
         tasks.setVariable('addedCount', String(result.added), false, true);

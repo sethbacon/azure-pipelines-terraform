@@ -265,7 +265,8 @@ in your policies, or supply your own `sentinelConfigPath` with matching mock dat
 ### Private policy repo clone fails (gitUrl source)
 
 - The URL must be HTTPS. Provide `policyRepoToken` (a pipeline secret variable)
-  for private repos; it is injected via `http.extraheader` and masked in logs.
+  for private repos; it is injected via a per-invocation `GIT_CONFIG` environment
+  variable (never on the command line) and masked in logs.
 - When pinning a commit, use the full 40-character SHA — short SHAs are treated
   as branch/tag names and shallow-cloned.
 
@@ -323,3 +324,47 @@ ignores directories without Terraform configuration).
 
 **Fix:** Point `modulePath` at the module directory containing the `.tf` files,
 or enable `recursive` to walk submodules under `recursivePath`.
+
+## Documentation publishing (Markdown2Html / PublishKbArticle)
+
+### Markdown2Html: content is stripped from the generated HTML
+
+**Cause:** The converter sanitizes the rendered HTML — inline `<script>`, `on*=`
+event-handler attributes, and `javascript:`/`vbscript:`/non-image `data:` URIs are
+removed as stored-XSS vectors before the HTML reaches the KB pipeline.
+
+**Fix:** This is by design. Only static formatting HTML (tables, `<br>`, code blocks,
+images) survives sanitization; move any dynamic behavior out of the document.
+
+### Markdown2Html: "include path is outside the base directory"
+
+**Cause:** A front-matter `includes:` entry (or an `<img src>`) resolves outside the
+primary document's directory / `imageBaseDir`. Path traversal is blocked by design.
+
+**Fix:** Keep includes and images within the document's directory (or the configured
+base dir) and use relative paths that stay inside it.
+
+### PublishKbArticle: OAuth token acquisition fails / 401
+
+**Cause:** Wrong `instance`, or invalid OAuth client credentials / Basic auth.
+
+**Fix:** `instance` must match `^[a-z0-9-]+$` — the subdomain only (e.g. `acme` for
+`acme.service-now.com`), not a full URL. Supply `clientId`/`clientSecret` for OAuth or
+`username`/`password` for Basic; the secret and the resulting token are masked in logs.
+
+### PublishKbArticle: HTML rejected before publish
+
+**Cause:** `html-validate` fail-closes on inline `<script>`, `on*` handlers, and
+`javascript:`/`vbscript:`/non-image `data:` URIs.
+
+**Fix:** Clean the source (preferred). `force: true` downgrades the rejection to a
+warning — use only for trusted content.
+
+### PublishKbArticle: a duplicate draft article appears on re-run
+
+**Cause:** An earlier run failed during the image-upload phase. (Current versions
+persist the article's `sys_id` before uploading images, so this no longer happens.)
+
+**Fix:** Update to the latest `PipelinePublishKbArticle@1`, and provide a stable
+`sourceKey` (front-matter `wiki-source`) so re-runs update the same article instead of
+creating a new one.

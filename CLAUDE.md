@@ -333,7 +333,7 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## CI/CD
 
-- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Tab`, `Lint GitHub Actions`.
+- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Check Shared Module Parity`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Module Publish V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Drift Report V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Markdown2Html V1`, `Build and Test Publish KB Article V1`, `Build and Test Tab`, `Lint GitHub Actions`.
 - `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
@@ -380,7 +380,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (23 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1), `Build and Test Tab`, `Lint GitHub Actions`, and `Scan Workflows (zizmor)`. Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
+- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (27 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test Tab`, `Lint GitHub Actions`, and `Scan Workflows (zizmor)`. Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)

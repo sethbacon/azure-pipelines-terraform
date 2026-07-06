@@ -31,6 +31,14 @@ The `publish-marketplace` job in `release.yml` mints a Microsoft Entra access to
 
 If a future `tfx-cli` release adds a non-argv token option, this job should switch to it.
 
+## Supply-chain residual risk: same-origin checksum trust for OPA and terraform-docs
+
+The terraform (TerraformInstaller) and Sentinel (PolicyAgentInstaller) download paths verify a GPG-signed `SHA256SUMS` manifest against HashiCorp's pinned public key, and the OpenTofu path uses cosign keyless verification with an anchored certificate identity. **OPA and terraform-docs, however, publish no detached GPG/cosign signature** — only a per-release `.sha256`/`.sha256sum` file served from the same GitHub release as the binary. The installers verify that checksum (fail-closed by default via `requireChecksum`), which guarantees transport integrity but **not authenticity against a poisoned release**: an attacker who compromised the upstream release (or the account/CI publishing it) would control both the binary and its checksum. This is an accepted residual driven by upstream tooling, not a defect in this extension; it will be revisited if OPA/terraform-docs publish signed checksums or GitHub-native build-provenance attestations a CI verifier can anchor to.
+
+## Optional-feature residual risk: `runAzLogin` passes credentials on argv
+
+The TerraformTask `runAzLogin` helper (opt-in, **default false**) invokes `az login` with the WIF federated token or service-principal secret on the command line, which is visible via `ps` / `/proc/<pid>/cmdline` to other processes on a shared agent — the Azure CLI offers no non-argv way to supply these. The primary provider-auth path never touches argv (credentials flow via environment variables). Scope `runAzLogin` to single-tenant / non-shared agents; leave it disabled otherwise.
+
 ## Preferred Languages
 
 English preferred.
