@@ -54,8 +54,8 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     }
 
     // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
-    // and javascript:/non-image data: URIs — stored-XSS vectors the external
-    // <script src> check above does not cover.
+    // and javascript:/vbscript:/non-image data: URIs — stored-XSS vectors the
+    // external <script src> check above does not cover.
     let eventHandlerFound = false;
     let dangerousUriFound = false;
     $('*').each((_, el) => {
@@ -67,7 +67,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
                 eventHandlerFound = true;
             } else if (
                 (lname === 'href' || lname === 'src' || lname === 'xlink:href' || lname === 'formaction') &&
-                (value.startsWith('javascript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
+                (value.startsWith('javascript:') || value.startsWith('vbscript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
             ) {
                 dangerousUriFound = true;
             }
@@ -83,7 +83,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     }
 
     if (dangerousUriFound) {
-        const msg = 'javascript: and non-image data: URIs are not allowed in KB articles';
+        const msg = 'javascript:, vbscript: and non-image data: URIs are not allowed in KB articles';
         if (!force) {
             throw new Error(msg);
         }

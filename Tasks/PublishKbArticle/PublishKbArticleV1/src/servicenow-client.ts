@@ -292,7 +292,7 @@ export async function findOrCreateCategory(
 
     if (results.length === 0) {
         if (autoCreate) {
-            return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
+            return createCategory(instance, headers, kbId, categoryName, parentCategoryId);
         }
         return null;
     }
@@ -306,7 +306,7 @@ export async function findOrCreateCategory(
     // If the found category belongs to a different KB, create one in the right KB
     if (foundKbId && foundKbId !== kbId) {
         if (autoCreate) {
-            return await createCategory(instance, headers, kbId, categoryName, parentCategoryId);
+            return createCategory(instance, headers, kbId, categoryName, parentCategoryId);
         }
         return null;
     }

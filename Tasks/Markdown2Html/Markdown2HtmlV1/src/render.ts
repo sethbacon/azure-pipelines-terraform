@@ -96,9 +96,9 @@ export function convertMarkdownToHtml(text: string): string {
  * formatting markup (tables, <br>, <div>, code blocks, …). markdown-it runs
  * with html:true so author markdown can use raw formatting HTML — e.g. <br/>
  * inside a table cell, a common idiom — but that same passthrough would let a
- * raw <script>, an on*= event handler, or a javascript:/data: URI flow into the
- * ServiceNow KB body (a stored-XSS sink). This is the sanitizer allowlist the
- * markdown->HTML norm calls for; PublishKbArticle/html-validate.ts is the
+ * raw <script>, an on*= event handler, or a javascript:/vbscript:/data: URI flow
+ * into the ServiceNow KB body (a stored-XSS sink). This is the sanitizer allowlist
+ * the markdown->HTML norm calls for; PublishKbArticle/html-validate.ts is the
  * downstream fail-closed gate and this is defense-in-depth at render time.
  */
 export function sanitizeRenderedHtml(html: string): string {
@@ -115,7 +115,7 @@ export function sanitizeRenderedHtml(html: string): string {
                 $(el).removeAttr(name);
             } else if (
                 (lname === 'href' || lname === 'src' || lname === 'xlink:href' || lname === 'formaction') &&
-                (value.startsWith('javascript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
+                (value.startsWith('javascript:') || value.startsWith('vbscript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
             ) {
                 $(el).removeAttr(name);
             }
