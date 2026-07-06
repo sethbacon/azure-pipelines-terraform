@@ -4,6 +4,15 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.3...v1.8.4) (2026-07-06)
+
+
+### Bug Fixes
+
+* remediate P0/P1 security audit findings ([#384](https://github.com/sethbacon/azure-pipelines-terraform/issues/384)-[#389](https://github.com/sethbacon/azure-pipelines-terraform/issues/389)) ([ca658e1](https://github.com/sethbacon/azure-pipelines-terraform/commit/ca658e1ad8eab12a0526391623d5605d1ace6989))
+* remediate P2 security audit findings ([#390](https://github.com/sethbacon/azure-pipelines-terraform/issues/390)-[#393](https://github.com/sethbacon/azure-pipelines-terraform/issues/393)) ([855e953](https://github.com/sethbacon/azure-pipelines-terraform/commit/855e9531939da93df872fd7b4bb031517a2c0dfc))
+* remediate P3 security audit residuals ([#394](https://github.com/sethbacon/azure-pipelines-terraform/issues/394)/[#395](https://github.com/sethbacon/azure-pipelines-terraform/issues/395)/[#398](https://github.com/sethbacon/azure-pipelines-terraform/issues/398)/[#399](https://github.com/sethbacon/azure-pipelines-terraform/issues/399)) ([0025455](https://github.com/sethbacon/azure-pipelines-terraform/commit/00254552f17c4deef6bcd1cca9d9d79a0f5b77df))
+
 ## [1.8.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.2...v1.8.3) (2026-07-06)
 
 
