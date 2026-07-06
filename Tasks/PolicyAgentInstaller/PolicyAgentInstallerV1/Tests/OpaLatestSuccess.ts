@@ -20,11 +20,11 @@ tr.registerMock('./http-client', {
         }
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
-    fetchText: async (url: string) => {
+    fetchTextAllow404: async (url: string) => {
         if (url.endsWith('.sha256')) {
             return `${EXPECTED_SHA256}\n`;
         }
-        throw new Error('Unexpected fetchText URL: ' + url);
+        throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
     }
 });
 

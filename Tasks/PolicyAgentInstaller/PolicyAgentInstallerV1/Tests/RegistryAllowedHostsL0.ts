@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseAllowedHosts, isRegistryHostAllowed } from '../src/policy-agent-installer';
+import { parseAllowedHosts, isRegistryHostAllowed } from '../src/registry-allowlist';
 
 /**
  * Direct unit tests for the optional registry download_url host allowlist.
