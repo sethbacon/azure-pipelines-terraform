@@ -150,6 +150,17 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
     }
 }
 
+/**
+ * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
+ * raw input rather than getBoolInput(name, false) so the default still holds on an
+ * agent that does not materialize task.json defaultValues into the input env var
+ * (where getBoolInput would silently return false). Mirrors TerraformInstaller's helper.
+ */
+function getBoolInputDefaultTrue(name: string): boolean {
+    const raw = tasks.getInput(name, false);
+    return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
+}
+
 async function downloadSentinelOfficial(version: string): Promise<string> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
@@ -160,7 +171,7 @@ async function downloadSentinelOfficial(version: string): Promise<string> {
 
     const sha256SumsUrl = `https://releases.hashicorp.com/sentinel/${version}/sentinel_${version}_SHA256SUMS`;
     const sha256SumsContent = await fetchText(sha256SumsUrl);
-    const requireGpg = tasks.getBoolInput("requireGpgSignature", false);
+    const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     await verifyGpgSignature(sha256SumsContent, `${sha256SumsUrl}.sig`, requireGpg);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
@@ -181,7 +192,7 @@ async function downloadOpaOfficial(version: string): Promise<string> {
     // authenticity against a poisoned release. requireChecksum (default true) keeps
     // the check mandatory; HTTPS + GitHub's release infrastructure is the trust root.
     const sha256Url = `${downloadUrl}.sha256`;
-    const requireChecksum = tasks.getBoolInput("requireChecksum", false);
+    const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     try {
         const sha256Body = await fetchText(sha256Url);
         const expectedHash = parseFirstSha256(sha256Body);
@@ -255,7 +266,7 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
 
     if (data.sha256) {
         await verifySha256(filePath, data.sha256);
-    } else if (tasks.getBoolInput("requireChecksum", false)) {
+    } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
         throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
@@ -286,7 +297,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     const downloadUrl = `${mirrorBaseUrl}/${version}/${assetName}`;
     const binaryPath = await downloadTo(downloadUrl, `opa-${version}-${uuidV4()}${isWindows ? '.exe' : ''}`);
 
-    const requireChecksum = tasks.getBoolInput("requireChecksum", false);
+    const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     try {
         const sha256Body = await fetchText(`${downloadUrl}.sha256`);
         await verifySha256(binaryPath, parseFirstSha256(sha256Body));
@@ -303,7 +314,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
 }
 
 async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fileName: string): Promise<void> {
-    const requireChecksum = tasks.getBoolInput("requireChecksum", false);
+    const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     try {
         const body = await fetchText(sha256SumsUrl);
         await verifySha256(filePath, parseSha256(body, fileName));

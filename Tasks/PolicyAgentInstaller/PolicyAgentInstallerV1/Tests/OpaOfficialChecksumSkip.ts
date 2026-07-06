@@ -6,10 +6,13 @@ const tp = path.join(__dirname, 'RunInstaller.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 // OPA official download where the per-asset .sha256 is unavailable and
-// requireChecksum is not set — the task warns and proceeds (fail-open).
+// requireChecksum is explicitly disabled — the task warns and proceeds. With the
+// fail-closed default (requireChecksum defaults to true) a missing checksum is fatal,
+// so this scenario opts out to exercise the warn-and-skip path.
 tr.setInput('policyAgent', 'opa');
 tr.setInput('version', '1.17.1');
 tr.setInput('downloadSource', 'official');
+tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
