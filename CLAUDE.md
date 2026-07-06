@@ -59,6 +59,8 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
 3. Before merging the Release PR, manually bump the `Minor` field in `task.json` for every task whose code changed since the last release. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments.
 
+   **Security rule (mandatory):** for any release, every task whose code was touched by a **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in that release — never ship a security fix while agents keep serving the cached old code. When unsure whether a change qualifies, bump it.
+
    Files to update:
    - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
    - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
@@ -69,6 +71,8 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
    - `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json` — if TerraformDocsInstallerV1 changed
    - `Tasks/TerraformDocs/TerraformDocsV1/task.json` — if TerraformDocsV1 changed
+   - `Tasks/Markdown2Html/Markdown2HtmlV1/task.json` — if Markdown2HtmlV1 changed
+   - `Tasks/PublishKbArticle/PublishKbArticleV1/task.json` — if PublishKbArticleV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
 
