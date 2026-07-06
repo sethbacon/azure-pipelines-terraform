@@ -95,12 +95,23 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             tasks.debug('Generating backend tf statefile config.');
             const parUrl = (tasks.getInput("backendOCIPar", true) || '');
 
+            // The OCI pre-authenticated request (PAR) URL embeds a long secret token in
+            // its /p/<token>/ path segment; possession of the whole URL grants read/write
+            // to the Terraform state bucket, so it is a bearer credential. Register it as
+            // a secret before any validation/interpolation (or error message) so it is
+            // masked in build logs, matching how every other credential in this task is
+            // handled.
+            if (parUrl) {
+                tasks.setSecret(parUrl);
+            }
+
             // Validate PAR URL: parse with URL constructor, enforce HTTPS, reject interpolation/template syntax
             let parsedUrl: URL;
             try {
                 parsedUrl = new URL(parUrl);
             } catch {
-                throw new Error(`OCI PAR URL is not a valid URL: ${parUrl}`);
+                // Do not interpolate the PAR URL into the error: it is a bearer credential.
+                throw new Error('OCI PAR URL is not a valid URL.');
             }
             if (parsedUrl.protocol !== 'https:') {
                 throw new Error("OCI PAR URL must use HTTPS scheme.");

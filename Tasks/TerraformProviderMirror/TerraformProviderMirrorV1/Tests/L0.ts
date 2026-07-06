@@ -177,6 +177,44 @@ describe('config-generator', () => {
 
             assert.ok(result.includes('url = "https://registry.example.com/"'));
         });
+
+        it('should escape double quotes and newlines in include/exclude patterns to prevent HCL injection', () => {
+            const malicious = 'registry.terraform.io/evil"]\n}\nprovider_installation "injected" {\n  x = "*';
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com',
+                allowDirectFallback: true,
+                directExcludePatterns: [],
+                directIncludePatterns: [malicious],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            // The raw pattern must never be interpolated unescaped.
+            assert.ok(!result.includes(`"${malicious}"`), 'pattern must not be interpolated unescaped');
+            assert.ok(result.includes('\\"'), 'embedded quote must be escaped');
+            assert.ok(result.includes('\\n'), 'embedded newline must be escaped');
+
+            // The include assignment must remain a single well-formed HCL line —
+            // no stray unescaped quote/newline breaking out of the array literal.
+            const includeLineMatch = result.match(/^\s*include = \[.*\]$/m);
+            assert.ok(includeLineMatch, 'include assignment must remain a single well-formed line');
+        });
+
+        it('should escape backslashes in include/exclude patterns', () => {
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com',
+                allowDirectFallback: true,
+                directExcludePatterns: ['registry.terraform.io\\weird\\path\\*'],
+                directIncludePatterns: [],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            assert.ok(
+                result.includes('exclude = ["registry.terraform.io\\\\weird\\\\path\\\\*"]'),
+                `expected escaped backslashes, got: ${result}`
+            );
+        });
     });
 });
 

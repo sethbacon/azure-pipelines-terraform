@@ -15,13 +15,17 @@ This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/micro
 
 Installs a specific version of Terraform on the build agent.
 
-| Input                | Default     | Description                                                                                                            |
-| -------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `terraformVersion`   | `latest`    | Version to install, e.g. `1.9.0`. `latest` resolves to the current latest release.                                     |
-| `downloadSource`     | `hashicorp` | Where to download Terraform from. See [Download Sources](#download-sources) below.                                     |
-| `registryUrl`        | —           | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                      |
-| `registryMirrorName` | `terraform` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                           |
-| `mirrorBaseUrl`      | —           | Base HTTPS URL of a custom mirror that replicates the HashiCorp path structure. Required when `downloadSource=mirror`. |
+| Input                       | Default     | Description                                                                                                                                                                                 |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `terraformVersion`          | `latest`    | Version to install, e.g. `1.9.0`. `latest` resolves to the current latest release.                                                                                                          |
+| `downloadSource`            | `hashicorp` | Where to download Terraform from. See [Download Sources](#download-sources) below.                                                                                                          |
+| `registryUrl`               | —           | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                                                                                           |
+| `registryMirrorName`        | `terraform` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                                                                                                |
+| `mirrorBaseUrl`             | —           | Base HTTPS URL of a custom mirror that replicates the HashiCorp path structure. Required when `downloadSource=mirror`.                                                                      |
+| `registryAllowedHosts`      | —           | Optional comma/newline-separated allowlist of hostnames the registry's pre-signed `download_url` may use (e.g. `*.s3.amazonaws.com`). Empty (default) trusts the host the registry returns. |
+| `requireGpgSignature`       | `true`      | For `downloadSource=hashicorp`: fail if the HashiCorp GPG signature cannot be verified.                                                                                                     |
+| `requireCosignVerification` | `true`      | For OpenTofu (`binary=tofu`): fail if cosign/Sigstore verification cannot be performed.                                                                                                     |
+| `requireChecksum`           | `true`      | For `registry`/`mirror` sources: fail if no SHA256 checksum is available (defaults to true; fail-closed).                                                                                   |
 
 **Output variables:**
 
@@ -111,13 +115,14 @@ HCP VCS-backed publishing also accepts `vcsRepoIdentifier`, `vcsBranch`, `vcsOau
 
 Installs a policy engine — **OPA** (sha256-verified binary from the `open-policy-agent/opa` GitHub releases) or **Sentinel** (GPG-signed zip from `releases.hashicorp.com`) — and prepends it to the `PATH`.
 
-| Input                 | Default    | Description                                                                                       |
-| --------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| `policyAgent`         | `opa`      | `opa` or `sentinel`.                                                                              |
-| `version`             | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API. |
-| `downloadSource`      | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).           |
-| `requireGpgSignature` | `true`     | Fail if a Sentinel GPG signature is unavailable.                                                  |
-| `requireChecksum`     | `true`     | Fail if a SHA256 checksum is unavailable.                                                         |
+| Input                  | Default    | Description                                                                                                 |
+| ---------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `policyAgent`          | `opa`      | `opa` or `sentinel`.                                                                                        |
+| `version`              | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API.           |
+| `downloadSource`       | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).                     |
+| `registryAllowedHosts` | —          | Optional allowlist of hostnames the registry's `download_url` may use. Used when `downloadSource=registry`. |
+| `requireGpgSignature`  | `true`     | Fail if a Sentinel GPG signature is unavailable.                                                            |
+| `requireChecksum`      | `true`     | Fail if a SHA256 checksum is unavailable.                                                                   |
 
 **Output variables:** `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA ships `amd64`/`arm64` only.
 
@@ -163,14 +168,15 @@ Parses a Terraform/OpenTofu plan JSON into drift counts plus a changed-resource 
 
 Installs a specific version of [terraform-docs](https://terraform-docs.io) on the build agent and prepends it to the `PATH`.
 
-| Input                | Default          | Description                                                                                                          |
-| -------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `version`            | `latest`         | Version to install, e.g. `0.20.0`. `latest` resolves to the current latest release.                                  |
-| `downloadSource`     | `official`       | Where to download terraform-docs from: `official` (GitHub releases), `registry`, or `mirror`.                        |
-| `registryUrl`        | —                | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                    |
-| `registryMirrorName` | `terraform-docs` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                         |
-| `mirrorBaseUrl`      | —                | Base HTTPS URL of a custom mirror that replicates the release path structure. Required when `downloadSource=mirror`. |
-| `requireChecksum`    | `true`           | Fail if a SHA256 checksum is not available for the requested version/platform.                                       |
+| Input                  | Default          | Description                                                                                                          |
+| ---------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `version`              | `latest`         | Version to install, e.g. `0.20.0`. `latest` resolves to the current latest release.                                  |
+| `downloadSource`       | `official`       | Where to download terraform-docs from: `official` (GitHub releases), `registry`, or `mirror`.                        |
+| `registryUrl`          | —                | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                    |
+| `registryMirrorName`   | `terraform-docs` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                         |
+| `mirrorBaseUrl`        | —                | Base HTTPS URL of a custom mirror that replicates the release path structure. Required when `downloadSource=mirror`. |
+| `registryAllowedHosts` | —                | Optional allowlist of hostnames the registry's `download_url` may use. Used when `downloadSource=registry`.          |
+| `requireChecksum`      | `true`           | Fail if a SHA256 checksum is not available for the requested version/platform.                                       |
 
 **Output variables:**
 

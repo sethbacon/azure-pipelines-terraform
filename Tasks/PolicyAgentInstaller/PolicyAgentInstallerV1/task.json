@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "4",
+        "Minor": "5",
         "Patch": "0"
     },
     "instanceNameFormat": "Install $(policyAgent) $(version)",
@@ -70,6 +70,15 @@
             "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/... (e.g. 'opa' or 'sentinel')."
         },
         {
+            "name": "registryAllowedHosts",
+            "type": "string",
+            "label": "Allowed download_url hosts",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the registry's download_url is permitted to use (e.g. storage.example.com, or *.s3.amazonaws.com to allow any subdomain). When empty (default), the download_url host is trusted as returned by the registry. Set this to pin a compromised or misbehaving registry from redirecting downloads to an arbitrary HTTPS host."
+        },
+        {
             "name": "mirrorBaseUrl",
             "type": "string",
             "label": "Mirror base URL",
@@ -112,6 +121,9 @@
     "execution": {
         "Node24": {
             "target": "src/index.js"
+        },
+        "Node20_1": {
+            "target": "src/index.js"
         }
     },
     "outputVariables": [
@@ -137,6 +149,7 @@
         "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
         "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
-        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s"
+        "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
+        "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s"
     }
 }

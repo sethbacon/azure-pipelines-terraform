@@ -6,13 +6,10 @@ import fs = require('fs');
 import crypto = require('crypto');
 
 import { randomUUID as uuidV4 } from 'crypto';
-import { fetchJson, fetchText } from './http-client';
+import { fetchJson, fetchTextAllow404 } from './http-client';
 
 const toolName = "terraform-docs";
 const isWindows = os.type().match(/^Win/);
-
-/** Fallback version used when the upstream "latest" lookup is unreachable. Update periodically. */
-const FALLBACK_VERSION = '0.20.0';
 
 /**
  * Downloads the requested terraform-docs version, verifies its SHA256 checksum,
@@ -78,17 +75,21 @@ async function resolveVersion(downloadSource: string, inputVersion: string): Pro
 
 async function resolveLatestFromGitHub(): Promise<string> {
   console.log(tasks.loc("GettingLatestVersion"));
+  let data: { tag_name: string };
   try {
-    const data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/terraform-docs/terraform-docs/releases/latest');
-    if (!data.tag_name) {
-      throw new Error("GitHub API returned invalid response: missing tag_name");
-    }
-    // tag_name is like "v0.24.0" — strip the leading "v".
-    return data.tag_name.replace(/^v/, '');
-  } catch {
-    tasks.warning(tasks.loc("VersionNotFound"));
-    return FALLBACK_VERSION;
+    data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/terraform-docs/terraform-docs/releases/latest');
+  } catch (error) {
+    // Fail closed: a caller who explicitly asked for 'latest' (often precisely for
+    // security currency) must not be silently handed a stale pinned version on an
+    // upstream outage. Surface the failure so they can pin an explicit version or retry.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to resolve the latest terraform-docs version from GitHub (${message}). Specify an explicit version instead of 'latest', or retry when the GitHub releases API is reachable.`);
   }
+  if (!data.tag_name) {
+    throw new Error("GitHub API returned invalid response: missing tag_name");
+  }
+  // tag_name is like "v0.24.0" — strip the leading "v".
+  return data.tag_name.replace(/^v/, '');
 }
 
 async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string): Promise<string> {
@@ -100,6 +101,31 @@ async function resolveVersionFromRegistry(registryUrl: string, mirrorName: strin
   }
   console.log(tasks.loc("ResolvedVersionFromRegistry", data.version));
   return data.version;
+}
+
+// --- Registry download-host allowlist (mirrors TerraformInstaller) ---
+
+/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
+export function parseAllowedHosts(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(/[\n,]/)
+    .map(h => h.trim().toLowerCase())
+    .filter(h => h.length > 0);
+}
+
+/**
+ * Matches a download_url hostname against the allowlist. A `*.` prefix on an
+ * allowlist entry matches only its subdomains (not the bare host itself),
+ * mirroring TLS wildcard-SAN semantics.
+ */
+export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
+  const host = hostname.toLowerCase();
+  return allowedHosts.some(allowed =>
+    allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
+  );
 }
 
 // --- Download strategies (return the path to the downloaded archive) ---
@@ -152,6 +178,18 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
   }
 
+  // Optional opt-in host pin: a compromised registry could still point download_url
+  // at an arbitrary HTTPS host (tools.downloadTool follows redirects with no way to
+  // disable that), so an operator can constrain the trusted storage host(s) via
+  // registryAllowedHosts. Default (empty) preserves the trust-the-registry behavior.
+  const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+  if (allowedHosts.length > 0) {
+    const downloadHost = new URL(data.download_url).hostname;
+    if (!isRegistryHostAllowed(downloadHost, allowedHosts)) {
+      throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", downloadHost, allowedHosts.join(', ')));
+    }
+  }
+
   const filePath = await downloadTo(data.download_url, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);
 
   if (data.sha256) {
@@ -186,18 +224,19 @@ async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promi
  */
 async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetName: string, sourceLabel: string): Promise<void> {
   const requireChecksum = tasks.getBoolInput("requireChecksum", false);
-  try {
-    const sumsBody = await fetchText(sha256Url);
-    await verifySha256(filePath, parseSha256(sumsBody, assetName));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const checksumUnavailable = message.includes('SHA256 checksum not found') || message.includes('Failed to fetch');
-    if (checksumUnavailable && !requireChecksum) {
-      tasks.warning(`SHA256 verification skipped for ${sourceLabel} download: ${message}`);
-    } else {
-      throw error;
+  // Only a genuine 404 (fetchTextAllow404 returns null) counts as "no checksum file
+  // published". Any other non-2xx / network / TLS failure propagates fatally,
+  // regardless of requireChecksum, instead of being classified by error-string.
+  const sumsBody = await fetchTextAllow404(sha256Url);
+  if (sumsBody === null) {
+    if (requireChecksum) {
+      throw new Error(`Checksum verification is required but no SHA256SUMS file is published for the ${sourceLabel} download (${sha256Url}).`);
     }
+    tasks.warning(`SHA256 verification skipped for ${sourceLabel} download: no checksum file published at ${sha256Url}.`);
+    return;
   }
+  // The checksum file exists: a missing asset entry or a hash mismatch is always fatal.
+  await verifySha256(filePath, parseSha256(sumsBody, assetName));
 }
 
 // --- Helpers ---

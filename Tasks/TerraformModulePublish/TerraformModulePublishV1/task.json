@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "3",
+        "Minor": "4",
         "Patch": "0"
     },
     "instanceNameFormat": "Publish module $(name) to $(registryType)",
@@ -191,6 +191,9 @@
     },
     "execution": {
         "Node24": {
+            "target": "src/index.js"
+        },
+        "Node20_1": {
             "target": "src/index.js"
         }
     }

@@ -39,7 +39,7 @@ interface TerraformPlanTabState {
 }
 
 
-class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
+export class TerraformPlanTab extends React.Component<{}, TerraformPlanTabState> {
     constructor(props: {}) {
         super(props);
         this.state = {

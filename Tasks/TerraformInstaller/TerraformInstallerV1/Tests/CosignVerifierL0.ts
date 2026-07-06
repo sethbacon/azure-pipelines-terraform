@@ -51,7 +51,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     const hc = httpClient as any;
     const original = {
         which: t.which, warning: t.warning, debug: t.debug, tool: t.tool,
-        fetchBuffer: hc.fetchBuffer,
+        fetchBufferAllow404: hc.fetchBufferAllow404,
     };
     let warnings: string[] = [];
 
@@ -60,7 +60,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         t.warning = original.warning;
         t.debug = original.debug;
         t.tool = original.tool;
-        hc.fetchBuffer = original.fetchBuffer;
+        hc.fetchBufferAllow404 = original.fetchBufferAllow404;
         warnings = [];
     });
 
@@ -91,7 +91,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     it('throws when signature/certificate are unavailable and verification is required', async () => {
         stubLogging();
         t.which = () => '/usr/bin/cosign';
-        hc.fetchBuffer = async () => { throw new Error('404'); };
+        hc.fetchBufferAllow404 = async () => null;
         await assert.rejects(
             verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', true),
             /unavailable and verification is required/,
@@ -101,7 +101,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     it('passes the anchored identity regexp and pinned OIDC issuer to cosign', async () => {
         stubLogging();
         t.which = () => '/usr/bin/cosign';
-        hc.fetchBuffer = async () => new Uint8Array([1, 2, 3]);
+        hc.fetchBufferAllow404 = async () => new Uint8Array([1, 2, 3]);
         const args: string[] = [];
         t.tool = (_path: string) => ({
             arg(a: string | string[]) {
@@ -124,7 +124,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     it('throws when cosign exits non-zero', async () => {
         stubLogging();
         t.which = () => '/usr/bin/cosign';
-        hc.fetchBuffer = async () => new Uint8Array([1]);
+        hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
         t.tool = (_path: string) => ({
             arg() { return this; },
             exec: async () => 1,
@@ -132,6 +132,16 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         await assert.rejects(
             verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', true),
             /verification failed/i,
+        );
+    });
+
+    it('treats a non-404 signature/certificate fetch failure as fatal even when not required', async () => {
+        stubLogging();
+        t.which = () => '/usr/bin/cosign';
+        hc.fetchBufferAllow404 = async () => { throw new Error('HTTP 503'); };
+        await assert.rejects(
+            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', false),
+            /fetch failed for OpenTofu verification/,
         );
     });
     /* eslint-enable @typescript-eslint/no-explicit-any */

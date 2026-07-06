@@ -16,11 +16,11 @@ const ACTUAL_SHA = 'bb'.repeat(32);
 
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => { throw new Error('Specific version should not call fetchJson: ' + url); },
-  fetchText: async (url: string) => {
+  fetchTextAllow404: async (url: string) => {
     if (url.endsWith('.sha256sum')) {
       return `${SUMS_SHA}  terraform-docs-v0.24.0-linux-amd64.tar.gz\n`;
     }
-    throw new Error('Unexpected fetchText URL: ' + url);
+    throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
   }
 });
 

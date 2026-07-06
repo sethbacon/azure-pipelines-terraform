@@ -7,6 +7,7 @@ import assert = require('assert');
 import fs = require('fs');
 import os = require('os');
 import path = require('path');
+import * as cheerio from 'cheerio';
 
 // Pure-logic modules (no task harness required)
 import { parseFrontMatter } from '../src/frontmatter';
@@ -197,6 +198,29 @@ describe('resolveIncludes', () => {
         const result = resolveIncludes(path.join(dir, 'primary.md'), data);
         assert.strictEqual(result.length, 1);
     });
+
+    it('still allows an include located in a subdirectory of the primary file', () => {
+        const dir = writeTmpDir({
+            'primary.md': '---\nincludes:\n  - nested/sub.md\n---\nbody\n',
+            'nested/sub.md': '# Sub\n',
+        });
+        const { data } = parseFrontMatter(path.join(dir, 'primary.md'));
+        const result = resolveIncludes(path.join(dir, 'primary.md'), data);
+        assert.strictEqual(result.length, 1);
+        assert.strictEqual(result[0], path.resolve(dir, 'nested', 'sub.md'));
+    });
+
+    it('rejects an include that resolves outside the primary file\'s directory (path traversal)', () => {
+        const dir = writeTmpDir({
+            'sub/primary.md': '---\nincludes:\n  - ../outside.md\n---\nbody\n',
+            'outside.md': '# Outside\nsecret content\n',
+        });
+        const { data } = parseFrontMatter(path.join(dir, 'sub', 'primary.md'));
+        assert.throws(
+            () => resolveIncludes(path.join(dir, 'sub', 'primary.md'), data),
+            /outside/i
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -352,6 +376,21 @@ describe('generateHtmlDocument', () => {
         assert.ok(doc.includes('<p>block1</p>'));
         assert.ok(doc.includes('<p>block2</p>'));
     });
+
+    it('HTML-escapes a title containing markup so it cannot break out of <title>/<h1>', () => {
+        const maliciousTitle = '</title><script>alert(1)</script>';
+        const doc = generateHtmlDocument(['<p>content</p>'], maliciousTitle);
+        assert.ok(!doc.includes('<script>alert(1)</script>'), 'raw script tag must not appear');
+        assert.ok(!doc.includes('</title><script>'), 'title must not break out of the <title> element');
+        assert.ok(
+            doc.includes('<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>'),
+            'escaped title expected in <title>'
+        );
+        assert.ok(
+            doc.includes('class="document-title">&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</h1>'),
+            'escaped title expected in the document-title h1'
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -398,6 +437,17 @@ describe('convertMarkdownToHtml', () => {
         const doc = generateHtmlDocument([convertMarkdownToHtml('```js\nlet a=1;\n```')], 'T');
         assert.ok(doc.includes('.hljs-keyword'), 'theme rule present in <style>');
     });
+
+    it('sanitizes raw HTML in source markdown: script/event-handlers stripped, benign markup survives', () => {
+        const md =
+            'Before\n\n<script>alert(1)</script>\n\n<img src="x" onerror="alert(2)">\n\n' +
+            '| A | B |\n|---|---|\n| 1<br>2 | 3 |\n';
+        const html = convertMarkdownToHtml(md);
+        assert.ok(!html.includes('<script'), 'raw <script> must be removed');
+        assert.ok(!html.includes('onerror='), 'event-handler attribute must be stripped');
+        assert.ok(html.includes('<table>'), 'benign table markup should survive');
+        assert.ok(html.includes('<br'), 'benign <br> should survive');
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -405,72 +455,53 @@ describe('convertMarkdownToHtml', () => {
 // ---------------------------------------------------------------------------
 
 describe('Golden file', () => {
-    const goldenPath = path.join(__dirname, 'golden', 'naming-module.html');
-    const readmePath = 'C:/dev/ado/code/shared/universal_modules/terraform-universal-naming/README.md';
+    // Self-contained fixture checked into the repo (Tests/golden/sample.md) so
+    // this test runs deterministically on every CI job — no dependency on an
+    // author-machine absolute path or an external repository checkout.
+    const samplePath = path.join(__dirname, 'golden', 'sample.md');
 
-    before(function () {
-        if (!fs.existsSync(goldenPath)) {
-            console.log(`  [SKIP] Golden file not found at ${goldenPath}`);
-            this.skip();
-        }
-        if (!fs.existsSync(readmePath)) {
-            console.log(`  [SKIP] Source README not found at ${readmePath}`);
-            this.skip();
-        }
-    });
+    it('TypeScript pipeline produces the expected document structure', async () => {
+        const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md2html-golden-'));
+        const outPath = path.join(outDir, 'sample.html');
 
-    it('TypeScript output structurally matches golden HTML', () => {
-        const goldenHtml = fs.readFileSync(goldenPath, 'utf8');
-        const readmeMd = fs.readFileSync(readmePath, 'utf8');
+        const { title } = await processFrontMatterDriven(samplePath, outPath);
+        const html = fs.readFileSync(outPath, 'utf8');
+        const $ = cheerio.load(html);
 
-        // Use the TypeScript converter
-        const { generateHtmlDocument: genDoc } = require('../src/document');
-        const { convertMarkdownToHtml: convert } = require('../src/render');
-        const tsHtml = genDoc([convert(readmeMd)], 'Terraform Universal Naming Module');
+        // Front-matter title is used (not the first H1) and is reflected
+        // identically in <title> and the injected document-title <h1>.
+        assert.strictEqual(title, 'Sample Fixture');
+        assert.strictEqual($('title').text(), 'Sample Fixture');
+        assert.strictEqual($('h1.document-title').text(), 'Sample Fixture');
 
-        const cheerio = require('cheerio');
-        const $g = cheerio.load(goldenHtml);
-        const $t = cheerio.load(tsHtml);
+        // Heading sequence (level + text), excluding the injected document-title h1.
+        const headingSeq = $('h1, h2, h3, h4, h5, h6')
+            .not('.document-title')
+            .toArray()
+            .map((el) => `${el.name}:${$(el).text().trim()}`);
+        assert.deepStrictEqual(headingSeq, [
+            'h1:Sample Document',
+            'h2:Section One',
+            'h3:Subsection A',
+            'h2:Section Two',
+        ]);
 
-        // (a) Heading sequence must match exactly (text + level), aside from the
-        // document-title <h1> both renderers inject identically.
-        const headingSeq = ($: any) =>
-            $('h1, h2, h3, h4, h5, h6')
-                .toArray()
-                .map((el: any) => `${(el as any).name}:${$(el).text().trim()}`);
-        assert.deepStrictEqual(
-            headingSeq($t),
-            headingSeq($g),
-            'Heading sequence (level + text) must match the golden file exactly',
-        );
+        // Table with header cells.
+        assert.ok($('table').length > 0, 'expected a <table>');
+        assert.ok($('th').length > 0, 'expected <th> header cells');
 
-        // (b) Content coverage: every alphanumeric word token in the golden body
-        // must also appear in the TypeScript body. This catches dropped or garbled
-        // content (the original ±2 heading-count check would not), while tolerating
-        // the documented markdown-it vs python-markdown divergences in ordered-list
-        // marker text and whitespace (see RENDERING-NOTES.md) — those change the
-        // exact string but not the set of words present.
-        // Pure-numeric tokens are excluded: python-markdown renders some ordered-list
-        // markers (5, 7, 9, 10, 12 …) as literal text while markdown-it emits them as
-        // <ol> numbering outside the text node. That is the documented marker-text
-        // divergence, not missing content — so compare alphabetic word tokens only.
-        const wordSet = ($: any): Set<string> => {
-            const text = $('body').text().toLowerCase();
-            const words = (text.match(/[a-z0-9_]+/g) ?? []).filter((w: string) => /[a-z]/.test(w));
-            return new Set<string>(words);
-        };
-        const goldenWords = wordSet($g);
-        const tsWords = wordSet($t);
-        const missing = [...goldenWords].filter((w) => !tsWords.has(w));
-        assert.deepStrictEqual(
-            missing,
-            [],
-            `TypeScript output is missing words present in the golden file: ${missing.slice(0, 20).join(', ')}`,
-        );
+        // Fenced code block, syntax-highlighted via hljs (js is a known language).
+        assert.ok($('pre code.hljs').length > 0, 'expected a highlighted code block');
+        assert.ok(html.includes('language-js'), 'expected the fenced block language class');
 
-        // (c) Table presence parity.
-        if ($g('table').length > 0) {
-            assert.ok($t('table').length > 0, 'Expected TypeScript output to contain tables');
+        // Bullet and numbered lists.
+        assert.ok($('ul li').length >= 2, 'expected a bullet list');
+        assert.ok($('ol li').length >= 2, 'expected a numbered list');
+
+        // Content coverage sanity check.
+        const bodyText = $('body').text().toLowerCase();
+        for (const word of ['intro', 'paragraph', 'bold', 'detail', 'alpha', 'beta']) {
+            assert.ok(bodyText.includes(word), `expected body text to include '${word}'`);
         }
     });
 });

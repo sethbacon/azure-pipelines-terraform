@@ -20,6 +20,18 @@ const FALLBACK_TERRAFORM_VERSION = '1.14.8';
 /** Fallback version used when the OpenTofu GitHub API is unreachable. Update periodically. */
 const FALLBACK_TOFU_VERSION = '1.11.6';
 
+/**
+ * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
+ * raw input rather than getBoolInput(name, false) so the default still holds on an
+ * agent that does not materialize task.json defaultValues into the input env var
+ * (where getBoolInput would silently return false). Mirrors the requireCosignVerification
+ * handling: unset/empty -> true; any value other than "false" (case-insensitive) -> true.
+ */
+function getBoolInputDefaultTrue(name: string): boolean {
+    const raw = tasks.getInput(name, false);
+    return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
+}
+
 function isSensitiveQueryParam(name: string): boolean {
     const lower = name.toLowerCase();
     return lower === 'sig'
@@ -206,7 +218,7 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
 
     const sha256SumsContent = await fetchText(sha256SumsUrl);
-    const requireGpg = tasks.getBoolInput("requireGpgSignature", false);
+    const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
@@ -277,7 +289,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
 
     if (data.sha256) {
         await verifySha256(zipPath, data.sha256);
-    } else if (tasks.getBoolInput("requireChecksum", false)) {
+    } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
         throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
@@ -331,7 +343,7 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // Attempt SHA256 verification from mirror — fail if SHA256SUMS is available but hash doesn't match
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
-    const requireChecksum = tasks.getBoolInput("requireChecksum", false);
+    const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     try {
         const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
         await verifySha256(zipPath, expectedHash);
@@ -504,12 +516,9 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
 
     // Cosign verification of SHA256SUMS. Fail closed: require a verified signature
     // unless the operator has explicitly opted out (requireCosignVerification=false).
-    // The task.json default is "true"; reading the raw input keeps the default fail-
-    // closed even on an agent that does not materialize task input defaults.
-    const requireCosignInput = tasks.getInput("requireCosignVerification", false);
-    const requireCosign = requireCosignInput === undefined || requireCosignInput.trim() === ''
-        ? true
-        : requireCosignInput.trim().toLowerCase() !== 'false';
+    // getBoolInputDefaultTrue reads the raw input so the default stays fail-closed
+    // even on an agent that does not materialize task.json input defaults.
+    const requireCosign = getBoolInputDefaultTrue("requireCosignVerification");
     const signatureUrl = `${sha256SumsUrl}.sig`;
     const certificateUrl = `${sha256SumsUrl}.pem`;
     await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, requireCosign);

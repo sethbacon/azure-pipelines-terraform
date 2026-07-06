@@ -82,11 +82,46 @@ const md = new MarkdownIt({
  * Tables are enabled by default in markdown-it.
  * Fenced code blocks are syntax-highlighted with highlight.js (hljs classes);
  * the matching theme CSS is embedded by generateHtmlDocument.
+ * The rendered HTML is passed through sanitizeRenderedHtml so raw active-content
+ * markup in the source markdown cannot reach the published KB article.
  */
 export function convertMarkdownToHtml(text: string): string {
     const preprocessed = preprocessMarkdown(text);
     const html = md.render(preprocessed);
-    return postProcessHtml(html);
+    return sanitizeRenderedHtml(postProcessHtml(html));
+}
+
+/**
+ * Strip active-content vectors from rendered HTML while preserving benign
+ * formatting markup (tables, <br>, <div>, code blocks, …). markdown-it runs
+ * with html:true so author markdown can use raw formatting HTML — e.g. <br/>
+ * inside a table cell, a common idiom — but that same passthrough would let a
+ * raw <script>, an on*= event handler, or a javascript:/vbscript:/data: URI flow
+ * into the ServiceNow KB body (a stored-XSS sink). This is the sanitizer allowlist
+ * the markdown->HTML norm calls for; PublishKbArticle/html-validate.ts is the
+ * downstream fail-closed gate and this is defense-in-depth at render time.
+ */
+export function sanitizeRenderedHtml(html: string): string {
+    const $ = cheerio.load(html, { xmlMode: false });
+    // Remove executable / embedding elements outright.
+    $('script, iframe, object, embed, noscript').remove();
+    // Strip event-handler attributes and dangerous URIs from every element.
+    $('*').each((_, el) => {
+        const attribs = $(el).attr() ?? {};
+        for (const name of Object.keys(attribs)) {
+            const lname = name.toLowerCase();
+            const value = String(attribs[name]).trim().toLowerCase();
+            if (lname.startsWith('on')) {
+                $(el).removeAttr(name);
+            } else if (
+                (lname === 'href' || lname === 'src' || lname === 'xlink:href' || lname === 'formaction') &&
+                (value.startsWith('javascript:') || value.startsWith('vbscript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
+            ) {
+                $(el).removeAttr(name);
+            }
+        }
+    });
+    return $('body').html() ?? '';
 }
 
 // ---------------------------------------------------------------------------

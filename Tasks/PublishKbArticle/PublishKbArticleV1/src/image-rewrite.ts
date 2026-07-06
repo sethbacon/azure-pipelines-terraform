@@ -26,8 +26,13 @@ function isExternalSrc(src: string): boolean {
  * Extract distinct relative <img src> references from the HTML body, resolved
  * against imageBaseDir. Skips external/data srcs. De-duplicates by absolute path.
  */
-export function extractLocalImageRefs(html: string, imageBaseDir: string): LocalImageRef[] {
+export function extractLocalImageRefs(
+    html: string,
+    imageBaseDir: string,
+    log: (msg: string) => void = console.log,
+): LocalImageRef[] {
     const refs = new Map<string, LocalImageRef>();
+    const base = path.resolve(imageBaseDir);
     const imgRe = /<img\b[^>]*?\bsrc\s*=\s*(['"])(.*?)\1/gi;
     let m: RegExpExecArray | null;
     while ((m = imgRe.exec(html)) !== null) {
@@ -37,6 +42,16 @@ export function extractLocalImageRefs(html: string, imageBaseDir: string): Local
         // Strip any query/fragment from the local path (e.g. ./a.png?x=1).
         const cleanPath = src.replace(/[?#].*$/, '');
         const absPath = path.resolve(imageBaseDir, decodeURIComponent(cleanPath));
+
+        // Containment guard: reject any src (e.g. `../secret.png` or its
+        // URL-encoded form) that resolves outside imageBaseDir. Without this, a
+        // path-traversal src could read and upload an arbitrary file on the
+        // agent as a KB attachment.
+        if (absPath !== base && !absPath.startsWith(base + path.sep)) {
+            log(`[WARN] Skipping image src '${src}': resolves outside the image base directory ('${absPath}' is not under '${base}').`);
+            continue;
+        }
+
         if (!refs.has(absPath)) {
             refs.set(absPath, {
                 originalSrc: src,

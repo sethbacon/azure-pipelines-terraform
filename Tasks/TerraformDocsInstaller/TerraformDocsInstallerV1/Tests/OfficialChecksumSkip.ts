@@ -17,9 +17,9 @@ const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccd
 
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => { throw new Error('Specific version should not call fetchJson: ' + url); },
-  fetchText: async (url: string) => {
-    // Simulate the checksum file being unavailable (HTTP 404).
-    throw new Error('Failed to fetch ' + url + ': HTTP 404');
+  fetchTextAllow404: async (_url: string) => {
+    // Simulate the checksum file being genuinely absent (HTTP 404 -> null).
+    return null;
   }
 });
 

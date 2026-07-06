@@ -4,7 +4,7 @@ import os = require('os');
 import path = require('path');
 
 import { randomUUID as uuidV4 } from 'crypto';
-import { fetchBuffer } from './http-client';
+import { fetchBufferAllow404 } from './http-client';
 
 /**
  * Anchored, escaped regular expression for the Fulcio certificate identity (SAN)
@@ -47,16 +47,26 @@ export async function verifyCosignSignature(
         return;
     }
 
-    let signatureBytes: Uint8Array;
-    let certificateBytes: Uint8Array;
+    // Fetch the signature + certificate, distinguishing a genuine 404 (the files
+    // are not published) from a transient 5xx / network / TLS failure. Only a real
+    // absence downgrades to skip-when-not-required; any other fetch failure is
+    // fatal even when `required` is false, so a transient outage can never silently
+    // turn OpenTofu signature verification off.
+    let signatureBytes: Uint8Array | null;
+    let certificateBytes: Uint8Array | null;
     try {
-        signatureBytes = await fetchBuffer(signatureUrl);
-        certificateBytes = await fetchBuffer(certificateUrl);
-    } catch {
+        signatureBytes = await fetchBufferAllow404(signatureUrl);
+        certificateBytes = await fetchBufferAllow404(certificateUrl);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cosign signature/certificate fetch failed for OpenTofu verification (not a 404): ${message}`);
+    }
+
+    if (signatureBytes === null || certificateBytes === null) {
         if (required) {
             throw new Error(`Cosign signature or certificate file unavailable and verification is required. Signature: ${signatureUrl}, Certificate: ${certificateUrl}`);
         }
-        tasks.warning('Cosign signature/certificate files unavailable. Skipping verification.');
+        tasks.warning('Cosign signature/certificate files unavailable (404). Skipping verification.');
         return;
     }
 

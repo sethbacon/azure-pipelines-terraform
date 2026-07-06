@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "0",
+        "Minor": "1",
         "Patch": "0"
     },
     "minimumAgentVersion": "3.232.1",
@@ -248,6 +248,9 @@
     },
     "execution": {
         "Node24": {
+            "target": "src/index.js"
+        },
+        "Node20_1": {
             "target": "src/index.js"
         }
     },

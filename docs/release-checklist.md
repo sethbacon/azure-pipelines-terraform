@@ -26,7 +26,7 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] Upload the `.vsix` to a test ADO org via **Organization Settings → Extensions → Browse local extensions → Upload**
 - [ ] Extension installs without errors
-- [ ] All nine tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, `PipelineTerraformTask@5`, `PipelineTerraformModulePublish@1`, `PipelinePolicyAgentInstaller@1`, `PipelineTerraformPolicyCheck@1`, `PipelineTerraformDriftReport@1`, `PipelineTerraformDocsInstaller@1`, and `PipelineTerraformDocs@1`
+- [ ] All eleven tasks appear: `PipelineTerraformInstaller@1`, `PipelineTerraformProviderMirror@1`, `PipelineTerraformTask@5`, `PipelineTerraformModulePublish@1`, `PipelinePolicyAgentInstaller@1`, `PipelineTerraformPolicyCheck@1`, `PipelineTerraformDriftReport@1`, `PipelineTerraformDocsInstaller@1`, `PipelineTerraformDocs@1`, `Markdown2Html@1`, and `PublishKbArticle@1`
 
 ## 4. Installer task smoke test
 

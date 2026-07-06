@@ -158,7 +158,7 @@ export async function processArticleImages(
     failOnMissing: boolean,
     log: (msg: string) => void = console.log,
 ): Promise<ProcessImagesResult> {
-    const refs = extractLocalImageRefs(html, imageBaseDir);
+    const refs = extractLocalImageRefs(html, imageBaseDir, log);
     if (refs.length === 0) {
         return { html, uploaded: 0, missing: [] };
     }
