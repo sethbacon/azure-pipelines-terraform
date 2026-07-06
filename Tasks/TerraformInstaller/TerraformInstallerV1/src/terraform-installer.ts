@@ -6,7 +6,8 @@ import fs = require('fs');
 import crypto = require('crypto');
 
 import { randomUUID as uuidV4 } from 'crypto';
-import { fetchJson, fetchText } from './http-client';
+import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
+import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
 
@@ -299,30 +300,6 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     return zipPath;
 }
 
-/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
-export function parseAllowedHosts(raw: string | undefined): string[] {
-    if (!raw) {
-        return [];
-    }
-    return raw
-        .split(/[\n,]/)
-        .map(h => h.trim().toLowerCase())
-        .filter(h => h.length > 0);
-}
-
-/**
- * Matches a download_url hostname against the allowlist. A `*.` prefix on an
- * allowlist entry matches only its subdomains (not the bare host itself),
- * mirroring TLS wildcard-SAN semantics — useful for registry-controlled
- * storage hosts like *.s3.amazonaws.com.
- */
-export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
-    const host = hostname.toLowerCase();
-    return allowedHosts.some(allowed =>
-        allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
-    );
-}
-
 async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<string> {
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
@@ -344,21 +321,18 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
-    try {
-        const expectedHash = await fetchExpectedSha256(sha256SumsUrl, zipFileName);
-        await verifySha256(zipPath, expectedHash);
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const checksumUnavailable = errorMessage.includes('SHA256 checksum not found') || errorMessage.includes('Failed to fetch');
-        // A genuine hash mismatch is always fatal. An unavailable SHA256SUMS file is
-        // fatal only when the user requires checksum verification; otherwise warn.
-        if (checksumUnavailable && !requireChecksum) {
-            tasks.warning(`SHA256 verification skipped for mirror download: ${errorMessage}`);
-        } else if (checksumUnavailable) {
-            throw new Error(`Checksum verification is required but the mirror did not provide a usable SHA256SUMS file (${sha256SumsUrl}): ${errorMessage}`);
-        } else {
-            throw error;
+    // Only a genuine 404 (fetchTextAllow404 returns null) means "no SHA256SUMS
+    // published". Any other non-2xx / network / TLS failure is fatal regardless of
+    // requireChecksum, rather than being classified by matching an error string.
+    const sumsBody = await fetchTextAllow404(sha256SumsUrl);
+    if (sumsBody === null) {
+        if (requireChecksum) {
+            throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
+        tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
+    } else {
+        // The file exists: a missing asset entry or a hash mismatch is always fatal.
+        await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
     }
 
     return zipPath;
@@ -381,12 +355,6 @@ function parseSha256(sha256SumsContent: string, zipFileName: string): string {
         }
     }
     throw new Error(`SHA256 checksum not found for ${zipFileName}`);
-}
-
-async function fetchExpectedSha256(sha256SumsUrl: string, zipFileName: string): Promise<string> {
-    tasks.debug(`Fetching SHA256SUMS from ${sha256SumsUrl}`);
-    const body = await fetchText(sha256SumsUrl);
-    return parseSha256(body, zipFileName);
 }
 
 async function verifySha256(filePath: string, expectedHash: string): Promise<void> {

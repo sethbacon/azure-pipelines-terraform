@@ -17,9 +17,9 @@ const WRONG_SHA256 = '0000000000000000000000000000000000000000000000000000000000
 
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => { throw new Error('Unexpected fetchJson: ' + url); },
-    fetchText: async (url: string) => {
+    fetchTextAllow404: async (url: string) => {
         if (url.endsWith('.sha256')) { return `${EXPECTED_SHA256}\n`; }
-        throw new Error('Unexpected fetchText URL: ' + url);
+        throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
     }
 });
 

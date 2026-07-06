@@ -18,7 +18,7 @@ tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/
 
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => { throw new Error('Specific version should not call fetchJson: ' + url); },
-    fetchText: async (url: string) => { throw new Error(`Failed to fetch ${url}: HTTP 404`); }
+    fetchTextAllow404: async () => null
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });

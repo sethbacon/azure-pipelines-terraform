@@ -22,7 +22,6 @@ tr.registerMock('crypto', { randomUUID: () => FIXED_UUID });
 
 const sha = '0123456789abcdef0123456789abcdef01234567';
 const token = 'secrettoken';
-const header = `Authorization: Basic ${Buffer.from(`:${token}`).toString('base64')}`;
 const url = 'https://github.com/example/private';
 
 tr.setInput('engine', 'opa');
@@ -30,7 +29,7 @@ tr.setInput('inputFile', planFile);
 tr.setInput('policySource', 'gitUrl');
 tr.setInput('policyRepoUrl', url);
 // A full 40-char SHA takes the clone --no-checkout + checkout path; a token
-// exercises the http.extraheader auth branch.
+// exercises the credential-via-GIT_CONFIG-env auth branch (no token on argv).
 tr.setInput('policyRepoRef', sha);
 tr.setInput('policyRepoToken', token);
 tr.setInput('publishTestResults', 'false');
@@ -41,7 +40,7 @@ const a: ma.TaskLibAnswers = {
     which: { git: gitPath, opa: opaPath },
     checkPath: { [gitPath]: true, [opaPath]: true },
     exec: {
-        [`${gitPath} -c http.extraheader=${header} clone --no-checkout -- ${url} ${cloneDir}`]: {
+        [`${gitPath} clone --no-checkout -- ${url} ${cloneDir}`]: {
             code: 0, stdout: 'Cloning...'
         },
         [`${gitPath} -C ${cloneDir} checkout ${sha}`]: {

@@ -22,9 +22,10 @@ tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
         throw new Error('fetchJson should not be called for mirror download. Called with: ' + url);
     },
-    fetchText: async (url: string) => {
-        // Mirror SHA256SUMS is unavailable — the installer catches this and warns
-        throw new Error('Failed to fetch ' + url + ': HTTP 404');
+    fetchTextAllow404: async () => {
+        // Mirror SHA256SUMS is genuinely absent (404) — fetchTextAllow404 returns
+        // null; with requireChecksum=false the installer warns and proceeds.
+        return null;
     }
 });
 

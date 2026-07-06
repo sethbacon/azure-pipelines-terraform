@@ -7,6 +7,7 @@ import crypto = require('crypto');
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchTextAllow404 } from './http-client';
+import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 
 const toolName = "terraform-docs";
 const isWindows = os.type().match(/^Win/);
@@ -112,31 +113,6 @@ async function resolveVersionFromRegistry(registryUrl: string, mirrorName: strin
   }
   console.log(tasks.loc("ResolvedVersionFromRegistry", data.version));
   return data.version;
-}
-
-// --- Registry download-host allowlist (mirrors TerraformInstaller) ---
-
-/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
-export function parseAllowedHosts(raw: string | undefined): string[] {
-  if (!raw) {
-    return [];
-  }
-  return raw
-    .split(/[\n,]/)
-    .map(h => h.trim().toLowerCase())
-    .filter(h => h.length > 0);
-}
-
-/**
- * Matches a download_url hostname against the allowlist. A `*.` prefix on an
- * allowlist entry matches only its subdomains (not the bare host itself),
- * mirroring TLS wildcard-SAN semantics.
- */
-export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
-  const host = hostname.toLowerCase();
-  return allowedHosts.some(allowed =>
-    allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
-  );
 }
 
 // --- Download strategies (return the path to the downloaded archive) ---

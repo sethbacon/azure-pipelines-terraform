@@ -6,7 +6,8 @@ import fs = require('fs');
 import crypto = require('crypto');
 
 import { randomUUID as uuidV4 } from 'crypto';
-import { fetchJson, fetchText } from './http-client';
+import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
+import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { verifyGpgSignature } from './gpg-verifier';
 
 const isWindows = os.type().match(/^Win/);
@@ -193,45 +194,19 @@ async function downloadOpaOfficial(version: string): Promise<string> {
     // the check mandatory; HTTPS + GitHub's release infrastructure is the trust root.
     const sha256Url = `${downloadUrl}.sha256`;
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
-    try {
-        const sha256Body = await fetchText(sha256Url);
-        const expectedHash = parseFirstSha256(sha256Body);
-        await verifySha256(binaryPath, expectedHash);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const checksumUnavailable = message.includes('SHA256 checksum not found') || message.includes('Failed to fetch');
-        if (checksumUnavailable && !requireChecksum) {
-            tasks.warning(`SHA256 verification skipped for OPA download: ${message}`);
-        } else {
-            throw error;
+    // Only a genuine 404 (fetchTextAllow404 returns null) means "no checksum
+    // published". Any other non-2xx / network / TLS failure is fatal regardless of
+    // requireChecksum, rather than being classified by matching an error string.
+    const sha256Body = await fetchTextAllow404(sha256Url);
+    if (sha256Body === null) {
+        if (requireChecksum) {
+            throw new Error(`Checksum verification is required but no .sha256 is published for the OPA download (${sha256Url}).`);
         }
+        tasks.warning(`SHA256 verification skipped for OPA download: no checksum file published at ${sha256Url}.`);
+    } else {
+        await verifySha256(binaryPath, parseFirstSha256(sha256Body));
     }
     return binaryPath;
-}
-
-// --- Registry download-host allowlist (mirrors TerraformInstaller) ---
-
-/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
-export function parseAllowedHosts(raw: string | undefined): string[] {
-    if (!raw) {
-        return [];
-    }
-    return raw
-        .split(/[\n,]/)
-        .map(h => h.trim().toLowerCase())
-        .filter(h => h.length > 0);
-}
-
-/**
- * Matches a download_url hostname against the allowlist. A `*.` prefix on an
- * allowlist entry matches only its subdomains (not the bare host itself),
- * mirroring TLS wildcard-SAN semantics.
- */
-export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
-    const host = hostname.toLowerCase();
-    return allowedHosts.some(allowed =>
-        allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
-    );
 }
 
 async function downloadFromRegistry(agent: string, version: string, registryUrl: string, mirrorName: string): Promise<string> {
@@ -298,37 +273,31 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     const binaryPath = await downloadTo(downloadUrl, `opa-${version}-${uuidV4()}${isWindows ? '.exe' : ''}`);
 
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
-    try {
-        const sha256Body = await fetchText(`${downloadUrl}.sha256`);
-        await verifySha256(binaryPath, parseFirstSha256(sha256Body));
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const checksumUnavailable = message.includes('SHA256 checksum not found') || message.includes('Failed to fetch');
-        if (checksumUnavailable && !requireChecksum) {
-            tasks.warning(`SHA256 verification skipped for mirror download: ${message}`);
-        } else {
-            throw error;
+    const sha256Url = `${downloadUrl}.sha256`;
+    const sha256Body = await fetchTextAllow404(sha256Url);
+    if (sha256Body === null) {
+        if (requireChecksum) {
+            throw new Error(`Checksum verification is required but no .sha256 is published for the mirror download (${sha256Url}).`);
         }
+        tasks.warning(`SHA256 verification skipped for mirror download: no checksum file published at ${sha256Url}.`);
+    } else {
+        await verifySha256(binaryPath, parseFirstSha256(sha256Body));
     }
     return binaryPath;
 }
 
 async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fileName: string): Promise<void> {
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
-    try {
-        const body = await fetchText(sha256SumsUrl);
-        await verifySha256(filePath, parseSha256(body, fileName));
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const checksumUnavailable = message.includes('SHA256 checksum not found') || message.includes('Failed to fetch');
-        if (checksumUnavailable && !requireChecksum) {
-            tasks.warning(`SHA256 verification skipped for mirror download: ${message}`);
-        } else if (checksumUnavailable) {
-            throw new Error(`Checksum verification is required but the mirror did not provide a usable SHA256SUMS file (${sha256SumsUrl}): ${message}`);
-        } else {
-            throw error;
+    const body = await fetchTextAllow404(sha256SumsUrl);
+    if (body === null) {
+        if (requireChecksum) {
+            throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
+        tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
+        return;
     }
+    // The file exists: a missing asset entry or a hash mismatch is always fatal.
+    await verifySha256(filePath, parseSha256(body, fileName));
 }
 
 // --- Helpers ---

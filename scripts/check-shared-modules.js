@@ -50,6 +50,18 @@ const FAMILIES = [
             'http-client.ts',
         ],
     },
+    {
+        // Registry download-host allowlist (SSRF-relevant): shared across all three
+        // installer tasks that accept a registryAllowedHosts input.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'registry-allowlist.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even
