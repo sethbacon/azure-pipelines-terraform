@@ -69,12 +69,18 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
     const gitPath = tasks.which('git', true);
     const isSha = /^[0-9a-fA-F]{40}$/.test(ref);
 
-    const authArgs: string[] = [];
+    const authEnv: Record<string, string> = {};
     if (token) {
         tasks.setSecret(token);
-        const header = `Authorization: Basic ${Buffer.from(`:${token}`).toString('base64')}`;
-        tasks.setSecret(Buffer.from(`:${token}`).toString('base64'));
-        authArgs.push('-c', `http.extraheader=${header}`);
+        const basic = Buffer.from(`:${token}`).toString('base64');
+        tasks.setSecret(basic);
+        // Pass the credential to git via per-invocation config ENV VARS (git >= 2.31)
+        // instead of `-c http.extraheader=...` on argv, so the token never appears in
+        // the child process's command line (readable via ps / /proc/<pid>/cmdline by
+        // other processes on a shared agent).
+        authEnv['GIT_CONFIG_COUNT'] = '1';
+        authEnv['GIT_CONFIG_KEY_0'] = 'http.extraheader';
+        authEnv['GIT_CONFIG_VALUE_0'] = `Authorization: Basic ${basic}`;
     }
 
     if (isSha) {
@@ -82,9 +88,8 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
         // git option-parsing before the url/dir positionals; `ref` is a
         // validated 40-char SHA here, so the checkout positional is safe.
         const clone = tasks.tool(gitPath);
-        clone.arg(authArgs);
         clone.arg(['clone', '--no-checkout', '--', url, cloneDir]);
-        await execGit(clone);
+        await execGit(clone, authEnv);
 
         const checkout = tasks.tool(gitPath);
         checkout.arg(['-C', cloneDir, 'checkout', ref]);
@@ -93,9 +98,8 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
         // `--` stops option-parsing before url/dir; `ref` is the `--branch`
         // value and is constrained by SAFE_REF (no leading dash).
         const clone = tasks.tool(gitPath);
-        clone.arg(authArgs);
         clone.arg(['clone', '--depth', '1', '--branch', ref, '--', url, cloneDir]);
-        await execGit(clone);
+        await execGit(clone, authEnv);
     }
 }
 
@@ -103,13 +107,14 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
  * Runs a git ToolRunner with a hard wall-clock timeout and a fail-fast
  * environment (never prompt for credentials; abort a stalled HTTP transfer).
  */
-async function execGit(tool: ToolRunner): Promise<void> {
+async function execGit(tool: ToolRunner, extraEnv: Record<string, string> = {}): Promise<void> {
     const options = <IExecOptions>{
         env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0',
             GIT_HTTP_LOW_SPEED_LIMIT: '1000',
-            GIT_HTTP_LOW_SPEED_TIME: '60'
+            GIT_HTTP_LOW_SPEED_TIME: '60',
+            ...extraEnv,
         }
     };
     let timer: NodeJS.Timeout | undefined;
