@@ -4,6 +4,24 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.2...v1.8.3) (2026-07-06)
+
+
+### Documentation
+
+* document the Entra token argv-exposure risk and its 10-minute lifetime mitigation ([#346](https://github.com/sethbacon/azure-pipelines-terraform/issues/346)) ([96b68b3](https://github.com/sethbacon/azure-pipelines-terraform/commit/96b68b393ed74020eb9b58ea90a6ab87c27c261c))
+* fix stale claim that npm ci --ignore-scripts wasn't ported here ([#349](https://github.com/sethbacon/azure-pipelines-terraform/issues/349)) ([f4fd517](https://github.com/sethbacon/azure-pipelines-terraform/commit/f4fd517616d80e2dafa8f250c4e8a2e2ca14587d))
+
+
+### Security
+
+* backport azure-pipelines-packer's http-client.ts hardening ([#350](https://github.com/sethbacon/azure-pipelines-terraform/issues/350)) ([0e93cc2](https://github.com/sethbacon/azure-pipelines-terraform/commit/0e93cc29457244cdc43ca67096929f3403470835))
+* OIDC token lifecycle and process termination hardening ([#362](https://github.com/sethbacon/azure-pipelines-terraform/issues/362)) ([80fcb64](https://github.com/sethbacon/azure-pipelines-terraform/commit/80fcb643b2944fc3874cc7f58dc7d2affac598ac))
+* port release-pipeline hardening from azure-pipelines-packer's second security audit ([#348](https://github.com/sethbacon/azure-pipelines-terraform/issues/348)) ([1e3c5df](https://github.com/sethbacon/azure-pipelines-terraform/commit/1e3c5df83bead8dd2849db653623221e86708175))
+* remediate 2026-07-04 security audit findings ([#383](https://github.com/sethbacon/azure-pipelines-terraform/issues/383)) ([b74d866](https://github.com/sethbacon/azure-pipelines-terraform/commit/b74d866ca5a2fc2e3795e330e59d3f89cdb07020))
+* TerraformInstallerV1 supply-chain hardening ([#361](https://github.com/sethbacon/azure-pipelines-terraform/issues/361)) ([16f2f34](https://github.com/sethbacon/azure-pipelines-terraform/commit/16f2f34d296bf0a96e0787d5268efeb8a04ca9c3))
+* TerraformTaskV5 secret-hygiene hardening ([#360](https://github.com/sethbacon/azure-pipelines-terraform/issues/360)) ([20b8f90](https://github.com/sethbacon/azure-pipelines-terraform/commit/20b8f901adaa02c6bae995555f0123d09b0b299c))
+
 ## [1.8.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.1...v1.8.2) (2026-07-03)
 
 
