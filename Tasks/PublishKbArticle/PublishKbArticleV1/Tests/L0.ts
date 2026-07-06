@@ -468,6 +468,58 @@ describe('htmlValidate.validateHtmlContent', () => {
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
     });
 
+    it('throws on an inline <script> element when force=false', () => {
+        const html = '<html><body><script>alert(1)</script></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /Inline <script> elements are not allowed/,
+        );
+    });
+
+    it('does not throw on an inline <script> when force=true', () => {
+        const html = '<html><body><script>alert(1)</script></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+    });
+
+    it('throws on an inline event-handler attribute (onerror) when force=false', () => {
+        const html = '<html><body><img src="x" onerror="alert(1)"></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /event-handler attributes .* are not allowed/,
+        );
+    });
+
+    it('does not throw on an inline event-handler when force=true', () => {
+        const html = '<html><body><img src="x" onerror="alert(1)"></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+    });
+
+    it('throws on a javascript: URI when force=false', () => {
+        const html = '<html><body><a href="javascript:alert(1)">x</a></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /javascript:.*URIs are not allowed/,
+        );
+    });
+
+    it('throws on a non-image data: URI when force=false', () => {
+        const html = '<html><body><a href="data:text/html,alert">x</a></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /data: URIs are not allowed/,
+        );
+    });
+
+    it('does not throw on an image data: URI (allowed)', () => {
+        const html = '<html><body><img src="data:image/png;base64,iVBORw0KGgo="></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does not throw on a dangerous URI when force=true', () => {
+        const html = '<html><body><a href="javascript:alert(1)">x</a></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+    });
+
     it('throws on content loss when force=false', () => {
         // Construct input that will lose significant content after cheerio parse.
         // cheerio wraps fragments in html/head/body which adds bytes, so this

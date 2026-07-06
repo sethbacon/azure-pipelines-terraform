@@ -223,6 +223,10 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json` — if TerraformPolicyCheckV1 changed
    - `Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json` — if TerraformDriftReportV1 changed
    - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
+   - `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json` — if TerraformDocsInstallerV1 changed
+   - `Tasks/TerraformDocs/TerraformDocsV1/task.json` — if TerraformDocsV1 changed
+   - `Tasks/Markdown2Html/Markdown2HtmlV1/task.json` — if Markdown2HtmlV1 changed
+   - `Tasks/PublishKbArticle/PublishKbArticleV1/task.json` — if PublishKbArticleV1 changed
 
    Increment `Minor` by 1, leave `Patch` at 0.
 

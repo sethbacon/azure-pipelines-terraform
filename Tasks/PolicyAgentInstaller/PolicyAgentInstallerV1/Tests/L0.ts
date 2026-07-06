@@ -8,6 +8,8 @@ import './HttpClientL0';
 import './InstallerHelpersL0';
 // Direct unit tests for the GPG signature gate (real openpgp).
 import './GpgVerifierL0';
+// Direct unit tests for the registry download-host allowlist.
+import './RegistryAllowedHostsL0';
 
 describe('PolicyAgentInstaller Test Suite', function () {
 

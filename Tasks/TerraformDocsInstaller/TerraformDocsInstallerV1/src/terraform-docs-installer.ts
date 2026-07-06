@@ -12,6 +12,17 @@ const toolName = "terraform-docs";
 const isWindows = os.type().match(/^Win/);
 
 /**
+ * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
+ * raw input rather than getBoolInput(name, false) so the default still holds on an
+ * agent that does not materialize task.json defaultValues into the input env var
+ * (where getBoolInput would silently return false). Mirrors TerraformInstaller's helper.
+ */
+function getBoolInputDefaultTrue(name: string): boolean {
+  const raw = tasks.getInput(name, false);
+  return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
+}
+
+/**
  * Downloads the requested terraform-docs version, verifies its SHA256 checksum,
  * caches it via the tool cache, and returns the path to the executable.
  *
@@ -194,7 +205,7 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
 
   if (data.sha256) {
     await verifySha256(filePath, data.sha256);
-  } else if (tasks.getBoolInput("requireChecksum", false)) {
+  } else if (getBoolInputDefaultTrue("requireChecksum")) {
     // Empty sha256 means no local integrity check is possible. Fail closed when
     // the operator requires checksum verification rather than trusting the archive.
     throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
@@ -223,7 +234,7 @@ async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promi
  * is unavailable and requireChecksum is false, warn and skip; otherwise fail closed.
  */
 async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetName: string, sourceLabel: string): Promise<void> {
-  const requireChecksum = tasks.getBoolInput("requireChecksum", false);
+  const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
   // Only a genuine 404 (fetchTextAllow404 returns null) counts as "no checksum file
   // published". Any other non-2xx / network / TLS failure propagates fatally,
   // regardless of requireChecksum, instead of being classified by error-string.
