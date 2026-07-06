@@ -262,6 +262,19 @@ export async function createCategory(
 }
 
 /**
+ * ServiceNow encoded queries use `^` (AND / `^OR` / `^NQ`) and operator tokens as
+ * control syntax with no value-escaping mechanism. Any value interpolated into a
+ * sysparm_query must be rejected if it contains `^` or a newline, so an operator- or
+ * document-derived value (e.g. a markdown front-matter sourceKey) cannot inject query
+ * clauses that redirect the lookup onto an unrelated record.
+ */
+function assertQueryValueSafe(value: string, field: string): void {
+    if (/[\^\r\n]/.test(value)) {
+        throw new Error(`Invalid ${field}: values used in a ServiceNow query must not contain '^' or newline characters.`);
+    }
+}
+
+/**
  * Find a category by name in the given KB (optionally under a parent), creating
  * it if not found and autoCreate is true.
  * This is the canonical implementation — the Python source had three duplicate
@@ -276,6 +289,9 @@ export async function findOrCreateCategory(
     autoCreate: boolean = true,
 ): Promise<string | null> {
     const url = `${baseUrl(instance)}/api/now/table/kb_category`;
+    assertQueryValueSafe(kbId, 'knowledge base id');
+    assertQueryValueSafe(categoryName, 'category name');
+    if (parentCategoryId) assertQueryValueSafe(parentCategoryId, 'parent category id');
     let query = `kb_knowledge_base=${kbId}^label=${categoryName}`;
     if (parentCategoryId) query += `^parent=${parentCategoryId}`;
 
@@ -336,6 +352,8 @@ export async function findArticleBySourceKey(
     kbId?: string,
 ): Promise<string | null> {
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge`;
+    assertQueryValueSafe(sourceKey, 'source key');
+    if (kbId) assertQueryValueSafe(kbId, 'knowledge base id');
     const sentinel = `wiki-source: ${sourceKey}`;
     let query = `meta_descriptionLIKE${sentinel}`;
     if (kbId) query = `kb_knowledge_base=${kbId}^${query}`;
