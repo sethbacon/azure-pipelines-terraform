@@ -32,6 +32,8 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
 
+> **Download verification trust model:** Terraform and Sentinel downloads are verified against a GPG-signed `SHA256SUMS` (HashiCorp's pinned key); OpenTofu uses cosign keyless verification. OPA and terraform-docs publish no signature, so they are verified by their GitHub-release SHA256 checksum (same-origin — transport integrity, not independent authenticity), enforced fail-closed by default. See [SECURITY.md](SECURITY.md).
+
 ## Quick Start
 
 ### Install Terraform

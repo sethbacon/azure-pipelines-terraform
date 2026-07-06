@@ -118,6 +118,54 @@ npm run compile
 npm test
 ```
 
+### PolicyAgentInstallerV1
+
+```bash
+cd Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1
+npm run compile
+npm test
+```
+
+### TerraformPolicyCheckV1
+
+```bash
+cd Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1
+npm run compile
+npm test
+```
+
+### TerraformDriftReportV1
+
+```bash
+cd Tasks/TerraformDriftReport/TerraformDriftReportV1
+npm run compile
+npm test
+```
+
+### TerraformModulePublishV1
+
+```bash
+cd Tasks/TerraformModulePublish/TerraformModulePublishV1
+npm run compile
+npm test
+```
+
+### Markdown2HtmlV1
+
+```bash
+cd Tasks/Markdown2Html/Markdown2HtmlV1
+npm run compile
+npm test
+```
+
+### PublishKbArticleV1
+
+```bash
+cd Tasks/PublishKbArticle/PublishKbArticleV1
+npm run compile
+npm test
+```
+
 ### Test structure
 
 Test files come in pairs under `Tests/`:

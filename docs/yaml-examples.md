@@ -929,6 +929,13 @@ resources and exposes its path via the `sarifFilePath` output variable. When
 the path is exposed via `sarifFilePath`. Publish it as a build artifact to
 surface drift in SARIF-aware tooling.
 
+> **SARIF has no native Azure DevOps viewer.** `PipelineTerraformPolicyCheck@1` exposes the
+> same `sarifOutput`/`sarifPath` inputs and `sarifFilePath` output as the drift task. For
+> either task the SARIF is only actionable once published (e.g. as the `CodeAnalysisLogs`
+> artifact shown above) and read by a SARIF-aware Marketplace extension or an external sink
+> (GitHub code scanning, a SIEM). The JUnit results the policy-check task also emits render
+> natively in the **Tests** tab, so JUnit is the zero-setup path.
+
 Module provenance: `includeModuleProvenance` (default `true`) adds the
 configuration's `module_calls` and locked module versions — read from
 `moduleManifest` (default `.terraform/modules/modules.json`) — to the report and
