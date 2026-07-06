@@ -6,6 +6,8 @@ import * as path from 'path';
 import './HttpClientL0';
 // Direct unit tests for the checksum/platform helpers.
 import './InstallerHelpersL0';
+// Direct unit tests for the registry download-host allowlist.
+import './RegistryAllowedHostsL0';
 
 describe('TerraformDocsInstaller Test Suite', function () {
 
