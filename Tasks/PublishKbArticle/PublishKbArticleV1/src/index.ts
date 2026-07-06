@@ -263,6 +263,18 @@ async function run() {
         console.log(`Workflow State: ${article['workflow_state']}`);
 
         // -----------------------------------------------------------------
+        // Emit manifest line + output variables BEFORE the image-upload phase, so a
+        // failure uploading images cannot orphan the just-created article: a retry
+        // can find it (via the manifest / kbArticleId) and update it in place
+        // instead of creating a duplicate draft.
+        // -----------------------------------------------------------------
+        emitArticleOutput(article, sourceKey, emitManifest, kbId);
+
+        tasks.setVariable('kbArticleId', article['sys_id'] as string, false, true);
+        tasks.setVariable('kbArticleNumber', article['number'] as string, false, true);
+        tasks.setVariable('kbWorkflowState', article['workflow_state'] as string, false, true);
+
+        // -----------------------------------------------------------------
         // Phase 2: upload referenced images as attachments and rewrite the body.
         // Runs only when there is body content and image upload is enabled. The
         // article must already exist (we need its sys_id), which it does here.
@@ -287,15 +299,6 @@ async function run() {
                 console.log(`${result.missing.length} image(s) not found and left unchanged.`);
             }
         }
-
-        // -----------------------------------------------------------------
-        // Emit manifest line + output variables
-        // -----------------------------------------------------------------
-        emitArticleOutput(article, sourceKey, emitManifest, kbId);
-
-        tasks.setVariable('kbArticleId', article['sys_id'] as string, false, true);
-        tasks.setVariable('kbArticleNumber', article['number'] as string, false, true);
-        tasks.setVariable('kbWorkflowState', article['workflow_state'] as string, false, true);
 
         tasks.setResult(tasks.TaskResult.Succeeded, '');
     } catch (error) {
