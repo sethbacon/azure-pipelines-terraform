@@ -10,6 +10,7 @@ import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './url-secret-redaction';
 
 const isWindows = os.type().match(/^Win/);
 
@@ -228,7 +229,33 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     }
 
     const ext = agent === "sentinel" ? ".zip" : (isWindows ? ".exe" : "");
-    const filePath = await downloadTo(data.download_url, `${agent}-${version}-${uuidV4()}${ext}`);
+    const fileName = `${agent}-${version}-${uuidV4()}${ext}`;
+    // The pre-signed download_url carries a live, read-scoped storage credential in
+    // its query string. tools.downloadTool logs the URL at INFO and only auto-redacts
+    // Azure `sig=`, so AWS X-Amz-Signature/X-Amz-Credential/X-Amz-Security-Token and
+    // GCS X-Goog-Signature/X-Goog-Credential would otherwise print unredacted on every
+    // normal registry run. Register each token component as a secret FIRST so the
+    // agent masks it in tool-lib's log line (and in any failure message).
+    const urlTokenSecrets = extractUrlTokenSecrets(data.download_url);
+    for (const secret of urlTokenSecrets) {
+        tasks.setSecret(secret);
+    }
+    let filePath: string;
+    try {
+        filePath = await tools.downloadTool(data.download_url, fileName);
+    } catch (exception) {
+        // download_url is a pre-signed URL whose query string carries the signing
+        // token; drop the whole query (redactUrl) and scrub the raw URL out of the
+        // tool-lib exception text so the live credential never reaches the build
+        // log via the failure message.
+        const safeUrl = redactUrl(data.download_url);
+        const safeMsg = scrubSecretsFromMessage(
+            String(exception instanceof Error ? exception.message : exception),
+            data.download_url,
+            urlTokenSecrets,
+        );
+        throw new Error(tasks.loc("PolicyAgentDownloadFailed", safeUrl, safeMsg));
+    }
 
     if (data.sha256) {
         await verifySha256(filePath, data.sha256);
