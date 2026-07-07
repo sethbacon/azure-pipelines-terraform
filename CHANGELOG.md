@@ -4,6 +4,16 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.4...v1.8.5) (2026-07-07)
+
+
+### Bug Fixes
+
+* guard terraform-docs configFile against empty-filePath-to-cwd ([#441](https://github.com/sethbacon/azure-pipelines-terraform/issues/441)) ([15537a2](https://github.com/sethbacon/azure-pipelines-terraform/commit/15537a283125985ea6e79a78d6d65ac5f3c873bb))
+* remediate P0/P1 re-audit findings (mirror GPG, fail-closed latest, injection-guard tests) ([0307b4d](https://github.com/sethbacon/azure-pipelines-terraform/commit/0307b4dddd487f3ff5795e057714d1a90ebbe43a))
+* remediate P2 re-audit findings (bool-input parity, resilience residuals, mirror tests, release-safety) ([#444](https://github.com/sethbacon/azure-pipelines-terraform/issues/444)) ([5164eac](https://github.com/sethbacon/azure-pipelines-terraform/commit/5164eacb4610406c9a6f7b3484bf67de8d3b049f))
+* remediate P3 re-audit findings (LOW/MED hardening, CI, manifests, docs) ([#445](https://github.com/sethbacon/azure-pipelines-terraform/issues/445)) ([f01ae99](https://github.com/sethbacon/azure-pipelines-terraform/commit/f01ae9969ba1dea86d07fcf594c213d2c3ce4c66))
+
 ## [1.8.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.3...v1.8.4) (2026-07-06)
 
 
