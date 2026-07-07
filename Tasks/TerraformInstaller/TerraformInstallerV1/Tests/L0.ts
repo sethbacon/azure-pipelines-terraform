@@ -57,20 +57,21 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
-    // --- 'latest' checkpoint resolution (#359): a transient failure still falls
-    // back, but a malformed API response is now fatal instead of silently
-    // downgrading ---
+    // --- 'latest' checkpoint resolution: fail closed. Both a transient request
+    // failure and a malformed API response are now fatal rather than silently
+    // downgrading to a hardcoded pinned version (a selective outage of only the
+    // version-resolution endpoint must not force a stale/downgraded install). ---
 
-    it('hashicorp latest checkpoint down: falls back to the pinned version with a warning', async () => {
+    it('hashicorp latest checkpoint down: fails closed instead of silently downgrading', async () => {
         const tp = path.join(__dirname, 'HashiCorpLatestCheckpointDownFallback.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
         await tr.runAsync();
 
         runValidations(() => {
-            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.failed, 'task should have failed closed');
             assert(
-                tr.warningIssues.some((w) => /could not|not found|version/i.test(w)),
-                'should warn that the latest version could not be resolved. warnings: ' + tr.warningIssues
+                tr.errorIssues.some((e) => /resolve the latest Terraform version/i.test(e)),
+                'should fail because the latest version could not be resolved. errors: ' + tr.errorIssues
             );
         }, tr);
     });

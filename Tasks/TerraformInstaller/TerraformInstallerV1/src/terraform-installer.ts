@@ -15,12 +15,6 @@ const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
 
-/** Fallback version used when the HashiCorp checkpoint API is unreachable. Update periodically. */
-const FALLBACK_TERRAFORM_VERSION = '1.14.8';
-
-/** Fallback version used when the OpenTofu GitHub API is unreachable. Update periodically. */
-const FALLBACK_TOFU_VERSION = '1.11.6';
-
 /**
  * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
  * raw input rather than getBoolInput(name, false) so the default still holds on an
@@ -167,18 +161,16 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
         return inputVersion;
     }
     console.log(tasks.loc("GettingLatestTerraformVersion"));
-    // Only a genuine request failure (network/timeout/5xx, already retried by
-    // fetchJson) falls back to the pinned version -- that's an availability
-    // tradeoff worth keeping. A malformed response (the API contract itself
-    // broke) is NOT caught here: it throws fatally instead of silently
-    // downgrading, since trusting the fallback in that case would mask a real
-    // API-shape regression rather than a transient blip.
+    // Fail closed: if 'latest' cannot be resolved (network/timeout/5xx, already
+    // retried by fetchJson, or a malformed response), throw rather than silently
+    // installing a hardcoded stale version. A selective outage of only the version
+    // endpoint must not force a silent downgrade to a since-superseded release.
+    // (Matches TerraformDocsInstaller's fail-closed 'latest' resolution.)
     let data: { current_version: string };
     try {
         data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/terraform');
-    } catch {
-        tasks.warning(tasks.loc("TerraformVersionNotFound"));
-        return FALLBACK_TERRAFORM_VERSION;
+    } catch (err) {
+        throw new Error(`Failed to resolve the latest Terraform version from the HashiCorp checkpoint API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
     }
     if (!data.current_version) {
         throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
@@ -317,10 +309,17 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
 
-    // Attempt SHA256 verification from mirror — fail if SHA256SUMS is available but hash doesn't match
+    // Verify the mirror download. requireGpgSignature (default true) governs whether
+    // the SHA256SUMS must carry a valid HashiCorp GPG signature; requireChecksum
+    // (default true) governs whether a SHA256SUMS must be present at all. Previously
+    // the mirror path checked only sha256 (which a compromised mirror can recompute),
+    // so requireGpgSignature was silently inert here despite its help text implying it
+    // applied to mirrors — now the .sig is verified against the pinned HashiCorp key.
     const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
     const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
+    const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
+    const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     // Only a genuine 404 (fetchTextAllow404 returns null) means "no SHA256SUMS
     // published". Any other non-2xx / network / TLS failure is fatal regardless of
     // requireChecksum, rather than being classified by matching an error string.
@@ -329,9 +328,15 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
         if (requireChecksum) {
             throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
+        if (requireGpg) {
+            throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
+        }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
     } else {
-        // The file exists: a missing asset entry or a hash mismatch is always fatal.
+        // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
+        // key (a missing .sig is fatal only when requireGpgSignature is set), then
+        // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
+        await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
     }
 
@@ -448,14 +453,13 @@ async function resolveVersionFromOpenTofu(inputVersion: string): Promise<string>
         return inputVersion;
     }
     console.log(tasks.loc("GettingLatestOpenTofuVersion"));
-    // Same split as resolveVersionFromHashiCorp: only a genuine request
-    // failure falls back silently; a malformed response throws fatally.
+    // Fail closed (same as resolveVersionFromHashiCorp): a request failure or a
+    // malformed response throws rather than silently downgrading to a pinned version.
     let data: { tag_name: string };
     try {
         data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/opentofu/opentofu/releases/latest');
-    } catch {
-        tasks.warning(tasks.loc("TerraformVersionNotFound"));
-        return FALLBACK_TOFU_VERSION;
+    } catch (err) {
+        throw new Error(`Failed to resolve the latest OpenTofu version from the GitHub releases API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
     }
     if (!data.tag_name) {
         throw new Error("GitHub API returned invalid response: missing tag_name");

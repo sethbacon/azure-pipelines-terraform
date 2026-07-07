@@ -12,10 +12,6 @@ import { verifyGpgSignature } from './gpg-verifier';
 
 const isWindows = os.type().match(/^Win/);
 
-/** Fallback versions used when the upstream "latest" lookup is unreachable. Update periodically. */
-const FALLBACK_SENTINEL_VERSION = '0.40.0';
-const FALLBACK_OPA_VERSION = '1.17.1';
-
 /**
  * Downloads the requested policy agent (Sentinel or OPA), verifies it, caches it
  * via the tool cache, and returns the path to the executable. Sentinel ships as a
@@ -86,31 +82,36 @@ async function resolveVersion(agent: string, downloadSource: string, inputVersio
 
 async function resolveLatestSentinel(): Promise<string> {
     console.log(tasks.loc("GettingLatestVersion", "Sentinel"));
+    // Fail closed: if 'latest' cannot be resolved, throw rather than silently
+    // installing a hardcoded stale version (a selective outage of only the version
+    // endpoint must not force a silent downgrade). Matches TerraformDocsInstaller.
+    let data: { current_version: string };
     try {
-        const data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/sentinel');
-        if (!data.current_version) {
-            throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
-        }
-        return data.current_version;
-    } catch {
-        tasks.warning(tasks.loc("VersionNotFound"));
-        return FALLBACK_SENTINEL_VERSION;
+        data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/sentinel');
+    } catch (err) {
+        throw new Error(`Failed to resolve the latest Sentinel version from the HashiCorp checkpoint API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
     }
+    if (!data.current_version) {
+        throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
+    }
+    return data.current_version;
 }
 
 async function resolveLatestOpa(): Promise<string> {
     console.log(tasks.loc("GettingLatestVersion", "OPA"));
+    // Fail closed (same as resolveLatestSentinel): a request failure or malformed
+    // response throws rather than silently downgrading to a pinned version.
+    let data: { tag_name: string };
     try {
-        const data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/open-policy-agent/opa/releases/latest');
-        if (!data.tag_name) {
-            throw new Error("GitHub API returned invalid response: missing tag_name");
-        }
-        // tag_name is like "v1.17.1" — strip the leading "v"
-        return data.tag_name.replace(/^v/, '');
-    } catch {
-        tasks.warning(tasks.loc("VersionNotFound"));
-        return FALLBACK_OPA_VERSION;
+        data = await fetchJson<{ tag_name: string }>('https://api.github.com/repos/open-policy-agent/opa/releases/latest');
+    } catch (err) {
+        throw new Error(`Failed to resolve the latest OPA version from the GitHub releases API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
     }
+    if (!data.tag_name) {
+        throw new Error("GitHub API returned invalid response: missing tag_name");
+    }
+    // tag_name is like "v1.17.1" — strip the leading "v"
+    return data.tag_name.replace(/^v/, '');
 }
 
 async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string): Promise<string> {
@@ -287,16 +288,28 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
 }
 
 async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fileName: string): Promise<void> {
+    // Sentinel-only path. requireGpgSignature (default true) governs whether the
+    // mirror's SHA256SUMS must carry a valid HashiCorp GPG signature; previously the
+    // mirror path checked only sha256 (which a compromised mirror can recompute), so
+    // requireGpgSignature was silently inert here despite its help text implying it
+    // applied to mirrors — now the .sig is verified against the pinned HashiCorp key.
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
+    const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     const body = await fetchTextAllow404(sha256SumsUrl);
     if (body === null) {
         if (requireChecksum) {
             throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
+        if (requireGpg) {
+            throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
+        }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
         return;
     }
-    // The file exists: a missing asset entry or a hash mismatch is always fatal.
+    // The file exists: verify its GPG signature against HashiCorp's pinned key
+    // (a missing .sig is fatal only when requireGpgSignature is set), then verify
+    // the hash. A missing asset entry or a hash mismatch is always fatal.
+    await verifyGpgSignature(body, `${sha256SumsUrl}.sig`, requireGpg);
     await verifySha256(filePath, parseSha256(body, fileName));
 }
 

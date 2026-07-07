@@ -25,7 +25,18 @@ tr.registerMock('./http-client', {
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
-tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { throw new Error('mirror must not use GPG'); } });
+// The mirror SHA256SUMS is now GPG-verified against HashiCorp's pinned key (the fix
+// for the previously-inert requireGpgSignature on the mirror path). Assert the mirror
+// path calls the verifier with the correct .sig URL; a no-op resolve simulates a valid
+// signature so the task proceeds.
+tr.registerMock('./gpg-verifier', {
+    verifyGpgSignature: async (_content: string, signatureUrl: string) => {
+        const expected = 'https://mirror.example.com/0.40.0/sentinel_0.40.0_SHA256SUMS.sig';
+        if (signatureUrl !== expected) {
+            throw new Error('GPG verification called with unexpected sig URL: ' + signatureUrl);
+        }
+    },
+});
 
 tr.registerMock('fs', {
     chmodSync: () => { },
