@@ -43,6 +43,13 @@ jobs:
             echo "::error::Tag version (${TAG_VERSION}) does not match azure-devops-extension.json version (${EXT_VERSION}). Merge the release-please PR before tagging."
             exit 1
           fi
+      - name: Verify per-task Minor bumps
+        run: |
+          # Fail the release if any task's src/ changed since the previous release tag
+          # without its task.json Minor being bumped: ADO agents cache tasks by
+          # Major.Minor, so an un-bumped fix would ship to the Marketplace but never
+          # reach running agents.
+          node scripts/check-minor-bumps.js
 
   ci:
     name: CI (build + test)

@@ -204,6 +204,20 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('mirror SHA256SUMS 5xx (not 404): fails closed instead of skipping verification', async () => {
+        const tp = path.join(__dirname, 'MirrorChecksumFetch5xxFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed closed on a non-404 checksum fetch error');
+            assert(
+                tr.errorIssues.some((e) => /503|SHA256SUMS/i.test(e)),
+                'failure should stem from the SHA256SUMS fetch error. errors: ' + tr.errorIssues
+            );
+        }, tr);
+    });
+
     it('registry insecure download_url: should reject a non-https pre-signed URL', async () => {
         const tp = path.join(__dirname, 'RegistryInsecureUrlReject.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

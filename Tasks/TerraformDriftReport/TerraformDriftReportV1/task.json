@@ -9,7 +9,7 @@
   "author": "sethbacon",
   "version": {
     "Major": "1",
-    "Minor": "6",
+    "Minor": "7",
     "Patch": "0"
   },
   "instanceNameFormat": "Drift report",
@@ -92,6 +92,14 @@
       "required": false,
       "visibleRule": "sarifOutput = true",
       "helpMarkDown": "Optional explicit path for the SARIF report. When empty, a file is written to the agent temp directory; either way its path is exposed via the `sarifFilePath` output variable."
+    },
+    {
+      "name": "cleanupSummaryFile",
+      "type": "boolean",
+      "label": "Delete the summary file at task end",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "Delete the JSON summary file (written to the agent temp directory) when the task finishes. It is retained by default so downstream steps can read it via the `summaryFilePath` output variable. Enable to remove it immediately after the callback -- e.g. on a self-hosted agent whose temp directory is not wiped between jobs and where the summary may contain sensitive plan values."
     }
   ],
   "OutputVariables": [
