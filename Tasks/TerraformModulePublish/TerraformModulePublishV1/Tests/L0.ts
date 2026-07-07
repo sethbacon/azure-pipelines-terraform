@@ -3,7 +3,7 @@ import assert = require('assert');
 import * as net from 'net';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
-import { HttpClient, HttpResponse, createHttpsClient, parseJson, truncateBody } from '../src/http';
+import { HttpClient, HttpResponse, createHttpsClient, parseJson, retryHttp, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 
@@ -73,6 +73,56 @@ describe('http client transport', () => {
             () => parseJson(html),
             (err: Error) => /non-JSON response body/.test(err.message) && err.message.includes('captive portal'),
         );
+    });
+});
+
+describe('retryHttp', () => {
+    it('returns a 2xx response without retrying', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 200, body: 'ok' }); }, { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(calls, 1);
+    });
+
+    it('does not retry a 4xx response', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 404, body: '' }); }, { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 404);
+        assert.strictEqual(calls, 1);
+    });
+
+    it('retries a 5xx response and returns the eventual success', async () => {
+        const responses: HttpResponse[] = [{ status: 503, body: '' }, { status: 200, body: 'ok' }];
+        let i = 0;
+        const res = await retryHttp(() => Promise.resolve(responses[i++]), { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(i, 2);
+    });
+
+    it('retries a thrown transport error and returns the eventual success', async () => {
+        let i = 0;
+        const res = await retryHttp(() => {
+            i += 1;
+            return i === 1 ? Promise.reject(new Error('ECONNRESET')) : Promise.resolve({ status: 200, body: 'ok' });
+        }, { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(i, 2);
+    });
+
+    it('returns the last 5xx after exhausting retries', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 500, body: '' }); }, { retries: 2, baseDelayMs: 0 });
+        assert.strictEqual(res.status, 500);
+        assert.strictEqual(calls, 3); // initial attempt + 2 retries
+    });
+
+    it('throws the last error after exhausting retries on a persistent transport failure', async () => {
+        let calls = 0;
+        await assert.rejects(
+            () => retryHttp(() => { calls += 1; return Promise.reject(new Error('ETIMEDOUT')); }, { retries: 2, baseDelayMs: 0 }),
+            /ETIMEDOUT/,
+        );
+        assert.strictEqual(calls, 3);
     });
 });
 

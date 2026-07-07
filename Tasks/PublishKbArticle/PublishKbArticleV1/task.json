@@ -16,7 +16,7 @@
         "Minor": "3",
         "Patch": "0"
     },
-    "minimumAgentVersion": "3.232.1",
+    "minimumAgentVersion": "4.265.1",
     "instanceNameFormat": "Publish KB Article $(title)",
     "inputs": [
         {

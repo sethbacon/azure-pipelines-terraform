@@ -17,6 +17,7 @@
         "Minor": "276",
         "Patch": "0"
     },
+    "minimumAgentVersion": "4.265.1",
     "instanceNameFormat": "Terraform : $(provider)",
     "restrictions": {
         "settableVariables": {

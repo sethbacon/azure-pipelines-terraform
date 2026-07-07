@@ -5,7 +5,7 @@
 
 An Azure DevOps extension for installing and running Terraform in build and release pipelines, supporting Azure, AWS, GCP, and OCI.
 
-This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS and GCP, flexible installer download sources, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
+This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS and GCP, flexible installer download sources, a Terraform Plan results tab, SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
 
 ---
 
@@ -144,7 +144,9 @@ Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terrafo
 | `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                                |
 | `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                               |
 
-**Output variables:** `policyResult`, `violationCount`, `resultsFilePath`.
+**Output variables:** `policyResult`, `violationCount`, `resultsFilePath`, and `sarifFilePath` (when `sarifOutput` is enabled).
+
+Set `sarifOutput: true` to also emit a SARIF 2.1.0 report of policy violations (path via the `sarifFilePath` output) for code-scanning / security dashboards — see the [SARIF example](docs/yaml-examples.md#emit-a-sarif-report).
 
 ---
 
@@ -161,6 +163,8 @@ Parses a Terraform/OpenTofu plan JSON into drift counts plus a changed-resource 
 | `callbackUrl`             | —                                 | TSM drift-callback URL. Must be HTTPS.                                        |
 | `callbackToken`           | —                                 | TSM callback bearer token. Treat as a secret variable.                        |
 | `rejectUnauthorized`      | `true`                            | Verify the callback endpoint's TLS certificate (leave enabled in production). |
+
+Set `sarifOutput: true` to also emit a SARIF 2.1.0 drift report (path via the `sarifFilePath` output) for SARIF-aware tooling — see the [SARIF example](docs/yaml-examples.md#emit-a-sarif-report-1).
 
 ---
 

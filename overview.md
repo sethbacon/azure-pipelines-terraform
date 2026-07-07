@@ -13,6 +13,8 @@ This extension provides:
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
 - **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs
+- **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles
+- **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow
 - Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.
@@ -30,6 +32,8 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Documentation publishing**: Convert Markdown docs to HTML and publish them as ServiceNow knowledge base articles (idempotent create/update, image attachments) directly from a pipeline
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
+- **Terraform Plan tab**: a build-results tab renders `terraform plan` output as a readable summary (build-attachment content is HTML-escaped before display)
+- **SARIF output**: PolicyCheck and DriftReport can emit a SARIF report for code-scanning / security dashboards
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
 
 > **Download verification trust model:** Terraform and Sentinel downloads are verified against a GPG-signed `SHA256SUMS` (HashiCorp's pinned key); OpenTofu uses cosign keyless verification. OPA and terraform-docs publish no signature, so they are verified by their GitHub-release SHA256 checksum (same-origin — transport integrity, not independent authenticity), enforced fail-closed by default. See [SECURITY.md](SECURITY.md).

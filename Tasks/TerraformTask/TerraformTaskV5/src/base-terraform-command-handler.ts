@@ -753,7 +753,7 @@ export abstract class BaseTerraformCommandHandler {
                 tasks.warning("Terraform plan contains resource deletions. Review carefully before applying.");
             }
         } catch (err) {
-            tasks.debug(`Could not parse terraform show output for destroy detection: ${err}`);
+            tasks.warning(`Could not parse terraform show output for destroy-change detection; the deletion safety warning did not run: ${err}`);
         }
     }
 
@@ -785,7 +785,7 @@ export abstract class BaseTerraformCommandHandler {
                 }
             }
         } catch (error) {
-            tasks.debug(`Failed to check sensitive outputs: ${String(error)}`);
+            tasks.warning(`Could not parse terraform plan for sensitive-output detection; the sensitive-value safety warning did not run: ${String(error)}`);
         }
     }
 }
