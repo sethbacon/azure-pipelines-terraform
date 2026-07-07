@@ -448,6 +448,25 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(html.includes('<table>'), 'benign table markup should survive');
         assert.ok(html.includes('<br'), 'benign <br> should survive');
     });
+
+    it('strips a javascript: href obfuscated with an HTML-entity-encoded control char (#446)', () => {
+        // Browsers strip ASCII tab/newline/CR before parsing a URL scheme, so
+        // "jav&#9;ascript:" decodes to a literal tab that a naive
+        // trim()+startsWith('javascript:') check would miss.
+        const cases = ['jav&#9;ascript:alert(1)', 'jav&#10;ascript:alert(1)', 'jav&#13;ascript:alert(1)', 'jav&Tab;ascript:alert(1)', '&#1;javascript:alert(1)'];
+        for (const payload of cases) {
+            const html = convertMarkdownToHtml(`<a href="${payload}">x</a>`);
+            assert.ok(!/href\s*=/.test(html), `href must be stripped for payload: ${payload} (got: ${html})`);
+        }
+    });
+
+    it('removes a <base> element and a javascript: <meta http-equiv="refresh"> (#446)', () => {
+        const html = convertMarkdownToHtml(
+            '<base href="//evil.example.com/">\n\n<meta http-equiv="refresh" content="0;url=javascript:alert(1)">\n\nOk',
+        );
+        assert.ok(!/<base[\s>]/i.test(html), '<base> must be removed');
+        assert.ok(!/<meta/i.test(html), 'the dangerous <meta refresh> must be removed');
+    });
 });
 
 // ---------------------------------------------------------------------------

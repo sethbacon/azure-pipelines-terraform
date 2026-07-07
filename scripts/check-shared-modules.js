@@ -77,6 +77,22 @@ const FAMILIES = [
             'bool-input.ts',
         ],
     },
+    {
+        // Registry-download credential masking: extracts and setSecret()s any
+        // pre-signed-URL query-string token before download, and scrubs the raw
+        // URL/tokens out of a download failure message. A drift here previously let
+        // two of the three installers leak a live storage credential to the build
+        // log (2026-07 re-audit, finding "registry pre-signed URL token leak") while
+        // the third had already fixed it — keep byte-identical across all three.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'url-secret-redaction.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even

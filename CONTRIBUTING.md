@@ -43,19 +43,19 @@ TypeScript (`tsc`) and `tfx-cli` are installed as dev dependencies; no global in
 # Clone the fork
 git clone https://github.com/sethbacon/azure-pipelines-terraform
 cd azure-pipelines-terraform
+```
 
-# Install dependencies for TerraformTaskV5
-cd Tasks/TerraformTask/TerraformTaskV5
-npm install --include=dev
+Each task under `Tasks/` is an independent npm package — install dependencies in
+the task directory you're changing before running `npm test` there for the
+first time:
 
-# Install dependencies for TerraformInstallerV1
-cd ../../../Tasks/TerraformInstaller/TerraformInstallerV1
-npm install --include=dev
-
-# Install dependencies for TerraformProviderMirrorV1
-cd ../../../Tasks/TerraformProviderMirror/TerraformProviderMirrorV1
+```bash
+cd Tasks/<TaskName>/<TaskName>V<N>
 npm install --include=dev
 ```
+
+See the [Testing](#testing) section below for the full list of the 11 task
+directories and their per-task test commands.
 
 ## Development workflow
 

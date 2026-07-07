@@ -24,7 +24,8 @@
     "GCP",
     "OCI",
     "Release",
-    "DevOps"
+    "DevOps",
+    "ServiceNow"
   ],
   "branding": {
     "color": "#FFFFFF",

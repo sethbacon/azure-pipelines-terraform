@@ -42,7 +42,9 @@ export async function getKnowledgeBases(instance: string, headers: Record<string
 
 /** Retrieve a single knowledge article by sys_id. */
 export async function getArticle(instance: string, headers: Record<string, string>, articleId: string): Promise<KbArticle> {
-    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}`;
+    // encodeURIComponent guards the path segment: an unencoded articleId containing
+    // '/', '?', or '#' could otherwise alter the effective REST path/query.
+    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     const response = await snRequest('GET', url, { headers });
     const result = response.data.result;
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
@@ -129,7 +131,9 @@ export async function updateKnowledgeArticle(
     workflowState?: string,
     sourceKey?: string,
 ): Promise<KbArticle> {
-    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}`;
+    // encodeURIComponent guards the path segment: an unencoded articleId containing
+    // '/', '?', or '#' could otherwise alter the effective REST path/query.
+    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     const existing = await getArticle(instance, headers, articleId);
 
     // Extract kb_id (reference fields can be objects or plain strings)
@@ -184,7 +188,9 @@ export async function updateArticleBody(
     articleId: string,
     text: string,
 ): Promise<void> {
-    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}`;
+    // encodeURIComponent guards the path segment: an unencoded articleId containing
+    // '/', '?', or '#' could otherwise alter the effective REST path/query.
+    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     await snRequest('PATCH', url, { headers, body: { text } });
 }
 
@@ -199,7 +205,9 @@ export async function changeWorkflowState(
     workflowState: string,
 ): Promise<KbArticle> {
     if (workflowState === 'publish') {
-        const publishUrl = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}/publish`;
+        // encodeURIComponent guards the path segment: an unencoded articleId containing
+        // '/', '?', or '#' could otherwise alter the effective REST path/query.
+        const publishUrl = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}/publish`;
         try {
             console.log('Attempting to publish article using workflow action...');
             const response = await snRequest('POST', publishUrl, { headers, body: {} });
@@ -219,7 +227,9 @@ export async function changeWorkflowState(
         publish: 'published',
     };
 
-    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${articleId}`;
+    // encodeURIComponent guards the path segment: an unencoded articleId containing
+    // '/', '?', or '#' could otherwise alter the effective REST path/query.
+    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     const response = await snRequest('PATCH', url, {
         headers,
         body: { workflow_state: STATE_VALUE_MAP[workflowState] ?? workflowState },

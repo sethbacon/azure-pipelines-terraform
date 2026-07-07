@@ -92,28 +92,53 @@ export function emitArticleOutput(
 }
 
 /**
+ * Matches only the filenames this task's own legacy `outputArticleInfoToJson`
+ * writes: `KB<number>.json` (ServiceNow KB article numbers, e.g. KB0001234) or
+ * the `article_info.json` fallback used when the article has no number yet.
+ */
+const KB_ARTICLE_JSON_NAME_RE = /^(KB\S*|article_info)\.json$/i;
+
+/**
  * Find a KB article JSON file in the current working directory.
  * Returns parsed data if a file with `article_id` is found, null otherwise.
+ *
+ * Only filenames matching the exact convention this task's own legacy writer
+ * uses (KB_ARTICLE_JSON_NAME_RE) are considered — an earlier, unrelated build
+ * step could otherwise drop an arbitrary *.json file into the working
+ * directory (e.g. a stray manifest, lockfile-adjacent artifact, or a
+ * maliciously-placed file) and, with no filename pinning, have it picked up
+ * as the KB article identity source (a confused-deputy risk: this function
+ * feeds directly into which ServiceNow article gets updated). When more than
+ * one matching file is present, the most recently modified one is used (not
+ * directory-listing order, which is filesystem-dependent and not meaningful).
  */
 export function findKbArticleJson(): Record<string, unknown> | null {
     let jsonFiles: string[];
     try {
-        jsonFiles = fs.readdirSync('.').filter(f => f.endsWith('.json'));
+        jsonFiles = fs.readdirSync('.').filter(f => KB_ARTICLE_JSON_NAME_RE.test(f));
     } catch {
         return null;
     }
+    const candidates: { filename: string; mtimeMs: number; data: Record<string, unknown> }[] = [];
     for (const filename of jsonFiles) {
         try {
             const data = JSON.parse(fs.readFileSync(filename, 'utf-8'));
             if (data['article_id']) {
-                console.log(`Found KB article JSON file: ${filename}`);
-                return data as Record<string, unknown>;
+                candidates.push({ filename, mtimeMs: fs.statSync(filename).mtimeMs, data });
             }
         } catch {
             continue;
         }
     }
-    return null;
+    if (candidates.length === 0) {
+        return null;
+    }
+    if (candidates.length > 1) {
+        console.warn(`Warning: multiple KB article JSON files found (${candidates.map(c => c.filename).join(', ')}); using the most recently modified.`);
+    }
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    console.log(`Found KB article JSON file: ${candidates[0].filename}`);
+    return candidates[0].data;
 }
 
 /**

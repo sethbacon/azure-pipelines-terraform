@@ -54,6 +54,18 @@ export async function runSentinel(
         throw new Error(`Sentinel returned a non-policy error (exit code ${code}). Output:\n${stdout.slice(0, 2000)}`);
     }
 
+    // Sentinel's documented exit codes are 0 (pass), 1 (policy failed), 2 (undefined
+    // result), 3 (runtime error, handled above), and 9 (other error, handled above).
+    // Any other code — e.g. 126/127 (not executable / not found), 137/139
+    // (SIGKILL/SIGSEGV), an OOM-killed process, or a future Sentinel exit code this
+    // task does not yet recognize — must NOT be silently treated as a pass: without
+    // this check it falls through to `policyFailed = false` below and the policy
+    // gate reports `passed: true` on an abnormal process outcome. Fail closed
+    // instead, mirroring opa-engine's exhaustive `code !== 0` check.
+    if (code !== 0 && code !== 1 && code !== 2) {
+        throw new Error(`Sentinel exited with an unrecognized code (${code}); refusing to treat this as a policy pass. Output:\n${stdout.slice(0, 2000)}`);
+    }
+
     const policyFailed = code === 1 || code === 2;
     const cases = parseCases(stdout, level);
 

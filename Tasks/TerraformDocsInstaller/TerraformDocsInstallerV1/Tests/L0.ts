@@ -82,10 +82,44 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
+  // --- Registry pre-signed download-URL token masking ---
+  // The registry download_url carries a live storage credential in its query
+  // string and tool-lib logs the URL at INFO. Assert every token component is
+  // registered as a secret (so the agent masks it) while benign params stay
+  // visible.
+  it('registry download token masking: sensitive query params are registered as secrets', async () => {
+    const tp = path.join(__dirname, 'RegistryDownloadTokenMasked.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      const maskedTokens = [
+        'AWSSIGNATUREtoken1111',
+        'AWSCREDENTIALtoken2222',
+        'AWSSECURITYtoken3333',
+        'GOOGSIGNATUREtoken4444',
+        'GOOGCREDENTIALtoken5555',
+        'AZURESIGtoken6666',
+      ];
+      for (const token of maskedTokens) {
+        assert(
+          tr.stdout.includes('##vso[task.setsecret]' + token),
+          `expected ##vso[task.setsecret] for token ${token}. stdout: ${tr.stdout}`,
+        );
+      }
+      assert(!tr.stdout.includes('##vso[task.setsecret]20260703T000000Z'),
+        'benign X-Amz-Date must not be registered as a secret');
+      assert(!tr.stdout.includes('##vso[task.setsecret]host'),
+        'benign X-Amz-SignedHeaders must not be registered as a secret');
+    }, tr);
+  });
+
   // --- Failure cases ---
   expectFailure('InsecureUrlReject');
   expectFailure('RegistryInsecureUrl');
   expectFailure('Sha256Fail');
   expectFailure('InvalidVersionFail');
   expectFailure('RegistryEmptySha256RequireChecksum');
+  expectFailure('MirrorChecksumFetch5xxFail');
 });

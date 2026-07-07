@@ -11,60 +11,11 @@ import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './url-secret-redaction';
 
 const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
-
-function isSensitiveQueryParam(name: string): boolean {
-    const lower = name.toLowerCase();
-    return lower === 'sig'
-        || lower.includes('signature')
-        || lower.includes('credential')
-        || lower.includes('token');
-}
-
-/**
- * Extracts the values of every sensitive query-string token in `url`. Values are
- * returned in the raw form they appear in the URL (still percent-encoded) so they
- * match the exact substring tool-lib logs at INFO; the decoded form is added too when
- * it differs, so a consumer that logs the decoded value is masked as well. Used to
- * setSecret() the tokens before download and to scrub them from any failure message.
- */
-function extractUrlTokenSecrets(url: string): string[] {
-    const qIndex = url.indexOf('?');
-    if (qIndex === -1) return [];
-    const query = url.slice(qIndex + 1).split('#')[0];
-    const secrets: string[] = [];
-    for (const pair of query.split('&')) {
-        const eq = pair.indexOf('=');
-        if (eq === -1) continue;
-        const name = pair.slice(0, eq);
-        const rawValue = pair.slice(eq + 1);
-        if (!rawValue || !isSensitiveQueryParam(name)) continue;
-        secrets.push(rawValue);
-        let decoded: string;
-        try { decoded = decodeURIComponent(rawValue); } catch { decoded = rawValue; }
-        if (decoded !== rawValue) secrets.push(decoded);
-    }
-    return secrets;
-}
-
-/**
- * Strips the ENTIRE query string (which can carry a pre-signed signature/token —
- * Azure `sig`, AWS `X-Amz-Signature`/`X-Amz-Credential`/`X-Amz-Security-Token`,
- * GCS `X-Goog-Signature`/`X-Goog-Credential`) from a URL for safe logging. The whole
- * query is dropped rather than redacting known parameter names one at a time, so an
- * unforeseen token parameter can never leak through the error path.
- */
-function redactUrl(url: string): string {
-    try {
-        const u = new URL(url);
-        return u.origin + u.pathname + (u.search ? '?<redacted>' : '');
-    } catch {
-        return url.split('?')[0];
-    }
-}
 
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const binary = tasks.getInput("binary") || "terraform";
@@ -259,13 +210,11 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         // tool-lib exception text so the live credential never reaches the build
         // log via the failure message.
         const safeUrl = redactUrl(data.download_url);
-        let safeMsg = String(exception instanceof Error ? exception.message : exception).split(data.download_url).join(safeUrl);
-        // Belt-and-suspenders: tool-lib may embed a URL it partially transformed
-        // (its own `sig=` redaction) that the exact-URL replace above misses, so
-        // also scrub each known token value out of the message.
-        for (const secret of urlTokenSecrets) {
-            safeMsg = safeMsg.split(secret).join('<redacted>');
-        }
+        const safeMsg = scrubSecretsFromMessage(
+            String(exception instanceof Error ? exception.message : exception),
+            data.download_url,
+            urlTokenSecrets,
+        );
         throw new Error(tasks.loc("TerraformDownloadFailed", safeUrl, safeMsg));
     }
 

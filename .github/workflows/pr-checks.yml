@@ -57,5 +57,7 @@ jobs:
       - name: Dependency Review
         uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
         with:
-          fail-on-severity: high
+          # Moderate-severity new/changed dependencies are blocked at PR time too
+          # (not just high/critical), matching the root/per-task npm audit gates.
+          fail-on-severity: moderate
           comment-summary-in-pr: on-failure

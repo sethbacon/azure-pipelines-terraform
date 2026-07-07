@@ -75,6 +75,7 @@ describe('TerraformPolicyCheck Test Suite', function () {
     expectFailure('SentinelHardFail');
     expectSuccess('SentinelAdvisoryWarn');
     expectSuccess('SentinelSoftOverride');
+    expectFailure('SentinelUnrecognizedExitFail');
 
     // --- Policy source ---
     expectSuccess('GitSourceClone');

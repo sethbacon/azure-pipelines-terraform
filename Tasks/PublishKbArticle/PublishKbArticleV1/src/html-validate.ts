@@ -2,6 +2,21 @@ import * as fs from 'fs';
 import { load } from 'cheerio';
 
 /**
+ * Normalizes an attribute value before a URI-scheme check. Browsers (per the
+ * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
+ * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can
+ * be bypassed with an HTML-entity-encoded control char INSIDE the scheme (e.g.
+ * `jav&#9;ascript:`) — `.trim()` only removes leading/trailing whitespace, so
+ * the interior tab survives the check but is stripped by the browser at parse
+ * time, yielding a working `javascript:` URI. Stripping every ASCII control
+ * character (U+0000–U+001F, U+007F) from anywhere in the string — not just
+ * the edges — before lower-casing closes this bypass.
+ */
+function normalizeUriForSchemeCheck(value: string): string {
+    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().toLowerCase();
+}
+
+/**
  * Validate HTML content for common issues.
  * Throws if invalid and force is false; warns (console) if force is true.
  */
@@ -53,6 +68,26 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         console.warn(`[WARN] HTML validation: ${msg}`);
     }
 
+    // Reject <base> (redirects every relative URL in the document) and a
+    // <meta http-equiv="refresh"> that redirects to a javascript:/vbscript: URI
+    // — active-content vectors the href/src attribute check below never sees.
+    let baseOrMetaRefreshFound = false;
+    $('base').each(() => { baseOrMetaRefreshFound = true; });
+    $('meta').each((_, el) => {
+        const httpEquiv = normalizeUriForSchemeCheck(String($(el).attr('http-equiv') ?? ''));
+        const content = normalizeUriForSchemeCheck(String($(el).attr('content') ?? ''));
+        if (httpEquiv === 'refresh' && (content.includes('javascript:') || content.includes('vbscript:'))) {
+            baseOrMetaRefreshFound = true;
+        }
+    });
+    if (baseOrMetaRefreshFound) {
+        const msg = '<base> elements and <meta http-equiv="refresh"> redirects to javascript:/vbscript: are not allowed in KB articles';
+        if (!force) {
+            throw new Error(msg);
+        }
+        console.warn(`[WARN] HTML validation: ${msg}`);
+    }
+
     // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
     // and javascript:/vbscript:/non-image data: URIs — stored-XSS vectors the
     // external <script src> check above does not cover.
@@ -62,7 +97,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
             const lname = name.toLowerCase();
-            const value = String(attribs[name]).trim().toLowerCase();
+            const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 eventHandlerFound = true;
             } else if (
