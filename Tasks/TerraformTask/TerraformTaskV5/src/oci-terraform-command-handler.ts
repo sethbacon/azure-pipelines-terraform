@@ -213,9 +213,16 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             publicKeyEncoding: { type: 'spki', format: 'pem' },
             privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
         });
-        // Private key is multi-line PEM — not registered as a secret (which
-        // rejects newlines unless SYSTEM_UNSAFEALLOWMULTILINESECRET is set).
-        // Security relies on writeSecretFile (0o600) and temp-file cleanup.
+        // Mask the ephemeral private key per-line before it is used: ADO's log
+        // masker matches per line (not across embedded newlines), so register each
+        // non-boundary PEM line as a secret. Defense-in-depth on top of the 0o600
+        // temp file + cleanup, in case a future debug/error path ever echoes it.
+        for (const keyLine of privateKey.split('\n')) {
+            const trimmed = keyLine.trim();
+            if (trimmed && !trimmed.startsWith('-----')) {
+                tasks.setSecret(trimmed);
+            }
+        }
 
         // 3. Exchange OIDC JWT for OCI UPST
         const identityDomainUrl = tasks.getInput("ociWifIdentityDomainUrl", true)!;

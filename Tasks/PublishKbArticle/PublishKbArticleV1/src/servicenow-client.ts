@@ -207,8 +207,9 @@ export async function changeWorkflowState(
                 console.log('Article published successfully using workflow action.');
                 return await getArticle(instance, headers, articleId);
             }
-        } catch {
-            console.log('Workflow action failed. Falling back to standard update...');
+        } catch (e: unknown) {
+            const detail = e instanceof Error ? e.message : String(e);
+            console.log(`Workflow action failed (${detail}). Falling back to standard update...`);
         }
     }
 
@@ -234,7 +235,10 @@ export async function getKbCategories(
 ): Promise<KbCategory[]> {
     const url = `${baseUrl(instance)}/api/now/table/kb_category`;
     const params: Record<string, string> = {};
-    if (kbId) params['sysparm_query'] = `kb_knowledge_base=${kbId}`;
+    if (kbId) {
+        assertQueryValueSafe(kbId, 'knowledge base id');
+        params['sysparm_query'] = `kb_knowledge_base=${kbId}`;
+    }
     const response = await snRequest('GET', url, { headers, params });
     return response.data.result as KbCategory[];
 }

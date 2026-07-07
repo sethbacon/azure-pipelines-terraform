@@ -179,8 +179,8 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             }
             case AuthorizationScheme.ServicePrincipal: {
                 const spnId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!;
-                const spnKey = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", true)!;
-                if (spnKey) { tasks.setSecret(spnKey); }
+                const spnKey = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", false)!;
+                tasks.setSecret(spnKey);
 
                 const loginTool: ToolRunner = tasks.tool(azPath);
                 loginTool.arg(["login", "--service-principal",

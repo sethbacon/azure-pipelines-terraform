@@ -1,4 +1,4 @@
-import { HttpClient, parseJson, delay, truncateBody } from './http';
+import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
 
 /** Inputs for publishing to a private registry (terraform-registry-backend). */
@@ -47,18 +47,18 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
         private readonly http: HttpClient,
         private readonly options: PrivateRegistryOptions,
         private readonly log: (message: string) => void = console.log,
-    ) {}
+    ) { }
 
     async publish(): Promise<PublishResult> {
         const { registryUrl, apiKey, namespace, name, provider, version } = this.options;
         const authHeader = { Authorization: `Bearer ${apiKey}` };
         const modUrl = moduleUrl(registryUrl, this.options);
 
-        const moduleResp = await this.http('GET', modUrl, authHeader);
+        const moduleResp = await retryHttp(() => this.http('GET', modUrl, authHeader), { log: this.log });
         if (moduleResp.status === 404) {
             throw new Error(
                 `Module ${namespace}/${name}/${provider} not found in the registry. ` +
-                    'Register and SCM-link the module before publishing.',
+                'Register and SCM-link the module before publishing.',
             );
         }
         if (moduleResp.status < 200 || moduleResp.status >= 300) {
@@ -89,7 +89,7 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
 
     private async waitForVersion(modUrl: string, authHeader: Record<string, string>): Promise<boolean> {
         const deadline = Date.now() + this.options.timeoutSeconds * 1000;
-        for (;;) {
+        for (; ;) {
             // A single poll failing (e.g. a per-request timeout or transient 5xx)
             // must not abort the wait; keep polling until the wall-clock deadline.
             try {

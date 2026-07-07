@@ -1,4 +1,4 @@
-import { HttpClient, parseJson, delay, truncateBody } from './http';
+import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
 
 /** Inputs for publishing to HCP Terraform / Terraform Enterprise. */
@@ -85,7 +85,7 @@ export class HcpPublisher implements RegistryPublisher {
         private readonly http: HttpClient,
         private readonly options: HcpOptions,
         private readonly log: (message: string) => void = console.log,
-    ) {}
+    ) { }
 
     async publish(): Promise<PublishResult> {
         const o = this.options;
@@ -94,7 +94,7 @@ export class HcpPublisher implements RegistryPublisher {
             'Content-Type': 'application/vnd.api+json',
         };
 
-        const check = await this.http('GET', moduleUrl(o), headers);
+        const check = await retryHttp(() => this.http('GET', moduleUrl(o), headers), { log: this.log });
         if (check.status >= 200 && check.status < 300) {
             if (versionStatus(check.body, o.version) === 'ok') {
                 return { published: false, message: `Version ${o.version} already exists and is ready.` };
@@ -114,7 +114,10 @@ export class HcpPublisher implements RegistryPublisher {
             this.log(`Could not check existing module (HTTP ${check.status}); attempting to publish version.`);
         }
 
-        const versionResp = await this.http('POST', versionsUrl(o), headers, versionBody(o.version, o.commitSha));
+        const versionResp = await retryHttp(
+            () => this.http('POST', versionsUrl(o), headers, versionBody(o.version, o.commitSha)),
+            { log: this.log },
+        );
         if (versionResp.status === 422) {
             this.log(`Version ${o.version} already exists.`);
         } else if (versionResp.status < 200 || versionResp.status >= 300) {
@@ -131,7 +134,7 @@ export class HcpPublisher implements RegistryPublisher {
 
     private async waitForOk(headers: Record<string, string>): Promise<boolean> {
         const deadline = Date.now() + this.options.timeoutSeconds * 1000;
-        for (;;) {
+        for (; ;) {
             // A single poll failing (e.g. a per-request timeout or transient 5xx)
             // must not abort the wait; keep polling until the wall-clock deadline.
             try {
