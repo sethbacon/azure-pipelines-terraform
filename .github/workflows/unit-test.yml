@@ -353,6 +353,13 @@ jobs:
           node-version: "24"
       - name: Install dependencies
         run: npm ci
+      - name: Audit root tooling (tfx-cli, webpack, cyclonedx-npm, jest, …)
+        # The root package.json has no "dependencies" — everything here
+        # (tfx-cli used by the marketplace publish job, webpack, cyclonedx-npm,
+        # jest, …) is a devDependency, so --omit=dev (used by the per-task
+        # audits below) would audit nothing. This is the one CI job that
+        # installs the root toolchain, so it is the natural place to gate it.
+        run: npm audit --audit-level=high
       - name: Type-check tab
         run: npx tsc -p src/tab/tsconfig.json --noEmit
       - name: Run tab unit tests
