@@ -1,22 +1,22 @@
 export interface TerraformDocsConfig {
-  /** The picklist formatter option (e.g. "markdown-table", "json"). */
-  formatter: string;
-  /** Directory terraform-docs scans; emitted last as the positional argument. */
-  modulePath: string;
-  /** Optional path to a .terraform-docs.yml configuration file (--config). */
-  configFile?: string;
-  /** Optional output file to write the generated documentation to (--output-file). */
-  outputFile?: string;
-  /** How to write the output file: "inject" or "replace" (--output-mode). */
-  outputMode?: string;
-  /** Fail if the output file is out of date rather than writing it (--output-check). */
-  outputCheck?: boolean;
-  /** Sort criteria: "name", "required", or "type" (--sort-by). */
-  sortBy?: string;
-  /** Recurse into submodules (--recursive). */
-  recursive?: boolean;
-  /** Submodule directory to recurse into (--recursive-path). */
-  recursivePath?: string;
+    /** The picklist formatter option (e.g. "markdown-table", "json"). */
+    formatter: string;
+    /** Directory terraform-docs scans; emitted last as the positional argument. */
+    modulePath: string;
+    /** Optional path to a .terraform-docs.yml configuration file (--config). */
+    configFile?: string;
+    /** Optional output file to write the generated documentation to (--output-file). */
+    outputFile?: string;
+    /** How to write the output file: "inject" or "replace" (--output-mode). */
+    outputMode?: string;
+    /** Fail if the output file is out of date rather than writing it (--output-check). */
+    outputCheck?: boolean;
+    /** Sort criteria: "name", "required", or "type" (--sort-by). */
+    sortBy?: string;
+    /** Recurse into submodules (--recursive). */
+    recursive?: boolean;
+    /** Submodule directory to recurse into (--recursive-path). */
+    recursivePath?: string;
 }
 
 /**
@@ -25,31 +25,31 @@ export interface TerraformDocsConfig {
  * fast with a clear error rather than being passed through to the CLI.
  */
 const FORMATTER_SUBCOMMANDS: Record<string, string[]> = {
-  'markdown-table': ['markdown', 'table'],
-  'markdown-document': ['markdown', 'document'],
-  'json': ['json'],
-  'yaml': ['yaml'],
-  'toml': ['toml'],
-  'pretty': ['pretty'],
-  'asciidoc-table': ['asciidoc', 'table'],
-  'asciidoc-document': ['asciidoc', 'document'],
-  'tfvars-hcl': ['tfvars', 'hcl'],
-  'tfvars-json': ['tfvars', 'json'],
+    'markdown-table': ['markdown', 'table'],
+    'markdown-document': ['markdown', 'document'],
+    'json': ['json'],
+    'yaml': ['yaml'],
+    'toml': ['toml'],
+    'pretty': ['pretty'],
+    'asciidoc-table': ['asciidoc', 'table'],
+    'asciidoc-document': ['asciidoc', 'document'],
+    'tfvars-hcl': ['tfvars', 'hcl'],
+    'tfvars-json': ['tfvars', 'json'],
 };
 
 /** Resolves a picklist formatter option to its terraform-docs subcommand tokens. */
 export function resolveFormatter(formatter: string): string[] {
-  const subcommand = FORMATTER_SUBCOMMANDS[formatter];
-  if (!subcommand) {
-    throw new Error(`Unsupported terraform-docs formatter: ${formatter}`);
-  }
-  return [...subcommand];
+    const subcommand = FORMATTER_SUBCOMMANDS[formatter];
+    if (!subcommand) {
+        throw new Error(`Unsupported terraform-docs formatter: ${formatter}`);
+    }
+    return [...subcommand];
 }
 
 /** Minimal `fs.Stats` surface used to classify a candidate config-file path. */
 export interface StatLike {
-  isFile(): boolean;
-  isDirectory(): boolean;
+    isFile(): boolean;
+    isDirectory(): boolean;
 }
 
 /** The `fs.statSync`-shaped dependency `sanitizeConfigFile` needs (injected for testability). */
@@ -80,34 +80,34 @@ export type StatSyncFn = (p: string) => StatLike;
  * function is strictly to reject non-file inputs.
  */
 export function sanitizeConfigFile(raw: string | undefined | null, statSync: StatSyncFn): string | undefined {
-  if (raw === undefined || raw === null) {
-    return undefined;
-  }
+    if (raw === undefined || raw === null) {
+        return undefined;
+    }
 
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) {
-    return undefined;
-  }
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+        return undefined;
+    }
 
-  let stat: StatLike;
-  try {
-    stat = statSync(trimmed);
-  } catch {
-    // Non-existent / unstat-able path. The agent's empty-filePath -> working
-    // directory resolution always yields an existing directory, so a path that
-    // cannot be stat'd can only be a genuinely user-supplied (mistyped) value.
-    throw new Error(`terraform-docs config file not found: ${trimmed}`);
-  }
+    let stat: StatLike;
+    try {
+        stat = statSync(trimmed);
+    } catch {
+        // Non-existent / unstat-able path. The agent's empty-filePath -> working
+        // directory resolution always yields an existing directory, so a path that
+        // cannot be stat'd can only be a genuinely user-supplied (mistyped) value.
+        throw new Error(`terraform-docs config file not found: ${trimmed}`);
+    }
 
-  if (stat.isDirectory()) {
-    return undefined;
-  }
+    if (stat.isDirectory()) {
+        return undefined;
+    }
 
-  if (!stat.isFile()) {
-    throw new Error(`terraform-docs config file is not a regular file: ${trimmed}`);
-  }
+    if (!stat.isFile()) {
+        throw new Error(`terraform-docs config file is not a regular file: ${trimmed}`);
+    }
 
-  return trimmed;
+    return trimmed;
 }
 
 /**
@@ -116,30 +116,30 @@ export function sanitizeConfigFile(raw: string | undefined | null, statSync: Sta
  * is emitted last as the positional argument terraform-docs scans.
  */
 export function buildTerraformDocsArgs(config: TerraformDocsConfig): string[] {
-  const args = resolveFormatter(config.formatter);
+    const args = resolveFormatter(config.formatter);
 
-  if (config.configFile) {
-    args.push('--config', config.configFile);
-  }
-  if (config.outputFile) {
-    args.push('--output-file', config.outputFile);
-    if (config.outputMode) {
-      args.push('--output-mode', config.outputMode);
+    if (config.configFile) {
+        args.push('--config', config.configFile);
     }
-  }
-  if (config.outputCheck) {
-    args.push('--output-check');
-  }
-  if (config.sortBy && config.sortBy !== 'default') {
-    args.push('--sort-by', config.sortBy);
-  }
-  if (config.recursive) {
-    args.push('--recursive');
-    if (config.recursivePath) {
-      args.push('--recursive-path', config.recursivePath);
+    if (config.outputFile) {
+        args.push('--output-file', config.outputFile);
+        if (config.outputMode) {
+            args.push('--output-mode', config.outputMode);
+        }
     }
-  }
+    if (config.outputCheck) {
+        args.push('--output-check');
+    }
+    if (config.sortBy && config.sortBy !== 'default') {
+        args.push('--sort-by', config.sortBy);
+    }
+    if (config.recursive) {
+        args.push('--recursive');
+        if (config.recursivePath) {
+            args.push('--recursive-path', config.recursivePath);
+        }
+    }
 
-  args.push(config.modulePath && config.modulePath.length > 0 ? config.modulePath : '.');
-  return args;
+    args.push(config.modulePath && config.modulePath.length > 0 ? config.modulePath : '.');
+    return args;
 }
