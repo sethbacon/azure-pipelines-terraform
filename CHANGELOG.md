@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.8.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.5...v1.8.6) (2026-07-07)
+
+
+### Bug Fixes
+
+* **PublishKbArticle:** resolve article id via sourceKey then KB*.json before create ([#454](https://github.com/sethbacon/azure-pipelines-terraform/issues/454)) ([3943032](https://github.com/sethbacon/azure-pipelines-terraform/commit/3943032b47c459e6d835226a8cb4d17f324649a4))
+* remediate P0-P3 findings from the 5th re-audit (KB XSS, registry-URL leak, Sentinel fail-open, KB identity, CI coverage, hygiene) ([#452](https://github.com/sethbacon/azure-pipelines-terraform/issues/452)) ([3999dae](https://github.com/sethbacon/azure-pipelines-terraform/commit/3999daee7a3b0f6bc29fe534237edf07dc31bd4a))
+
 ## [1.8.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.4...v1.8.5) (2026-07-07)
 
 
