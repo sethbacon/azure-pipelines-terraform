@@ -6,7 +6,7 @@
 - [`PipelineTerraformProviderMirror@1`](#pipelineterraformprovidermirror1) — Configure provider network mirror
 - [`PipelineTerraformTask@5`](#pipelineterraformtask5) — Run Terraform commands (init, plan, apply, destroy, etc.)
 - [Cross-cloud state backends](#cross-cloud-state-backends) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
-- [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON
+- [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON, with an optional SARIF report
 - [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
 - [`PipelineTerraformDocsInstaller@1`](#pipelineterraformdocsinstaller1) — Install terraform-docs
@@ -838,6 +838,31 @@ Bring your own config with `sentinelConfigPath` to manage imports yourself.
 The check task sets output variables `policyResult` (`passed`/`failed`),
 `violationCount`, and `resultsFilePath`, and (by default) publishes a JUnit
 report so outcomes appear in the pipeline **Tests** tab.
+
+### Emit a SARIF report
+
+```yaml
+- task: PipelineTerraformPolicyCheck@1
+  name: policy
+  inputs:
+    engine: 'opa'
+    inputFile: '$(tfshow.showFilePath)'
+    policySource: 'path'
+    policyPath: 'policy/'
+    sarifOutput: true               # default false
+    # sarifPath: '$(Build.ArtifactStagingDirectory)/policy.sarif'  # optional; defaults to the agent temp dir
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(policy.sarifFilePath)'
+    ArtifactName: 'CodeAnalysisLogs'           # picked up by SARIF-aware viewers
+```
+
+With `sarifOutput: true` the task writes a SARIF 2.1.0 report of the policy
+violations and exposes its path via the `sarifFilePath` output variable. When
+`sarifPath` is empty a file is written to the agent temp directory. Publish it as
+a build artifact to surface policy findings in SARIF-aware tooling; the JUnit
+report (published by default) remains the zero-setup path for the **Tests** tab.
 
 ---
 
