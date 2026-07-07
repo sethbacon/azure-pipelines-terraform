@@ -23,6 +23,8 @@ function readModuleLocks(manifestPath: string): unknown {
 
 async function run(): Promise<void> {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
+    // Hoisted so the finally can optionally clean it up (see cleanupSummaryFile).
+    let summaryFile: string | undefined;
     try {
         const planFile = path.resolve(tasks.getInput('planJsonFile', true)!);
         if (!fs.existsSync(planFile)) {
@@ -58,7 +60,7 @@ async function run(): Promise<void> {
         // permissions, using O_EXCL to defeat a pre-existing-symlink hazard, rather
         // than a fixed, world-readable path in the shared OS temp directory.
         const tempDir = tasks.getVariable('Agent.TempDirectory') || os.tmpdir();
-        const summaryFile = path.join(tempDir, `tsm-drift-report-${randomUUID()}.json`);
+        summaryFile = path.join(tempDir, `tsm-drift-report-${randomUUID()}.json`);
         fs.writeFileSync(summaryFile, JSON.stringify(body, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
         try { fs.chmodSync(summaryFile, 0o600); } catch { /* platforms without POSIX perms */ }
 
@@ -117,6 +119,14 @@ async function run(): Promise<void> {
         }
     } catch (error) {
         tasks.setResult(tasks.TaskResult.Failed, error instanceof Error ? error.message : String(error));
+    } finally {
+        // The summary file backs the summaryFilePath output var by default (downstream
+        // steps read it). Operators who don't consume it -- and want the potentially
+        // sensitive temp file gone immediately, e.g. on a self-hosted agent whose temp
+        // dir is not wiped between jobs -- can opt into deleting it here.
+        if (summaryFile && tasks.getBoolInput('cleanupSummaryFile', false)) {
+            try { fs.unlinkSync(summaryFile); } catch { /* best effort */ }
+        }
     }
 }
 

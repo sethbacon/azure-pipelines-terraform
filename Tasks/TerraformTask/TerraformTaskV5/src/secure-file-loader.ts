@@ -42,8 +42,14 @@ export class SecureFileLoader implements ISecureFileLoader {
                 this.timeoutMs,
             );
         });
+        const download = this.helpers.downloadSecureFile(secureFileId);
+        // If the timeout wins the race, `download` keeps running unobserved. Attach a
+        // no-op catch (on a normalized promise) so a late rejection cannot surface as a
+        // process-level unhandledRejection and clobber an already-reported task result
+        // -- mirroring the guard in TerraformPolicyCheck's policy-source.ts execGit().
+        Promise.resolve(download).catch(() => { /* superseded by the timeout below */ });
         try {
-            const filePath = await Promise.race([this.helpers.downloadSecureFile(secureFileId), timeout]);
+            const filePath = await Promise.race([download, timeout]);
             // The secure file (which may carry secrets in a .pkrvars/.tfvars
             // file) is downloaded by the upstream library with its own
             // default (often 0644) permissions and never tightened.

@@ -6,7 +6,18 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
     if (fs.existsSync(manifestPath)) {
         try {
             entries = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-        } catch {
+        } catch (e: unknown) {
+            // The manifest exists but is unreadable/corrupt. Do NOT silently reset it
+            // to [] -- that would overwrite and permanently discard every prior article
+            // mapping. Preserve the original as a timestamped .bak and warn loudly so
+            // the prior entries can be recovered.
+            const backup = `${manifestPath}.corrupt-${Date.now()}.bak`;
+            try {
+                fs.renameSync(manifestPath, backup);
+                console.warn(`Warning: kb-manifest '${manifestPath}' exists but could not be parsed (${e}); preserved the unreadable file as '${backup}' and starting a fresh manifest.`);
+            } catch {
+                console.warn(`Warning: kb-manifest '${manifestPath}' exists but could not be parsed (${e}) and could not be backed up; a fresh manifest will overwrite it.`);
+            }
             entries = [];
         }
     }
