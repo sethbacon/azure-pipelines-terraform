@@ -139,21 +139,28 @@ async function run() {
         }
 
         // -----------------------------------------------------------------
-        // Resolve article ID
+        // Resolve article ID in priority order: explicit input, then the stable
+        // source-key sentinel, then the legacy KB*.json file; otherwise create.
+        //
+        // The source-key lookup FALLS THROUGH to the JSON lookup on a miss (rather
+        // than short-circuiting to create). This keeps sourceKey backward-compatible
+        // with modules still tracked by a KB*.json file: an existing article created
+        // before the sentinel existed is found via the JSON file and updated in place
+        // (self-healing its wiki-source sentinel) instead of a duplicate being created.
         // -----------------------------------------------------------------
         let articleId: string | undefined = articleIdInput;
 
-        if (!articleId) {
-            if (sourceKey) {
-                const found = await findArticleBySourceKey(instance, headers, sourceKey, kbId);
-                articleId = found || undefined;
-            } else if (!skipJsonLookup) {
-                console.log('No article-id provided. Looking for KB article JSON file...');
-                const jsonData = findKbArticleJson();
-                if (jsonData && jsonData['article_id']) {
-                    articleId = jsonData['article_id'] as string;
-                    console.log(`Using article ID from JSON file: ${articleId}`);
-                }
+        if (!articleId && sourceKey) {
+            const found = await findArticleBySourceKey(instance, headers, sourceKey, kbId);
+            articleId = found || undefined;
+        }
+
+        if (!articleId && !skipJsonLookup) {
+            console.log('No article-id resolved yet. Looking for KB article JSON file...');
+            const jsonData = findKbArticleJson();
+            if (jsonData && jsonData['article_id']) {
+                articleId = jsonData['article_id'] as string;
+                console.log(`Using article ID from JSON file: ${articleId}`);
             }
         }
 
