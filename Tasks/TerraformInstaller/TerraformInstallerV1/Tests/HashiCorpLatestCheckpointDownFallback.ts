@@ -2,10 +2,10 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// #359: a transient checkpoint-API failure (network/timeout/5xx) still falls
-// back to the pinned FALLBACK_TERRAFORM_VERSION with a warning -- that's an
-// intentional availability tradeoff, distinct from a malformed API response
-// (see HashiCorpLatestCheckpointInvalidResponseFail).
+// A checkpoint-API failure while resolving 'latest' now fails the task closed
+// rather than silently downgrading to a pinned version (a selective outage of
+// only the version endpoint must not force a stale install). The download mocks
+// below are intentionally left unreached: version resolution throws first.
 const tp = path.join(__dirname, 'HashiCorpLatestCheckpointDownFallbackL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 

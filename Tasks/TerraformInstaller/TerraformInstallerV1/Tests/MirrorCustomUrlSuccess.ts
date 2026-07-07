@@ -8,9 +8,11 @@ const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'mirror');
 tr.setInput('mirrorBaseUrl', 'https://artifacts.example.com/hashicorp/terraform');
-// SHA256SUMS is unavailable in this test; with the fail-closed default the skip
-// now requires an explicit opt-out.
+// SHA256SUMS (and its .sig) are unavailable in this test — this simulates a mirror
+// that serves no signed checksums. With the fail-closed defaults, skipping both the
+// checksum and the GPG signature now requires explicit opt-outs.
 tr.setInput('requireChecksum', 'false');
+tr.setInput('requireGpgSignature', 'false');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',

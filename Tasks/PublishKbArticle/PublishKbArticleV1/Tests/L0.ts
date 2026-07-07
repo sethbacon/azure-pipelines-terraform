@@ -58,6 +58,43 @@ afterEach(() => {
 });
 
 // ===========================================================================
+// servicenow-client — sysparm_query injection guard (assertQueryValueSafe)
+// ===========================================================================
+describe('servicenow-client sysparm_query injection guard', () => {
+    const GUARD_MSG = /must not contain '\^' or newline/;
+
+    it('findOrCreateCategory rejects a kbId containing ^ (encoded-query control char)', async () => {
+        await assert.rejects(() => client.findOrCreateCategory(INSTANCE, HEADERS, 'kb^label=evil', 'cat'), GUARD_MSG);
+    });
+
+    it('findOrCreateCategory rejects a categoryName containing a newline', async () => {
+        await assert.rejects(() => client.findOrCreateCategory(INSTANCE, HEADERS, 'kb1', 'cat\nname'), GUARD_MSG);
+    });
+
+    it('findOrCreateCategory rejects a parentCategoryId containing ^', async () => {
+        await assert.rejects(() => client.findOrCreateCategory(INSTANCE, HEADERS, 'kb1', 'cat', 'p^q'), GUARD_MSG);
+    });
+
+    it('findArticleBySourceKey rejects a sourceKey containing ^ (markdown front-matter injection)', async () => {
+        await assert.rejects(() => client.findArticleBySourceKey(INSTANCE, HEADERS, 'src^ORsys_id=1'), GUARD_MSG);
+    });
+
+    it('findArticleBySourceKey rejects a sourceKey containing a newline', async () => {
+        await assert.rejects(() => client.findArticleBySourceKey(INSTANCE, HEADERS, 'src\nkey'), GUARD_MSG);
+    });
+
+    it('findArticleBySourceKey rejects a kbId containing ^', async () => {
+        await assert.rejects(() => client.findArticleBySourceKey(INSTANCE, HEADERS, 'cleankey', 'kb^1'), GUARD_MSG);
+    });
+
+    it('allows clean values through the guard (mocked HTTP returns no match)', async () => {
+        nock(BASE_URL).get('/api/now/table/kb_knowledge').query(true).reply(200, { result: [] });
+        const res = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'clean-source-key');
+        assert.strictEqual(res, null);
+    });
+});
+
+// ===========================================================================
 // auth — getOAuthToken
 // ===========================================================================
 describe('auth.getOAuthToken', () => {
