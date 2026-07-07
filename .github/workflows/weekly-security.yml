@@ -36,6 +36,25 @@ jobs:
             --recursive
             .
             --format=table
+            --output=osv-results.txt
+
+      # Surface the scan result in the run's Summary tab so a reviewer sees the
+      # findings (or a clean result) without opening the step logs. Runs even
+      # when the scan step reports vulnerabilities (continue-on-error above).
+      - name: Publish OSV results to job summary
+        if: always()
+        run: |
+          {
+            echo '## OSV-Scanner Results'
+            echo ''
+            if [ -s osv-results.txt ]; then
+              echo '```'
+              cat osv-results.txt
+              echo '```'
+            else
+              echo 'No known vulnerabilities found.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create issue on new vulnerabilities
         if: steps.osv.outcome == 'failure'
@@ -48,7 +67,7 @@ jobs:
               '',
               `**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
-              'OSV-Scanner found known vulnerabilities in npm dependencies. Please review the workflow logs and update affected packages.',
+              'OSV-Scanner found known vulnerabilities in npm dependencies. Please review the run summary (or the workflow logs) and update affected packages.',
             ].join('\n');
 
             await github.rest.issues.create({
