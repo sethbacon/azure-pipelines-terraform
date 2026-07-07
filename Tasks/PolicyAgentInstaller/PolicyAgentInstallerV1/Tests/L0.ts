@@ -90,6 +90,7 @@ describe('PolicyAgentInstaller Test Suite', function () {
     // --- Failure cases ---
     expectFailure('InsecureUrlReject');
     expectFailure('Sha256Fail');
+    expectFailure('MirrorSentinel5xxFail');
     expectFailure('InvalidVersionFail');
     expectFailure('OpaRegistryInsecureUrl');
     expectFailure('OpaRegistryEmptySha256RequireChecksum');
