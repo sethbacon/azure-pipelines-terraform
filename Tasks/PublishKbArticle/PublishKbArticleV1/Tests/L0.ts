@@ -1184,4 +1184,15 @@ describe('PublishKbArticle full-task: instance SSRF guard', () => {
             assert.strictEqual(tr.errorIssues.length, 0, `should have no error issues: ${tr.errorIssues}`);
         }, tr);
     });
+
+    it('SourceKeyMissFallsBackToJson — a source-key miss falls through to the KB*.json lookup instead of creating a duplicate', async () => {
+        const tp = nodePath.join(__dirname, 'SourceKeyMissFallsBackToJson.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(/json-art-999/.test(tr.stdout), `plan should target the article resolved from JSON fallback: ${tr.stdout}`);
+            assert.ok(!/CREATE new article/.test(tr.stdout), `a source-key miss must not plan a create when a KB*.json exists: ${tr.stdout}`);
+        }, tr);
+    });
 });
