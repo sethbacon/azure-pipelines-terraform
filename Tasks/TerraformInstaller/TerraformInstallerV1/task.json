@@ -16,6 +16,7 @@
         "Minor": "231",
         "Patch": "0"
     },
+    "minimumAgentVersion": "4.265.1",
     "instanceNameFormat": "Install $(binary) $(terraformVersion)",
     "inputs": [
         {

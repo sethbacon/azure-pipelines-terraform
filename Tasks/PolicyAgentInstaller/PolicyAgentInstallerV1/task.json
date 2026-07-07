@@ -16,6 +16,7 @@
         "Minor": "7",
         "Patch": "0"
     },
+    "minimumAgentVersion": "4.265.1",
     "instanceNameFormat": "Install $(policyAgent) $(version)",
     "inputs": [
         {

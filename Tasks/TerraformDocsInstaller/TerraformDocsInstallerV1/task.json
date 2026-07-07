@@ -16,6 +16,7 @@
     "Minor": "3",
     "Patch": "0"
   },
+  "minimumAgentVersion": "4.265.1",
   "instanceNameFormat": "Install terraform-docs $(version)",
   "inputs": [
     {
