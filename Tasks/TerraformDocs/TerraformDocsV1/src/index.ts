@@ -1,7 +1,8 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
+import fs = require('fs');
 import path = require('path');
-import { buildTerraformDocsArgs, TerraformDocsConfig } from './args-builder';
+import { buildTerraformDocsArgs, sanitizeConfigFile, TerraformDocsConfig } from './args-builder';
 
 async function run() {
   tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
@@ -10,7 +11,10 @@ async function run() {
     const config: TerraformDocsConfig = {
       formatter: tasks.getInput('formatter', true)!,
       modulePath: tasks.getPathInput('modulePath', false, false) || '.',
-      configFile: tasks.getPathInput('configFile', false, false),
+      // Azure Pipelines resolves an unset optional `filePath` input to the agent
+      // working directory, so `configFile` must be validated (not trusted) before
+      // it is forwarded as `--config`; a resolved directory means "not provided".
+      configFile: sanitizeConfigFile(tasks.getPathInput('configFile', false, false), (p) => fs.statSync(p)),
       outputFile: tasks.getInput('outputFile', false),
       outputMode: tasks.getInput('outputMode', false),
       outputCheck: tasks.getBoolInput('outputCheck', false),
