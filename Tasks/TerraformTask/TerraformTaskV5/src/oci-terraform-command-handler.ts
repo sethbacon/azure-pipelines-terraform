@@ -47,6 +47,36 @@ export function validateOciRegion(value: string): string {
     return value;
 }
 
+/**
+ * Validates an OCI pre-authenticated request (PAR) URL and returns it escaped for
+ * safe interpolation into the generated HCL `backend "http"` block's quoted `address`
+ * string (config-<uuid>.tf). The PAR URL embeds a bearer token in its /p/<token>/
+ * segment, so the caller MUST tasks.setSecret() it BEFORE calling this — the errors
+ * thrown here deliberately never include the URL value. Enforces a parseable https://
+ * URL and rejects Terraform/shell template syntax (${ %{ $(( `) that could break out
+ * of the interpolation; backslashes and double-quotes are backslash-escaped so the
+ * value cannot terminate the surrounding HCL string.
+ */
+export function validateAndEscapeOciParUrl(parUrl: string): string {
+    let parsedUrl: URL;
+    try {
+        parsedUrl = new URL(parUrl);
+    } catch {
+        // Do not interpolate the PAR URL into the error: it is a bearer credential.
+        throw new Error('OCI PAR URL is not a valid URL.');
+    }
+    if (parsedUrl.protocol !== 'https:') {
+        throw new Error("OCI PAR URL must use HTTPS scheme.");
+    }
+    const forbiddenPatterns = ['${', '%{', '$((', '`'];
+    for (const pattern of forbiddenPatterns) {
+        if (parUrl.includes(pattern)) {
+            throw new Error(`OCI PAR URL contains forbidden template syntax: '${pattern}' is not allowed.`);
+        }
+    }
+    return parUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     constructor() {
         super();
@@ -105,25 +135,10 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
                 tasks.setSecret(parUrl);
             }
 
-            // Validate PAR URL: parse with URL constructor, enforce HTTPS, reject interpolation/template syntax
-            let parsedUrl: URL;
-            try {
-                parsedUrl = new URL(parUrl);
-            } catch {
-                // Do not interpolate the PAR URL into the error: it is a bearer credential.
-                throw new Error('OCI PAR URL is not a valid URL.');
-            }
-            if (parsedUrl.protocol !== 'https:') {
-                throw new Error("OCI PAR URL must use HTTPS scheme.");
-            }
-            const forbiddenPatterns = ['${', '%{', '$((', '`'];
-            for (const pattern of forbiddenPatterns) {
-                if (parUrl.includes(pattern)) {
-                    throw new Error(`OCI PAR URL contains forbidden template syntax: '${pattern}' is not allowed.`);
-                }
-            }
-
-            const escapedParUrl = parUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            // Validate the PAR URL (https-only, reject template-injection syntax) and
+            // escape it for safe interpolation into the generated HCL address string.
+            // parUrl was tasks.setSecret()'d above, so validation errors never leak it.
+            const escapedParUrl = validateAndEscapeOciParUrl(parUrl);
             let config = "";
             config = config + "terraform {\n backend \"http\" {\n";
             config = config + " address = \"" + escapedParUrl + "\"\n";
