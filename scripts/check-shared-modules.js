@@ -62,6 +62,21 @@ const FAMILIES = [
             'registry-allowlist.ts',
         ],
     },
+    {
+        // Fail-closed boolean-input helper: requireGpgSignature / requireChecksum /
+        // requireCosignVerification default to TRUE even on agents that do not
+        // materialize task.json defaultValues. A drift here could silently flip a
+        // verification default to fail-open, so keep it byte-identical across the
+        // three installer tasks.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'bool-input.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even

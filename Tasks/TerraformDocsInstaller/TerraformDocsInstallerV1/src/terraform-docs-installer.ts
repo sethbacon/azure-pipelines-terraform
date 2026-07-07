@@ -8,20 +8,10 @@ import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchTextAllow404 } from './http-client';
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
+import { getBoolInputDefaultTrue } from './bool-input';
 
 const toolName = "terraform-docs";
 const isWindows = os.type().match(/^Win/);
-
-/**
- * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
- * raw input rather than getBoolInput(name, false) so the default still holds on an
- * agent that does not materialize task.json defaultValues into the input env var
- * (where getBoolInput would silently return false). Mirrors TerraformInstaller's helper.
- */
-function getBoolInputDefaultTrue(name: string): boolean {
-  const raw = tasks.getInput(name, false);
-  return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
-}
 
 /**
  * Downloads the requested terraform-docs version, verifies its SHA256 checksum,

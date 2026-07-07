@@ -8,6 +8,7 @@ import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
+import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 
 const isWindows = os.type().match(/^Win/);
@@ -150,17 +151,6 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
             return filePath;
         }
     }
-}
-
-/**
- * Reads a boolean input whose intended default is TRUE (fail-closed). It reads the
- * raw input rather than getBoolInput(name, false) so the default still holds on an
- * agent that does not materialize task.json defaultValues into the input env var
- * (where getBoolInput would silently return false). Mirrors TerraformInstaller's helper.
- */
-function getBoolInputDefaultTrue(name: string): boolean {
-    const raw = tasks.getInput(name, false);
-    return raw === undefined || raw.trim() === '' ? true : raw.trim().toLowerCase() !== 'false';
 }
 
 async function downloadSentinelOfficial(version: string): Promise<string> {
