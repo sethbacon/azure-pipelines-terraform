@@ -68,7 +68,14 @@ describe('TerraformDocs Test Suite', function () {
   expectSuccess('ConsoleOutputSuccess');
   expectSuccess('AdditionalArgsSuccess');
 
+  // Exercises the real fs.statSync wiring in index.ts (the pure unit tests inject
+  // a fake stat): an existing config file is forwarded, and the working-directory
+  // artifact from an unset optional filePath input is dropped.
+  expectSuccess('ConfigFileProvidedSuccess');
+  expectSuccess('ConfigFileDirectoryIgnored');
+
   // --- Failure cases ---
   expectFailure('OutputCheckFail');
   expectFailure('UnsupportedFormatterFail');
+  expectFailure('ConfigFileNotFoundFail');
 });

@@ -46,6 +46,70 @@ export function resolveFormatter(formatter: string): string[] {
   return [...subcommand];
 }
 
+/** Minimal `fs.Stats` surface used to classify a candidate config-file path. */
+export interface StatLike {
+  isFile(): boolean;
+  isDirectory(): boolean;
+}
+
+/** The `fs.statSync`-shaped dependency `sanitizeConfigFile` needs (injected for testability). */
+export type StatSyncFn = (p: string) => StatLike;
+
+/**
+ * Validates and sanitizes the optional terraform-docs `--config` path.
+ *
+ * Azure Pipelines resolves an *unset* optional `filePath` input to the agent
+ * working directory (`path.resolve(workingDir, '') === workingDir`), so a caller
+ * that omits `configFile` still receives a non-empty value pointing at a
+ * directory. Forwarding that verbatim as `terraform-docs --config <dir>` fails
+ * with `Unsupported Config Type ""`. This guard fails closed on anything that is
+ * not a genuine, existing regular file:
+ *
+ *  - `undefined` / empty / whitespace-only  -> `undefined` (emit no `--config`).
+ *  - an existing **directory**               -> `undefined` (the empty-input
+ *    artifact above; a directory is never a valid terraform-docs config).
+ *  - an existing **regular file**            -> the trimmed path (a real config).
+ *  - anything else — a non-existent path, a device/socket/FIFO, or a path that
+ *    cannot be stat'd (e.g. contains a NUL byte) -> throws, so genuinely bad
+ *    input is surfaced clearly instead of being silently dropped or passed
+ *    through unvalidated.
+ *
+ * The returned value is only ever used as a single, separate `ToolRunner.arg()`
+ * token (never concatenated into a shell command line), so there is no
+ * argument/command-injection surface to escape here — the responsibility of this
+ * function is strictly to reject non-file inputs.
+ */
+export function sanitizeConfigFile(raw: string | undefined | null, statSync: StatSyncFn): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  let stat: StatLike;
+  try {
+    stat = statSync(trimmed);
+  } catch {
+    // Non-existent / unstat-able path. The agent's empty-filePath -> working
+    // directory resolution always yields an existing directory, so a path that
+    // cannot be stat'd can only be a genuinely user-supplied (mistyped) value.
+    throw new Error(`terraform-docs config file not found: ${trimmed}`);
+  }
+
+  if (stat.isDirectory()) {
+    return undefined;
+  }
+
+  if (!stat.isFile()) {
+    throw new Error(`terraform-docs config file is not a regular file: ${trimmed}`);
+  }
+
+  return trimmed;
+}
+
 /**
  * Builds the ordered terraform-docs argument list (excluding the binary itself and
  * any free-form additional arguments) for the given configuration. The module path
