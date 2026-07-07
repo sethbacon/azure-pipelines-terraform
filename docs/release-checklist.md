@@ -6,9 +6,10 @@ Manual verification steps to run before publishing a release to the VS Marketpla
 
 ## 1. CI gate
 
-- [ ] All CI checks pass on the `development → main` PR
-- [ ] Version in `azure-devops-extension.json` matches the intended tag (e.g. `1.0.0` for `v1.0.0`)
-- [ ] `CHANGELOG.md` has an entry for the release version
+- [ ] All CI checks pass on `main` (release-please opens the Release PR from `main`)
+- [ ] Version in `azure-devops-extension.json` matches the intended tag (e.g. `1.0.0` for `v1.0.0`) — release-please sets this in the Release PR
+- [ ] `CHANGELOG.md` has an entry for the release version (release-please generates this)
+- [ ] **Minor bumps (mandatory):** every task whose `src/` changed since the last release tag has its `Minor` incremented in `task.json`. ADO agents cache tasks by `Major.Minor`, so a code (especially security) fix to an un-bumped task would ship to the Marketplace but never reach running agents. The release `guard` job enforces this via `scripts/check-minor-bumps.js`; run it locally too: `node scripts/check-minor-bumps.js` (defaults to comparing `HEAD` against the previous `v*` tag).
 
 ## 2. Build the `.vsix` locally
 
@@ -114,16 +115,17 @@ Use a minimal Terraform configuration with an AzureRM backend and provider.
 - [ ] Run a `plan` with `publishPlanResults: <name>` — plan tab appears in build results
 - [ ] Plan output renders correctly (ANSI colors, no truncation for reasonable-sized plans)
 
-## 8. Tag and release
+## 8. Tag and release (release-please)
 
-- [ ] Squash-merge `development → main`
-- [ ] Tag the merge commit: `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`
-- [ ] Release workflow triggers automatically
-- [ ] Draft GitHub release is created with `.vsix`, SBOM, and cosign signature
-- [ ] Approve the `marketplace` environment deployment
-- [ ] Extension appears on the VS Marketplace with the correct version
+Releases are automated by release-please — do NOT hand-tag.
+
+- [ ] Conventional-commit PRs are merged to `main`; release-please accumulates them into a **Release PR** ("chore(main): release X.Y.Z") that bumps `azure-devops-extension.json` and updates `CHANGELOG.md`
+- [ ] Before merging the Release PR, confirm the per-task `Minor` bumps (see section 1) — bump any missed task in the same PR
+- [ ] Merge the Release PR — release-please pushes the `vX.Y.Z` tag automatically (the `guard` job fails the release if the tag version doesn't match `azure-devops-extension.json`)
+- [ ] The `release.yml` workflow triggers on the tag: verifies the tag is on `main`, runs full CI + the Minor-bump check, builds the `.vsix`, generates SBOMs + cosign signature, and creates a draft GitHub release
+- [ ] Approve the `marketplace` environment deployment when prompted
+- [ ] Extension appears on the VS Marketplace with the correct version; the GitHub release is undrafted
 
 ## 9. Post-release
 
-- [ ] Sync `development` with `main`: merge `origin/main` into `development`
 - [ ] Verify the extension installs correctly from the public marketplace in a fresh ADO org
