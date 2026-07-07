@@ -211,6 +211,24 @@ describe('client.createKnowledgeArticle', () => {
 // ===========================================================================
 // servicenow-client — updateKnowledgeArticle (update path)
 // ===========================================================================
+// ===========================================================================
+// servicenow-client — getArticle / articleId path encoding (#449)
+// ===========================================================================
+describe('client.getArticle', () => {
+    it('#449: encodeURIComponent-encodes an articleId containing a path-manipulation character', async () => {
+        // Without encoding, an articleId of 'a/b' would splice an extra path
+        // segment into the REST URL. nock matches the literal outgoing path, so
+        // this only passes if the client sends the percent-encoded segment.
+        const article = { sys_id: 'a/b', number: 'KB0099', short_description: 'T', workflow_state: 'draft' };
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/a%2Fb')
+            .reply(200, { result: article });
+
+        const found = await client.getArticle(INSTANCE, HEADERS, 'a/b');
+        assert.strictEqual(found.sys_id, 'a/b');
+    });
+});
+
 describe('client.updateKnowledgeArticle', () => {
     it('GETs existing article then PATCHes with updated fields', async () => {
         const existingArticle = {
@@ -537,6 +555,41 @@ describe('htmlValidate.validateHtmlContent', () => {
             () => htmlValidate.validateHtmlContent(html, false),
             /javascript:.*URIs are not allowed/,
         );
+    });
+
+    it('throws on a javascript: URI obfuscated with an HTML-entity-encoded control char (#446)', () => {
+        // Browsers strip ASCII tab/newline/CR before parsing a URL scheme, so a
+        // naive trim()+startsWith('javascript:') check would miss "jav&#9;ascript:".
+        const cases = ['jav&#9;ascript:alert(1)', 'jav&#10;ascript:alert(1)', 'jav&#13;ascript:alert(1)', 'jav&Tab;ascript:alert(1)', '&#1;javascript:alert(1)'];
+        for (const payload of cases) {
+            const html = `<html><body><a href="${payload}">x</a></body></html>`;
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /javascript:.*URIs are not allowed/,
+                `expected a throw for payload: ${payload}`,
+            );
+        }
+    });
+
+    it('throws on a <base> element when force=false', () => {
+        const html = '<html><head><base href="//evil.example.com/"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<base> elements and <meta http-equiv="refresh">/,
+        );
+    });
+
+    it('throws on a javascript: <meta http-equiv="refresh"> when force=false', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<base> elements and <meta http-equiv="refresh">/,
+        );
+    });
+
+    it('does not throw on a benign <meta> tag', () => {
+        const html = '<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
     });
 
     it('throws on a non-image data: URI when force=false', () => {
@@ -956,6 +1009,38 @@ describe('manifest.emitArticleOutput / findKbArticleJson', () => {
         process.chdir(tmpDir());
         try {
             assert.strictEqual(manifest.findKbArticleJson(), null);
+        } finally {
+            process.chdir(cwd);
+        }
+    });
+
+    it('#449: ignores a non-matching *.json file even if it has an article_id key', () => {
+        // findKbArticleJson must only consider filenames matching this task's own
+        // legacy-writer convention (KB<number>.json / article_info.json) — not any
+        // arbitrary *.json an earlier build step could have dropped in cwd.
+        const cwd = process.cwd();
+        const dir = tmpDir();
+        process.chdir(dir);
+        try {
+            fs.writeFileSync('rogue.json', JSON.stringify({ article_id: 'rogue-sys-id' }));
+            assert.strictEqual(manifest.findKbArticleJson(), null, 'a non-KB-named json file must be ignored');
+        } finally {
+            process.chdir(cwd);
+        }
+    });
+
+    it('#449: picks the most recently modified match when multiple KB article json files exist', () => {
+        const cwd = process.cwd();
+        const dir = tmpDir();
+        process.chdir(dir);
+        try {
+            fs.writeFileSync('KB0001.json', JSON.stringify({ article_id: 'older-sys-id' }));
+            const olderTime = new Date(Date.now() - 60_000);
+            fs.utimesSync('KB0001.json', olderTime, olderTime);
+            fs.writeFileSync('KB0002.json', JSON.stringify({ article_id: 'newer-sys-id' }));
+            const found = manifest.findKbArticleJson();
+            assert.ok(found);
+            assert.strictEqual(found!['article_id'], 'newer-sys-id');
         } finally {
             process.chdir(cwd);
         }

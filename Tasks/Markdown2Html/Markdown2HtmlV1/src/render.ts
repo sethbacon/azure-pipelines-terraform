@@ -54,6 +54,21 @@ function escapeHtml(s: string): string {
         .replace(/"/g, '&quot;');
 }
 
+/**
+ * Normalizes an attribute value before a URI-scheme check. Browsers (per the
+ * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
+ * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can
+ * be bypassed with an HTML-entity-encoded control char INSIDE the scheme (e.g.
+ * `jav&#9;ascript:`) — `.trim()` only removes leading/trailing whitespace, so
+ * the interior tab survives the check but is stripped by the browser at parse
+ * time, yielding a working `javascript:` URI. Stripping every ASCII control
+ * character (U+0000–U+001F, U+007F) from anywhere in the string — not just
+ * the edges — before lower-casing closes this bypass.
+ */
+function normalizeUriForSchemeCheck(value: string): string {
+    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().toLowerCase();
+}
+
 function highlightCode(code: string, lang: string): string {
     if (lang && hljs.getLanguage(lang)) {
         try {
@@ -105,12 +120,25 @@ export function sanitizeRenderedHtml(html: string): string {
     const $ = cheerio.load(html, { xmlMode: false });
     // Remove executable / embedding elements outright.
     $('script, iframe, object, embed, noscript').remove();
+    // <base> can redirect every relative URL in the document; not needed in a
+    // KB article fragment, so drop it outright rather than trying to validate it.
+    $('base').remove();
+    // <meta http-equiv="refresh" content="0;url=javascript:..."> is a redirect-based
+    // active-content vector the href/src attribute check below never sees (it's in
+    // a `content` attribute, not `href`/`src`).
+    $('meta').each((_, el) => {
+        const httpEquiv = normalizeUriForSchemeCheck(String($(el).attr('http-equiv') ?? ''));
+        const content = normalizeUriForSchemeCheck(String($(el).attr('content') ?? ''));
+        if (httpEquiv === 'refresh' && (content.includes('javascript:') || content.includes('vbscript:'))) {
+            $(el).remove();
+        }
+    });
     // Strip event-handler attributes and dangerous URIs from every element.
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
             const lname = name.toLowerCase();
-            const value = String(attribs[name]).trim().toLowerCase();
+            const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 $(el).removeAttr(name);
             } else if (
