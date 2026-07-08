@@ -51,6 +51,13 @@ function buildPublisher(): RegistryPublisher {
             apiKey,
             waitForPublish,
             timeoutSeconds,
+            // Optional: when all three are set, a not-yet-registered module is
+            // created + SCM-linked on 404 instead of failing (see private-publisher).
+            scmProviderId: tasks.getInput('scmProviderId', false),
+            repositoryOwner: tasks.getInput('repositoryOwner', false),
+            repositoryName: tasks.getInput('repositoryName', false),
+            defaultBranch: tasks.getInput('defaultBranch', false),
+            tagPattern: tasks.getInput('tagPattern', false),
         });
     }
 
