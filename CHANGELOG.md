@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.9.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.6...v1.9.0) (2026-07-08)
+
+
+### Features
+
+* auto-create new modules on private publish ([#455](https://github.com/sethbacon/azure-pipelines-terraform/issues/455)) ([1921252](https://github.com/sethbacon/azure-pipelines-terraform/commit/1921252969ab3d566a310eb425d1106c254b6629))
+
 ## [1.8.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.8.5...v1.8.6) (2026-07-07)
 
 
