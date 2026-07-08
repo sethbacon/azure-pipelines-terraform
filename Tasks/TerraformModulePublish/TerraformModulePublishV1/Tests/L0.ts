@@ -148,6 +148,35 @@ describe('private-publisher', () => {
                 'https://r.example.com/api/v1/admin/modules/abc-123/scm/sync',
             );
         });
+
+        it('builds the create and link urls', () => {
+            assert.strictEqual(
+                priv.createUrl('https://r.example.com///'),
+                'https://r.example.com/api/v1/admin/modules/create',
+            );
+            assert.strictEqual(
+                priv.linkUrl('https://r.example.com', 'abc-123'),
+                'https://r.example.com/api/v1/admin/modules/abc-123/scm',
+            );
+        });
+
+        it('builds the create and link bodies (system = provider; defaults applied)', () => {
+            assert.deepStrictEqual(
+                JSON.parse(priv.createBody({ namespace: 'aceo', name: 'networking-vpc', provider: 'aws', version: '1.0.0' })),
+                { namespace: 'aceo', name: 'networking-vpc', system: 'aws' },
+            );
+            assert.deepStrictEqual(
+                JSON.parse(priv.linkBody({
+                    namespace: 'aceo', name: 'networking-vpc', provider: 'aws', version: '1.0.0',
+                    registryUrl: 'https://r.example.com', apiKey: 'k', waitForPublish: false, timeoutSeconds: 5,
+                    scmProviderId: 'prov-1', repositoryOwner: 'Terraform', repositoryName: 'terraform-aws-networking-vpc',
+                })),
+                {
+                    provider_id: 'prov-1', repository_owner: 'Terraform', repository_name: 'terraform-aws-networking-vpc',
+                    default_branch: 'main', tag_pattern: 'v*',
+                },
+            );
+        });
     });
 
     describe('hasVersion', () => {
@@ -181,6 +210,65 @@ describe('private-publisher', () => {
         it('throws when the module is not found', async () => {
             const { client } = fakeClient([{ status: 404, body: '{"error":"not found"}' }]);
             await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /not found in the registry/);
+        });
+
+        const autoOpts = {
+            ...opts,
+            scmProviderId: 'prov-1', repositoryOwner: 'Terraform', repositoryName: 'terraform-aws-networking-vpc',
+        };
+
+        it('auto-creates and SCM-links a missing module, then syncs', async () => {
+            const { client, calls } = fakeClient([
+                { status: 404, body: '{"error":"not found"}' }, // GET module
+                { status: 201, body: '{"id":"mod-9"}' },         // POST create record
+                { status: 201, body: '{"link_id":"lnk-1"}' },    // POST SCM link
+                { status: 202, body: '' },                        // POST sync
+            ]);
+            const result = await new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls.length, 4);
+            assert.strictEqual(calls[1].method, 'POST');
+            assert.strictEqual(calls[1].url, 'https://r.example.com/api/v1/admin/modules/create');
+            assert.deepStrictEqual(JSON.parse(calls[1].body as string), { namespace: 'aceo', name: 'networking-vpc', system: 'aws' });
+            assert.strictEqual(calls[2].url, 'https://r.example.com/api/v1/admin/modules/mod-9/scm');
+            assert.deepStrictEqual(JSON.parse(calls[2].body as string), {
+                provider_id: 'prov-1', repository_owner: 'Terraform', repository_name: 'terraform-aws-networking-vpc',
+                default_branch: 'main', tag_pattern: 'v*',
+            });
+            assert.strictEqual(calls[3].url, 'https://r.example.com/api/v1/admin/modules/mod-9/scm/sync');
+        });
+
+        it('tolerates a 409 (already linked) during auto-create and still syncs', async () => {
+            const { client, calls } = fakeClient([
+                { status: 404, body: '{}' },                        // GET module
+                { status: 200, body: '{"id":"mod-9"}' },            // POST create (already exists)
+                { status: 409, body: '{"error":"already linked"}' }, // POST SCM link -> tolerated
+                { status: 202, body: '' },                           // POST sync
+            ]);
+            const result = await new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls.length, 4);
+            assert.strictEqual(calls[3].url, 'https://r.example.com/api/v1/admin/modules/mod-9/scm/sync');
+        });
+
+        it('still throws on 404 when auto-create inputs are incomplete', async () => {
+            const partial = { ...opts, scmProviderId: 'prov-1' }; // missing owner + name
+            const { client } = fakeClient([{ status: 404, body: '{}' }]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, partial, noop).publish(),
+                /not found in the registry/,
+            );
+        });
+
+        it('surfaces a failed create (non-2xx) as an error', async () => {
+            const { client } = fakeClient([
+                { status: 404, body: '{}' },                     // GET module
+                { status: 403, body: '{"error":"forbidden"}' },  // POST create fails (4xx, not retried)
+            ]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
+                /Failed to create module/,
+            );
         });
 
         it('throws when sync is rejected', async () => {

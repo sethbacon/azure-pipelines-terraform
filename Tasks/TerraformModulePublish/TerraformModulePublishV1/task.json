@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "5",
+        "Minor": "6",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -108,6 +108,51 @@
             "defaultValue": "false",
             "required": false,
             "helpMarkDown": "Disable TLS certificate verification. Use only for internal registries fronted by a private CA the agent does not trust; prefer installing the CA via NODE_EXTRA_CA_CERTS."
+        },
+        {
+            "name": "scmProviderId",
+            "type": "string",
+            "label": "SCM provider ID (auto-create)",
+            "groupName": "private",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Optional. UUID of a configured SCM provider connection in the registry. Set this together with repositoryOwner and repositoryName to auto-create and SCM-link a module that does not yet exist, instead of failing. Leave empty to require the module to be pre-registered."
+        },
+        {
+            "name": "repositoryOwner",
+            "type": "string",
+            "label": "Repository owner / project (auto-create)",
+            "groupName": "private",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Optional. Repository owner recorded on the SCM link when auto-creating a module. For Azure DevOps this is the project name; for GitHub/GitLab the org or user. Required only when auto-creating (with scmProviderId and repositoryName)."
+        },
+        {
+            "name": "repositoryName",
+            "type": "string",
+            "label": "Repository name (auto-create)",
+            "groupName": "private",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Optional. Source repository name recorded on the SCM link when auto-creating a module. Required only when auto-creating (with scmProviderId and repositoryOwner)."
+        },
+        {
+            "name": "defaultBranch",
+            "type": "string",
+            "label": "Default branch (auto-create)",
+            "groupName": "private",
+            "defaultValue": "main",
+            "required": false,
+            "helpMarkDown": "Optional. Default branch recorded on the SCM link when auto-creating a module."
+        },
+        {
+            "name": "tagPattern",
+            "type": "string",
+            "label": "Tag pattern (auto-create)",
+            "groupName": "private",
+            "defaultValue": "v*",
+            "required": false,
+            "helpMarkDown": "Optional. Glob matched against git tags to import versions when auto-creating a module (default: v*)."
         },
         {
             "name": "hcpAddress",
