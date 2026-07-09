@@ -195,8 +195,12 @@ export async function updateArticleBody(
 }
 
 /**
- * Change workflow state using the /publish endpoint first (for publish),
- * falling back to a standard PATCH on failure.
+ * Set the article's workflow state via the Table API.
+ *
+ * Publishing is done by patching workflow_state directly. ServiceNow's Table API has no
+ * "/publish" action sub-resource — POST .../kb_knowledge/{id}/publish returns HTTP 400
+ * "Requested URI does not represent any resource" on every instance — so the PATCH is the
+ * supported mechanism, not a fallback.
  */
 export async function changeWorkflowState(
     instance: string,
@@ -204,23 +208,6 @@ export async function changeWorkflowState(
     articleId: string,
     workflowState: string,
 ): Promise<KbArticle> {
-    if (workflowState === 'publish') {
-        // encodeURIComponent guards the path segment: an unencoded articleId containing
-        // '/', '?', or '#' could otherwise alter the effective REST path/query.
-        const publishUrl = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}/publish`;
-        try {
-            console.log('Attempting to publish article using workflow action...');
-            const response = await snRequest('POST', publishUrl, { headers, body: {} });
-            if ([200, 201, 204].includes(response.status)) {
-                console.log('Article published successfully using workflow action.');
-                return await getArticle(instance, headers, articleId);
-            }
-        } catch (e: unknown) {
-            const detail = e instanceof Error ? e.message : String(e);
-            console.log(`Workflow action failed (${detail}). Falling back to standard update...`);
-        }
-    }
-
     const STATE_VALUE_MAP: Record<string, string> = {
         draft: 'draft',
         review: 'review',

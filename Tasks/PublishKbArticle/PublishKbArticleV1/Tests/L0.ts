@@ -446,47 +446,24 @@ describe('client.findOrCreateCategory', () => {
 });
 
 // ===========================================================================
-// servicenow-client — changeWorkflowState (publish endpoint + fallback)
+// servicenow-client — changeWorkflowState (direct PATCH)
 // ===========================================================================
 describe('client.changeWorkflowState', () => {
-    it('uses /publish endpoint on success and returns fetched article', async () => {
+    it('publishes via a direct PATCH of workflow_state=published (no /publish action)', async () => {
         const articleId = 'pub_art_001';
-        const resultArticle = {
-            sys_id: articleId,
-            number: 'KB0040',
-            workflow_state: 'published',
-        };
-
+        let capturedBody: Record<string, unknown> = {};
+        // Only the PATCH is mocked. The Table API has no /publish sub-resource, so if the code
+        // attempted POST .../publish, nock would fail the test as an unmatched request.
         nock(BASE_URL)
-            .post(`/api/now/table/kb_knowledge/${articleId}/publish`)
-            .reply(200, {});
-
-        nock(BASE_URL)
-            .get(`/api/now/table/kb_knowledge/${articleId}`)
-            .reply(200, { result: resultArticle });
+            .patch(`/api/now/table/kb_knowledge/${articleId}`, (body: Record<string, unknown>) => {
+                capturedBody = body;
+                return true;
+            })
+            .reply(200, { result: { sys_id: articleId, number: 'KB0040', workflow_state: 'published' } });
 
         const article = await client.changeWorkflowState(INSTANCE, HEADERS, articleId, 'publish');
         assert.strictEqual(article.workflow_state, 'published');
-    });
-
-    it('falls back to PATCH when /publish endpoint fails', async () => {
-        const articleId = 'pub_art_002';
-        const resultArticle = {
-            sys_id: articleId,
-            number: 'KB0041',
-            workflow_state: 'published',
-        };
-
-        nock(BASE_URL)
-            .post(`/api/now/table/kb_knowledge/${articleId}/publish`)
-            .reply(500, { error: 'Internal Server Error' });
-
-        nock(BASE_URL)
-            .patch(`/api/now/table/kb_knowledge/${articleId}`)
-            .reply(200, { result: resultArticle });
-
-        const article = await client.changeWorkflowState(INSTANCE, HEADERS, articleId, 'publish');
-        assert.strictEqual(article.workflow_state, 'published');
+        assert.strictEqual(capturedBody['workflow_state'], 'published');
     });
 
     it('uses PATCH directly for non-publish states', async () => {
