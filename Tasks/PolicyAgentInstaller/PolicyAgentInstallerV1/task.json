@@ -104,7 +104,7 @@
             "defaultValue": "true",
             "required": false,
             "visibleRule": "policyAgent = opa || downloadSource = mirror",
-            "helpMarkDown": "When enabled, fail if a SHA256 checksum is not available for the requested version/platform."
+            "helpMarkDown": "When enabled, fail if a SHA256 checksum is not available for the requested version/platform. Note: OPA (and any mirror source) publishes no GPG/cosign signature here, so this checksum is a same-origin transport-integrity check, not independent-authenticity verification (see SECURITY.md)."
         }
     ],
     "restrictions": {

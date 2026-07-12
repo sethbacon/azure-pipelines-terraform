@@ -82,7 +82,7 @@
       "label": "Require checksum verification",
       "defaultValue": "true",
       "required": false,
-      "helpMarkDown": "When enabled (default), fail if a SHA256 checksum is not available for the requested version/platform. Disable only for mirrors or registries that do not publish checksums."
+      "helpMarkDown": "When enabled (default), fail if a SHA256 checksum is not available for the requested version/platform. Note: terraform-docs publishes no GPG/cosign signature, so this checksum is a same-origin transport-integrity check, not independent-authenticity verification (see SECURITY.md). Disable only for mirrors or registries that do not publish checksums."
     }
   ],
   "restrictions": {
