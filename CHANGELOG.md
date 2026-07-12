@@ -4,6 +4,18 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.9.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.1...v1.9.2) (2026-07-12)
+
+
+### Documentation
+
+* **security:** clarify npm audit gate threshold + OSV weekly triage (c1/c2) ([#461](https://github.com/sethbacon/azure-pipelines-terraform/issues/461)) ([01c2d9d](https://github.com/sethbacon/azure-pipelines-terraform/commit/01c2d9d98061afccfc9f370dbaed4dfe46cbd2f1))
+
+
+### Refactor
+
+* decompose PublishKbArticle run() and track servicenow-http.ts ([#459](https://github.com/sethbacon/azure-pipelines-terraform/issues/459)) ([3f74356](https://github.com/sethbacon/azure-pipelines-terraform/commit/3f74356d7050b4e9ad3d3e41827bb84a56c58ee0)), closes [#397](https://github.com/sethbacon/azure-pipelines-terraform/issues/397)
+
 ## [1.9.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.0...v1.9.1) (2026-07-09)
 
 
