@@ -39,6 +39,12 @@ The terraform (TerraformInstaller) and Sentinel (PolicyAgentInstaller) download 
 
 The TerraformTask `runAzLogin` helper (opt-in, **default false**) invokes `az login` with the WIF federated token or service-principal secret on the command line, which is visible via `ps` / `/proc/<pid>/cmdline` to other processes on a shared agent — the Azure CLI offers no non-argv way to supply these. The primary provider-auth path never touches argv (credentials flow via environment variables). Scope `runAzLogin` to single-tenant / non-shared agents; leave it disabled otherwise.
 
+## CI/CD residual risk: `npm audit` gate threshold and moderate/low-severity triage
+
+Every task's job in `unit-test.yml` runs `npm audit --omit=dev --audit-level=high`, so a **moderate or low** severity advisory in a production dependency does not fail the PR/push build. This is intentional, not an oversight: moderate/low advisories in transitive dependencies are frequently not independently fixable by this repo (no patched version yet, or the fix is upstream of a pinned tool), and gating PRs on them would create chronic, unactionable red builds unrelated to the change under review.
+
+**The moderate/low-severity gap is covered by the weekly OSV scan, not the PR gate.** `weekly-security.yml`'s `osv-scan` job runs `google/osv-scanner-action` with no severity filter — it reports vulnerabilities of every severity, including the moderate/low findings `npm audit --audit-level=high` intentionally passes over. That step is `continue-on-error: true` so a finding doesn't fail the scheduled run itself, but a failing scan still automatically files a tracked GitHub issue (the `Create issue on new vulnerabilities` step, labeled `security, dependencies`, linking back to the run) — this is the triage mechanism, run weekly rather than gating every PR.
+
 ## Preferred Languages
 
 English preferred.
