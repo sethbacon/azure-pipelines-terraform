@@ -104,6 +104,19 @@ const FAMILIES = [
 // end-to-end by this script, which is the property that actually matters;
 // collapsing them into a single abstraction would be a large, risky rewrite
 // of working transport code for no behavior change.
+//
+// A THIRD credential-bearing transport exists outside this script's FAMILIES:
+// Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts. It is not
+// listed above because it has only one copy (nothing to byte-compare), but it
+// intentionally mirrors the same hardening as the family above — an https-only
+// guard, a DEFAULT_REQUEST_TIMEOUT_MS socket timeout, and the same 10MB
+// MAX_RESPONSE_BYTES response cap (see truncate()/truncateBody()). It stays a
+// separate module rather than reusing https-client.ts because its call sites
+// need JSON-body encoding, query-string params, and axios-like non-2xx
+// rejection that the module-publish/drift-report clients don't. This comment
+// is the tracking mechanism for it: a future hardening change to the timeout,
+// response cap, or https-only guard in https-client.ts should be evaluated for
+// servicenow-http.ts too, even though CI cannot enforce byte-identity here.
 
 // Normalize line endings so a CRLF checkout never reads as drift; the bytes that
 // matter (the key material, the verification logic) are still compared exactly.

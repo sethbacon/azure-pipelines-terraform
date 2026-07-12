@@ -10,6 +10,15 @@
  *
  * Like axios (which this replaces), a non-2xx response REJECTS: several call
  * sites rely on that to fall back or return null.
+ *
+ * This is a third, independently-maintained credential-bearing transport
+ * alongside Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts
+ * (shared byte-for-byte with TerraformDriftReport and enforced by
+ * scripts/check-shared-modules.js). It is not merged into that shared client
+ * because this API needs JSON-body encoding, query-string params, and
+ * axios-like non-2xx rejection that the other client's callers don't — see the
+ * tracking note in check-shared-modules.js for what must stay in sync by hand
+ * (https-only guard, request timeout, response size cap).
  */
 
 import * as https from 'https';
