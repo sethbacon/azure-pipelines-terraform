@@ -864,6 +864,13 @@ violations and exposes its path via the `sarifFilePath` output variable. When
 a build artifact to surface policy findings in SARIF-aware tooling; the JUnit
 report (published by default) remains the zero-setup path for the **Tests** tab.
 
+> **SARIF has no native Azure DevOps viewer.** The file above is only actionable
+> once published (e.g. as the `CodeAnalysisLogs` artifact shown above) and read by
+> a SARIF-aware Marketplace extension or an external sink (GitHub code scanning, a
+> SIEM) — the same caveat noted under `PipelineTerraformDriftReport@1`'s own SARIF
+> section below, which emits the same SARIF shape from the same `sarifFilePath`
+> output variable name.
+
 ---
 
 ## PipelineTerraformDriftReport@1
