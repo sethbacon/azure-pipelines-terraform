@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 // Direct unit tests for OCI WIF token-exchange URL validation & transport.
 import './OciTokenExchangeL0';
@@ -37,7 +39,14 @@ describe('Terraform Test Suite', function () {
         delete process.env.NODE_OPTIONS
     });
 
-    after(() => { });
+    after(() => {
+        // show/output/custom (file mode) now write real files with restricted
+        // permissions via writeCommandOutputFile() instead of the previously
+        // no-op-under-test tasks.writeFile() -- clean up the scratch directory
+        // those scenarios create so repeated local `npm test` runs don't
+        // accumulate real files on disk.
+        fs.rmSync('DummyWorkingDirectory', { recursive: true, force: true });
+    });
 
     /* terraform init tests */
 
@@ -1935,6 +1944,57 @@ describe('Terraform Test Suite', function () {
                 'the control-character value must never reach a ##vso[task.setvariable] line');
             assert(tr.stdout.includes('##vso[task.setvariable variable=TF_OUT_safe_output'), 'the well-formed sibling output should still be set');
         }, tr);
+    });
+
+    it('aws output warns when a sensitive output is written to the JSON file', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputSensitiveWarning.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'should warn about the sensitive output. warnings: ' + tr.warningIssues
+            );
+        }, tr);
+    });
+
+    it('aws output with cleanupOutputFile=true removes the JSON file after the step finishes', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputCleanupRemovesFile.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-output-cleanup-test');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            const remaining = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up, found: ${remaining.join(', ')}`);
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
+    });
+
+    it('aws output retains the JSON file by default (for downstream steps) with restrictive permissions', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputFileRetainedByDefault.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-output-retain-test');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            const files = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(files.length, 1, `expected exactly one retained output file, found: ${files.join(', ')}`);
+            const filePath = path.join(workingDirectory, files[0]);
+            assert(fs.existsSync(filePath), 'the output JSON file should still exist for downstream steps to read');
+            if (process.platform !== 'win32') {
+                const mode = fs.statSync(filePath).mode & 0o777;
+                assert.strictEqual(mode, 0o600, `expected mode 0600, got ${mode.toString(8)}`);
+            }
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
     });
 
     /* terraform custom tests */

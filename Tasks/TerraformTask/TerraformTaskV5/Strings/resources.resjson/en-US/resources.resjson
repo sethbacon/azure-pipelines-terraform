@@ -20,6 +20,8 @@
   "loc.input.help.outputTo": "choose output to file or console.  ",
   "loc.input.label.filename": "Output filename",
   "loc.input.help.filename": "Path (relative to the working directory) of the file to write the command output to. Used when Output to is set to file for the show and custom commands.",
+  "loc.input.label.cleanupOutputFile": "Delete the output JSON file at task end",
+  "loc.input.help.cleanupOutputFile": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. It is retained by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable -- enable this if the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself, especially on a self-hosted agent whose working directory is not wiped between jobs.",
   "loc.input.label.outputFormat": "Output format",
   "loc.input.help.outputFormat": "choose format of console ouput for show cmd.",
   "loc.input.label.environmentServiceNameAzureRM": "Azure subscription",
