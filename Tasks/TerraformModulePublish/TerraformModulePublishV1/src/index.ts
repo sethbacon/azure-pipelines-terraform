@@ -45,7 +45,13 @@ function buildPublisher(): RegistryPublisher {
         }
         const apiKey = requireInput('apiKey');
         tasks.setSecret(apiKey);
-        return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify, timeoutSeconds * 1000), {
+        // createHttpsClient uses its own fixed default per-request socket timeout
+        // here (not timeoutSeconds) -- timeoutSeconds is the user-configurable
+        // overall wait-for-publish poll deadline below; reusing it as the socket
+        // timeout would let a single stuck request hang for that same long
+        // duration instead of failing fast, defeating the polling loop's
+        // fast-fail-and-retry cadence.
+        return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify), {
             ...coordinates,
             registryUrl: requireInput('registryUrl'),
             apiKey,
@@ -64,7 +70,9 @@ function buildPublisher(): RegistryPublisher {
     if (registryType === 'hcp') {
         const token = requireInput('hcpToken');
         tasks.setSecret(token);
-        return new HcpPublisher(createHttpsClient(true, timeoutSeconds * 1000), {
+        // See the private-registry branch above: the socket timeout is
+        // intentionally decoupled from timeoutSeconds (the poll deadline).
+        return new HcpPublisher(createHttpsClient(true), {
             ...coordinates,
             address: tasks.getInput('hcpAddress', false) || 'https://app.terraform.io',
             token,

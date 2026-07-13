@@ -470,4 +470,30 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             throw error;
         }
     });
+
+    it('decouples the per-request socket timeout from the user-configurable timeoutSeconds poll deadline', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'SocketTimeoutDecoupledFromPollDeadline.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            const match = tr.stdout.match(/CREATE_HTTPS_CLIENT_ARGS:(\[.*\])/);
+            assert.ok(match, 'createHttpsClient should have logged its call args');
+            const args = JSON.parse(match![1]);
+            // JSON.stringify serializes an `undefined` array element as `null`, so the
+            // round-tripped value here is `null`, not `undefined` -- the actual runtime
+            // call still passes a true `undefined` (confirmed: createHttpsClient's own
+            // `timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS` default parameter only applies
+            // when the argument is omitted/undefined, and https-client.ts's tests
+            // separately confirm createHttpsClient(true) uses that default).
+            assert.strictEqual(
+                args[1],
+                null,
+                `createHttpsClient's socket-timeout arg must not be forwarded from timeoutSeconds (999) -- got ${JSON.stringify(args)}`,
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
 });

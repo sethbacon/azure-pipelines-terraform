@@ -135,7 +135,17 @@ export async function exchangeOidcForUpst(
 
         // Read the success body while the abort timer is still armed, so a server
         // that sends headers then stalls the body is still bounded by the timeout.
-        const result = await response.json() as { access_token?: string; token?: string };
+        // Parsed manually (rather than response.json()) so a non-JSON body -- e.g.
+        // a misconfigured gateway or captive portal answering 200 with HTML --
+        // surfaces as a clear, truncated error instead of a raw SyntaxError,
+        // mirroring module-publish/http.ts's parseJson().
+        const bodyText = await response.text();
+        let result: { access_token?: string; token?: string };
+        try {
+            result = JSON.parse(bodyText) as { access_token?: string; token?: string };
+        } catch {
+            throw new Error(`OCI token exchange returned a non-JSON response: ${truncateBody(bodyText)}`);
+        }
         const upst = result.access_token || result.token;
         if (!upst) {
             throw new Error('OCI token exchange response missing access_token/token field.');
