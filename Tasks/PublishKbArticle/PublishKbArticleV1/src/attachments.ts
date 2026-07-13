@@ -19,7 +19,7 @@ import { snRequest } from './servicenow-http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { baseUrl } from './servicenow-client';
+import { baseUrl, assertQueryValueSafe } from './servicenow-client';
 import { extractLocalImageRefs, rewriteImageSrcs } from './image-rewrite';
 
 export interface SnAttachment {
@@ -36,6 +36,7 @@ export async function listArticleAttachments(
     headers: Record<string, string>,
     articleId: string,
 ): Promise<SnAttachment[]> {
+    assertQueryValueSafe(articleId, 'article id');
     const url = `${baseUrl(instance)}/api/now/attachment`;
     const params = {
         sysparm_query: `table_name=kb_knowledge^table_sys_id=${articleId}`,
