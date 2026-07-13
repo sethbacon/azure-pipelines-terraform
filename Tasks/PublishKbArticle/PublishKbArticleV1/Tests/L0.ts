@@ -495,9 +495,12 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
-    it('does not throw on external script when force=true', () => {
+    it('throws on external script even when force=true (#446: force no longer bypasses XSS checks)', () => {
         const html = '<html><body><script src="https://cdn.example.com/lib.js"></script></body></html>';
-        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /External script sources are not allowed/,
+        );
     });
 
     it('throws on an inline <script> element when force=false', () => {
@@ -508,9 +511,12 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
-    it('does not throw on an inline <script> when force=true', () => {
+    it('throws on an inline <script> even when force=true (#446: force no longer bypasses XSS checks)', () => {
         const html = '<html><body><script>alert(1)</script></body></html>';
-        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /Inline <script> elements are not allowed/,
+        );
     });
 
     it('throws on an inline event-handler attribute (onerror) when force=false', () => {
@@ -521,9 +527,12 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
-    it('does not throw on an inline event-handler when force=true', () => {
+    it('throws on an inline event-handler even when force=true (#446: force no longer bypasses XSS checks)', () => {
         const html = '<html><body><img src="x" onerror="alert(1)"></body></html>';
-        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /event-handler attributes .* are not allowed/,
+        );
     });
 
     it('throws on a javascript: URI when force=false', () => {
@@ -582,22 +591,44 @@ describe('htmlValidate.validateHtmlContent', () => {
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
     });
 
-    it('does not throw on a dangerous URI when force=true', () => {
-        const html = '<html><body><a href="javascript:alert(1)">x</a></body></html>';
-        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, true));
+    it('throws on a <base> element even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><head><base href="//evil.example.com/"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<base> elements and <meta http-equiv="refresh">/,
+        );
     });
 
-    it('throws on content loss when force=false', () => {
-        // Construct input that will lose significant content after cheerio parse.
-        // cheerio wraps fragments in html/head/body which adds bytes, so this
-        // heuristic fires only for content that genuinely gets stripped.
-        // We simulate by passing a very long string of unclosed tags that cheerio collapses.
-        const badHtml = '<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<' +
-            'invalid garbage content that is mostly angle brackets and gets stripped>>>>>>>>>>>>>>' +
-            'x'.repeat(1000);
-        // This may or may not trigger the heuristic depending on cheerio version;
-        // for external scripts the heuristic is more reliable.  We test what we can.
-        // Just verify the function runs without an unhandled exception on weird input.
+    it('throws on a javascript: <meta http-equiv="refresh"> even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<base> elements and <meta http-equiv="refresh">/,
+        );
+    });
+
+    it('throws on a dangerous URI even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><body><a href="javascript:alert(1)">x</a></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /javascript:.*URIs are not allowed/,
+        );
+    });
+
+    it('throws on content loss when force=false (#38: was previously mislabeled -- asserted doesNotThrow with force=true)', () => {
+        // A DOCTYPE's public-identifier padding is discarded on serialization
+        // (cheerio/dom-serializer always emits a bare "<!doctype html>"),
+        // reliably producing >50% content loss without relying on parser-version-
+        // specific tag-soup behavior.
+        const badHtml = `<!DOCTYPE html PUBLIC "${'x'.repeat(3000)}"><html><body><p>hi</p></body></html>`;
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(badHtml, false),
+            /significant content loss/,
+        );
+    });
+
+    it('warns instead of throwing on content loss when force=true (the one heuristic force still covers)', () => {
+        const badHtml = `<!DOCTYPE html PUBLIC "${'x'.repeat(3000)}"><html><body><p>hi</p></body></html>`;
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(badHtml, true));
     });
 });

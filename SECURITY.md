@@ -45,6 +45,11 @@ Every task's job in `unit-test.yml` runs `npm audit --omit=dev --audit-level=hig
 
 **The moderate/low-severity gap is covered by the weekly OSV scan, not the PR gate.** `weekly-security.yml`'s `osv-scan` job runs `google/osv-scanner-action` with no severity filter — it reports vulnerabilities of every severity, including the moderate/low findings `npm audit --audit-level=high` intentionally passes over. That step is `continue-on-error: true` so a finding doesn't fail the scheduled run itself, but a failing scan still automatically files a tracked GitHub issue (the `Create issue on new vulnerabilities` step, labeled `security, dependencies`, linking back to the run) — this is the triage mechanism, run weekly rather than gating every PR.
 
+## Optional-feature residual risk: PublishKbArticle's `force` input
+
+`force` (opt-in, **default false**) only downgrades one heuristic in `html-validate.ts`'s `validateHtmlContent()` — a parsing-fidelity check (does the parsed output retain at least 50% of the input's length) that can have legitimate false positives on unusual-but-safe markdown-to-HTML output — from a hard failure to a warning. Every stored-XSS-relevant check in the same function (external/inline `<script>` elements, inline event-handler attributes, `<base>`/meta-refresh redirects, `javascript:`/`vbscript:`/non-image `data:` URIs, including control-character-obfuscated variants) always fails the task regardless of `force`. This was not always the case: prior to this fix, `force` disabled the entire validation gate, including the XSS-relevant checks — see the resolved history in CHANGELOG.md for the original stored-XSS finding.
+
+
 ## Preferred Languages
 
 English preferred.

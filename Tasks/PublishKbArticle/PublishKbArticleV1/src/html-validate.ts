@@ -18,7 +18,16 @@ function normalizeUriForSchemeCheck(value: string): string {
 
 /**
  * Validate HTML content for common issues.
- * Throws if invalid and force is false; warns (console) if force is true.
+ *
+ * `force` ONLY downgrades the content-loss heuristic below (a false-positive-
+ * prone parsing-fidelity check, not a security control) from a throw to a
+ * warning. Every other check here is a stored-XSS/active-content defense
+ * (external/inline `<script>`, inline event handlers, `<base>`/meta-refresh
+ * redirects, javascript:/vbscript:/non-image data: URIs) and always throws
+ * regardless of `force` -- these are deterministic invariants with no
+ * legitimate false-positive case, unlike the content-loss heuristic, so
+ * letting `force` bypass them would let a KB author (or a compromised
+ * upstream markdown source) simply opt out of XSS protection entirely.
  */
 export function validateHtmlContent(html: string, force: boolean = false): void {
     const $ = load(html);
@@ -43,11 +52,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (externalScriptFound) {
-        const msg = 'External script sources are not allowed in KB articles';
-        if (!force) {
-            throw new Error(msg);
-        }
-        console.warn(`[WARN] HTML validation: ${msg}`);
+        throw new Error('External script sources are not allowed in KB articles');
     }
 
     // Reject inline <script> elements: even without a remote src, inline script
@@ -61,11 +66,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (inlineScriptFound) {
-        const msg = 'Inline <script> elements are not allowed in KB articles';
-        if (!force) {
-            throw new Error(msg);
-        }
-        console.warn(`[WARN] HTML validation: ${msg}`);
+        throw new Error('Inline <script> elements are not allowed in KB articles');
     }
 
     // Reject <base> (redirects every relative URL in the document) and a
@@ -81,11 +82,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         }
     });
     if (baseOrMetaRefreshFound) {
-        const msg = '<base> elements and <meta http-equiv="refresh"> redirects to javascript:/vbscript: are not allowed in KB articles';
-        if (!force) {
-            throw new Error(msg);
-        }
-        console.warn(`[WARN] HTML validation: ${msg}`);
+        throw new Error('<base> elements and <meta http-equiv="refresh"> redirects to javascript:/vbscript: are not allowed in KB articles');
     }
 
     // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
@@ -110,19 +107,11 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (eventHandlerFound) {
-        const msg = 'Inline event-handler attributes (on*) are not allowed in KB articles';
-        if (!force) {
-            throw new Error(msg);
-        }
-        console.warn(`[WARN] HTML validation: ${msg}`);
+        throw new Error('Inline event-handler attributes (on*) are not allowed in KB articles');
     }
 
     if (dangerousUriFound) {
-        const msg = 'javascript:, vbscript: and non-image data: URIs are not allowed in KB articles';
-        if (!force) {
-            throw new Error(msg);
-        }
-        console.warn(`[WARN] HTML validation: ${msg}`);
+        throw new Error('javascript:, vbscript: and non-image data: URIs are not allowed in KB articles');
     }
 }
 

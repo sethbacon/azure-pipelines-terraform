@@ -184,7 +184,7 @@
             "label": "Force",
             "defaultValue": "false",
             "required": false,
-            "helpMarkDown": "Continue processing even if HTML validation fails."
+            "helpMarkDown": "Continue processing (as a warning instead of a failure) when HTML validation flags likely content loss from a parsing/syntax issue. Security-relevant checks (script tags, inline event handlers, javascript:/vbscript:/data: URIs, <base>/meta-refresh redirects) are never affected by this input and always fail the task -- see SECURITY.md."
         },
         {
             "name": "skipJsonLookup",
