@@ -278,6 +278,11 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
    Increment `Minor` by 1, leave `Patch` at 0.
 
+   **Security rule (mandatory):** for any release, every task whose code was touched by a
+   **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in
+   that release — never ship a security fix while agents keep serving the cached old code. When
+   unsure whether a change qualifies, bump it.
+
 4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
 5. The `release.yml` workflow fires on the tag:
    - Verifies the tag is reachable from `main`

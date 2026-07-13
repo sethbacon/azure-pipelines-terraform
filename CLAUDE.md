@@ -44,7 +44,7 @@ Closes #12
 
 1. Create branch from `main`: `git checkout -b feature/<description> main`
 2. Make changes.
-3. Run local quality gate before pushing:
+3. Run local quality gate before pushing, from inside the changed task's directory (e.g. `Tasks/TerraformTask/TerraformTaskV5/`) — there is no root-level `compile`/`test` script; each task is an independent npm package:
    - `npm run compile` (TypeScript build, zero errors)
    - `npm test` (all tests pass)
 4. Open PR to `main` with a conventional-commit title.
@@ -139,8 +139,12 @@ azure-pipelines-terraform/
 │   │   └── TerraformModulePublishV1/    # Module publish to HCP / private registry
 │   ├── TerraformDocsInstaller/
 │   │   └── TerraformDocsInstallerV1/    # terraform-docs installer
-│   └── TerraformDocs/
-│       └── TerraformDocsV1/             # terraform-docs documentation generator
+│   ├── TerraformDocs/
+│   │   └── TerraformDocsV1/             # terraform-docs documentation generator
+│   ├── Markdown2Html/
+│   │   └── Markdown2HtmlV1/             # Markdown -> HTML converter (ServiceNow KB articles)
+│   └── PublishKbArticle/
+│       └── PublishKbArticleV1/          # Publish/update ServiceNow KB articles
 ├── src/
 │   └── tab/                           # Terraform Plan tab UI (React + ADO Extension SDK)
 │       ├── tabContent.tsx             # Tab component with ANSI rendering
@@ -152,7 +156,6 @@ azure-pipelines-terraform/
 │   ├── release.json                   # Release publisher override (sethbacon)
 │   └── self.json                      # Personal dev override (gitignored)
 ├── docs/
-│   ├── initiatives/                   # Initiative plans
 │   └── setup/                        # Setup guides (WIF, etc.)
 └── .github/workflows/                 # GitHub Actions CI/CD
     ├── unit-test.yml                  # CI: build + test on PR/push
@@ -266,6 +269,68 @@ Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates poli
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
 
+## TerraformDriftReport Task (TerraformDriftReportV1)
+
+Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terraform/OpenTofu plan JSON (`terraform show -json` output) into drift counts (create/update/delete) and a changed-resource summary, and optionally POSTs it to a Terraform State Manager (TSM) drift callback URL.
+
+| File              | Role                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`        | Entry point — computes drift counts, orchestrates the callback and SARIF report                                                    |
+| `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot) |
+| `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                          |
+| `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                               |
+
+Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`, `summaryFilePath` (opt-in `cleanupSummaryFile` removes it after use), `sarifFilePath`.
+
+## TerraformModulePublish Task (TerraformModulePublishV1)
+
+Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes a Terraform module version to HCP Terraform (private module registry) or a private/self-hosted Terraform registry.
+
+| File                   | Role                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `index.ts`             | Entry point — reads inputs, dispatches to the chosen `registryType`                                     |
+| `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
+| `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
+| `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
+| `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                      |
+| `types.ts`             | Shared type definitions for both publishers                                                             |
+
+## Markdown2Html Task (Markdown2HtmlV1)
+
+Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to HTML for publishing as ServiceNow knowledge base articles — parses YAML front matter, renders via `markdown-it` with `highlight.js` syntax highlighting, and resolves `{% include %}`-style file includes.
+
+| File                  | Role                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `index.ts`            | Entry point — orchestrates the conversion pipeline                                          |
+| `converter.ts`        | Markdown → HTML conversion pipeline                                                         |
+| `frontmatter.ts`      | YAML front-matter parsing (`js-yaml`)                                                       |
+| `includes.ts`         | Resolves `{% include %}`-style file includes                                                |
+| `highlight-theme.ts`  | Syntax-highlighting theme wiring for `highlight.js`                                         |
+| `document.ts`         | Document model / metadata                                                                   |
+| `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                  |
+| `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1 |
+
+Output variable: `htmlFilePath`.
+
+## PublishKbArticle Task (PublishKbArticleV1)
+
+Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a knowledge base article in ServiceNow — create, update, workflow-state transition, and image-attachment sync (content-hash-based idempotency).
+
+| File                   | Role                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`             | Entry point — orchestrates the create/update/workflow flow                                                                 |
+| `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                     |
+| `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                    |
+| `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                         |
+| `attachments.ts`       | Image-attachment upload/list/sync                                                                                          |
+| `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                          |
+| `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks |
+| `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                   |
+| `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                               |
+| `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                       |
+
+Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.
+
 ## task.json Schema Key Points
 
 - `id` is the fork's own TerraformTask GUID (`981E87CD-B686-4A9E-B09E-B4AFDEDF126B`), deliberately distinct from the upstream MS DevLabs `FE504ACC-6115-40CB-89FF-191386B5E7BF` — that distinct GUID is what enables the documented side-by-side install. (The legacy `custom-terraform-release-task` contribution id in `azure-devops-extension.json` is a cosmetic carryover that points at the same TerraformTaskV5 folder.)
@@ -321,15 +386,24 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## Key Dependencies
 
-| Package                                  | Purpose                                            |
-| ---------------------------------------- | -------------------------------------------------- |
-| `azure-pipelines-task-lib`               | ADO task SDK (inputs, variables, tool runners)     |
-| `azure-pipelines-tool-lib`               | Tool download/cache (used by installer)            |
-| `azure-devops-node-api`                  | Azure DevOps REST API client                       |
-| `azure-pipelines-tasks-artifacts-common` | Shared artifact utilities                          |
-| `typescript`                             | Build toolchain                                    |
-| `mocha` + `ts-node`                      | Test framework                                     |
-| `openpgp`                                | GPG signature verification for installer downloads |
+| Package                                    | Purpose                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `azure-pipelines-task-lib`                 | ADO task SDK (inputs, variables, tool runners) — all 11 tasks                          |
+| `azure-pipelines-tool-lib`                 | Tool download/cache — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller |
+| `azure-devops-node-api`                    | Azure DevOps REST API client — TerraformTaskV5                                         |
+| `azure-pipelines-tasks-artifacts-common`   | Shared artifact utilities — TerraformTaskV5                                            |
+| `azure-pipelines-tasks-securefiles-common` | Secure file download — TerraformTaskV5 (`secureVarsFile` input)                        |
+| `openpgp`                                  | GPG signature verification for installer downloads                                     |
+| `undici`                                   | HTTP/proxy client — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller   |
+| `cheerio`                                  | HTML sanitize/validate — Markdown2Html, PublishKbArticle                               |
+| `markdown-it`                              | Markdown parser — Markdown2Html                                                        |
+| `highlight.js`                             | Syntax highlighting — Markdown2Html                                                    |
+| `js-yaml`                                  | YAML front-matter parsing — Markdown2Html                                              |
+| `terraform-drift-contract`                 | Drift-summary contract types — TerraformDriftReport                                    |
+| `typescript`                               | Build toolchain                                                                        |
+| `mocha` + `ts-node`                        | Test framework                                                                         |
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-task bundled-dependency breakdown.
 
 ## CI/CD
 
@@ -355,12 +429,12 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 ## Supported Providers
 
-| Provider  | Handler class                    | Auth method                                                  |
-| --------- | -------------------------------- | ------------------------------------------------------------ |
-| `azurerm` | `TerraformCommandHandlerAzureRM` | Workload Identity Federation / MSI / Service Principal       |
-| `aws`     | `TerraformCommandHandlerAWS`     | AWS service connection credentials                           |
-| `gcp`     | `TerraformCommandHandlerGCP`     | GCP service connection credentials                           |
-| `oci`     | `TerraformCommandHandlerOCI`     | OCI private key + TF_VAR_ env vars; HTTP backend via PAR URL |
+| Provider  | Handler class                    | Auth method                                                                                   |
+| --------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `azurerm` | `TerraformCommandHandlerAzureRM` | Workload Identity Federation / MSI / Service Principal                                        |
+| `aws`     | `TerraformCommandHandlerAWS`     | AWS service connection credentials                                                            |
+| `gcp`     | `TerraformCommandHandlerGCP`     | GCP service connection credentials                                                            |
+| `oci`     | `TerraformCommandHandlerOCI`     | OCI private key + TF_VAR_ env vars, or Workload Identity Federation; HTTP backend via PAR URL |
 
 ## Important Notes
 
@@ -401,7 +475,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 - **Dependabot automated security fixes** — enabled
 - **Dependabot version updates** — configured via `.github/dependabot.yml` for:
   - GitHub Actions (weekly)
-  - npm: TerraformTaskV5, TerraformInstallerV1, TerraformProviderMirrorV1, root (weekly)
+  - npm: all 11 task directories + root (weekly)
 
 ### Code Ownership
 
