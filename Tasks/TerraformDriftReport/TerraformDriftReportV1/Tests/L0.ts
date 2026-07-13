@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
 import * as https from 'https';
-import { postJson, truncateBody } from '../src/callback';
+import { postJson, postJsonWithRetry, truncateBody } from '../src/callback';
 import { createHttpsClient } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
 
@@ -74,6 +74,55 @@ describe('TerraformDriftReport callback transport', function () {
         const out = truncateBody(long);
         assert.ok(out.length < long.length, 'long body should be truncated');
         assert.ok(out.endsWith('… (truncated)'), 'should mark truncation');
+    });
+
+    it('postJsonWithRetry retries a bounded number of times on pure transport failures then throws', async () => {
+        // A closed port guarantees ECONNREFUSED -- a pure transport failure with
+        // no response ever received, the only case this retry policy covers.
+        const probe = net.createServer();
+        await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+        const port = (probe.address() as net.AddressInfo).port;
+        await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+        const logs: string[] = [];
+        await assert.rejects(
+            postJsonWithRetry(
+                `https://127.0.0.1:${port}/drift`,
+                { 'X-TSM-Callback-Token': 't' },
+                '{}',
+                true,
+                undefined,
+                { retries: 2, baseDelayMs: 5, log: (m) => logs.push(m) },
+            ),
+        );
+        assert.strictEqual(logs.length, 2, `expected exactly 2 retry attempts logged, got: ${logs.length}`);
+    });
+
+    it('postJsonWithRetry does not retry a received 5xx response (one-shot token safety)', async () => {
+        let requestCount = 0;
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (req, res) => {
+            requestCount++;
+            res.statusCode = 503;
+            res.end('{"error":"unavailable"}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const logs: string[] = [];
+            const resp = await postJsonWithRetry(
+                `https://127.0.0.1:${port}/drift`,
+                { 'X-TSM-Callback-Token': 't' },
+                '{}',
+                false,
+                undefined,
+                { retries: 2, baseDelayMs: 5, log: (m) => logs.push(m) },
+            );
+            assert.strictEqual(resp.status, 503);
+            assert.strictEqual(requestCount, 1, 'a received 5xx must not be retried (one-shot callback token safety)');
+            assert.strictEqual(logs.length, 0, 'no retry should have been logged');
+        } finally {
+            server.close();
+        }
     });
 });
 

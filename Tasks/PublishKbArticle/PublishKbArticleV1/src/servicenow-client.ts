@@ -1,4 +1,4 @@
-import { snRequest } from './servicenow-http';
+import { snRequest, withRetry } from './servicenow-http';
 
 const WORKFLOW_STATE_MAP: Record<string, string> = {
     draft: 'draft',
@@ -114,7 +114,9 @@ export async function createKnowledgeArticle(
         payload['kb_category'] = kbCategoryId;
     }
 
-    const response = await snRequest('POST', url, { headers, body: payload });
+    const response = await withRetry(() => snRequest('POST', url, { headers, body: payload }), {
+        log: (message) => console.log(`[WARN] ${message}`),
+    });
     return response.data.result as KbArticle;
 }
 
@@ -174,7 +176,9 @@ export async function updateKnowledgeArticle(
         throw new Error('No fields provided for update.');
     }
 
-    const response = await snRequest('PATCH', url, { headers, body: payload });
+    const response = await withRetry(() => snRequest('PATCH', url, { headers, body: payload }), {
+        log: (message) => console.log(`[WARN] ${message}`),
+    });
     return response.data.result as KbArticle;
 }
 
@@ -191,7 +195,9 @@ export async function updateArticleBody(
     // encodeURIComponent guards the path segment: an unencoded articleId containing
     // '/', '?', or '#' could otherwise alter the effective REST path/query.
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
-    await snRequest('PATCH', url, { headers, body: { text } });
+    await withRetry(() => snRequest('PATCH', url, { headers, body: { text } }), {
+        log: (message) => console.log(`[WARN] ${message}`),
+    });
 }
 
 /**
@@ -217,9 +223,11 @@ export async function changeWorkflowState(
     // encodeURIComponent guards the path segment: an unencoded articleId containing
     // '/', '?', or '#' could otherwise alter the effective REST path/query.
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
-    const response = await snRequest('PATCH', url, {
+    const response = await withRetry(() => snRequest('PATCH', url, {
         headers,
         body: { workflow_state: STATE_VALUE_MAP[workflowState] ?? workflowState },
+    }), {
+        log: (message) => console.log(`[WARN] ${message}`),
     });
     return response.data.result as KbArticle;
 }

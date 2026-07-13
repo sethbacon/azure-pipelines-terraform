@@ -28,6 +28,7 @@ tr.setInput('callbackUrl', 'https://tsm.example.com/drift');
 // Stub the callback transport: it must NOT be invoked on this path.
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 200, body: '{}' }),
+    postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
     truncateBody: (body: string) => body,
 });
 

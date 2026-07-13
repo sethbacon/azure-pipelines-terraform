@@ -20,7 +20,7 @@ import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
 import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256 } from '../src/attachments';
 import * as manifest from '../src/manifest';
-import { snRequest } from '../src/servicenow-http';
+import { snRequest, withRetry } from '../src/servicenow-http';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;
@@ -147,6 +147,64 @@ describe('auth.basicAuthHeader', () => {
             capturedSecrets.includes('mypassword'),
             'tasks.setSecret should be called with the password',
         );
+    });
+});
+
+// ===========================================================================
+// servicenow-http — withRetry
+// ===========================================================================
+describe('servicenow-http.withRetry', () => {
+    it('retries a bounded number of times on a 5xx then succeeds', async () => {
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(503, { error: 'busy' })
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'retried_id', number: 'KB0099', workflow_state: 'draft' } });
+
+        const logs: string[] = [];
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 1, log: (m) => logs.push(m) },
+        );
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'retried_id');
+        assert.strictEqual(logs.length, 1, 'should log exactly one retry attempt');
+    });
+
+    it('does not retry a 4xx -- fails on the first attempt', async () => {
+        let calls = 0;
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(() => {
+                calls++;
+                return [400, { error: 'bad request' }];
+            });
+
+        const logs: string[] = [];
+        await assert.rejects(
+            withRetry(
+                () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+                { retries: 2, baseDelayMs: 1, log: (m) => logs.push(m) },
+            ),
+            /failed with status 400/,
+        );
+        assert.strictEqual(calls, 1, 'a 4xx must not be retried');
+        assert.strictEqual(logs.length, 0);
+    });
+
+    it('retries on a pure transport failure (no response received)', async () => {
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .replyWithError('socket hang up')
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'ok_after_transport_retry', number: 'KB0100', workflow_state: 'draft' } });
+
+        const logs: string[] = [];
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 1, log: (m) => logs.push(m) },
+        );
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_transport_retry');
+        assert.strictEqual(logs.length, 1);
     });
 });
 
