@@ -51,7 +51,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -79,7 +79,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -107,7 +107,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -135,7 +135,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -163,7 +163,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -191,7 +191,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -219,7 +219,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -247,7 +247,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -275,7 +275,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -303,7 +303,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -331,7 +331,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
@@ -352,7 +352,7 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Audit root tooling (tfx-cli, webpack, cyclonedx-npm, jest, …)
         # The root package.json has no "dependencies" — everything here
         # (tfx-cli used by the marketplace publish job, webpack, cyclonedx-npm,
