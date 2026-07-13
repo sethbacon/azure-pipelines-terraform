@@ -96,7 +96,7 @@ Alternatively, install directly from the publisher portal:
 In a pipeline, reference the task by its version:
 
 ```yaml
-- task: TerraformTaskV5@5
+- task: PipelineTerraformTask@5
   inputs:
     provider: 'azurerm'
     command: 'validate'

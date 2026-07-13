@@ -70,7 +70,7 @@ Replace `<ACCOUNT_ID>`, `<ORG_ID>`, `<ORG_NAME>`, `<PROJECT_NAME>`, and `<SERVIC
 In your Azure Pipeline YAML, add the Terraform task with the WIF auth scheme:
 
 ```yaml
-- task: TerraformTaskV5@5
+- task: PipelineTerraformTask@5
   inputs:
     provider: 'aws'
     command: 'plan'
