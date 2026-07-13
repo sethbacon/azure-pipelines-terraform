@@ -66,6 +66,7 @@
       "type": "string",
       "label": "TSM callback token",
       "required": false,
+      "isSecret": true,
       "helpMarkDown": "Per-run one-shot TSM callback token, sent as the X-TSM-Callback-Token header."
     },
     {

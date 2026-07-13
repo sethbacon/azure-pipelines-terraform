@@ -3,9 +3,11 @@ import { snRequest } from './servicenow-http';
 
 /**
  * Obtain an OAuth token from ServiceNow using client credentials grant.
- * Masks the token via tasks.setSecret before returning it.
+ * Masks clientSecret immediately (it's user input, not yet registered by the
+ * caller) and the returned token via tasks.setSecret.
  */
 export async function getOAuthToken(instance: string, clientId: string, clientSecret: string): Promise<string> {
+    tasks.setSecret(clientSecret);
     const url = `https://${instance}.service-now.com/oauth_token.do`;
     const params = new URLSearchParams({
         grant_type: 'client_credentials',
@@ -28,11 +30,15 @@ export async function getOAuthToken(instance: string, clientId: string, clientSe
 
 /**
  * Build a Basic auth header value from username and password.
- * Masks the password via tasks.setSecret before encoding.
+ * Masks the password via tasks.setSecret before encoding, and separately masks
+ * the base64-encoded credentials themselves -- ADO's log masking matches
+ * literal registered strings, so the encoded form needs its own registration
+ * even though the plain password is already masked.
  */
 export function basicAuthHeader(user: string, pass: string): string {
     tasks.setSecret(pass);
     const credentials = Buffer.from(`${user}:${pass}`).toString('base64');
+    tasks.setSecret(credentials);
     return `Basic ${credentials}`;
 }
 
