@@ -26,6 +26,20 @@ const MAX_REDIRECTS = 5;
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_MS = 200;
 
+/**
+ * Upper bound on a response body buffered in memory. Node's built-in fetch()
+ * has no default limit on response.json()/.text()/.arrayBuffer() -- they
+ * buffer until stream end or process OOM, so a compromised/malicious endpoint
+ * behind a registryUrl/mirrorUrl input could otherwise exhaust agent memory.
+ * Mirrors the 10MB cap already enforced by the credential-bearing
+ * https-client.ts/servicenow-http.ts families (see the "why two module
+ * families" note in check-shared-modules.js). The actual Terraform/OpenTofu
+ * binary download does not go through this client -- it uses
+ * azure-pipelines-tool-lib's downloadTool(), which streams to a temp file --
+ * so this only bounds the small metadata/checksum/signature payloads that do.
+ */
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+
 /** Error carrying whether the failure is worth retrying (transient) vs deterministic (4xx / insecure URL). */
 class HttpError extends Error {
     constructor(message: string, readonly retryable: boolean) {
@@ -134,12 +148,43 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     throw lastErr;
 }
 
+/**
+ * Reads a fetch Response body into memory with a hard byte-count guard,
+ * cancelling the stream rather than buffering an unbounded/oversized response.
+ */
+async function readBoundedArrayBuffer(response: Response, url: string): Promise<ArrayBuffer> {
+    if (!response.body) {
+        return response.arrayBuffer();
+    }
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_RESPONSE_BYTES) {
+            await reader.cancel(`Response exceeded ${MAX_RESPONSE_BYTES} bytes.`).catch(() => { /* best-effort */ });
+            throw new HttpError(`Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes.`, false);
+        }
+        chunks.push(value);
+    }
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return out.buffer;
+}
+
 export function fetchJson<T>(url: string): Promise<T> {
     return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
         if (!response.ok) {
             throw new HttpError(tasks.loc("RegistryRequestFailed", url, response.status), response.status >= 500);
         }
-        return (await response.json()) as T;
+        const buf = await readBoundedArrayBuffer(response, url);
+        return JSON.parse(Buffer.from(buf).toString('utf8')) as T;
     }));
 }
 
@@ -150,7 +195,8 @@ export function fetchText(url: string): Promise<string> {
         }
         // The returned promise is awaited inside fetchWithTimeout's guard, so the
         // body read stays bounded by the timeout without a redundant await here.
-        return response.text();
+        const buf = await readBoundedArrayBuffer(response, url);
+        return Buffer.from(buf).toString('utf8');
     }));
 }
 
@@ -166,7 +212,8 @@ export function fetchTextAllow404(url: string): Promise<string | null> {
         if (!response.ok) {
             throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
         }
-        return response.text();
+        const buf = await readBoundedArrayBuffer(response, url);
+        return Buffer.from(buf).toString('utf8');
     }));
 }
 
@@ -175,7 +222,7 @@ export function fetchBuffer(url: string): Promise<Uint8Array> {
         if (!response.ok) {
             throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
         }
-        return new Uint8Array(await response.arrayBuffer());
+        return new Uint8Array(await readBoundedArrayBuffer(response, url));
     }));
 }
 
@@ -191,6 +238,6 @@ export function fetchBufferAllow404(url: string): Promise<Uint8Array | null> {
         if (!response.ok) {
             throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
         }
-        return new Uint8Array(await response.arrayBuffer());
+        return new Uint8Array(await readBoundedArrayBuffer(response, url));
     }));
 }
