@@ -145,8 +145,18 @@ function generateConfig(policyDir: string, inputFile: string, level: string, tem
     lines.push(`}`);
     lines.push('');
     for (const policyFile of policies) {
+        // The policy name (derived from the .sentinel file's basename) is a plain
+        // quoted HCL string label here, not an identifier reference used elsewhere
+        // in policy code like the import name above -- legitimate filenames commonly
+        // use dashes (e.g. require-tags.sentinel), so it must not be restricted to
+        // identifier syntax. `hcl()` escaping is sufficient to keep it inside the
+        // string: a literal embedded newline is not a silent injection vector either
+        // way, since HCL's quoted-string grammar hard-fails to parse ("Invalid
+        // multi-line string") rather than treating it as a request to close the
+        // string. Reachable when policySource=gitUrl points at a shared/third-party
+        // policy repo whose filenames aren't fully trusted.
         const name = path.basename(policyFile, '.sentinel');
-        lines.push(`policy "${name}" {`);
+        lines.push(`policy "${hcl(name)}" {`);
         lines.push(`  source = "${hcl(policyFile)}"`);
         lines.push(`  enforcement_level = "${level}"`);
         lines.push(`}`);
@@ -161,8 +171,8 @@ function generateConfig(policyDir: string, inputFile: string, level: string, tem
     return configDir;
 }
 
-/** Escapes a path for embedding in an HCL double-quoted string. */
-function hcl(value: string): string {
+/** Escapes a value (path or policy name) for embedding in an HCL double-quoted string. */
+export function hcl(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
