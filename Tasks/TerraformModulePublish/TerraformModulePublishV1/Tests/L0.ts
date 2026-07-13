@@ -39,6 +39,16 @@ describe('http client transport', () => {
         );
     });
 
+    it('refuses a non-HTTPS URL even when rejectUnauthorized (TLS verification) is disabled', async () => {
+        // The https-only guard must be independent of rejectUnauthorized -- disabling
+        // certificate verification must never also disable the https-only requirement.
+        const client = createHttpsClient(false);
+        await assert.rejects(
+            client('GET', 'http://insecure.example.com/api', { Authorization: 'Bearer k' }),
+            /non-HTTPS/,
+        );
+    });
+
     it('times out a hung connection instead of hanging', async () => {
         // A bare TCP server that accepts the socket but never completes the TLS
         // handshake — req.setTimeout must fire and reject.

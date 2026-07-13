@@ -657,6 +657,28 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
+    it('throws on a data:image/svg+xml URI even on an <img> element (an SVG document can embed active content, unlike a raster format)', () => {
+        const html = '<html><body><img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+"></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /data: URIs are not allowed/,
+        );
+    });
+
+    it('throws on a data:image/svg+xml URI on non-<img> elements (<a href>, <button formaction>)', () => {
+        const anchorHtml = '<html><body><a href="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</a></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(anchorHtml, false),
+            /data: URIs are not allowed/,
+        );
+
+        const formHtml = '<html><body><form><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></form></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(formHtml, false),
+            /data: URIs are not allowed/,
+        );
+    });
+
     it('throws on a javascript: <meta http-equiv="refresh"> even when force=true (#446: force no longer bypasses XSS checks)', () => {
         const html = '<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head><body><p>x</p></body></html>';
         assert.throws(
