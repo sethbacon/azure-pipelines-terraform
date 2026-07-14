@@ -119,18 +119,24 @@ export async function syncImageAttachment(
     const localHash = fileSha256(filePath);
     const match = existing.find((a) => a.file_name === fileName);
 
-    if (match) {
-        if (match.hash && match.hash === localHash) {
-            // Identical content already attached — reuse.
-            return match.sys_id;
-        }
-        // Same name, different content — replace.
-        await deleteAttachment(instance, headers, match.sys_id);
+    if (match && match.hash && match.hash === localHash) {
+        // Identical content already attached — reuse.
+        return match.sys_id;
     }
 
-    return uploadAttachment(
+    // Upload the replacement first, and only delete the old attachment (if any)
+    // after the upload succeeds. Deleting first (the previous order) left no
+    // rollback path if the subsequent upload failed -- self-healing either way
+    // on the next pipeline re-run (the article is re-resolved by sourceKey and
+    // the local source file is never touched), but this avoids a window where
+    // the image is briefly missing from the article.
+    const newId = await uploadAttachment(
         instance, headers, articleId, filePath, fileName, contentTypeFor(fileName),
     );
+    if (match) {
+        await deleteAttachment(instance, headers, match.sys_id);
+    }
+    return newId;
 }
 
 export interface ProcessImagesResult {

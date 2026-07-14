@@ -48,7 +48,12 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     const subdir = tasks.getInput('policyRepoSubdir');
     const token = tasks.getInput('policyRepoToken');
 
-    const cloneDir = path.join(os.tmpdir(), `policy-repo-${uuidV4()}`);
+    // Agent.TempDirectory is auto-purged by the ADO agent at job end, which
+    // backstops cleanup even if the process is killed (e.g. a cancelled build)
+    // before the try/finally in index.ts can run fs.rmSync -- os.tmpdir() has
+    // no such guarantee and would otherwise need its own SIGTERM/SIGINT
+    // handler to avoid leaking a clone on cancellation.
+    const cloneDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `policy-repo-${uuidV4()}`);
     await cloneRepo(url, ref, token, cloneDir);
     tempDirs.push(cloneDir);
 

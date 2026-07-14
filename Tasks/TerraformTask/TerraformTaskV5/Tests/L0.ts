@@ -6,6 +6,8 @@ import * as path from 'path';
 import './OciTokenExchangeL0';
 // Direct unit tests for the OIDC ID-token generator (WIF fallback).
 import './IdTokenGeneratorL0';
+// Direct unit tests for the agent HTTP proxy configuration helper.
+import './ProxyConfigL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
 // Direct unit tests for post-hoc chmod on third-party secure-file downloads.

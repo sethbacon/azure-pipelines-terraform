@@ -91,6 +91,21 @@ describe('OCI token exchange — URL validation & transport', function () {
         await assert.rejects(exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey), /missing access_token/);
     });
 
+    it('throws a clear, truncated error on a non-JSON 200 response instead of a raw SyntaxError', async () => {
+        globalThis.fetch = (async () =>
+            new Response('<html>captive portal</html>', { status: 200 })) as unknown as typeof globalThis.fetch;
+        await assert.rejects(
+            exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey),
+            (err: unknown) => {
+                assert.ok(err instanceof Error, 'should throw an Error');
+                assert.ok(!(err instanceof SyntaxError), 'must not be a raw unwrapped SyntaxError');
+                assert.match(err.message, /OCI token exchange returned a non-JSON response/);
+                assert.ok(err.message.includes('captive portal'), 'should include the (truncated) response body');
+                return true;
+            },
+        );
+    });
+
     it('throws on a non-OK response', async () => {
         globalThis.fetch = (async () =>
             new Response('bad request', { status: 400, statusText: 'Bad Request' })) as unknown as typeof globalThis.fetch;
