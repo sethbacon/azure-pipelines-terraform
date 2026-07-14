@@ -374,11 +374,21 @@ jobs:
           persist-credentials: false
       - name: Install actionlint
         shell: bash
-        # Installer script pinned to a commit SHA (not `main`, which is mutable
-        # and previously untracked here) and given an explicit version, so both
-        # the fetched script and the resulting binary are deterministic —
-        # matches azure-pipelines-packer's identical fix.
-        run: bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12
+        # Downloads the release asset directly and verifies it against
+        # actionlint's own published SHA256 checksum before extracting,
+        # rather than the convenience install script (pinned to a commit SHA
+        # below only for its own historical reference) — that script pipes
+        # curl straight into tar with no integrity check at all. Matches this
+        # repo's verify-before-extract convention used everywhere else
+        # (TerraformInstaller/PolicyAgentInstaller GPG+SHA256SUMS, OpenTofu
+        # cosign). Checksum from
+        # https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt
+        # (linux_amd64, matching this job's ubuntu-latest runner).
+        run: |
+          set -euo pipefail
+          curl -sSfLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
+          tar xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
       - name: Run actionlint
         run: ./actionlint -color
 
