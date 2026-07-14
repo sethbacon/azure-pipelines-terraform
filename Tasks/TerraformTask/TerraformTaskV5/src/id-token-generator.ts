@@ -1,4 +1,5 @@
 import tasks = require("azure-pipelines-task-lib/task");
+import { buildProxyFetchOptions } from './proxy-config';
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {
     const tokenGenerator = new TokenGenerator();
@@ -89,7 +90,8 @@ export class TokenGenerator {
                     },
                     signal: controller.signal,
                     // This token exchange has no legitimate redirect.
-                    redirect: 'error'
+                    redirect: 'error',
+                    ...buildProxyFetchOptions(),
                 });
             } catch (error) {
                 if (error instanceof Error && error.name === 'AbortError') {
