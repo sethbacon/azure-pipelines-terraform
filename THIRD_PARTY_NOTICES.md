@@ -9,15 +9,20 @@ These packages are compiled into one or more shipped task bundles. Each is distr
 a permissive OSI license; full license texts ship in each package's distribution and are
 available at the linked repositories.
 
-| Package                  | Bundled into                                                                                          | License           |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- | ----------------- |
-| markdown-it              | Markdown2Html                                                                                         | MIT               |
-| highlight.js             | Markdown2Html                                                                                         | BSD-3-Clause      |
-| js-yaml                  | Markdown2Html (front matter)                                                                          | MIT               |
-| cheerio                  | Markdown2Html, PublishKbArticle (HTML sanitize/validate)                                              | MIT               |
-| openpgp                  | TerraformInstaller, PolicyAgentInstaller (GPG signature verification)                                 | LGPL-3.0-or-later |
-| undici                   | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller, TerraformTaskV5 (HTTP/proxy client) | MIT               |
-| terraform-drift-contract | TerraformDriftReport (drift-summary contract)                                                         | Apache-2.0        |
+| Package                                  | Bundled into                                                                                           | License           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- | ----------------- |
+| markdown-it                              | Markdown2Html                                                                                          | MIT               |
+| highlight.js                             | Markdown2Html                                                                                          | BSD-3-Clause      |
+| js-yaml                                  | Markdown2Html (front matter)                                                                           | MIT               |
+| cheerio                                  | Markdown2Html, PublishKbArticle (HTML sanitize/validate)                                               | MIT               |
+| openpgp                                  | TerraformInstaller, PolicyAgentInstaller (GPG signature verification)                                  | LGPL-3.0-or-later |
+| undici                                   | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller, TerraformTaskV5 (HTTP/proxy client)  | MIT               |
+| terraform-drift-contract                 | TerraformDriftReport (drift-summary contract)                                                          | Apache-2.0        |
+| azure-pipelines-task-lib                 | All 11 tasks (ADO task SDK — inputs, variables, tool runners)                                          | MIT               |
+| azure-pipelines-tool-lib                 | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller (tool download/cache)                 | MIT               |
+| azure-devops-node-api                    | TerraformTaskV5 (Azure DevOps REST API client)                                                         | MIT               |
+| azure-pipelines-tasks-artifacts-common   | TerraformTaskV5 (shared artifact utilities)                                                            | MIT               |
+| azure-pipelines-tasks-securefiles-common | TerraformTaskV5 (secure file download)                                                                 | MIT               |
 
 > Maintained manually: when adding or removing a bundled runtime dependency, update this
 > table. (A generated SPDX/license report is a tracked future improvement.)

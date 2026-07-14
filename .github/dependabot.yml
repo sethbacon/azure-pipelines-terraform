@@ -153,5 +153,7 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       # tfx-cli 0.23.3 pulls in lodash with HIGH advisories; pinned to 0.23.2.
+      # Bounded (not open-ended) so Dependabot resumes proposing updates once a
+      # fixed 0.24.x+ release exists, instead of ignoring tfx-cli forever.
       - dependency-name: "tfx-cli"
-        versions: [">=0.23.3"]
+        versions: [">=0.23.3", "<0.24.0"]

@@ -46,7 +46,7 @@
         "compile:md2html": "tsc -b Tasks/Markdown2Html/Markdown2HtmlV1/tsconfig.json",
         "compile:kbpublish": "tsc -b Tasks/PublishKbArticle/PublishKbArticleV1/tsconfig.json",
         "webpack": "webpack --config webpack.config.js --progress",
-        "test:all": "cd Tasks/TerraformTask/TerraformTaskV5 && npm test",
+        "test:v5": "cd Tasks/TerraformTask/TerraformTaskV5 && npm test",
         "test:tab": "jest --config jest.config.js"
     },
     "devDependencies": {
