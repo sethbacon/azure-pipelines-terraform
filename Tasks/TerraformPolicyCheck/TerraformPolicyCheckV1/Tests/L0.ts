@@ -8,6 +8,7 @@ import * as os from 'os';
 import './ResultsL0';
 // Direct unit tests for sentinel import-name validation (HCL injection guard).
 import './SentinelImportNameL0';
+import './HclEscapeL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 

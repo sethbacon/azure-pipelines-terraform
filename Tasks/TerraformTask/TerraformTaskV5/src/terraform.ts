@@ -3,7 +3,15 @@ import path = require('path');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner'
 import { TerraformBaseCommandInitializer } from './terraform-commands'
 
-const ALLOWED_BINARY_NAMES = ["terraform", "tofu", "terragrunt"];
+// terragrunt is deliberately excluded: backend-detection.ts hardcodes reading
+// <workingDirectory>/.terraform/terraform.tfstate to decide cross-cloud
+// backend-credential injection, but terragrunt runs terraform inside a nested
+// .terragrunt-cache/<hash>/<hash>/ directory, so that file never exists at the
+// plain working directory under terragrunt -- cross-cloud backend-credential
+// injection would silently no-op (only a debug-level log, no visible warning)
+// rather than fail loudly. Reject it explicitly here until real terragrunt
+// support (argument/path handling, backend detection) is implemented.
+const ALLOWED_BINARY_NAMES = ["terraform", "tofu"];
 
 export function getBinaryName(tasks: typeof import('azure-pipelines-task-lib/task')): string {
     const name = tasks.getInput("binaryName", false) || "terraform";

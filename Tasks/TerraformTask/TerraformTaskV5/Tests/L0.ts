@@ -33,6 +33,8 @@ import './CrossCloudBackendCredentialTests/AzureConfigureBackendCredentialsL0';
 import './CrossCloudBackendCredentialTests/AwsConfigureBackendCredentialsL0';
 import './CrossCloudBackendCredentialTests/GcpConfigureBackendCredentialsL0';
 import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredentialsL0';
+// Direct unit tests for the binaryName allowlist (terraform/tofu only).
+import './BinaryNameAllowlistL0';
 
 describe('Terraform Test Suite', function () {
 
