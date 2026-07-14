@@ -590,7 +590,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><script src="https://cdn.example.com/lib.js"></script></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /External script sources are not allowed/,
+            /External script sources are not allowed|ExternalScriptNotAllowed/,
         );
     });
 
@@ -606,7 +606,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><script>alert(1)</script></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /Inline <script> elements are not allowed/,
+            /Inline <script> elements are not allowed|InlineScriptNotAllowed/,
         );
     });
 
@@ -622,7 +622,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><img src="x" onerror="alert(1)"></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /event-handler attributes .* are not allowed/,
+            /event-handler attributes .* are not allowed|EventHandlerNotAllowed/,
         );
     });
 
@@ -686,7 +686,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><head><base href="//evil.example.com/"></head><body><p>x</p></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /<base> elements and <meta http-equiv="refresh">/,
+            /<base> elements and <meta http-equiv="refresh">|BaseOrMetaRefreshNotAllowed/,
         );
     });
 
@@ -694,7 +694,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+"></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, false),
-            /data: URIs are not allowed/,
+            /data: URIs are not allowed|DangerousUriNotAllowed/,
         );
     });
 
@@ -702,13 +702,13 @@ describe('htmlValidate.validateHtmlContent', () => {
         const anchorHtml = '<html><body><a href="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</a></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(anchorHtml, false),
-            /data: URIs are not allowed/,
+            /data: URIs are not allowed|DangerousUriNotAllowed/,
         );
 
         const formHtml = '<html><body><form><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></form></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(formHtml, false),
-            /data: URIs are not allowed/,
+            /data: URIs are not allowed|DangerousUriNotAllowed/,
         );
     });
 
@@ -716,7 +716,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head><body><p>x</p></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /<base> elements and <meta http-equiv="refresh">/,
+            /<base> elements and <meta http-equiv="refresh">|BaseOrMetaRefreshNotAllowed/,
         );
     });
 
@@ -724,7 +724,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><a href="javascript:alert(1)">x</a></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
-            /javascript:.*URIs are not allowed/,
+            /javascript:.*URIs are not allowed|DangerousUriNotAllowed/,
         );
     });
 
@@ -736,7 +736,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         const badHtml = `<!DOCTYPE html PUBLIC "${'x'.repeat(3000)}"><html><body><p>hi</p></body></html>`;
         assert.throws(
             () => htmlValidate.validateHtmlContent(badHtml, false),
-            /significant content loss/,
+            /significant content loss|HtmlContentLoss/,
         );
     });
 
@@ -1378,7 +1378,7 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
                 tr.stdout.includes('##vso[task.setvariable variable=kbArticleId;isOutput=true;issecret=false;]new-sys-id'),
                 `kbArticleId output variable should be set from the created article: ${tr.stdout}`,
             );
-            assert.ok(tr.stdout.includes('Article Number: KB0099'), `should log the created article number: ${tr.stdout}`);
+            assert.ok(/Article Number: KB0099|ArticleNumberLine KB0099/.test(tr.stdout), `should log the created article number: ${tr.stdout}`);
         }, tr);
     });
 
@@ -1396,7 +1396,7 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
                 tr.stdout.includes('##vso[task.setvariable variable=kbArticleId;isOutput=true;issecret=false;]existing-art-id'),
                 `kbArticleId output variable should be set from the updated article: ${tr.stdout}`,
             );
-            assert.ok(tr.stdout.includes('Article Number: KB0050'), `should log the updated article number: ${tr.stdout}`);
+            assert.ok(/Article Number: KB0050|ArticleNumberLine KB0050/.test(tr.stdout), `should log the updated article number: ${tr.stdout}`);
         }, tr);
     });
 
@@ -1410,7 +1410,7 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
                 tr.stdout.includes('##vso[task.setvariable variable=kbWorkflowState;isOutput=true;issecret=false;]published'),
                 `kbWorkflowState output variable should reflect the new state: ${tr.stdout}`,
             );
-            assert.ok(tr.stdout.includes("Changing workflow state to 'publish'"), `should log the workflow-only path was taken: ${tr.stdout}`);
+            assert.ok(/Changing workflow state to 'publish'|ChangingWorkflowState publish/.test(tr.stdout), `should log the workflow-only path was taken: ${tr.stdout}`);
         }, tr);
     });
 
@@ -1420,7 +1420,7 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
         await tr.runAsync();
         runValidations(() => {
             assert.ok(tr.succeeded, 'task should have succeeded');
-            assert.ok(tr.stdout.includes('Rewrote 1 image reference(s) to ServiceNow attachments'), `should log the image-upload result: ${tr.stdout}`);
+            assert.ok(/Rewrote 1 image reference\(s\) to ServiceNow attachments|ImagesRewritten 1/.test(tr.stdout), `should log the image-upload result: ${tr.stdout}`);
             assert.ok(tr.stdout.includes('##[MOCK] updateArticleBody called with text:'), `updateArticleBody should have been called with the rewritten body: ${tr.stdout}`);
         }, tr);
     });
