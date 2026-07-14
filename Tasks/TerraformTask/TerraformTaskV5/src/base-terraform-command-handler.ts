@@ -2,6 +2,7 @@ import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveTool
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
+import { writeSecretFile } from './secure-temp';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -225,6 +226,19 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     /**
+     * Writes a terraform command's captured stdout (show/output/custom -- any
+     * of which can carry unredacted `sensitive = true` values, most notably
+     * `terraform output -json`) to disk with restrictive 0600 permissions
+     * instead of the default umask. The parent directory is created first
+     * since `show`/`custom` accept a caller-supplied, possibly-nested
+     * `filename`.
+     */
+    private writeCommandOutputFile(filePath: string, content: string): void {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        writeSecretFile(filePath, content);
+    }
+
+    /**
      * Regex patterns anchored to typical `terraform providers` output format.
      * Matches lines like: `provider[registry.terraform.io/hashicorp/aws]`
      */
@@ -351,7 +365,7 @@ export abstract class BaseTerraformCommandHandler {
                 cwd: showCommand.workingDirectory,
             });
 
-            tasks.writeFile(showFilePath, commandOutput.stdout);
+            this.writeCommandOutputFile(showFilePath, commandOutput.stdout);
             tasks.setVariable('showFilePath', showFilePath, false, true);
 
             // Detect destroy changes in JSON plan output
@@ -378,8 +392,13 @@ export abstract class BaseTerraformCommandHandler {
             cwd: outputCommand.workingDirectory,
         });
 
-        tasks.writeFile(jsonOutputVariablesFilePath, commandOutput.stdout);
+        this.writeCommandOutputFile(jsonOutputVariablesFilePath, commandOutput.stdout);
         tasks.setVariable('jsonOutputVariablesPath', jsonOutputVariablesFilePath, false, true);
+        this.warnIfSensitiveOutputFile(commandOutput.stdout, jsonOutputVariablesFilePath);
+
+        if (tasks.getBoolInput('cleanupOutputFile', false)) {
+            this.tempFiles.push(jsonOutputVariablesFilePath);
+        }
 
         // Auto-set pipeline variables from terraform output
         this.setOutputVariables(commandOutput.stdout);
@@ -459,7 +478,7 @@ export abstract class BaseTerraformCommandHandler {
                 cwd: customCommand.workingDirectory
             });
 
-            tasks.writeFile(customFilePath, commandOutput.stdout);
+            this.writeCommandOutputFile(customFilePath, commandOutput.stdout);
             tasks.setVariable('customFilePath', customFilePath, false, true);
             return commandOutput.code;
         }
@@ -786,6 +805,36 @@ export abstract class BaseTerraformCommandHandler {
             }
         } catch (error) {
             tasks.warning(`Could not parse terraform plan for sensitive-output detection; the sensitive-value safety warning did not run: ${String(error)}`);
+        }
+    }
+
+    /**
+     * `terraform output -json` emits every output's real value in cleartext,
+     * including ones declared `sensitive = true` in configuration (Terraform
+     * only redacts the human-readable console format, not `-json`). Warn
+     * loudly when that's the case so the file written by
+     * writeCommandOutputFile() -- restrictive permissions notwithstanding --
+     * doesn't get casually published as a build artifact or left for a
+     * downstream step to mishandle.
+     */
+    private warnIfSensitiveOutputFile(jsonOutput: string, filePath: string): void {
+        try {
+            const outputs = JSON.parse(jsonOutput);
+            if (!outputs || typeof outputs !== 'object') return;
+
+            const sensitiveKeys = Object.entries(outputs)
+                .filter(([, def]) => (def as { sensitive?: boolean }).sensitive === true)
+                .map(([key]) => key);
+
+            if (sensitiveKeys.length > 0) {
+                tasks.warning(
+                    `${filePath} contains ${sensitiveKeys.length} sensitive output(s) in cleartext (${sensitiveKeys.join(', ')}). ` +
+                    `Ensure this file is not published as a pipeline artifact. Set 'cleanupOutputFile' to remove it automatically ` +
+                    `at the end of this step if downstream steps don't need to read it from disk.`
+                );
+            }
+        } catch (error) {
+            tasks.debug(`Could not parse terraform output as JSON for sensitive-output detection: ${error}`);
         }
     }
 }

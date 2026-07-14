@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "276",
+        "Minor": "277",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -424,6 +424,15 @@
             "visibleRule": "outputTo = file",
             "required": true,
             "helpMarkDown": "Path (relative to the working directory) of the file to write the command output to. Used when Output to is set to file for the show and custom commands."
+        },
+        {
+            "name": "cleanupOutputFile",
+            "type": "boolean",
+            "label": "Delete the output JSON file at task end",
+            "defaultValue": "false",
+            "required": false,
+            "visibleRule": "command = output",
+            "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. It is retained by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable -- enable this if the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself, especially on a self-hosted agent whose working directory is not wiped between jobs."
         },
         {
             "name": "environmentServiceNameAzureRM",
