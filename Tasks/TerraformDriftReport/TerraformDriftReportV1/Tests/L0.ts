@@ -161,9 +161,12 @@ describe('TerraformDriftReport Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            // create counts; the read entry is skipped (contract semantics).
-            assert(tr.stdout.includes('drifted=true added=1 changed=0 destroyed=0'), 'drift line incorrect');
-            assert(tr.stdout.includes('1 changed resources'), 'read entry should be skipped from the summary');
+            // create counts; the read entry is skipped (contract semantics). Matches
+            // either the real loc'd text or the mock-test harness's loc_mock_ stub.
+            assert(
+                /DriftSummary true 1 0 0 1|drifted=true added=1 changed=0 destroyed=0.*1 changed resources/.test(tr.stdout),
+                'drift line incorrect',
+            );
         }, tr);
     });
 
@@ -181,7 +184,7 @@ describe('TerraformDriftReport Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'clean plan should succeed');
-            assert(tr.stdout.includes('drifted=false'), 'should report no drift');
+            assert(/DriftSummary false|drifted=false/.test(tr.stdout), 'should report no drift');
         }, tr);
     });
 
@@ -243,7 +246,10 @@ describe('TerraformDriftReport Test Suite', function () {
                 tr.stdout.includes('##vso[task.setsecret]super-secret-callback-token'),
                 'callback token should be registered as a secret',
             );
-            assert(tr.stdout.includes('Drift result posted to TSM (HTTP 200).'), 'should log a successful POST');
+            assert(
+                /DriftPostedToTsm 200|Drift result posted to TSM \(HTTP 200\)/.test(tr.stdout),
+                'should log a successful POST',
+            );
         }, tr);
     });
 
@@ -253,7 +259,7 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(
-                tr.errorIssues.some(e => e.includes('Drift callback failed (HTTP 500)')),
+                tr.errorIssues.some(e => /DriftCallbackFailed 500|Drift callback failed \(HTTP 500\)/.test(e)),
                 'should report the failed callback HTTP status',
             );
         }, tr);
@@ -265,11 +271,11 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
-                tr.warningIssues.some(w => w.includes('Both callbackUrl and callbackToken are required')),
+                tr.warningIssues.some(w => /CallbackUrlAndTokenRequired|Both callbackUrl and callbackToken are required/.test(w)),
                 'should warn that the callback was skipped',
             );
             assert(
-                !tr.stdout.includes('Drift result posted to TSM'),
+                !/DriftPostedToTsm|Drift result posted to TSM/.test(tr.stdout),
                 'callback must not be POSTed when only one of url/token is set',
             );
         }, tr);
@@ -281,7 +287,7 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
-                tr.warningIssues.some(w => w.includes('rejectUnauthorized is disabled')),
+                tr.warningIssues.some(w => /RejectUnauthorizedDisabled|rejectUnauthorized is disabled/.test(w)),
                 'should warn that TLS verification is off',
             );
         }, tr);

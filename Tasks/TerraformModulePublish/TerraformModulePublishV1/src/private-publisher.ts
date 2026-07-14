@@ -1,5 +1,6 @@
 import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
+import tasks = require('azure-pipelines-task-lib/task');
 
 /** Inputs for publishing to a private registry (terraform-registry-backend). */
 export interface PrivateRegistryOptions extends ModuleCoordinates {
@@ -100,30 +101,28 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
             // registration inputs; otherwise preserve the original hard error.
             moduleId = await this.createAndLinkModule(authHeader);
         } else if (moduleResp.status < 200 || moduleResp.status >= 300) {
-            throw new Error(`Failed to resolve module (HTTP ${moduleResp.status}): ${truncateBody(moduleResp.body)}`);
+            throw new Error(tasks.loc('PrivateResolveModuleFailed', moduleResp.status, truncateBody(moduleResp.body)));
         } else {
             moduleId = parseJson<ModuleResponse>(moduleResp.body).id;
         }
         if (!moduleId) {
-            throw new Error('Registry response did not include a module id.');
+            throw new Error(tasks.loc('PrivateNoModuleId'));
         }
 
         const syncResp = await this.http('POST', syncUrl(registryUrl, moduleId), authHeader);
         if (syncResp.status !== 202) {
-            throw new Error(`Failed to trigger sync (HTTP ${syncResp.status}): ${truncateBody(syncResp.body)}`);
+            throw new Error(tasks.loc('PrivateTriggerSyncFailed', syncResp.status, truncateBody(syncResp.body)));
         }
-        this.log(`Sync triggered for ${namespace}/${name}/${provider}.`);
+        this.log(tasks.loc('PrivateSyncTriggered', namespace, name, provider));
 
         if (!this.options.waitForPublish) {
-            return { published: true, message: `Sync triggered for version ${version}.` };
+            return { published: true, message: tasks.loc('PrivateSyncTriggeredVersion', version) };
         }
 
         if (!(await this.waitForVersion(modUrl, authHeader))) {
-            throw new Error(
-                `Timed out after ${this.options.timeoutSeconds}s waiting for version ${version} to appear in the registry.`,
-            );
+            throw new Error(tasks.loc('PrivateWaitTimedOut', this.options.timeoutSeconds, version));
         }
-        return { published: true, message: `Version ${version} is available in the registry.` };
+        return { published: true, message: tasks.loc('PrivateVersionAvailable', version) };
     }
 
     /**
@@ -136,11 +135,7 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
     private async createAndLinkModule(authHeader: Record<string, string>): Promise<string> {
         const { registryUrl, namespace, name, provider, scmProviderId, repositoryOwner, repositoryName } = this.options;
         if (!scmProviderId || !repositoryOwner || !repositoryName) {
-            throw new Error(
-                `Module ${namespace}/${name}/${provider} not found in the registry. ` +
-                'Register and SCM-link the module before publishing, or set scmProviderId, ' +
-                'repositoryOwner, and repositoryName to auto-create it.',
-            );
+            throw new Error(tasks.loc('PrivateModuleNotFoundNoScmInputs', namespace, name, provider));
         }
         const jsonHeaders = { ...authHeader, 'Content-Type': 'application/json' };
 
@@ -150,13 +145,13 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
             { log: this.log },
         );
         if (createResp.status < 200 || createResp.status >= 300) {
-            throw new Error(`Failed to create module (HTTP ${createResp.status}): ${truncateBody(createResp.body)}`);
+            throw new Error(tasks.loc('PrivateCreateModuleFailed', createResp.status, truncateBody(createResp.body)));
         }
         const moduleId = parseJson<ModuleResponse>(createResp.body).id;
         if (!moduleId) {
-            throw new Error('Registry create response did not include a module id.');
+            throw new Error(tasks.loc('PrivateCreateResponseNoModuleId'));
         }
-        this.log(`Created module record ${namespace}/${name}/${provider}.`);
+        this.log(tasks.loc('PrivateModuleRecordCreated', namespace, name, provider));
 
         // Link it to its SCM repository. A 409 means it is already linked — treat as success.
         const linkResp = await retryHttp(
@@ -164,11 +159,11 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
             { log: this.log },
         );
         if (linkResp.status === 409) {
-            this.log(`Module ${namespace}/${name}/${provider} is already SCM-linked.`);
+            this.log(tasks.loc('PrivateModuleAlreadyLinked', namespace, name, provider));
         } else if (linkResp.status < 200 || linkResp.status >= 300) {
-            throw new Error(`Failed to SCM-link module (HTTP ${linkResp.status}): ${truncateBody(linkResp.body)}`);
+            throw new Error(tasks.loc('PrivateScmLinkFailed', linkResp.status, truncateBody(linkResp.body)));
         } else {
-            this.log(`SCM-linked ${namespace}/${name}/${provider} to ${repositoryOwner}/${repositoryName}.`);
+            this.log(tasks.loc('PrivateScmLinked', namespace, name, provider, repositoryOwner, repositoryName));
         }
         return moduleId;
     }
@@ -184,7 +179,7 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
                     return true;
                 }
             } catch (err) {
-                this.log(`Polling registry failed, will retry: ${err instanceof Error ? err.message : String(err)}`);
+                this.log(tasks.loc('PrivatePollingFailed', err instanceof Error ? err.message : String(err)));
             }
             if (Date.now() >= deadline) {
                 return false;

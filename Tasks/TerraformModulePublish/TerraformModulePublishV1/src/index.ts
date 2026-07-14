@@ -7,7 +7,7 @@ import { HcpPublisher } from './hcp-publisher';
 function requireInput(name: string): string {
     const value = tasks.getInput(name, true);
     if (!value) {
-        throw new Error(`Input '${name}' is required.`);
+        throw new Error(tasks.loc('InputRequired', name));
     }
     return value;
 }
@@ -37,11 +37,7 @@ function buildPublisher(): RegistryPublisher {
         // over a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         if (skipTlsVerify) {
-            tasks.warning(
-                'skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, ' +
-                'so the API key is sent over an unverified TLS channel. Use only for an internal registry fronted by a ' +
-                'private CA the agent does not trust.',
-            );
+            tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
         }
         const apiKey = requireInput('apiKey');
         tasks.setSecret(apiKey);
@@ -85,7 +81,7 @@ function buildPublisher(): RegistryPublisher {
         });
     }
 
-    throw new Error(`Unsupported registryType '${registryType}'. Expected 'hcp' or 'private'.`);
+    throw new Error(tasks.loc('UnsupportedRegistryType', registryType));
 }
 
 async function run(): Promise<void> {

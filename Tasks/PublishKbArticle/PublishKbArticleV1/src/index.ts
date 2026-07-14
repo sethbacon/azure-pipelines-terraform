@@ -65,18 +65,15 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     password = tasks.getInput('password', false) || password;
 
     if (!instance) {
-        throw new Error('ServiceNow instance is required (set "instance" input or provide a service connection).');
+        throw new Error(tasks.loc('InstanceRequired'));
     }
     // Guard against URL injection: instance is interpolated into
     // https://<instance>.service-now.com, which carries the OAuth secret.
     if (!/^[a-z0-9-]+$/i.test(instance)) {
-        throw new Error(
-            `Invalid ServiceNow instance '${instance}'. Expected the instance name only ` +
-            `(letters, digits, hyphens), e.g. 'mycompany' for mycompany.service-now.com.`,
-        );
+        throw new Error(tasks.loc('InvalidInstance', instance));
     }
     if (!authType) {
-        throw new Error('authType is required.');
+        throw new Error(tasks.loc('AuthTypeRequired'));
     }
 
     // -----------------------------------------------------------------
@@ -85,13 +82,13 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     let headers: Record<string, string>;
     if (authType === 'oauth') {
         if (!clientId || !clientSecret) {
-            throw new Error('OAuth authentication requires clientId and clientSecret.');
+            throw new Error(tasks.loc('OAuthClientCredentialsRequired'));
         }
         const token = await getOAuthToken(instance, clientId, clientSecret);
         headers = getAuthHeaders('oauth', { accessToken: token });
     } else {
         if (!username || !password) {
-            throw new Error('Basic authentication requires username and password.');
+            throw new Error(tasks.loc('BasicCredentialsRequired'));
         }
         tasks.setSecret(password);
         headers = getAuthHeaders('basic', { username, password });
@@ -150,7 +147,7 @@ async function planAction(instance: string, headers: Record<string, string>, kbI
 
     if (readKeyFrom) {
         sourceKey = readFrontMatterKey(readKeyFrom);
-        console.log(`Source key from front-matter '${readKeyFrom}': ${sourceKey}`);
+        console.log(tasks.loc('SourceKeyFromFrontMatter', readKeyFrom, sourceKey));
     }
 
     let articleId: string | undefined = articleIdInput;
@@ -161,11 +158,11 @@ async function planAction(instance: string, headers: Record<string, string>, kbI
     }
 
     if (!articleId && !skipJsonLookup) {
-        console.log('No article-id resolved yet. Looking for KB article JSON file...');
+        console.log(tasks.loc('LookingForKbJson'));
         const jsonData = findKbArticleJson();
         if (jsonData && jsonData['article_id']) {
             articleId = jsonData['article_id'] as string;
-            console.log(`Using article ID from JSON file: ${articleId}`);
+            console.log(tasks.loc('UsingArticleIdFromJson', articleId));
         }
     }
 
@@ -196,10 +193,10 @@ async function executeCreateOrUpdate(
     let article: Record<string, unknown>;
 
     if (articleId) {
-        console.log(`Updating knowledge article with ID '${articleId}'...`);
+        console.log(tasks.loc('UpdatingArticle', articleId));
 
         if (workflowOnly) {
-            console.log(`Changing workflow state to '${workflowState}'...`);
+            console.log(tasks.loc('ChangingWorkflowState', workflowState));
             article = await changeWorkflowState(instance, headers, articleId, workflowState) as unknown as Record<string, unknown>;
         } else {
             article = await updateKnowledgeArticle(
@@ -208,28 +205,28 @@ async function executeCreateOrUpdate(
                 category, subcategory, workflowState, sourceKey,
             ) as unknown as Record<string, unknown>;
         }
-        console.log('Knowledge article updated successfully!');
+        console.log(tasks.loc('ArticleUpdated'));
     } else {
         // Create path — validate required fields
         if (!kbId) {
-            throw new Error('Knowledge base ID (kbId) is required for creating an article.');
+            throw new Error(tasks.loc('KbIdRequiredForCreate'));
         }
         if (!title) {
-            throw new Error('Article title is required for creating an article.');
+            throw new Error(tasks.loc('TitleRequiredForCreate'));
         }
         if (!articleContent) {
-            throw new Error('Article content is required (set htmlFile input).');
+            throw new Error(tasks.loc('ContentRequiredForCreate'));
         }
         if (!author) {
-            throw new Error('Author is required for creating an article.');
+            throw new Error(tasks.loc('AuthorRequiredForCreate'));
         }
 
-        console.log(`Creating new knowledge article '${title}'...`);
+        console.log(tasks.loc('CreatingArticle', title));
         article = await createKnowledgeArticle(
             instance, headers, kbId, title, articleContent, author,
             category, subcategory, workflowState, sourceKey,
         ) as unknown as Record<string, unknown>;
-        console.log('Knowledge article created successfully!');
+        console.log(tasks.loc('ArticleCreated'));
     }
 
     return article;
@@ -246,11 +243,11 @@ async function run() {
         const kbId = tasks.getInput('kbId', false) || undefined;
         if (kbId === 'list') {
             const kbs = await getKnowledgeBases(instance, headers);
-            console.log('Available Knowledge Bases:');
+            console.log(tasks.loc('AvailableKnowledgeBases'));
             for (const kb of kbs as Array<Record<string, unknown>>) {
-                console.log(`  Title: ${kb['title']} | KB ID: ${kb['sys_id']}`);
+                console.log(tasks.loc('KnowledgeBaseEntry', kb['title'], kb['sys_id']));
             }
-            tasks.setResult(tasks.TaskResult.Succeeded, 'Knowledge base listing complete.');
+            tasks.setResult(tasks.TaskResult.Succeeded, tasks.loc('KbListingComplete'));
             return;
         }
 
@@ -287,9 +284,7 @@ async function run() {
                 if (!articleContent) missing.push('htmlFile (content)');
                 if (!author) missing.push('author');
                 if (missing.length > 0) {
-                    throw new Error(
-                        `Dry run: create would fail — missing required field(s): ${missing.join(', ')}.`,
-                    );
+                    throw new Error(tasks.loc('DryRunMissingFields', missing.join(', ')));
                 }
             }
 
@@ -310,7 +305,7 @@ async function run() {
             };
 
             console.log(formatDryRunReport(dryRunPlan));
-            tasks.setResult(tasks.TaskResult.Succeeded, 'Dry run complete — no changes made.');
+            tasks.setResult(tasks.TaskResult.Succeeded, tasks.loc('DryRunComplete'));
             return;
         }
 
@@ -319,9 +314,9 @@ async function run() {
         // -----------------------------------------------------------------
         const article = await executeCreateOrUpdate(instance, headers, plan);
 
-        console.log(`Article Number: ${article['number']}`);
-        console.log(`Article ID: ${article['sys_id']}`);
-        console.log(`Workflow State: ${article['workflow_state']}`);
+        console.log(tasks.loc('ArticleNumberLine', article['number']));
+        console.log(tasks.loc('ArticleIdLine', article['sys_id']));
+        console.log(tasks.loc('WorkflowStateLine', article['workflow_state']));
 
         // -----------------------------------------------------------------
         // Emit manifest line + output variables BEFORE the image-upload phase, so a
@@ -354,10 +349,10 @@ async function run() {
 
             if (result.uploaded > 0) {
                 await updateArticleBody(instance, headers, sysId, result.html);
-                console.log(`Rewrote ${result.uploaded} image reference(s) to ServiceNow attachments.`);
+                console.log(tasks.loc('ImagesRewritten', result.uploaded));
             }
             if (result.missing.length > 0) {
-                console.log(`${result.missing.length} image(s) not found and left unchanged.`);
+                console.log(tasks.loc('ImagesMissingSummary', result.missing.length));
             }
         }
 

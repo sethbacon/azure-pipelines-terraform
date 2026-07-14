@@ -1,4 +1,5 @@
 import { HttpResponse, truncateBody } from './https-client';
+import tasks = require('azure-pipelines-task-lib/task');
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformDriftReport via ./https-client and guarded by
@@ -17,7 +18,7 @@ export function parseJson<T>(body: string): T {
     try {
         return JSON.parse(body) as T;
     } catch {
-        throw new Error(`Registry returned a non-JSON response body: ${truncateBody(body)}`);
+        throw new Error(tasks.loc('RegistryNonJsonResponse', truncateBody(body)));
     }
 }
 
@@ -48,13 +49,13 @@ export async function retryHttp(
             if (response.status < 500 || attempt >= retries) {
                 return response;
             }
-            opts.log?.(`Transient HTTP ${response.status} from registry; retrying (${attempt + 1}/${retries}).`);
+            opts.log?.(tasks.loc('TransientHttpRetry', response.status, attempt + 1, retries));
         } catch (err) {
             if (attempt >= retries) {
                 throw err;
             }
             const reason = err instanceof Error ? err.message : String(err);
-            opts.log?.(`Transient request failure (${reason}); retrying (${attempt + 1}/${retries}).`);
+            opts.log?.(tasks.loc('TransientRequestFailureRetry', reason, attempt + 1, retries));
         }
         await delay(baseDelayMs * 2 ** attempt);
     }

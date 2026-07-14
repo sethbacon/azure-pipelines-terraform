@@ -5,6 +5,7 @@
 
 import fs = require('fs');
 import path = require('path');
+import tasks = require('azure-pipelines-task-lib/task');
 import { parseFrontMatter } from './frontmatter';
 
 export const MAX_INCLUDE_DEPTH = 5;
@@ -21,9 +22,7 @@ export function resolveIncludes(
     depth: number = 0
 ): string[] {
     if (depth > MAX_INCLUDE_DEPTH) {
-        throw new Error(
-            `Maximum include depth (${MAX_INCLUDE_DEPTH}) exceeded at '${primaryPath}'.`
-        );
+        throw new Error(tasks.loc('MaxIncludeDepthExceeded', MAX_INCLUDE_DEPTH, primaryPath));
     }
 
     const absPrimary = path.resolve(primaryPath);
@@ -46,15 +45,11 @@ export function resolveIncludes(
         // agent into the rendered/published KB article.
         const relToPrimaryDir = path.relative(primaryDir, absInclude);
         if (relToPrimaryDir === '..' || relToPrimaryDir.startsWith(`..${path.sep}`) || path.isAbsolute(relToPrimaryDir)) {
-            throw new Error(
-                `Include '${includeRel}' resolves outside the primary file's directory ('${primaryDir}'): '${absInclude}'`
-            );
+            throw new Error(tasks.loc('IncludeOutsidePrimaryDir', includeRel, primaryDir, absInclude));
         }
 
         if (!fs.existsSync(absInclude) || !fs.statSync(absInclude).isFile()) {
-            throw new Error(
-                `Include file not found: '${includeRel}' (resolved to '${absInclude}')`
-            );
+            throw new Error(tasks.loc('IncludeFileNotFound', includeRel, absInclude));
         }
 
         if (seenInResult.has(absInclude)) {
@@ -63,17 +58,12 @@ export function resolveIncludes(
         }
 
         if (visitedNow.has(absInclude)) {
-            throw new Error(
-                `Cycle detected: '${includeRel}' is already in the include chain.`
-            );
+            throw new Error(tasks.loc('IncludeCycleDetected', includeRel));
         }
 
         const { data: incFm } = parseFrontMatter(absInclude);
         if (incFm['kb-key']) {
-            throw new Error(
-                `Include file '${includeRel}' has a 'kb-key' front-matter field. ` +
-                `Include files must not be primaries.`
-            );
+            throw new Error(tasks.loc('IncludeHasKbKey', includeRel));
         }
 
         seenInResult.add(absInclude);

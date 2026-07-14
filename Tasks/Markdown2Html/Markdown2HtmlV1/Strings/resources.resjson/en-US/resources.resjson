@@ -1,0 +1,18 @@
+{
+  "loc.friendlyName": "Markdown to HTML Converter",
+  "loc.helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
+  "loc.description": "Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles",
+  "loc.instanceNameFormat": "Markdown to HTML",
+  "loc.messages.IncludeConversionFailed": "Failed to convert include '%s'",
+  "loc.messages.FrontMatterConversionComplete": "Front-matter-driven conversion complete: '%s'",
+  "loc.messages.TitleResolved": "Title: '%s'",
+  "loc.messages.FileConversionFailed": "Failed to convert '%s'",
+  "loc.messages.FileConverted": "Converted: %s",
+  "loc.messages.MaxIncludeDepthExceeded": "Maximum include depth (%s) exceeded at '%s'.",
+  "loc.messages.IncludeOutsidePrimaryDir": "Include '%s' resolves outside the primary file's directory ('%s'): '%s'",
+  "loc.messages.IncludeFileNotFound": "Include file not found: '%s' (resolved to '%s')",
+  "loc.messages.IncludeCycleDetected": "Cycle detected: '%s' is already in the include chain.",
+  "loc.messages.IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
+  "loc.messages.NoInputFilesProvided": "No input files provided.",
+  "loc.messages.HtmlWrittenTo": "HTML written to '%s'"
+}

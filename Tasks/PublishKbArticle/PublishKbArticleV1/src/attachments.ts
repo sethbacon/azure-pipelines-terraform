@@ -19,6 +19,7 @@ import { snRequest, withRetry } from './servicenow-http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import tasks = require('azure-pipelines-task-lib/task');
 import { baseUrl, assertQueryValueSafe } from './servicenow-client';
 import { extractLocalImageRefs, rewriteImageSrcs } from './image-rewrite';
 
@@ -179,7 +180,7 @@ export async function processArticleImages(
 
     for (const ref of refs) {
         if (!fs.existsSync(ref.absPath)) {
-            const msg = `Image not found, leaving src unchanged: '${ref.originalSrc}' (resolved to '${ref.absPath}')`;
+            const msg = tasks.loc('ImageNotFound', ref.originalSrc, ref.absPath);
             if (failOnMissing) {
                 throw new Error(msg);
             }
@@ -192,7 +193,7 @@ export async function processArticleImages(
         );
         srcToId.set(ref.originalSrc, attachmentId);
         uploaded++;
-        log(`[INFO] Attached image '${ref.fileName}' -> sys_attachment.do?sys_id=${attachmentId}`);
+        log(tasks.loc('ImageAttached', ref.fileName, attachmentId));
     }
 
     return { html: rewriteImageSrcs(html, srcToId), uploaded, missing };

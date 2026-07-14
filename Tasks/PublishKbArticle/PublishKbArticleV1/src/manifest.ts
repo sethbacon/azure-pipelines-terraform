@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import tasks = require('azure-pipelines-task-lib/task');
 
 /** Append an article entry to the kb-manifest JSON file. */
 export function appendToManifest(manifestPath: string, entry: Record<string, unknown>): void {
@@ -14,9 +15,9 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
             const backup = `${manifestPath}.corrupt-${Date.now()}.bak`;
             try {
                 fs.renameSync(manifestPath, backup);
-                console.warn(`Warning: kb-manifest '${manifestPath}' exists but could not be parsed (${e}); preserved the unreadable file as '${backup}' and starting a fresh manifest.`);
+                console.warn(tasks.loc('ManifestCorruptBackedUp', manifestPath, e, backup));
             } catch {
-                console.warn(`Warning: kb-manifest '${manifestPath}' exists but could not be parsed (${e}) and could not be backed up; a fresh manifest will overwrite it.`);
+                console.warn(tasks.loc('ManifestCorruptNoBackup', manifestPath, e));
             }
             entries = [];
         }
@@ -24,9 +25,9 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
     entries.push(entry);
     try {
         fs.writeFileSync(manifestPath, JSON.stringify(entries, null, 2), 'utf-8');
-        console.log(`Manifest updated: ${manifestPath}`);
+        console.log(tasks.loc('ManifestUpdated', manifestPath));
     } catch (e: unknown) {
-        console.warn(`Warning: Could not write manifest '${manifestPath}': ${e}`);
+        console.warn(tasks.loc('ManifestWriteFailed', manifestPath, e));
     }
 }
 
@@ -44,9 +45,9 @@ export function outputArticleInfoToJson(article: Record<string, unknown>): void 
     };
     try {
         fs.writeFileSync(filename, JSON.stringify(info, null, 2), 'utf-8');
-        console.log(`Article information saved to ${filename}`);
+        console.log(tasks.loc('ArticleInfoSaved', filename));
     } catch (e: unknown) {
-        console.error(`Error saving article information to JSON file: ${e}`);
+        console.error(tasks.loc('ArticleInfoSaveFailed', e));
     }
 }
 
@@ -134,10 +135,10 @@ export function findKbArticleJson(): Record<string, unknown> | null {
         return null;
     }
     if (candidates.length > 1) {
-        console.warn(`Warning: multiple KB article JSON files found (${candidates.map(c => c.filename).join(', ')}); using the most recently modified.`);
+        console.warn(tasks.loc('MultipleKbJsonFilesFound', candidates.map(c => c.filename).join(', ')));
     }
     candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    console.log(`Found KB article JSON file: ${candidates[0].filename}`);
+    console.log(tasks.loc('FoundKbJsonFile', candidates[0].filename));
     return candidates[0].data;
 }
 

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
 import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES } from './uri-scheme-guard';
+import tasks = require('azure-pipelines-task-lib/task');
 
 /**
  * Validate HTML content for common issues.
@@ -21,7 +22,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 
     // Content-loss heuristic: parsed output should be at least 50% the length of input
     if (parsedHtml.length < html.length * 0.5) {
-        const msg = 'HTML parsing resulted in significant content loss, possible syntax errors';
+        const msg = tasks.loc('HtmlContentLoss');
         if (!force) {
             throw new Error(msg);
         }
@@ -38,7 +39,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (externalScriptFound) {
-        throw new Error('External script sources are not allowed in KB articles');
+        throw new Error(tasks.loc('ExternalScriptNotAllowed'));
     }
 
     // Reject inline <script> elements: even without a remote src, inline script
@@ -52,7 +53,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (inlineScriptFound) {
-        throw new Error('Inline <script> elements are not allowed in KB articles');
+        throw new Error(tasks.loc('InlineScriptNotAllowed'));
     }
 
     // Reject <base> (redirects every relative URL in the document) and a
@@ -68,7 +69,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         }
     });
     if (baseOrMetaRefreshFound) {
-        throw new Error('<base> elements and <meta http-equiv="refresh"> redirects to javascript:/vbscript: are not allowed in KB articles');
+        throw new Error(tasks.loc('BaseOrMetaRefreshNotAllowed'));
     }
 
     // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
@@ -93,11 +94,11 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     });
 
     if (eventHandlerFound) {
-        throw new Error('Inline event-handler attributes (on*) are not allowed in KB articles');
+        throw new Error(tasks.loc('EventHandlerNotAllowed'));
     }
 
     if (dangerousUriFound) {
-        throw new Error('javascript:, vbscript: and non-image data: URIs are not allowed in KB articles');
+        throw new Error(tasks.loc('DangerousUriNotAllowed'));
     }
 }
 
@@ -106,7 +107,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
  */
 export function readHtmlFile(filePath: string): string {
     if (!fs.existsSync(filePath)) {
-        throw new Error(`File '${filePath}' not found.`);
+        throw new Error(tasks.loc('HtmlFileNotFound', filePath));
     }
     return fs.readFileSync(filePath, 'utf-8');
 }
