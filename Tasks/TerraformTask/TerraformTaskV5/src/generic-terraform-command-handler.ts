@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
+import { BaseTerraformCommandHandler, splitNonEmptyLines } from './base-terraform-command-handler';
 
 export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler {
     constructor() {
@@ -16,13 +16,8 @@ export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler 
         }
 
         const configArgs = tasks.getInput("backendConfigArgs", false);
-        if (configArgs) {
-            for (const line of configArgs.split('\n')) {
-                const trimmed = line.trim();
-                if (trimmed && !trimmed.startsWith('#')) {
-                    terraformToolRunner.arg(`-backend-config=${trimmed}`);
-                }
-            }
+        for (const trimmed of splitNonEmptyLines(configArgs, { skipComments: true })) {
+            terraformToolRunner.arg(`-backend-config=${trimmed}`);
         }
     }
 
