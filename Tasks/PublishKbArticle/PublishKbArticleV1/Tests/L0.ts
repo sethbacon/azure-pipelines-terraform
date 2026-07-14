@@ -1303,3 +1303,116 @@ describe('PublishKbArticle full-task: instance SSRF guard', () => {
         }, tr);
     });
 });
+
+// ===========================================================================
+// PublishKbArticle full-task: real (non-dry-run) execution paths
+//
+// Every scenario above hardcodes dryRun=true (or reaches an early return
+// before dryRun is even checked). executeCreateOrUpdate()'s real POST/PATCH
+// branches, the image-upload phase, kbId='list' mode, and the
+// serviceConnection-derived OAuth wiring in resolveAuth() were therefore
+// never exercised by any test -- a regression in any of them would be caught
+// by neither a test nor the coverage gate (#25/#36).
+// ===========================================================================
+describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () => {
+    before(() => {
+        (ttm.MockTestRunner.prototype as unknown as { getNodePath: () => string }).getNodePath = function () {
+            return process.execPath;
+        };
+    });
+
+    function runValidations(validator: () => void, tr: ttm.MockTestRunner) {
+        try {
+            validator();
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    }
+
+    it('RealCreateSucceeds — dryRun=false with no articleId performs a real create', async () => {
+        const tp = nodePath.join(__dirname, 'RealCreateSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('##[MOCK] createKnowledgeArticle called with instance=my-valid-instance kbId=kb-123 title=Brand New Article author=jdoe'),
+                `createKnowledgeArticle should receive the task inputs correctly threaded through: ${tr.stdout}`,
+            );
+            assert.ok(
+                tr.stdout.includes('##vso[task.setvariable variable=kbArticleId;isOutput=true;issecret=false;]new-sys-id'),
+                `kbArticleId output variable should be set from the created article: ${tr.stdout}`,
+            );
+            assert.ok(tr.stdout.includes('Article Number: KB0099'), `should log the created article number: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealUpdateSucceeds — dryRun=false with an existing articleId + content performs a real update', async () => {
+        const tp = nodePath.join(__dirname, 'RealUpdateSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('##[MOCK] updateKnowledgeArticle called with instance=my-valid-instance articleId=existing-art-id title=Updated Title'),
+                `updateKnowledgeArticle should receive the task inputs correctly threaded through: ${tr.stdout}`,
+            );
+            assert.ok(
+                tr.stdout.includes('##vso[task.setvariable variable=kbArticleId;isOutput=true;issecret=false;]existing-art-id'),
+                `kbArticleId output variable should be set from the updated article: ${tr.stdout}`,
+            );
+            assert.ok(tr.stdout.includes('Article Number: KB0050'), `should log the updated article number: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealWorkflowOnlySucceeds — dryRun=false with only workflowState performs a real workflow-state change', async () => {
+        const tp = nodePath.join(__dirname, 'RealWorkflowOnlySucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('##vso[task.setvariable variable=kbWorkflowState;isOutput=true;issecret=false;]published'),
+                `kbWorkflowState output variable should reflect the new state: ${tr.stdout}`,
+            );
+            assert.ok(tr.stdout.includes("Changing workflow state to 'publish'"), `should log the workflow-only path was taken: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealUploadImagesSucceeds — uploadImages=true runs the image-upload phase and rewrites the body', async () => {
+        const tp = nodePath.join(__dirname, 'RealUploadImagesSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(tr.stdout.includes('Rewrote 1 image reference(s) to ServiceNow attachments'), `should log the image-upload result: ${tr.stdout}`);
+            assert.ok(tr.stdout.includes('##[MOCK] updateArticleBody called with text:'), `updateArticleBody should have been called with the rewritten body: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealListKbSucceeds — kbId=list lists knowledge bases and returns before any create/update logic', async () => {
+        const tp = nodePath.join(__dirname, 'RealListKbSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(tr.stdout.includes('IT Knowledge Base'), `should list the mocked knowledge base: ${tr.stdout}`);
+            assert.ok(tr.stdout.includes('kb-sys-1'), `should include the KB sys_id: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealServiceConnectionOAuthSucceeds — auth resolved via serviceConnection (OAuth scheme) instead of inline inputs', async () => {
+        const tp = nodePath.join(__dirname, 'RealServiceConnectionOAuthSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('##[MOCK] getOAuthToken called with instance=sc-instance clientId=sc-client-id clientSecret=sc-client-secret'),
+                `resolveAuth should have derived instance/clientId/clientSecret from the service connection endpoint: ${tr.stdout}`,
+            );
+        }, tr);
+    });
+});
