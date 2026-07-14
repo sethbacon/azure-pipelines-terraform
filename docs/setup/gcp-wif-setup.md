@@ -117,7 +117,7 @@ You will need these values for the pipeline task configuration:
 ## Step 7: Configure the Pipeline Task
 
 ```yaml
-- task: TerraformTaskV5@5
+- task: PipelineTerraformTask@5
   inputs:
     provider: 'gcp'
     command: 'plan'
