@@ -1,5 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
+import { buildProxyFetchOptions } from './proxy-config';
 
 /**
  * Bound a remote response body before it is interpolated into a thrown error,
@@ -108,6 +109,7 @@ export async function exchangeOidcForUpst(
                 // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
                 // (preserved with the POST body) to a different, unvalidated origin.
                 redirect: 'manual',
+                ...buildProxyFetchOptions(),
             });
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
