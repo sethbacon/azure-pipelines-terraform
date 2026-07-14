@@ -12,13 +12,31 @@ import os = require('os');
 export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w\-]*(\[[^\]]+\])?)*$/;
 
 /**
+ * Splits a multi-line task input into trimmed, non-empty lines -- the common
+ * core of this task's several multi-line-input parsers (var-file paths, target
+ * addresses, -var tokens, -backend-config args). Each line is kept whole (never
+ * further split) so a value containing spaces -- a path on a Windows agent, or
+ * a quoted index key like `module.x["a b"]` -- survives as one token.
+ * `skipComments` additionally drops lines starting with `#`, matching the
+ * `-var`/`-backend-config` inputs' existing support for comment lines; the
+ * var-file/target-address inputs never supported that and keep it disabled so
+ * behavior here is unchanged from before this helper existed.
+ */
+export function splitNonEmptyLines(input: string | undefined, opts: { skipComments?: boolean } = {}): string[] {
+    if (!input) return [];
+    return input
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !(opts.skipComments && l.startsWith('#')));
+}
+
+/**
  * Splits a multi-line `varFile` input into `-var-file=<path>` tokens, one per
  * non-empty line. Each path is kept whole so it can be passed as a single argv
  * entry — paths containing spaces (common on Windows agents) must not be split.
  */
 export function parseVarFileTokens(varFile: string | undefined): string[] {
-    if (!varFile) return [];
-    return varFile.split('\n').map(l => l.trim()).filter(l => l).map(f => `-var-file=${f}`);
+    return splitNonEmptyLines(varFile).map(f => `-var-file=${f}`);
 }
 
 /**
@@ -27,8 +45,7 @@ export function parseVarFileTokens(varFile: string | undefined): string[] {
  * (e.g. `module.x["a b"]`), so each is kept as a single argv entry.
  */
 export function parseTargetTokens(targetResources: string | undefined): string[] {
-    if (!targetResources) return [];
-    const lines = targetResources.split('\n').map(l => l.trim()).filter(l => l);
+    const lines = splitNonEmptyLines(targetResources);
     for (const address of lines) {
         if (!RESOURCE_ADDRESS_RE.test(address)) {
             throw new Error(`Invalid target address '${address}': must be a valid Terraform resource address`);
@@ -176,12 +193,9 @@ export abstract class BaseTerraformCommandHandler {
         const variables = tasks.getInput("terraformVariables", false);
         if (!variables) return;
 
-        for (const line of variables.split('\n')) {
-            const trimmed = line.trim();
-            if (trimmed && !trimmed.startsWith('#')) {
-                terraformTool.arg('-var');
-                terraformTool.arg(trimmed);
-            }
+        for (const trimmed of splitNonEmptyLines(variables, { skipComments: true })) {
+            terraformTool.arg('-var');
+            terraformTool.arg(trimmed);
         }
     }
 
