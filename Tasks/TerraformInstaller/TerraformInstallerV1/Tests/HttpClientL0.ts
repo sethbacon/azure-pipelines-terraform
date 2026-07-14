@@ -245,4 +245,32 @@ describe('http-client: fetchJson / fetchText / fetchBuffer', () => {
         await fetchJson('https://api.example.com/v');
         assert.ok(seenInit && 'dispatcher' in seenInit, 'proxy dispatcher should be set');
     });
+
+    it('rejects a response exceeding the response-size guard instead of buffering it unbounded', async () => {
+        // 11 x 1MB chunks = 11MB, over the 10MB cap. A compromised/malicious
+        // registryUrl/mirrorUrl endpoint must not be able to exhaust agent
+        // memory via an oversized response.
+        const chunkSize = 1024 * 1024;
+        const chunkCount = 11;
+        globalThis.fetch = (async () => {
+            const stream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    for (let i = 0; i < chunkCount; i++) {
+                        controller.enqueue(new Uint8Array(chunkSize));
+                    }
+                    controller.close();
+                },
+            });
+            return new Response(stream, { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(fetchText('https://files.example.com/huge'), /exceeded 10485760 bytes/);
+    });
+
+    it('accepts a response at exactly the response-size guard boundary', async () => {
+        const exactly10Mb = 10 * 1024 * 1024;
+        globalThis.fetch = (async () =>
+            new Response(new Uint8Array(exactly10Mb), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const buf = await fetchBuffer('https://files.example.com/at-limit');
+        assert.strictEqual(buf.byteLength, exactly10Mb);
+    });
 });
