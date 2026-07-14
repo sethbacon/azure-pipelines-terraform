@@ -4,6 +4,36 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.9.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.2...v1.9.3) (2026-07-14)
+
+
+### Bug Fixes
+
+* add bounded retry to DriftReport callback and PublishKbArticle ServiceNow calls ([#465](https://github.com/sethbacon/azure-pipelines-terraform/issues/465)) ([50bbc02](https://github.com/sethbacon/azure-pipelines-terraform/commit/50bbc021021594ed636c02eb600e635a6de9bc6b))
+
+
+### Documentation
+
+* fix nonexistent task id TerraformTaskV5@5 in WIF/private-testing setup guides ([#474](https://github.com/sethbacon/azure-pipelines-terraform/issues/474)) ([0b05f1e](https://github.com/sethbacon/azure-pipelines-terraform/commit/0b05f1e59caa79e768ad54a05f27a0c43511289f))
+* refresh CLAUDE.md, CONTRIBUTING.md, THIRD_PARTY_NOTICES.md, and bound the tfx-cli Dependabot ignore rule ([#477](https://github.com/sethbacon/azure-pipelines-terraform/issues/477)) ([4d77720](https://github.com/sethbacon/azure-pipelines-terraform/commit/4d777203ce7d432fcae74daba354ea93ce3460a0))
+
+
+### Refactor
+
+* dedup multiline-input parsing in TerraformTaskV5 ([#480](https://github.com/sethbacon/azure-pipelines-terraform/issues/480)) ([f612b5f](https://github.com/sethbacon/azure-pipelines-terraform/commit/f612b5f050cb05247f9e3947c62d52ff8c42fcbe))
+
+
+### Security
+
+* cap installer http-client.ts response body size at 10MB ([#472](https://github.com/sethbacon/azure-pipelines-terraform/issues/472)) ([2cb8012](https://github.com/sethbacon/azure-pipelines-terraform/commit/2cb8012769d95dcd167b10203e016cdbe06fc378))
+* contain unredacted terraform output -json file ([#464](https://github.com/sethbacon/azure-pipelines-terraform/issues/464)) ([a2af457](https://github.com/sethbacon/azure-pipelines-terraform/commit/a2af4573e3c7e70f90acea931471982b9058922e))
+* dedupe HTML/URI sanitizer into a shared, parity-checked module ([#470](https://github.com/sethbacon/azure-pipelines-terraform/issues/470)) ([4a8197a](https://github.com/sethbacon/azure-pipelines-terraform/commit/4a8197a978dfaea63b23c9a33528ac5a7569a87a))
+* error-handling cleanup and TerraformTaskV5 proxy configuration parity ([#478](https://github.com/sethbacon/azure-pipelines-terraform/issues/478)) ([a70ccc9](https://github.com/sethbacon/azure-pipelines-terraform/commit/a70ccc91c81294c5c26d5811fa2c00b8fb2a98b3))
+* escape mirrorUrl in generated HCL and guard listArticleAttachments query ([#476](https://github.com/sethbacon/azure-pipelines-terraform/issues/476)) ([4101e43](https://github.com/sethbacon/azure-pipelines-terraform/commit/4101e43cd1b18e9c0b8febf68a9f9d5e381ce5a7))
+* mask derived secrets (OAuth clientSecret, Basic base64 header) and add isSecret to 4 token inputs ([#475](https://github.com/sethbacon/azure-pipelines-terraform/issues/475)) ([000680d](https://github.com/sethbacon/azure-pipelines-terraform/commit/000680d289c1133213a506604e0aad810bed3ee3))
+* reject terragrunt binaryName and escape Sentinel policy names in generated HCL ([#473](https://github.com/sethbacon/azure-pipelines-terraform/issues/473)) ([be4f75c](https://github.com/sethbacon/azure-pipelines-terraform/commit/be4f75c83a189f725a479ca846633130658edfda))
+* scope PublishKbArticle force input to only the content-loss heuristic ([#467](https://github.com/sethbacon/azure-pipelines-terraform/issues/467)) ([bf6dd5a](https://github.com/sethbacon/azure-pipelines-terraform/commit/bf6dd5aeeecfd5a33a943baff318bc547e0ec71e))
+
 ## [1.9.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.1...v1.9.2) (2026-07-12)
 
 
