@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "6",
+        "Minor": "7",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -98,6 +98,7 @@
             "groupName": "private",
             "defaultValue": "",
             "required": false,
+            "isSecret": true,
             "helpMarkDown": "Registry API key with modules:write scope. Pass a secret pipeline variable, e.g. $(tfregistry-api-key)."
         },
         {
@@ -170,6 +171,7 @@
             "groupName": "hcp",
             "defaultValue": "",
             "required": false,
+            "isSecret": true,
             "helpMarkDown": "HCP Terraform team or user API token. Pass a secret pipeline variable."
         },
         {

@@ -123,6 +123,7 @@
             "label": "Repo access token",
             "defaultValue": "",
             "required": false,
+            "isSecret": true,
             "groupName": "policySource",
             "visibleRule": "policySource = gitUrl",
             "helpMarkDown": "Optional token for a private repo. Pass a pipeline secret variable; it is injected via http.extraheader and never written to the clone URL or logs."

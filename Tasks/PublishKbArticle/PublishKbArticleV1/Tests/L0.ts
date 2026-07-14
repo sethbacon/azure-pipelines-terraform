@@ -119,6 +119,19 @@ describe('auth.getOAuthToken', () => {
         );
     });
 
+    it('calls tasks.setSecret on the clientSecret input itself, not just the returned token', async () => {
+        nock(BASE_URL)
+            .post('/oauth_token.do')
+            .reply(200, { access_token: 'irrelevant_token' });
+
+        await auth.getOAuthToken(INSTANCE, 'cid', 'super-secret-client-value');
+        assert.ok(
+            capturedSecrets.includes('super-secret-client-value'),
+            'tasks.setSecret should be called with the clientSecret input, so it is masked even if it leaks ' +
+            'before the token exchange completes (e.g. in a request-body log or an unhandled error)',
+        );
+    });
+
     it('throws on HTTP error', async () => {
         nock(BASE_URL)
             .post('/oauth_token.do')
@@ -147,6 +160,18 @@ describe('auth.basicAuthHeader', () => {
             capturedSecrets.includes('mypassword'),
             'tasks.setSecret should be called with the password',
         );
+    });
+
+    it('also calls tasks.setSecret on the base64-encoded credentials, not just the raw password', () => {
+        const header = auth.basicAuthHeader('carol', 'anotherpassword');
+        const encoded = Buffer.from('carol:anotherpassword').toString('base64');
+        assert.ok(
+            capturedSecrets.includes(encoded),
+            'tasks.setSecret should also be called with the base64-encoded credentials, since ADO log ' +
+            'masking matches literal registered strings and the encoded header value is a different ' +
+            'string than the raw password',
+        );
+        assert.strictEqual(header, `Basic ${encoded}`);
     });
 });
 
