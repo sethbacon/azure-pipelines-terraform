@@ -93,6 +93,21 @@ const FAMILIES = [
             'url-secret-redaction.ts',
         ],
     },
+    {
+        // URI-scheme validation shared by the two independent HTML sanitizer/gate
+        // layers guarding the ServiceNow KB-publishing pipeline: Markdown2Html's
+        // render-time sanitizeRenderedHtml() and PublishKbArticle's downstream
+        // fail-closed validateHtmlContent(). Previously each task carried its own
+        // drifting copy of this logic, which is exactly how the control-character
+        // scheme bypass (#446) evaded both layers at once — keep byte-identical.
+        dirs: [
+            'Tasks/Markdown2Html/Markdown2HtmlV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'uri-scheme-guard.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even

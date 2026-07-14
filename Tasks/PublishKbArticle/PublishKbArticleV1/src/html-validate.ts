@@ -1,20 +1,6 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
-
-/**
- * Normalizes an attribute value before a URI-scheme check. Browsers (per the
- * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
- * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can
- * be bypassed with an HTML-entity-encoded control char INSIDE the scheme (e.g.
- * `jav&#9;ascript:`) — `.trim()` only removes leading/trailing whitespace, so
- * the interior tab survives the check but is stripped by the browser at parse
- * time, yielding a working `javascript:` URI. Stripping every ASCII control
- * character (U+0000–U+001F, U+007F) from anywhere in the string — not just
- * the edges — before lower-casing closes this bypass.
- */
-function normalizeUriForSchemeCheck(value: string): string {
-    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().toLowerCase();
-}
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES } from './uri-scheme-guard';
 
 /**
  * Validate HTML content for common issues.
@@ -77,7 +63,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     $('meta').each((_, el) => {
         const httpEquiv = normalizeUriForSchemeCheck(String($(el).attr('http-equiv') ?? ''));
         const content = normalizeUriForSchemeCheck(String($(el).attr('content') ?? ''));
-        if (httpEquiv === 'refresh' && (content.includes('javascript:') || content.includes('vbscript:'))) {
+        if (isDangerousMetaRefresh(httpEquiv, content)) {
             baseOrMetaRefreshFound = true;
         }
     });
@@ -98,8 +84,8 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
             if (lname.startsWith('on')) {
                 eventHandlerFound = true;
             } else if (
-                (lname === 'href' || lname === 'src' || lname === 'xlink:href' || lname === 'formaction') &&
-                (value.startsWith('javascript:') || value.startsWith('vbscript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
+                URI_BEARING_ATTRIBUTES.has(lname) &&
+                isDangerousUriScheme(value)
             ) {
                 dangerousUriFound = true;
             }

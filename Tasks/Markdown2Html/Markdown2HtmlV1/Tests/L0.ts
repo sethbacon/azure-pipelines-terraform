@@ -467,6 +467,24 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(!/<base[\s>]/i.test(html), '<base> must be removed');
         assert.ok(!/<meta/i.test(html), 'the dangerous <meta refresh> must be removed');
     });
+
+    it('allows a raster data:image/* URI (e.g. png) in an <img> src', () => {
+        const html = convertMarkdownToHtml('<img src="data:image/png;base64,iVBORw0KGgo=">');
+        assert.ok(/src\s*=/.test(html), `the raster data: URI must be preserved (got: ${html})`);
+    });
+
+    it('strips a data:image/svg+xml URI even on an <img> element (an SVG document can embed active content, unlike a raster format)', () => {
+        const html = convertMarkdownToHtml('<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">');
+        assert.ok(!/src\s*=/.test(html), `svg+xml data: URI must be stripped even on <img> (got: ${html})`);
+    });
+
+    it('strips a data:image/svg+xml URI on non-<img> elements (<a href>, <button formaction>)', () => {
+        const anchorHtml = convertMarkdownToHtml('<a href="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</a>');
+        assert.ok(!/href\s*=/.test(anchorHtml), `<a href> must be stripped (got: ${anchorHtml})`);
+
+        const formHtml = convertMarkdownToHtml('<form><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></form>');
+        assert.ok(!/formaction\s*=/.test(formHtml), `formaction must be stripped (got: ${formHtml})`);
+    });
 });
 
 // ---------------------------------------------------------------------------

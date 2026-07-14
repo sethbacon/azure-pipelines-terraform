@@ -8,6 +8,7 @@ import path = require('path');
 import MarkdownIt = require('markdown-it');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES } from './uri-scheme-guard';
 
 // ---------------------------------------------------------------------------
 // preprocessMarkdown
@@ -52,21 +53,6 @@ function escapeHtml(s: string): string {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
-}
-
-/**
- * Normalizes an attribute value before a URI-scheme check. Browsers (per the
- * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
- * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can
- * be bypassed with an HTML-entity-encoded control char INSIDE the scheme (e.g.
- * `jav&#9;ascript:`) — `.trim()` only removes leading/trailing whitespace, so
- * the interior tab survives the check but is stripped by the browser at parse
- * time, yielding a working `javascript:` URI. Stripping every ASCII control
- * character (U+0000–U+001F, U+007F) from anywhere in the string — not just
- * the edges — before lower-casing closes this bypass.
- */
-function normalizeUriForSchemeCheck(value: string): string {
-    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().toLowerCase();
 }
 
 function highlightCode(code: string, lang: string): string {
@@ -129,7 +115,7 @@ export function sanitizeRenderedHtml(html: string): string {
     $('meta').each((_, el) => {
         const httpEquiv = normalizeUriForSchemeCheck(String($(el).attr('http-equiv') ?? ''));
         const content = normalizeUriForSchemeCheck(String($(el).attr('content') ?? ''));
-        if (httpEquiv === 'refresh' && (content.includes('javascript:') || content.includes('vbscript:'))) {
+        if (isDangerousMetaRefresh(httpEquiv, content)) {
             $(el).remove();
         }
     });
@@ -142,8 +128,8 @@ export function sanitizeRenderedHtml(html: string): string {
             if (lname.startsWith('on')) {
                 $(el).removeAttr(name);
             } else if (
-                (lname === 'href' || lname === 'src' || lname === 'xlink:href' || lname === 'formaction') &&
-                (value.startsWith('javascript:') || value.startsWith('vbscript:') || (value.startsWith('data:') && !value.startsWith('data:image/')))
+                URI_BEARING_ATTRIBUTES.has(lname) &&
+                isDangerousUriScheme(value)
             ) {
                 $(el).removeAttr(name);
             }

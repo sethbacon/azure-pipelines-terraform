@@ -20,6 +20,15 @@ describe('TerraformDriftReport callback transport', function () {
         );
     });
 
+    it('refuses a non-HTTPS URL even when rejectUnauthorized (TLS verification) is disabled', async () => {
+        // The https-only guard must be independent of rejectUnauthorized -- disabling
+        // certificate verification must never also disable the https-only requirement.
+        await assert.rejects(
+            postJson('http://insecure.example.com/drift', { 'X-TSM-Callback-Token': 't' }, '{}', false),
+            /non-HTTPS/,
+        );
+    });
+
     it('completes a POST and a bodyless GET against a loopback HTTPS server', async () => {
         // Exercises the shared client end-to-end: TLS request, response read
         // (data/end + status), the body-present Content-Length path (POST) and
