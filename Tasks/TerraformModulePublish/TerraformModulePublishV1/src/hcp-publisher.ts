@@ -1,5 +1,6 @@
 import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
+import tasks = require('azure-pipelines-task-lib/task');
 
 /** Inputs for publishing to HCP Terraform / Terraform Enterprise. */
 export interface HcpOptions extends ModuleCoordinates {
@@ -97,21 +98,19 @@ export class HcpPublisher implements RegistryPublisher {
         const check = await retryHttp(() => this.http('GET', moduleUrl(o), headers), { log: this.log });
         if (check.status >= 200 && check.status < 300) {
             if (versionStatus(check.body, o.version) === 'ok') {
-                return { published: false, message: `Version ${o.version} already exists and is ready.` };
+                return { published: false, message: tasks.loc('HcpVersionAlreadyReady', o.version) };
             }
         } else if (check.status === 404) {
             if (!o.vcsRepoIdentifier || !o.vcsOauthTokenId) {
-                throw new Error(
-                    'Module does not exist and vcsRepoIdentifier / vcsOauthTokenId were not provided to create it.',
-                );
+                throw new Error(tasks.loc('HcpModuleNotFoundNoVcsInputs'));
             }
-            this.log(`Module not found; creating VCS-connected module ${o.namespace}/${o.name}/${o.provider}.`);
+            this.log(tasks.loc('HcpCreatingVcsModule', o.namespace, o.name, o.provider));
             const created = await this.http('POST', vcsUrl(o.address, o.namespace), headers, vcsModuleBody(o));
             if (created.status < 200 || created.status >= 300) {
-                throw new Error(`Failed to create HCP module (HTTP ${created.status}): ${truncateBody(created.body)}`);
+                throw new Error(tasks.loc('HcpCreateModuleFailed', created.status, truncateBody(created.body)));
             }
         } else {
-            this.log(`Could not check existing module (HTTP ${check.status}); attempting to publish version.`);
+            this.log(tasks.loc('HcpCheckModuleFailed', check.status));
         }
 
         const versionResp = await retryHttp(
@@ -119,17 +118,17 @@ export class HcpPublisher implements RegistryPublisher {
             { log: this.log },
         );
         if (versionResp.status === 422) {
-            this.log(`Version ${o.version} already exists.`);
+            this.log(tasks.loc('HcpVersionAlreadyExists', o.version));
         } else if (versionResp.status < 200 || versionResp.status >= 300) {
-            throw new Error(`Failed to create version (HTTP ${versionResp.status}): ${truncateBody(versionResp.body)}`);
+            throw new Error(tasks.loc('HcpCreateVersionFailed', versionResp.status, truncateBody(versionResp.body)));
         } else {
-            this.log(`Version ${o.version} created.`);
+            this.log(tasks.loc('HcpVersionCreated', o.version));
         }
 
         if (o.waitForPublish && !(await this.waitForOk(headers))) {
-            throw new Error(`Timed out after ${o.timeoutSeconds}s waiting for version ${o.version} to become ready.`);
+            throw new Error(tasks.loc('HcpWaitTimedOut', o.timeoutSeconds, o.version));
         }
-        return { published: true, message: `Version ${o.version} published to HCP Terraform.` };
+        return { published: true, message: tasks.loc('HcpVersionPublished', o.version) };
     }
 
     private async waitForOk(headers: Record<string, string>): Promise<boolean> {
@@ -147,7 +146,7 @@ export class HcpPublisher implements RegistryPublisher {
                     return true;
                 }
             } catch (err) {
-                this.log(`Polling version status failed, will retry: ${err instanceof Error ? err.message : String(err)}`);
+                this.log(tasks.loc('HcpPollingFailed', err instanceof Error ? err.message : String(err)));
             }
             if (Date.now() >= deadline) {
                 return false;

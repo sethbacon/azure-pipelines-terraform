@@ -24,7 +24,7 @@ export async function getOAuthToken(instance: string, clientId: string, clientSe
         return token;
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Error obtaining OAuth token: ${msg}`);
+        throw new Error(tasks.loc('OAuthTokenError', msg));
     }
 }
 
@@ -52,7 +52,7 @@ export function getAuthHeaders(
 ): Record<string, string> {
     if (authType === 'oauth') {
         if (!opts.accessToken) {
-            throw new Error('OAuth authentication requires an access token');
+            throw new Error(tasks.loc('OAuthAccessTokenRequired'));
         }
         return {
             Authorization: `Bearer ${opts.accessToken}`,
@@ -61,7 +61,7 @@ export function getAuthHeaders(
         };
     } else if (authType === 'basic') {
         if (!opts.username || !opts.password) {
-            throw new Error('Basic authentication requires username and password');
+            throw new Error(tasks.loc('BasicAuthCredentialsRequired'));
         }
         return {
             Authorization: basicAuthHeader(opts.username, opts.password),
@@ -69,6 +69,6 @@ export function getAuthHeaders(
             Accept: 'application/json',
         };
     } else {
-        throw new Error(`Unsupported authentication type: ${authType}`);
+        throw new Error(tasks.loc('UnsupportedAuthType', authType));
     }
 }

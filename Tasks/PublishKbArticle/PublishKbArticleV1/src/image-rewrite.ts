@@ -7,6 +7,7 @@
  */
 
 import * as path from 'path';
+import tasks = require('azure-pipelines-task-lib/task');
 
 export interface LocalImageRef {
     /** The original src string as it appears in the HTML. */
@@ -48,7 +49,7 @@ export function extractLocalImageRefs(
         // path-traversal src could read and upload an arbitrary file on the
         // agent as a KB attachment.
         if (absPath !== base && !absPath.startsWith(base + path.sep)) {
-            log(`[WARN] Skipping image src '${src}': resolves outside the image base directory ('${absPath}' is not under '${base}').`);
+            log(tasks.loc('ImageSrcOutsideBaseDir', src, absPath, base));
             continue;
         }
 

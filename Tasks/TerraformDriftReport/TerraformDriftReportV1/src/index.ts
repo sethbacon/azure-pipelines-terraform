@@ -28,10 +28,7 @@ async function run(): Promise<void> {
     try {
         const planFile = path.resolve(tasks.getInput('planJsonFile', true)!);
         if (!fs.existsSync(planFile)) {
-            throw new Error(
-                `planJsonFile does not exist: ${planFile}. Provide the JSON output of ` +
-                `'terraform show -json <plan>' (or 'tofu show -json <plan>').`,
-            );
+            throw new Error(tasks.loc('PlanFileNotFound', planFile));
         }
 
         const plan = JSON.parse(fs.readFileSync(planFile, 'utf8')) as Plan;
@@ -76,8 +73,7 @@ async function run(): Promise<void> {
         }
 
         console.log(
-            `Drift: drifted=${result.drifted} added=${result.added} changed=${result.changed} ` +
-            `destroyed=${result.destroyed} (${result.summary.length} changed resources)`,
+            tasks.loc('DriftSummary', result.drifted, result.added, result.changed, result.destroyed, result.summary.length),
         );
 
         const callbackUrl = tasks.getInput('callbackUrl', false);
@@ -92,11 +88,7 @@ async function run(): Promise<void> {
             // resolveRejectUnauthorized); only an explicit "false" disables it.
             const rejectUnauthorized = resolveRejectUnauthorized(tasks.getInput('rejectUnauthorized', false));
             if (!rejectUnauthorized) {
-                tasks.warning(
-                    'rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, ' +
-                    'so the callback token is sent over an unverified TLS channel. Use only for an internal TSM ' +
-                    'endpoint fronted by a private CA the agent does not trust.',
-                );
+                tasks.warning(tasks.loc('RejectUnauthorizedDisabled'));
             }
             const resp = await postJsonWithRetry(
                 callbackUrl,
@@ -107,17 +99,17 @@ async function run(): Promise<void> {
                 { log: (message) => tasks.warning(message) },
             );
             if (resp.status < 200 || resp.status >= 300) {
-                throw new Error(`Drift callback failed (HTTP ${resp.status}): ${truncateBody(resp.body)}`);
+                throw new Error(tasks.loc('DriftCallbackFailed', resp.status, truncateBody(resp.body)));
             }
-            console.log(`Drift result posted to TSM (HTTP ${resp.status}).`);
+            console.log(tasks.loc('DriftPostedToTsm', resp.status));
         } else if (callbackUrl || callbackToken) {
-            tasks.warning('Both callbackUrl and callbackToken are required to POST results; skipping callback.');
+            tasks.warning(tasks.loc('CallbackUrlAndTokenRequired'));
         }
 
         if (result.drifted && tasks.getBoolInput('failOnDrift', false)) {
-            tasks.setResult(tasks.TaskResult.Failed, `Drift detected: ${result.summary.length} changed resource(s).`);
+            tasks.setResult(tasks.TaskResult.Failed, tasks.loc('DriftDetectedFailed', result.summary.length));
         } else {
-            tasks.setResult(tasks.TaskResult.Succeeded, result.drifted ? 'Drift detected.' : 'No drift.');
+            tasks.setResult(tasks.TaskResult.Succeeded, result.drifted ? tasks.loc('DriftDetectedMessage') : tasks.loc('NoDriftMessage'));
         }
     } catch (error) {
         tasks.setResult(tasks.TaskResult.Failed, error instanceof Error ? error.message : String(error));

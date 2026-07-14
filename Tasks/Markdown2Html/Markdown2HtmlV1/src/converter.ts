@@ -5,6 +5,7 @@
 
 import fs = require('fs');
 import path = require('path');
+import tasks = require('azure-pipelines-task-lib/task');
 import { parseFrontMatter } from './frontmatter';
 import { resolveIncludes } from './includes';
 import {
@@ -108,7 +109,7 @@ export async function processFrontMatterDriven(
         let incHtml = convertMarkdownToHtml(incBodyProc);
 
         if (!incHtml) {
-            throw new Error(`Failed to convert include '${incPath}'`);
+            throw new Error(tasks.loc('IncludeConversionFailed', incPath));
         }
 
         if (headingShift) {
@@ -142,8 +143,8 @@ export async function processFrontMatterDriven(
     fs.writeFileSync(path.resolve(outputPath), htmlDocument, 'utf8');
 
     if (options.debug) {
-        console.log(`Front-matter-driven conversion complete: '${outputPath}'`);
-        console.log(`Title: '${title}'`);
+        console.log(tasks.loc('FrontMatterConversionComplete', outputPath));
+        console.log(tasks.loc('TitleResolved', title));
     }
 
     const relativeIncludes = includePaths.map((ip) => path.relative(primaryDir, ip));
@@ -194,11 +195,11 @@ export async function processFileList(
 
         const htmlContent = convertMarkdownToHtml(markdownContent);
         if (!htmlContent) {
-            throw new Error(`Failed to convert '${filePath}'`);
+            throw new Error(tasks.loc('FileConversionFailed', filePath));
         }
 
         if (debug) {
-            console.log(`Converted: ${filePath}`);
+            console.log(tasks.loc('FileConverted', filePath));
         }
 
         contentBlocks.push(htmlContent);

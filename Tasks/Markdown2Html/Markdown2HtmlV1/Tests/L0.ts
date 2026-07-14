@@ -185,7 +185,7 @@ describe('resolveIncludes', () => {
         const { data } = parseFrontMatter(path.join(dir, 'primary.md'));
         assert.throws(
             () => resolveIncludes(path.join(dir, 'primary.md'), data),
-            /kb-key/i
+            /kb-key|IncludeHasKbKey/i
         );
     });
 
@@ -584,7 +584,7 @@ describe('processFileList', () => {
         const dir = writeTmpDir({ 'empty.md': '   \n' });
         await assert.rejects(
             processFileList([path.join(dir, 'empty.md')], path.join(dir, 'out.html')),
-            /Failed to convert/,
+            /Failed to convert|FileConversionFailed/,
         );
     });
 });

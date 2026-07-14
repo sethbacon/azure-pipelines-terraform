@@ -1,4 +1,5 @@
 import { snRequest, withRetry } from './servicenow-http';
+import tasks = require('azure-pipelines-task-lib/task');
 
 const WORKFLOW_STATE_MAP: Record<string, string> = {
     draft: 'draft',
@@ -35,7 +36,7 @@ export async function getKnowledgeBases(instance: string, headers: Record<string
     const response = await snRequest('GET', url, { headers });
     const result = response.data.result;
     if (!Array.isArray(result)) {
-        throw new Error('Unexpected ServiceNow response: the knowledge-base list endpoint did not return an array in "result".');
+        throw new Error(tasks.loc('KbListNotArray'));
     }
     return result;
 }
@@ -48,7 +49,7 @@ export async function getArticle(instance: string, headers: Record<string, strin
     const response = await snRequest('GET', url, { headers });
     const result = response.data.result;
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
-        throw new Error(`Unexpected ServiceNow response: no article object in "result" for article ${articleId}.`);
+        throw new Error(tasks.loc('ArticleNotObject', articleId));
     }
     return result as KbArticle;
 }
@@ -173,7 +174,7 @@ export async function updateKnowledgeArticle(
     if (author) payload['author'] = author;
 
     if (Object.keys(payload).length === 0) {
-        throw new Error('No fields provided for update.');
+        throw new Error(tasks.loc('NoFieldsForUpdate'));
     }
 
     const response = await withRetry(() => snRequest('PATCH', url, { headers, body: payload }), {
@@ -279,7 +280,7 @@ export async function createCategory(
  */
 export function assertQueryValueSafe(value: string, field: string): void {
     if (/[\^\r\n]/.test(value)) {
-        throw new Error(`Invalid ${field}: values used in a ServiceNow query must not contain '^' or newline characters.`);
+        throw new Error(tasks.loc('InvalidQueryValue', field));
     }
 }
 
@@ -380,9 +381,7 @@ export async function findArticleBySourceKey(
 
     if (results.length > 1) {
         const ids = results.map(r => r.sys_id).join(', ');
-        throw new Error(
-            `Key collision: multiple articles found for source key '${sourceKey}' (sys_ids: ${ids}).`,
-        );
+        throw new Error(tasks.loc('SourceKeyCollision', sourceKey, ids));
     }
 
     return results[0].sys_id;

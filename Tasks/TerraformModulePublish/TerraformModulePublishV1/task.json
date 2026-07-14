@@ -244,5 +244,42 @@
         "Node20_1": {
             "target": "src/index.js"
         }
+    },
+    "messages": {
+        "InputRequired": "Input '%s' is required.",
+        "SkipTlsVerifyEnabled": "skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, so the API key is sent over an unverified TLS channel. Use only for an internal registry fronted by a private CA the agent does not trust.",
+        "UnsupportedRegistryType": "Unsupported registryType '%s'. Expected 'hcp' or 'private'.",
+        "RegistryNonJsonResponse": "Registry returned a non-JSON response body: %s",
+        "TransientHttpRetry": "Transient HTTP %s from registry; retrying (%s/%s).",
+        "TransientRequestFailureRetry": "Transient request failure (%s); retrying (%s/%s).",
+        "HttpsRequired": "Refusing to send credentials over a non-HTTPS URL (scheme '%s//' on host '%s'). Use an https:// URL.",
+        "ResponseTooLarge": "Response from %s exceeded %s bytes.",
+        "RequestTimedOut": "Request to %s timed out after %sms.",
+        "HcpVersionAlreadyReady": "Version %s already exists and is ready.",
+        "HcpModuleNotFoundNoVcsInputs": "Module does not exist and vcsRepoIdentifier / vcsOauthTokenId were not provided to create it.",
+        "HcpCreatingVcsModule": "Module not found; creating VCS-connected module %s/%s/%s.",
+        "HcpCreateModuleFailed": "Failed to create HCP module (HTTP %s): %s",
+        "HcpCheckModuleFailed": "Could not check existing module (HTTP %s); attempting to publish version.",
+        "HcpVersionAlreadyExists": "Version %s already exists.",
+        "HcpCreateVersionFailed": "Failed to create version (HTTP %s): %s",
+        "HcpVersionCreated": "Version %s created.",
+        "HcpWaitTimedOut": "Timed out after %ss waiting for version %s to become ready.",
+        "HcpVersionPublished": "Version %s published to HCP Terraform.",
+        "HcpPollingFailed": "Polling version status failed, will retry: %s",
+        "PrivateResolveModuleFailed": "Failed to resolve module (HTTP %s): %s",
+        "PrivateNoModuleId": "Registry response did not include a module id.",
+        "PrivateTriggerSyncFailed": "Failed to trigger sync (HTTP %s): %s",
+        "PrivateSyncTriggered": "Sync triggered for %s/%s/%s.",
+        "PrivateSyncTriggeredVersion": "Sync triggered for version %s.",
+        "PrivateWaitTimedOut": "Timed out after %ss waiting for version %s to appear in the registry.",
+        "PrivateVersionAvailable": "Version %s is available in the registry.",
+        "PrivateModuleNotFoundNoScmInputs": "Module %s/%s/%s not found in the registry. Register and SCM-link the module before publishing, or set scmProviderId, repositoryOwner, and repositoryName to auto-create it.",
+        "PrivateCreateModuleFailed": "Failed to create module (HTTP %s): %s",
+        "PrivateCreateResponseNoModuleId": "Registry create response did not include a module id.",
+        "PrivateModuleRecordCreated": "Created module record %s/%s/%s.",
+        "PrivateModuleAlreadyLinked": "Module %s/%s/%s is already SCM-linked.",
+        "PrivateScmLinkFailed": "Failed to SCM-link module (HTTP %s): %s",
+        "PrivateScmLinked": "SCM-linked %s/%s/%s to %s/%s.",
+        "PrivatePollingFailed": "Polling registry failed, will retry: %s"
     }
 }

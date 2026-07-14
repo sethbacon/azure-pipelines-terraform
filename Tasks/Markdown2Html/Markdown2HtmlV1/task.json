@@ -110,5 +110,18 @@
             "target": "src/index.js"
         }
     },
-    "messages": {}
+    "messages": {
+        "IncludeConversionFailed": "Failed to convert include '%s'",
+        "FrontMatterConversionComplete": "Front-matter-driven conversion complete: '%s'",
+        "TitleResolved": "Title: '%s'",
+        "FileConversionFailed": "Failed to convert '%s'",
+        "FileConverted": "Converted: %s",
+        "MaxIncludeDepthExceeded": "Maximum include depth (%s) exceeded at '%s'.",
+        "IncludeOutsidePrimaryDir": "Include '%s' resolves outside the primary file's directory ('%s'): '%s'",
+        "IncludeFileNotFound": "Include file not found: '%s' (resolved to '%s')",
+        "IncludeCycleDetected": "Cycle detected: '%s' is already in the include chain.",
+        "IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
+        "NoInputFilesProvided": "No input files provided.",
+        "HtmlWrittenTo": "HTML written to '%s'"
+    }
 }

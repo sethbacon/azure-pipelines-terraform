@@ -26,7 +26,7 @@ async function run(): Promise<void> {
             const inputFiles = parseFileList(inputFilesRaw);
 
             if (inputFiles.length === 0) {
-                throw new Error('No input files provided.');
+                throw new Error(tasks.loc('NoInputFilesProvided'));
             }
 
             await processFileList(inputFiles, outPath, {
@@ -38,7 +38,7 @@ async function run(): Promise<void> {
         }
 
         tasks.setVariable('htmlFilePath', outPath, false, true);
-        tasks.setResult(tasks.TaskResult.Succeeded, `HTML written to '${outPath}'`);
+        tasks.setResult(tasks.TaskResult.Succeeded, tasks.loc('HtmlWrittenTo', outPath));
     } catch (error) {
         tasks.setResult(
             tasks.TaskResult.Failed,

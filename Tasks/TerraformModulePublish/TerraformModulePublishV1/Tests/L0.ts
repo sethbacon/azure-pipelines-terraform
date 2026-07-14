@@ -81,7 +81,7 @@ describe('http client transport', () => {
         const html = '<!doctype html><html><body>captive portal login</body></html>';
         assert.throws(
             () => parseJson(html),
-            (err: Error) => /non-JSON response body/.test(err.message) && err.message.includes('captive portal'),
+            (err: Error) => /non-JSON response body|RegistryNonJsonResponse/.test(err.message) && err.message.includes('captive portal'),
         );
     });
 });
@@ -219,7 +219,7 @@ describe('private-publisher', () => {
 
         it('throws when the module is not found', async () => {
             const { client } = fakeClient([{ status: 404, body: '{"error":"not found"}' }]);
-            await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /not found in the registry/);
+            await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /not found in the registry|PrivateModuleNotFoundNoScmInputs/);
         });
 
         const autoOpts = {
@@ -266,7 +266,7 @@ describe('private-publisher', () => {
             const { client } = fakeClient([{ status: 404, body: '{}' }]);
             await assert.rejects(
                 () => new priv.PrivateRegistryPublisher(client, partial, noop).publish(),
-                /not found in the registry/,
+                /not found in the registry|PrivateModuleNotFoundNoScmInputs/,
             );
         });
 
@@ -277,7 +277,7 @@ describe('private-publisher', () => {
             ]);
             await assert.rejects(
                 () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
-                /Failed to create module/,
+                /Failed to create module|PrivateCreateModuleFailed/,
             );
         });
 
@@ -286,7 +286,7 @@ describe('private-publisher', () => {
                 { status: 200, body: '{"id":"mod-1"}' },
                 { status: 403, body: '{"error":"nope"}' },
             ]);
-            await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /Failed to trigger sync/);
+            await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /Failed to trigger sync|PrivateTriggerSyncFailed/);
         });
 
         it('waits for the version to appear when waitForPublish is set', async () => {
@@ -298,7 +298,7 @@ describe('private-publisher', () => {
             const result = await new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true }, noop).publish();
             assert.strictEqual(result.published, true);
             assert.strictEqual(calls.length, 3);
-            assert.match(result.message, /available/);
+            assert.match(result.message, /available|PrivateVersionAvailable/);
         });
 
         it('bounds the wait by the deadline and throws on timeout', async () => {
@@ -309,7 +309,7 @@ describe('private-publisher', () => {
             ]);
             await assert.rejects(
                 () => new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
-                /Timed out after 0s/,
+                /Timed out after 0s|PrivateWaitTimedOut/,
             );
         });
 
@@ -323,7 +323,7 @@ describe('private-publisher', () => {
             };
             await assert.rejects(
                 () => new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
-                (err: Error) => /Timed out after 0s/.test(err.message) && !/ECONNRESET/.test(err.message),
+                (err: Error) => /Timed out after 0s|PrivateWaitTimedOut/.test(err.message) && !/ECONNRESET/.test(err.message),
             );
         });
     });
@@ -398,7 +398,7 @@ describe('hcp-publisher', () => {
 
         it('throws on 404 when VCS details are missing', async () => {
             const { client } = fakeClient([{ status: 404, body: '{}' }]);
-            await assert.rejects(() => new hcp.HcpPublisher(client, base, noop).publish(), /vcsRepoIdentifier/);
+            await assert.rejects(() => new hcp.HcpPublisher(client, base, noop).publish(), /vcsRepoIdentifier|HcpModuleNotFoundNoVcsInputs/);
         });
 
         it('treats a 422 version response as already-exists', async () => {
@@ -420,7 +420,7 @@ describe('hcp-publisher', () => {
             };
             await assert.rejects(
                 () => new hcp.HcpPublisher(client, { ...base, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
-                (err: Error) => /Timed out after 0s/.test(err.message) && !/ETIMEDOUT/.test(err.message),
+                (err: Error) => /Timed out after 0s|HcpWaitTimedOut/.test(err.message) && !/ETIMEDOUT/.test(err.message),
             );
         });
     });
