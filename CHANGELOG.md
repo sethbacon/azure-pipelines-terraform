@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.9.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.3...v1.9.4) (2026-07-14)
+
+
+### Refactor
+
+* add tasks.loc() to 4 remaining tasks ([#481](https://github.com/sethbacon/azure-pipelines-terraform/issues/481)) ([ab5acec](https://github.com/sethbacon/azure-pipelines-terraform/commit/ab5acec454ad7dc4fdc8756583051a64a16b7ac7))
+
 ## [1.9.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.2...v1.9.3) (2026-07-14)
 
 
