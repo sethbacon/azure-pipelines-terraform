@@ -215,6 +215,30 @@ describe('config-generator', () => {
                 `expected escaped backslashes, got: ${result}`
             );
         });
+
+        it('should escape double quotes and newlines in mirrorUrl to prevent HCL injection', () => {
+            // validateMirrorUrl() checks the parsed URL, but generateProviderInstallationConfig
+            // interpolates the raw string -- a crafted value could still carry a literal quote
+            // through to this point (e.g. from a different validation path, or future callers
+            // that skip validateMirrorUrl). It must never be interpolated unescaped.
+            const malicious = 'https://registry.example.com/evil"\n}\nprovider_installation "injected" {\n  x = "*';
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: malicious,
+                allowDirectFallback: false,
+                directExcludePatterns: [],
+                directIncludePatterns: [],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            assert.ok(!result.includes(`"${malicious}/"`), 'mirrorUrl must not be interpolated unescaped');
+            assert.ok(result.includes('\\"'), 'embedded quote in mirrorUrl must be escaped');
+            assert.ok(result.includes('\\n'), 'embedded newline in mirrorUrl must be escaped');
+
+            // The url assignment must remain a single well-formed HCL line.
+            const urlLineMatch = result.match(/^\s*url = ".*"$/m);
+            assert.ok(urlLineMatch, 'url assignment must remain a single well-formed line');
+        });
     });
 });
 

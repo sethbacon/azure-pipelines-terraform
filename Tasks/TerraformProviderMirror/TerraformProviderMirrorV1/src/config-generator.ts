@@ -24,9 +24,13 @@ export function validateMirrorUrl(url: string): void {
 
 /**
  * Escape a value for safe interpolation inside a double-quoted HCL string
- * literal. Without this, an include/exclude pattern containing a `"` or a
- * newline could break out of the quoted string and inject arbitrary HCL into
- * the generated .terraformrc.
+ * literal. Without this, a mirror URL or include/exclude pattern containing a
+ * `"` or a newline could break out of the quoted string and inject arbitrary
+ * HCL into the generated .terraformrc. mirrorUrl is validated as a genuine
+ * HTTPS URL via `new URL()` before reaching here, but that validation checks
+ * the parsed representation, not the raw string that's actually interpolated
+ * -- escaping it too is cheap defense-in-depth against a URL string crafted to
+ * carry a literal quote/newline through validation.
  */
 function escapeHclString(value: string): string {
     return value
@@ -42,7 +46,7 @@ export function generateProviderInstallationConfig(config: ProviderMirrorConfig)
 
     let hcl = 'provider_installation {\n';
     hcl += '  network_mirror {\n';
-    hcl += `    url = "${mirrorUrl}/"\n`;
+    hcl += `    url = "${escapeHclString(mirrorUrl)}/"\n`;
     hcl += '  }\n';
 
     if (config.allowDirectFallback) {

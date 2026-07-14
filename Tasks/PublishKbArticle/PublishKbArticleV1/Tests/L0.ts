@@ -18,7 +18,7 @@ import * as htmlValidate from '../src/html-validate';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256 } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 
@@ -85,6 +85,14 @@ describe('servicenow-client sysparm_query injection guard', () => {
 
     it('findArticleBySourceKey rejects a kbId containing ^', async () => {
         await assert.rejects(() => client.findArticleBySourceKey(INSTANCE, HEADERS, 'cleankey', 'kb^1'), GUARD_MSG);
+    });
+
+    it('listArticleAttachments rejects an articleId containing ^ (encoded-query control char)', async () => {
+        await assert.rejects(() => listArticleAttachments(INSTANCE, HEADERS, 'id^ORtable_sys_id=1'), GUARD_MSG);
+    });
+
+    it('listArticleAttachments rejects an articleId containing a newline', async () => {
+        await assert.rejects(() => listArticleAttachments(INSTANCE, HEADERS, 'id\nvalue'), GUARD_MSG);
     });
 
     it('allows clean values through the guard (mocked HTTP returns no match)', async () => {

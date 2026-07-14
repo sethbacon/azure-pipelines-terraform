@@ -277,7 +277,7 @@ export async function createCategory(
  * document-derived value (e.g. a markdown front-matter sourceKey) cannot inject query
  * clauses that redirect the lookup onto an unrelated record.
  */
-function assertQueryValueSafe(value: string, field: string): void {
+export function assertQueryValueSafe(value: string, field: string): void {
     if (/[\^\r\n]/.test(value)) {
         throw new Error(`Invalid ${field}: values used in a ServiceNow query must not contain '^' or newline characters.`);
     }
