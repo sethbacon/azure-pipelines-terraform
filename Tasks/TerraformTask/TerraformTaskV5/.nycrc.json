@@ -11,8 +11,7 @@
     "exclude": [
         "src/**/*.d.ts",
         "src/**/*.map",
-        "src/index.js",
-        "src/parent-handler.js"
+        "src/index.js"
     ],
     "check-coverage": true,
     "lines": 85,
