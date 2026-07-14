@@ -30,6 +30,7 @@ tr.setInput('rejectUnauthorized', 'true');
 // Stub the callback transport so no real network request is made.
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 200, body: '{}' }),
+    postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
     truncateBody: (body: string) => body,
     resolveRejectUnauthorized,
 });

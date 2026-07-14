@@ -15,7 +15,7 @@
  * account can POST and DELETE attachments; the REST file endpoint serves the bytes.
  */
 
-import { snRequest } from './servicenow-http';
+import { snRequest, withRetry } from './servicenow-http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -64,10 +64,12 @@ export async function uploadAttachment(
     };
     if (headers['Authorization']) uploadHeaders['Authorization'] = headers['Authorization'];
 
-    const response = await snRequest('POST', url, {
+    const response = await withRetry(() => snRequest('POST', url, {
         headers: uploadHeaders,
         params: { table_name: 'kb_knowledge', table_sys_id: articleId, file_name: fileName },
         body: data,
+    }), {
+        log: (message) => console.log(`[WARN] ${message}`),
     });
     return (response.data.result as { sys_id: string }).sys_id;
 }

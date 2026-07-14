@@ -4,7 +4,7 @@ import fs = require('fs');
 import os = require('os');
 import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
-import { postJson, truncateBody, resolveRejectUnauthorized } from './callback';
+import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized } from './callback';
 import { writeSarif } from './sarif';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
@@ -98,11 +98,13 @@ async function run(): Promise<void> {
                     'endpoint fronted by a private CA the agent does not trust.',
                 );
             }
-            const resp = await postJson(
+            const resp = await postJsonWithRetry(
                 callbackUrl,
                 { 'X-TSM-Callback-Token': callbackToken },
                 JSON.stringify(body),
                 rejectUnauthorized,
+                undefined,
+                { log: (message) => tasks.warning(message) },
             );
             if (resp.status < 200 || resp.status >= 300) {
                 throw new Error(`Drift callback failed (HTTP ${resp.status}): ${truncateBody(resp.body)}`);

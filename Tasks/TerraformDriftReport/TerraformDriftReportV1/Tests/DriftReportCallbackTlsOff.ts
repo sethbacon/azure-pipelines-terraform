@@ -30,6 +30,7 @@ tr.setInput('rejectUnauthorized', 'false');
 
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 200, body: '{}' }),
+    postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
     truncateBody: (body: string) => body,
     resolveRejectUnauthorized,
 });

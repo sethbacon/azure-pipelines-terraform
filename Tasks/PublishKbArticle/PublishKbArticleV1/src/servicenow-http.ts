@@ -42,6 +42,19 @@ export interface SnResponse {
     data: Record<string, unknown>;
 }
 
+/**
+ * Thrown for a non-2xx ServiceNow response (as opposed to a pure transport
+ * failure -- connection error, timeout, or the response-size guard, which
+ * throw a plain Error with no `status`). Lets withRetry() distinguish "the
+ * server responded with an error" from "no response was ever received".
+ */
+export class ServiceNowHttpError extends Error {
+    constructor(message: string, public readonly status: number) {
+        super(message);
+        this.name = 'ServiceNowHttpError';
+    }
+}
+
 function encodeBody(body: SnRequestOptions['body']): Buffer | undefined {
     if (body === undefined) {
         return undefined;
@@ -137,8 +150,9 @@ export function snRequest(
                         }
                     }
                     if (status < 200 || status >= 300) {
-                        reject(new Error(
+                        reject(new ServiceNowHttpError(
                             `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncate(raw)}`,
+                            status,
                         ));
                         return;
                     }
@@ -157,4 +171,35 @@ export function snRequest(
         }
         req.end();
     });
+}
+
+/**
+ * Wraps a mutating ServiceNow call (create/update/publish/upload) with bounded
+ * exponential-backoff retry on TRANSIENT failures only: a thrown transport
+ * error (no response ever received -- connection reset, timeout, response-size
+ * guard) or a captured 5xx status. A captured 4xx (bad request, auth failure,
+ * not-found, validation error, etc.) is never retried -- retrying an unchanged
+ * request wouldn't produce a different 4xx. Mirrors this repo's established
+ * mutating-call retry convention (TerraformModulePublish's retryHttp).
+ */
+export async function withRetry<T>(
+    call: () => Promise<T>,
+    opts: { retries?: number; baseDelayMs?: number; log?: (message: string) => void } = {},
+): Promise<T> {
+    const retries = opts.retries ?? 3;
+    const baseDelayMs = opts.baseDelayMs ?? 500;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await call();
+        } catch (err) {
+            const status = err instanceof ServiceNowHttpError ? err.status : undefined;
+            const retryable = status === undefined || status >= 500;
+            if (!retryable || attempt >= retries) {
+                throw err;
+            }
+            const reason = err instanceof Error ? err.message : String(err);
+            opts.log?.(`Transient ServiceNow request failure (${reason}); retrying (${attempt + 1}/${retries}).`);
+            await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
+        }
+    }
 }

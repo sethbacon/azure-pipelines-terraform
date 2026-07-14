@@ -30,6 +30,7 @@ tr.setInput('rejectUnauthorized', 'true');
 // Stub the callback transport to return a non-2xx status so the task fails.
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 500, body: 'internal error' }),
+    postJsonWithRetry: async () => ({ status: 500, body: 'internal error' }),
     truncateBody: (body: string) => body,
     resolveRejectUnauthorized,
 });
