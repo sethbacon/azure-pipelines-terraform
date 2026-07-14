@@ -823,6 +823,25 @@ describe('syncImageAttachment', () => {
         );
         assert.strictEqual(id, 'fresh_att');
     });
+
+    it('does not delete the old attachment when the replacement upload fails (non-atomic swap, upload-first)', async () => {
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(400, { error: { message: 'bad request' } });
+        // Registered but must NEVER be triggered -- if syncImageAttachment still
+        // deleted before uploading (the old order), this interceptor would be
+        // consumed and .isDone() would report true.
+        const deleteScope = nock(BASE_URL).delete('/api/now/attachment/old_att').reply(204);
+
+        await assert.rejects(
+            () => syncImageAttachment(
+                INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png',
+                [{ sys_id: 'old_att', file_name: 'pic.png', hash: 'DIFFERENT' }],
+            ),
+        );
+        assert.strictEqual(deleteScope.isDone(), false, 'the old attachment must not be deleted when the upload fails');
+    });
 });
 
 // ===========================================================================
