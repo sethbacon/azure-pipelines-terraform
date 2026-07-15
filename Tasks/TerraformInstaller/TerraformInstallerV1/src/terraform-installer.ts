@@ -17,6 +17,10 @@ const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
 
+// File name of the local, per-cached-tool-directory integrity marker written after
+// a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
+const CACHE_INTEGRITY_MARKER = ".installer-verified.sha256";
+
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const binary = tasks.getInput("binary") || "terraform";
 
@@ -46,26 +50,33 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
 
     // Step 2: Check tool cache — skip download entirely if already present
     let cachedToolPath = tools.findLocalTool(terraformToolName, version);
+    const cacheHit = !!cachedToolPath;
 
     // Step 3: Download, extract, and cache if not found
+    let verified = false;
     if (!cachedToolPath) {
         let zipPath: string;
         switch (downloadSource) {
             case "registry": {
                 const registryUrl = tasks.getInput("registryUrl", true)!;
                 const mirrorName = tasks.getInput("registryMirrorName", true)! || "terraform";
-                zipPath = await downloadZipFromRegistry(version, registryUrl, mirrorName);
+                const result = await downloadZipFromRegistry(version, registryUrl, mirrorName);
+                zipPath = result.zipPath;
+                verified = result.verified;
                 tasks.setVariable('terraformDownloadedFrom', `registry:${registryUrl}`);
                 break;
             }
             case "mirror": {
                 const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
-                zipPath = await downloadZipFromMirror(version, mirrorBaseUrl);
+                const result = await downloadZipFromMirror(version, mirrorBaseUrl);
+                zipPath = result.zipPath;
+                verified = result.verified;
                 tasks.setVariable('terraformDownloadedFrom', `mirror:${mirrorBaseUrl}`);
                 break;
             }
             default: { // "hashicorp"
                 zipPath = await downloadZipFromHashiCorp(version);
+                verified = true;
                 tasks.setVariable('terraformDownloadedFrom', 'hashicorp');
             }
         }
@@ -83,6 +94,16 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
 
     if (!isWindows) {
         fs.chmodSync(terraformPath, "755");
+    }
+
+    if (cacheHit) {
+        // A version cached by a possibly-earlier job on this (potentially persistent,
+        // self-hosted) agent is being reused without re-running the verification this
+        // job demands. Re-verify against the local integrity marker recorded when it
+        // was originally downloaded and verified — see verifyCachedTool.
+        verifyCachedTool(cachedToolPath, terraformPath, `terraform ${version}`);
+    } else if (verified) {
+        writeCacheIntegrityMarker(cachedToolPath, terraformPath);
     }
 
     // PipelineTerraformTask locates the binary via tasks.which() (a PATH lookup),
@@ -160,7 +181,7 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     return zipPath;
 }
 
-async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<string> {
+async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<{ zipPath: string; verified: boolean }> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
@@ -220,6 +241,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
 
     if (data.sha256) {
         await verifySha256(zipPath, data.sha256);
+        return { zipPath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
@@ -227,10 +249,10 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
-    return zipPath;
+    return { zipPath, verified: false };
 }
 
-async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<string> {
+async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<{ zipPath: string; verified: boolean }> {
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
     }
@@ -270,15 +292,15 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
             throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
-    } else {
-        // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
-        // key (a missing .sig is fatal only when requireGpgSignature is set), then
-        // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
-        await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
-        await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
+        return { zipPath, verified: false };
     }
 
-    return zipPath;
+    // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
+    // key (a missing .sig is fatal only when requireGpgSignature is set), then
+    // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
+    await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+    await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
+    return { zipPath, verified: true };
 }
 
 // --- Helpers ---
@@ -307,6 +329,54 @@ async function verifySha256(filePath: string, expectedHash: string): Promise<voi
         throw new Error(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
     }
     tasks.debug(`SHA256 verification passed: ${actualHash}`);
+}
+
+function hashFile(filePath: string): string {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+/**
+ * Writes a local integrity marker recording the SHA256 of the just-verified,
+ * just-cached executable, so a later job's cache hit for the same tool/version can
+ * re-verify it (see verifyCachedTool) without re-downloading anything. Best-effort:
+ * a write failure must never fail an install that has already been verified — it
+ * only means a future cache hit for this tool degrades to the pre-existing
+ * trust-the-cache behavior.
+ */
+function writeCacheIntegrityMarker(toolDir: string, exePath: string): void {
+    try {
+        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), hashFile(exePath), 'utf8');
+    } catch (err) {
+        tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
+    }
+}
+
+/**
+ * On a tool-cache hit, re-verifies the cached executable against the local
+ * integrity marker written when it was originally downloaded and verified. This is
+ * a purely local, offline comparison (no network call), so it can never break
+ * offline/air-gapped cache usage.
+ *
+ * - No marker (cached before this check existed, or cached by a run where checksum
+ *   verification was disabled): degrades to the pre-existing trust-the-cache
+ *   behavior with a debug note, exactly as before this check was added.
+ * - Marker present and it matches the cached executable's current hash: passes
+ *   silently.
+ * - Marker present but it does not match: the cached executable changed since it
+ *   was verified (tampering or corruption on a shared agent) — fail closed.
+ */
+function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): void {
+    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
+    if (!fs.existsSync(markerPath)) {
+        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification). Proceeding without re-verification.`);
+        return;
+    }
+    const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
+    const actualHash = hashFile(exePath).toLowerCase();
+    if (actualHash !== storedHash) {
+        throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
+    }
+    tasks.debug(`Cache hit for ${toolLabel}: integrity marker verified (${actualHash}).`);
 }
 
 function getPlatformString(): string {
@@ -360,6 +430,7 @@ async function downloadTofu(inputVersion: string): Promise<string> {
     }
 
     let cachedToolPath = tools.findLocalTool(tofuToolName, version);
+    const cacheHit = !!cachedToolPath;
 
     if (!cachedToolPath) {
         const zipPath = await downloadZipFromOpenTofu(version);
@@ -377,6 +448,15 @@ async function downloadTofu(inputVersion: string): Promise<string> {
 
     if (!isWindows) {
         fs.chmodSync(tofuPath, "755");
+    }
+
+    if (cacheHit) {
+        // See the matching comment in downloadTerraform.
+        verifyCachedTool(cachedToolPath, tofuPath, `tofu ${version}`);
+    } else {
+        // downloadZipFromOpenTofu always verifies the zip's SHA256 unconditionally
+        // (cosign only gates authenticity of the SHA256SUMS itself).
+        writeCacheIntegrityMarker(cachedToolPath, tofuPath);
     }
 
     // See the matching comment in downloadTerraform: PipelineTerraformTask finds

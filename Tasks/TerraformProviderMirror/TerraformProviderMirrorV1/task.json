@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "7",
+        "Minor": "8",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -91,6 +91,7 @@
         "GeneratingConfig": "Generating Terraform CLI configuration for provider mirror: %s",
         "ConfigWritten": "Configuration written to: %s",
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
-        "InvalidUrl": "Invalid mirror URL: %s"
+        "InvalidUrl": "Invalid mirror URL: %s",
+        "AgentTempDirectoryNotSet": "Neither the Agent.TempDirectory pipeline variable nor the AGENT_TEMPDIRECTORY environment variable is set. This task requires an agent-managed temp directory to write the generated .terraformrc and refuses to fall back to a hardcoded path. This should only happen when running outside a genuine Azure DevOps agent."
     }
 }

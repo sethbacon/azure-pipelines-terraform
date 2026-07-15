@@ -13,7 +13,7 @@
   "demands": [],
   "version": {
     "Major": "1",
-    "Minor": "5",
+    "Minor": "6",
     "Patch": "0"
   },
   "minimumAgentVersion": "4.265.1",
@@ -129,6 +129,7 @@
     "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
     "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
     "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
-    "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s"
+    "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
+    "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download."
   }
 }

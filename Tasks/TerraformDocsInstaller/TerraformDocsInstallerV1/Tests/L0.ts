@@ -71,6 +71,47 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
+  // --- Cache-hit re-verification (#496): a version cached by a possibly-earlier
+  // job is re-verified against a local integrity marker recorded at the original
+  // verified download, rather than trusted unconditionally on every cache hit. ---
+
+  it('cache hit verify pass: stored integrity marker matches, proceeds silently', async () => {
+    const tp = path.join(__dirname, 'CacheHitVerifyPass.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+    }, tr);
+  });
+
+  it('cache hit verify fail: stored integrity marker mismatches, rejects the cached copy', async () => {
+    const tp = path.join(__dirname, 'CacheHitVerifyFail.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.failed, 'task should have failed');
+      assert(
+        tr.errorIssues.some((e) => e.includes('CachedToolVerificationFailed')),
+        'should fail via the cache integrity re-verification. errors: ' + tr.errorIssues
+      );
+    }, tr);
+  });
+
+  it('cache hit hash unavailable: no stored marker, degrades to trusting the cache', async () => {
+    const tp = path.join(__dirname, 'CacheHitHashUnavailable.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      assert(
+        tr.stdout.includes('no stored integrity marker found'),
+        'should log a debug note that re-verification was skipped. stdout: ' + tr.stdout
+      );
+    }, tr);
+  });
+
   it('RegistryEmptySha256Warns', async () => {
     const tp = path.join(__dirname, 'RegistryEmptySha256Warns.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

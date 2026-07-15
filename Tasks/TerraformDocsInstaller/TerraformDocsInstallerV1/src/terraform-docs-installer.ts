@@ -14,6 +14,10 @@ import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './ur
 const toolName = "terraform-docs";
 const isWindows = os.type().match(/^Win/);
 
+// File name of the local, per-cached-tool-directory integrity marker written after
+// a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
+const CACHE_INTEGRITY_MARKER = ".installer-verified.sha256";
+
 /**
  * Downloads the requested terraform-docs version, verifies its SHA256 checksum,
  * caches it via the tool cache, and returns the path to the executable.
@@ -37,11 +41,14 @@ export async function downloadTerraformDocs(inputVersion: string): Promise<strin
     }
 
     let cachedToolPath = tools.findLocalTool(toolName, version);
+    const cacheHit = !!cachedToolPath;
 
+    let verified = false;
     if (!cachedToolPath) {
-        const archivePath = await downloadArtifact(downloadSource, version);
+        const artifact = await downloadArtifact(downloadSource, version);
+        verified = artifact.verified;
         // Every source serves an archive: .tar.gz on Unix, .zip on Windows.
-        const toolDir = isWindows ? await tools.extractZip(archivePath) : await tools.extractTar(archivePath);
+        const toolDir = isWindows ? await tools.extractZip(artifact.path) : await tools.extractTar(artifact.path);
         cachedToolPath = await tools.cacheDir(toolDir, toolName, version);
     } else {
         tasks.setVariable('terraformDocsDownloadedFrom', 'cache');
@@ -54,6 +61,16 @@ export async function downloadTerraformDocs(inputVersion: string): Promise<strin
 
     if (!isWindows) {
         fs.chmodSync(exePath, "755");
+    }
+
+    if (cacheHit) {
+        // A version cached by a possibly-earlier job on this (potentially persistent,
+        // self-hosted) agent is being reused without re-running the verification this
+        // job demands. Re-verify against the local integrity marker recorded when it
+        // was originally downloaded and verified — see verifyCachedTool.
+        verifyCachedTool(cachedToolPath, exePath, `terraform-docs ${version}`);
+    } else if (verified) {
+        writeCacheIntegrityMarker(cachedToolPath, exePath);
     }
 
     tasks.setVariable('terraformDocsLocation', exePath);
@@ -106,42 +123,43 @@ async function resolveVersionFromRegistry(registryUrl: string, mirrorName: strin
     return data.version;
 }
 
-// --- Download strategies (return the path to the downloaded archive) ---
+// --- Download strategies (return the path to the downloaded archive, and
+// whether it was actually checksum-verified) ---
 
-async function downloadArtifact(downloadSource: string, version: string): Promise<string> {
+async function downloadArtifact(downloadSource: string, version: string): Promise<{ path: string; verified: boolean }> {
     switch (downloadSource) {
         case "registry": {
             const registryUrl = tasks.getInput("registryUrl", true)!;
             const mirrorName = tasks.getInput("registryMirrorName", true)! || toolName;
-            const filePath = await downloadFromRegistry(version, registryUrl, mirrorName);
+            const result = await downloadFromRegistry(version, registryUrl, mirrorName);
             tasks.setVariable('terraformDocsDownloadedFrom', `registry:${registryUrl}`);
-            return filePath;
+            return result;
         }
         case "mirror": {
             const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
-            const filePath = await downloadFromMirror(version, mirrorBaseUrl);
+            const result = await downloadFromMirror(version, mirrorBaseUrl);
             tasks.setVariable('terraformDocsDownloadedFrom', `mirror:${mirrorBaseUrl}`);
-            return filePath;
+            return result;
         }
         default: { // "official"
-            const filePath = await downloadOfficial(version);
+            const result = await downloadOfficial(version);
             tasks.setVariable('terraformDocsDownloadedFrom', 'official');
-            return filePath;
+            return result;
         }
     }
 }
 
-async function downloadOfficial(version: string): Promise<string> {
+async function downloadOfficial(version: string): Promise<{ path: string; verified: boolean }> {
     const assetName = getAssetName(version);
     const downloadUrl = `https://github.com/terraform-docs/terraform-docs/releases/download/v${version}/${assetName}`;
     const archivePath = await downloadTo(downloadUrl, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);
 
     const sha256Url = `https://github.com/terraform-docs/terraform-docs/releases/download/v${version}/terraform-docs-v${version}.sha256sum`;
-    await verifyChecksumOrSkip(archivePath, sha256Url, assetName, "official release");
-    return archivePath;
+    const verified = await verifyChecksumOrSkip(archivePath, sha256Url, assetName, "official release");
+    return { path: archivePath, verified };
 }
 
-async function downloadFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<string> {
+async function downloadFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<{ path: string; verified: boolean }> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
@@ -198,6 +216,7 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
 
     if (data.sha256) {
         await verifySha256(filePath, data.sha256);
+        return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the archive.
@@ -205,10 +224,10 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
-    return filePath;
+    return { path: filePath, verified: false };
 }
 
-async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promise<string> {
+async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promise<{ path: string; verified: boolean }> {
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
     }
@@ -217,16 +236,17 @@ async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promi
     const archivePath = await downloadTo(downloadUrl, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);
 
     const sha256Url = `${mirrorBaseUrl}/${version}/terraform-docs-v${version}.sha256sum`;
-    await verifyChecksumOrSkip(archivePath, sha256Url, assetName, "mirror");
-    return archivePath;
+    const verified = await verifyChecksumOrSkip(archivePath, sha256Url, assetName, "mirror");
+    return { path: archivePath, verified };
 }
 
 /**
  * Fetches the sha256sum file, verifies the archive, and applies the requireChecksum
  * policy consistently across the official and mirror paths: when the checksum file
  * is unavailable and requireChecksum is false, warn and skip; otherwise fail closed.
+ * Returns whether the archive was actually checksum-verified.
  */
-async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetName: string, sourceLabel: string): Promise<void> {
+async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetName: string, sourceLabel: string): Promise<boolean> {
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     // Only a genuine 404 (fetchTextAllow404 returns null) counts as "no checksum file
     // published". Any other non-2xx / network / TLS failure propagates fatally,
@@ -237,10 +257,11 @@ async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetNa
             throw new Error(`Checksum verification is required but no SHA256SUMS file is published for the ${sourceLabel} download (${sha256Url}).`);
         }
         tasks.warning(`SHA256 verification skipped for ${sourceLabel} download: no checksum file published at ${sha256Url}.`);
-        return;
+        return false;
     }
     // The checksum file exists: a missing asset entry or a hash mismatch is always fatal.
     await verifySha256(filePath, parseSha256(sumsBody, assetName));
+    return true;
 }
 
 // --- Helpers ---
@@ -271,6 +292,54 @@ export async function verifySha256(filePath: string, expectedHash: string): Prom
         throw new Error(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
     }
     tasks.debug(`SHA256 verification passed: ${actualHash}`);
+}
+
+function hashFile(filePath: string): string {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+/**
+ * Writes a local integrity marker recording the SHA256 of the just-verified,
+ * just-cached executable, so a later job's cache hit for the same tool/version can
+ * re-verify it (see verifyCachedTool) without re-downloading anything. Best-effort:
+ * a write failure must never fail an install that has already been verified — it
+ * only means a future cache hit for this tool degrades to the pre-existing
+ * trust-the-cache behavior.
+ */
+function writeCacheIntegrityMarker(toolDir: string, exePath: string): void {
+    try {
+        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), hashFile(exePath), 'utf8');
+    } catch (err) {
+        tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
+    }
+}
+
+/**
+ * On a tool-cache hit, re-verifies the cached executable against the local
+ * integrity marker written when it was originally downloaded and verified. This is
+ * a purely local, offline comparison (no network call), so it can never break
+ * offline/air-gapped cache usage.
+ *
+ * - No marker (cached before this check existed, or cached by a run where checksum
+ *   verification was disabled): degrades to the pre-existing trust-the-cache
+ *   behavior with a debug note, exactly as before this check was added.
+ * - Marker present and it matches the cached executable's current hash: passes
+ *   silently.
+ * - Marker present but it does not match: the cached executable changed since it
+ *   was verified (tampering or corruption on a shared agent) — fail closed.
+ */
+function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): void {
+    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
+    if (!fs.existsSync(markerPath)) {
+        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification). Proceeding without re-verification.`);
+        return;
+    }
+    const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
+    const actualHash = hashFile(exePath).toLowerCase();
+    if (actualHash !== storedHash) {
+        throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
+    }
+    tasks.debug(`Cache hit for ${toolLabel}: integrity marker verified (${actualHash}).`);
 }
 
 export function getPlatformString(): string {

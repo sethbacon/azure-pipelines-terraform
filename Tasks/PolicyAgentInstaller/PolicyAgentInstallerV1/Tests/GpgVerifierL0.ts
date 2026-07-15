@@ -1,5 +1,7 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
+import * as fs from 'fs';
+import * as path from 'path';
 import * as openpgp from 'openpgp';
 import tasks = require('azure-pipelines-task-lib/task');
 import * as httpClient from '../src/http-client';
@@ -57,5 +59,45 @@ describe('gpg-verifier: SHA256SUMS signature gate', function () {
 
         hc.fetchBufferAllow404 = async () => sigBytes;
         await assert.rejects(verifyGpgSignature(SUMS, SIG_URL, true), /GPG signature verification failed/);
+    });
+});
+
+// Trust-root currency canary (#497a). The tests above only prove verifyGpgSignature
+// correctly REJECTS a wrong-key signature -- none of them prove the embedded
+// HashiCorp key can still verify a genuine, current release signature. This test
+// replays a real terraform_1.15.8_SHA256SUMS + its real HashiCorp-issued .sig
+// (fetched from releases.hashicorp.com on 2026-07-15) through the exact same
+// verifyGpgSignature() used in production. If HashiCorp ever rotates or revokes the
+// signing key embedded in hashicorp-gpg-key.ts, or the SHA256SUMS format changes in
+// a way openpgp can no longer parse, this test starts failing -- that failure IS the
+// signal to rotate/update hashicorp-gpg-key.ts, caught here instead of as a runtime
+// break of every default HashiCorp-sourced install.
+//
+// No OS-level `gpg` binary is involved or required: verifyGpgSignature() verifies
+// purely in-process via the `openpgp` npm package (no native/shell dependency), so
+// this canary needs no skip/guard for agents without a system gpg install -- verified
+// to pass unmodified on both ubuntu-latest and windows-2025 (the two CI runners in
+// unit-test.yml's Build and Test Policy Agent Installer V1 matrix).
+describe('gpg-verifier: HashiCorp trust-root canary (real embedded key)', function () {
+    this.timeout(15000);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch shared module
+    const hc = httpClient as any;
+    const origFetchBufferAllow404 = hc.fetchBufferAllow404;
+    afterEach(() => { hc.fetchBufferAllow404 = origFetchBufferAllow404; });
+
+    const FIXTURES_DIR = path.join(__dirname, 'fixtures');
+    const SUMS_PATH = path.join(FIXTURES_DIR, 'terraform_1.15.8_SHA256SUMS');
+    const SIG_PATH = path.join(FIXTURES_DIR, 'terraform_1.15.8_SHA256SUMS.sig');
+
+    it('verifies a real, current HashiCorp-signed SHA256SUMS against the embedded public key', async () => {
+        const sumsContent = fs.readFileSync(SUMS_PATH, 'utf8');
+        const sigBytes = new Uint8Array(fs.readFileSync(SIG_PATH));
+
+        hc.fetchBufferAllow404 = async () => sigBytes;
+
+        // Must not throw. Confirmed independently with `gpg --verify` against this
+        // exact fixture pair before committing (see PR description).
+        await verifyGpgSignature(sumsContent, 'https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_SHA256SUMS.sig', true);
     });
 });
