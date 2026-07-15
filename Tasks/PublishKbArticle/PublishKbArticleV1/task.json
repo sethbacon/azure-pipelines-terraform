@@ -263,7 +263,7 @@
         "ExternalScriptNotAllowed": "External script sources are not allowed in KB articles",
         "InlineScriptNotAllowed": "Inline <script> elements are not allowed in KB articles",
         "BaseOrMetaRefreshNotAllowed": "<base> elements and <meta http-equiv=\"refresh\"> redirects to javascript:/vbscript: are not allowed in KB articles",
-        "FormOrSvgAnimationNotAllowed": "<form> elements and SVG SMIL animation elements (animate/animateTransform/animateMotion/set) are not allowed in KB articles",
+        "FormOrSvgAnimationNotAllowed": "<iframe>/<object>/<embed>/<noscript>, <form>, and SVG SMIL animation elements (animate/animateTransform/animateMotion/set) are not allowed in KB articles",
         "EventHandlerNotAllowed": "Inline event-handler attributes (on*) are not allowed in KB articles",
         "DangerousUriNotAllowed": "javascript:, vbscript: and non-image data: URIs are not allowed in KB articles",
         "HtmlFileNotFound": "File '%s' not found.",

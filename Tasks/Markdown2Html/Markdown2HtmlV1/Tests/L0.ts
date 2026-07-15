@@ -518,6 +518,17 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(!/action\s*=/.test(html), `no action= attribute should survive (got: ${html})`);
     });
 
+    it('removes iframe/object/embed/noscript via the shared DANGEROUS_TAGS filter (final-review regression check)', () => {
+        // sanitizeRenderedHtml's removal mechanism for these elements was
+        // refactored from a plain CSS selector to the shared DANGEROUS_TAGS
+        // tagName-filter (so PublishKbArticle's gate could reuse the exact same
+        // set) -- confirm the refactor didn't change render-time behavior.
+        for (const tag of ['iframe', 'object', 'embed', 'noscript']) {
+            const html = convertMarkdownToHtml(`Before\n\n<${tag}>x</${tag}>\n\nAfter`);
+            assert.ok(!new RegExp(`<${tag}[\\s>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
+        }
+    });
+
     it('removes SVG SMIL animation elements that can dynamically assign a javascript: URI (#446 follow-up)', () => {
         const html = convertMarkdownToHtml(
             '<svg><a href="#safe"><animate attributeName="href" to="javascript:alert(1)"/>x</a></svg>',

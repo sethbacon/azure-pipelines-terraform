@@ -72,21 +72,28 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         throw new Error(tasks.loc('BaseOrMetaRefreshNotAllowed'));
     }
 
-    // Reject <form> (no legitimate use in a KB article; an action="javascript:..."
-    // attribute is otherwise a blocklist-fragile per-element check) and SVG SMIL
-    // animation elements (animate/animateColor/animateTransform/animateMotion/set),
-    // which can dynamically assign a javascript: URI into a referenced attribute
-    // (e.g. an <a>'s href) via their to/from/values attributes at runtime — a
-    // vector the static attribute-value scan below never sees (#446 follow-up).
-    // DANGEROUS_TAGS is the shared, byte-identity-gated set (uri-scheme-guard.ts)
-    // also used by Markdown2Html's render-time sanitizeRenderedHtml.
-    let formOrSvgAnimationFound = false;
+    // Reject executable/embedding elements (<iframe>/<object>/<embed>/
+    // <noscript> -- the <script> checks above already cover <script>),
+    // <form> (no legitimate use in a KB article; an action="javascript:..."
+    // attribute is otherwise a blocklist-fragile per-element check), and SVG
+    // SMIL animation elements (animate/animateColor/animateTransform/
+    // animateMotion/set), which can dynamically assign a javascript: URI into
+    // a referenced attribute (e.g. an <a>'s href) via their to/from/values
+    // attributes at runtime — a vector the static attribute-value scan below
+    // never sees (#446 follow-up). Before iframe/object/embed/noscript were
+    // added here, this fail-closed gate never rejected them at all -- only
+    // Markdown2Html's render-time sanitizer stripped them -- so HTML supplied
+    // directly via the htmlFile input (bypassing Markdown2Html entirely)
+    // could carry a live <iframe srcdoc="..."> past the gate. DANGEROUS_TAGS
+    // is the shared, byte-identity-gated set (uri-scheme-guard.ts) also used
+    // by Markdown2Html's render-time sanitizeRenderedHtml.
+    let dangerousTagFound = false;
     $('*').each((_, el) => {
         if (DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())) {
-            formOrSvgAnimationFound = true;
+            dangerousTagFound = true;
         }
     });
-    if (formOrSvgAnimationFound) {
+    if (dangerousTagFound) {
         throw new Error(tasks.loc('FormOrSvgAnimationNotAllowed'));
     }
 

@@ -104,17 +104,19 @@ export function convertMarkdownToHtml(text: string): string {
  */
 export function sanitizeRenderedHtml(html: string): string {
     const $ = cheerio.load(html, { xmlMode: false });
-    // Remove executable / embedding elements outright.
-    $('script, iframe, object, embed, noscript').remove();
-    // <form> has no legitimate use in a KB article fragment, and an
-    // action="javascript:..." attribute is otherwise a blocklist-fragile
-    // per-attribute check (#446 follow-up). SVG SMIL animation elements
-    // (animate/animateColor/animateTransform/animateMotion/set) can
-    // dynamically assign a javascript: URI into a referenced attribute (e.g.
-    // an <a>'s href) at runtime via their to/from/values attributes, a vector
-    // a static attribute-value scan cannot catch -- drop them outright too.
-    // DANGEROUS_TAGS is the shared, byte-identity-gated set (uri-scheme-guard.ts)
-    // also used by PublishKbArticle's validateHtmlContent gate.
+    // Remove executable / embedding elements (script/iframe/object/embed/
+    // noscript) outright. <form> has no legitimate use in a KB article
+    // fragment, and an action="javascript:..." attribute is otherwise a
+    // blocklist-fragile per-attribute check (#446 follow-up). SVG SMIL
+    // animation elements (animate/animateColor/animateTransform/
+    // animateMotion/set) can dynamically assign a javascript: URI into a
+    // referenced attribute (e.g. an <a>'s href) at runtime via their
+    // to/from/values attributes, a vector a static attribute-value scan
+    // cannot catch -- drop them outright too. DANGEROUS_TAGS is the shared,
+    // byte-identity-gated set (uri-scheme-guard.ts) also used by
+    // PublishKbArticle's validateHtmlContent gate -- keeping this single set
+    // shared (rather than a separately-hand-typed CSS selector here) is what
+    // keeps the two layers from drifting on which elements are dangerous.
     $('*').filter((_, el) => DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())).remove();
     // <base> can redirect every relative URL in the document; not needed in a
     // KB article fragment, so drop it outright rather than trying to validate it.

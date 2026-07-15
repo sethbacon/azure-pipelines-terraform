@@ -788,6 +788,40 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
+    it('throws on an <iframe srcdoc="..."> that was never checked (final review: the gate never rejected iframe/object/embed/noscript before)', () => {
+        // Untrusted HTML supplied directly via the htmlFile input bypasses
+        // Markdown2Html's render-time sanitizer entirely -- this fail-closed
+        // gate must reject iframe/object/embed/noscript on its own, not rely on
+        // the upstream sanitizer having already stripped them.
+        const html = '<html><body><iframe srcdoc="<img src=x onerror=alert(1)>"></iframe></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on <object>/<embed>/<noscript> elements alongside iframe', () => {
+        for (const html of [
+            '<html><body><object data="javascript:alert(1)"></object></body></html>',
+            '<html><body><embed src="javascript:alert(1)"></embed></body></html>',
+            '<html><body><noscript><img src=x onerror=alert(1)></noscript></body></html>',
+        ]) {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+                `expected a throw for: ${html}`,
+            );
+        }
+    });
+
+    it('throws on an <iframe> even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><body><iframe srcdoc="<img src=x onerror=alert(1)>"></iframe></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
     it('throws on a <form> element when force=false (#446 follow-up: form action="javascript:..." blocklist gap)', () => {
         const html = '<html><body><form action="javascript:alert(1)"><button>Submit</button></form></body></html>';
         assert.throws(
