@@ -13,6 +13,9 @@ const cloneDir = path.join(os.tmpdir(), `policy-repo-${FIXED_UUID}`);
 const testDir = path.join(os.tmpdir(), 'tpc-sha');
 fs.rmSync(testDir, { recursive: true, force: true });
 fs.rmSync(cloneDir, { recursive: true, force: true });
+// The task writes its results file with O_EXCL; with a mocked fixed UUID a
+// leftover from a previous local run would collide, so remove it up front.
+fs.rmSync(path.join(os.tmpdir(), `policy-results-${FIXED_UUID}.txt`), { force: true });
 fs.mkdirSync(testDir, { recursive: true });
 fs.mkdirSync(cloneDir, { recursive: true });
 const planFile = path.join(testDir, 'plan.json');

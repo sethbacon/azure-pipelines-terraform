@@ -5,10 +5,32 @@ import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyCase, PolicyResult } from './types';
 
+/**
+ * The agent's private temp directory, purged automatically at job end. Raw engine
+ * output (and reports derived from it) can embed Terraform plan resource values,
+ * so it must not land in the shared, never-purged os.tmpdir() (issue #487). The
+ * files written here are deliberately NOT deleted by this task — later pipeline
+ * steps consume them via the resultsFilePath/sarifFilePath output variables; the
+ * job-end purge of Agent.TempDirectory is the cleanup mechanism.
+ */
+function tempDir(): string {
+    return tasks.getVariable('Agent.TempDirectory') || os.tmpdir();
+}
+
+/**
+ * Writes a new owner-only (0600) file. O_EXCL ('wx') fails on a pre-existing
+ * path, defeating a pre-created-symlink hazard; chmod backstops the umask
+ * masking of the writeFileSync mode (mirrors TerraformDriftReport's pattern).
+ */
+function writePrivateFile(filePath: string, content: string): void {
+    fs.writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+    try { fs.chmodSync(filePath, 0o600); } catch { /* platforms without POSIX perms */ }
+}
+
 /** Persists raw engine output and returns its path (exposed as resultsFilePath). */
 export function writeResultsFile(rawOutput: string): string {
-    const resultsPath = path.join(os.tmpdir(), `policy-results-${uuidV4()}.txt`);
-    fs.writeFileSync(resultsPath, rawOutput, 'utf-8');
+    const resultsPath = path.join(tempDir(), `policy-results-${uuidV4()}.txt`);
+    writePrivateFile(resultsPath, rawOutput);
     return resultsPath;
 }
 
@@ -43,8 +65,8 @@ ${body}
 </testsuites>
 `;
 
-    const xmlPath = path.join(os.tmpdir(), `policy-junit-${uuidV4()}.xml`);
-    fs.writeFileSync(xmlPath, xml, 'utf-8');
+    const xmlPath = path.join(tempDir(), `policy-junit-${uuidV4()}.xml`);
+    writePrivateFile(xmlPath, xml);
     return xmlPath;
 }
 
@@ -141,10 +163,18 @@ export function buildPolicySarif(result: PolicyResult, engine: string): SarifLog
 
 /** Writes a SARIF 2.1.0 report and returns its path. */
 export function writeSarif(result: PolicyResult, engine: string, sarifPath?: string): string {
-    const outPath = sarifPath && sarifPath.trim().length > 0
-        ? path.resolve(sarifPath)
-        : path.join(os.tmpdir(), `policy-results-${uuidV4()}.sarif`);
+    const explicitPath = sarifPath && sarifPath.trim().length > 0;
+    const outPath = explicitPath
+        ? path.resolve(sarifPath!)
+        : path.join(tempDir(), `policy-results-${uuidV4()}.sarif`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, JSON.stringify(buildPolicySarif(result, engine), null, 2), 'utf-8');
+    const json = JSON.stringify(buildPolicySarif(result, engine), null, 2);
+    if (explicitPath) {
+        // User-chosen destination (e.g. a staging dir published as an artifact):
+        // keep overwrite semantics so re-runs against the same path succeed.
+        fs.writeFileSync(outPath, json, 'utf-8');
+    } else {
+        writePrivateFile(outPath, json);
+    }
     return outPath;
 }

@@ -163,7 +163,11 @@ function generateConfig(policyDir: string, inputFile: string, level: string, tem
         lines.push('');
     }
 
-    const configDir = path.join(os.tmpdir(), `sentinel-config-${uuidV4()}`);
+    // Agent.TempDirectory is auto-purged by the ADO agent at job end, which
+    // backstops cleanup even if the process is killed before index.ts's
+    // finally/cleanup() can run — bare os.tmpdir() has no such guarantee
+    // (matches policy-source.ts's cloneDir convention; issues #503/#505).
+    const configDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `sentinel-config-${uuidV4()}`);
     fs.mkdirSync(configDir, { recursive: true });
     const configPath = path.join(configDir, 'sentinel.hcl');
     fs.writeFileSync(configPath, lines.join('\n'), 'utf-8');
