@@ -1,11 +1,15 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
 import * as net from 'net';
+import * as https from 'https';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
+import tasks = require('azure-pipelines-task-lib/task');
 import { HttpClient, HttpResponse, createHttpsClient, parseJson, retryHttp, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
+import { TLS_CERT, TLS_KEY } from './loopback-tls';
+import { startConnectProxy, startRefusingConnectProxy } from './proxy-connect-server';
 
 const noop = (): void => {
     /* suppress log output during tests */
@@ -66,6 +70,55 @@ describe('http client transport', () => {
         }
     });
 
+    it('completes a request against a loopback HTTPS server', async () => {
+        // Exercises the shared client end-to-end against a real TLS connection
+        // (the only other real-server test in this suite is the timeout test
+        // above, which never completes a TLS handshake).
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false); // accept the self-signed cert
+            const resp = await client('GET', `https://127.0.0.1:${port}/api`, { Authorization: 'Bearer k' });
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(resp.body, '{"ok":true}');
+        } finally {
+            server.close();
+        }
+    });
+
+    it('rejects a self-signed certificate when rejectUnauthorized is true (the default)', async () => {
+        // Secure-default counterpart to the test above: with TLS verification ON
+        // (the default), the exact same self-signed loopback server must be
+        // rejected with a certificate-verification error rather than silently
+        // succeeding. Without this test a regression that dropped/inverted/
+        // hardcoded rejectUnauthorized would ship with full green CI.
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(true); // the secure default
+            await assert.rejects(
+                client('GET', `https://127.0.0.1:${port}/api`, {}),
+                /self.signed certificate|unable to verify|certificate/i,
+            );
+            // The zero-arg default must behave identically to the explicit `true`.
+            const defaultClient = createHttpsClient();
+            await assert.rejects(
+                defaultClient('GET', `https://127.0.0.1:${port}/api`, {}),
+                /self.signed certificate|unable to verify|certificate/i,
+            );
+        } finally {
+            server.close();
+        }
+    });
+
     it('truncates a long response body and passes a short one through', () => {
         assert.strictEqual(truncateBody(''), '');
         assert.strictEqual(truncateBody('short body'), 'short body');
@@ -83,6 +136,66 @@ describe('http client transport', () => {
             () => parseJson(html),
             (err: Error) => /non-JSON response body|RegistryNonJsonResponse/.test(err.message) && err.message.includes('captive portal'),
         );
+    });
+});
+
+describe('http client transport: agent proxy support', function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
+    const t = tasks as any;
+    const origGetProxy = t.getHttpProxyConfiguration;
+
+    afterEach(() => {
+        t.getHttpProxyConfiguration = origGetProxy;
+    });
+
+    it('routes a request through a configured HTTP CONNECT proxy', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+
+        const { server: proxy, seen } = startConnectProxy();
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/api`, {});
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(seen.length, 1, 'the proxy should have seen exactly one CONNECT');
+            assert.strictEqual(seen[0].target, `127.0.0.1:${targetPort}`);
+        } finally {
+            target.close();
+            proxy.close();
+        }
+    });
+
+    it('throws a clear error on a malformed proxy URL instead of an unhandled exception', async () => {
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: 'not a url' });
+        const client = createHttpsClient(false);
+        await assert.rejects(
+            client('GET', 'https://127.0.0.1:1/api', {}),
+            /Invalid proxy URL/,
+        );
+    });
+
+    it('surfaces a clear error when the proxy refuses the CONNECT tunnel', async () => {
+        const proxy = startRefusingConnectProxy(502);
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            const client = createHttpsClient(false);
+            await assert.rejects(
+                client('GET', 'https://127.0.0.1:1/api', {}),
+                /Proxy CONNECT.*failed with status 502/,
+            );
+        } finally {
+            proxy.close();
+        }
     });
 });
 

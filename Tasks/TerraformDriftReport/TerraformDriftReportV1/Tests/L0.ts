@@ -5,12 +5,16 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
 import * as https from 'https';
+import tasks = require('azure-pipelines-task-lib/task');
 import { postJson, postJsonWithRetry, truncateBody } from '../src/callback';
 import { createHttpsClient } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
+import { startConnectProxy, startRefusingConnectProxy } from './proxy-connect-server';
 
 // Direct unit tests for the fail-secure rejectUnauthorized default.
 import './RejectUnauthorizedDefaultL0';
+// Direct unit tests for the fail-secure failOnCallbackError default.
+import './FailOnCallbackErrorDefaultL0';
 
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {
@@ -55,6 +59,37 @@ describe('TerraformDriftReport callback transport', function () {
             assert.deepStrictEqual(seen.map(s => s.method).sort(), ['GET', 'POST']);
             assert.strictEqual(seen.find(s => s.method === 'POST')!.body, '{"drift":true}');
             assert.strictEqual(seen.find(s => s.method === 'GET')!.body, '');
+        } finally {
+            server.close();
+        }
+    });
+
+    it('rejects a self-signed certificate when rejectUnauthorized is true (the default)', async () => {
+        // The secure-default counterpart to the test above: with TLS verification
+        // ON (the default), a request against the exact same self-signed loopback
+        // server must fail with a certificate-verification error instead of
+        // silently succeeding. Every other real-server test in this suite passes
+        // rejectUnauthorized=false to make the self-signed cert work, so without
+        // this test a regression that dropped/inverted/hardcoded the option would
+        // ship with full green CI.
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(true); // the secure default
+            await assert.rejects(
+                client('GET', `https://127.0.0.1:${port}/health`, {}),
+                /self.signed certificate|unable to verify|certificate/i,
+            );
+            // The zero-arg default must behave identically to the explicit `true`.
+            const defaultClient = createHttpsClient();
+            await assert.rejects(
+                defaultClient('GET', `https://127.0.0.1:${port}/health`, {}),
+                /self.signed certificate|unable to verify|certificate/i,
+            );
         } finally {
             server.close();
         }
@@ -131,6 +166,119 @@ describe('TerraformDriftReport callback transport', function () {
             assert.strictEqual(logs.length, 0, 'no retry should have been logged');
         } finally {
             server.close();
+        }
+    });
+});
+
+describe('https-client: agent proxy support', function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
+    const t = tasks as any;
+    const origGetProxy = t.getHttpProxyConfiguration;
+    const origSetSecret = t.setSecret;
+
+    afterEach(() => {
+        t.getHttpProxyConfiguration = origGetProxy;
+        t.setSecret = origSetSecret;
+    });
+
+    it('routes a request through a configured HTTP CONNECT proxy', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+
+        const { server: proxy, seen } = startConnectProxy();
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/health`, {});
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(resp.body, '{"ok":true}');
+            assert.strictEqual(seen.length, 1, 'the proxy should have seen exactly one CONNECT');
+            assert.strictEqual(seen[0].target, `127.0.0.1:${targetPort}`);
+        } finally {
+            target.close();
+            proxy.close();
+        }
+    });
+
+    it('sends Proxy-Authorization and masks the proxy password as a secret when credentials are configured', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+
+        const expectedAuth = `Basic ${Buffer.from('proxyuser:p@ss').toString('base64')}`;
+        const { server: proxy, seen } = startConnectProxy({ requireAuthHeader: expectedAuth });
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+
+        const maskedSecrets: string[] = [];
+        t.setSecret = (v: string) => maskedSecrets.push(v);
+        t.getHttpProxyConfiguration = () => ({
+            proxyUrl: `http://127.0.0.1:${proxyPort}`,
+            proxyUsername: 'proxyuser',
+            proxyPassword: 'p@ss',
+        });
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/health`, {});
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(seen.length, 1);
+            assert.strictEqual(seen[0].proxyAuthorization, expectedAuth);
+            assert.ok(maskedSecrets.includes('p@ss'), 'the proxy password should be registered as a secret');
+        } finally {
+            target.close();
+            proxy.close();
+        }
+    });
+
+    it('throws a clear error on a malformed proxy URL instead of an unhandled exception', async () => {
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: 'not a url' });
+        const client = createHttpsClient(false);
+        await assert.rejects(
+            client('GET', 'https://127.0.0.1:1/health', {}),
+            /Invalid proxy URL/,
+        );
+    });
+
+    it('surfaces a clear error when the proxy refuses the CONNECT tunnel', async () => {
+        const proxy = startRefusingConnectProxy(502);
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            const client = createHttpsClient(false);
+            await assert.rejects(
+                client('GET', 'https://127.0.0.1:1/health', {}),
+                /Proxy CONNECT.*failed with status 502/,
+            );
+        } finally {
+            proxy.close();
+        }
+    });
+
+    it('connects directly (no proxy) when the agent has none configured', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => undefined;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/health`, {});
+            assert.strictEqual(resp.status, 200);
+        } finally {
+            target.close();
         }
     });
 });
@@ -261,6 +409,18 @@ describe('TerraformDriftReport Test Suite', function () {
             assert(
                 tr.errorIssues.some(e => /DriftCallbackFailed 500|Drift callback failed \(HTTP 500\)/.test(e)),
                 'should report the failed callback HTTP status',
+            );
+        }, tr);
+    });
+
+    it('DriftReportCallbackFailNonFatal — failOnCallbackError=false warns instead of failing on a non-2xx callback', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackFailNonFatal.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (failOnCallbackError=false)');
+            assert(
+                tr.warningIssues.some(w => /DriftCallbackNonFatal 500|Drift callback failed \(HTTP 500\).*failOnCallbackError/.test(w)),
+                'should warn about the non-fatal callback failure',
             );
         }, tr);
     });

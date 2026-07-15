@@ -4,7 +4,7 @@ import fs = require('fs');
 import os = require('os');
 import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
-import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized } from './callback';
+import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
@@ -99,9 +99,16 @@ async function run(): Promise<void> {
                 { log: (message) => tasks.warning(message) },
             );
             if (resp.status < 200 || resp.status >= 300) {
-                throw new Error(tasks.loc('DriftCallbackFailed', resp.status, truncateBody(resp.body)));
+                // Fail-secure: an absent/blank failOnCallbackError preserves the task's
+                // original behavior (fail); only an explicit "false" makes this non-fatal
+                // (see resolveFailOnCallbackError).
+                if (resolveFailOnCallbackError(tasks.getInput('failOnCallbackError', false))) {
+                    throw new Error(tasks.loc('DriftCallbackFailed', resp.status, truncateBody(resp.body)));
+                }
+                tasks.warning(tasks.loc('DriftCallbackNonFatal', resp.status, truncateBody(resp.body)));
+            } else {
+                console.log(tasks.loc('DriftPostedToTsm', resp.status));
             }
-            console.log(tasks.loc('DriftPostedToTsm', resp.status));
         } else if (callbackUrl || callbackToken) {
             tasks.warning(tasks.loc('CallbackUrlAndTokenRequired'));
         }

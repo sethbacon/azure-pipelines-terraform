@@ -7,6 +7,7 @@
   "loc.messages.DriftSummary": "Drift: drifted=%s added=%s changed=%s destroyed=%s (%s changed resources)",
   "loc.messages.RejectUnauthorizedDisabled": "rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, so the callback token is sent over an unverified TLS channel. Use only for an internal TSM endpoint fronted by a private CA the agent does not trust.",
   "loc.messages.DriftCallbackFailed": "Drift callback failed (HTTP %s): %s",
+  "loc.messages.DriftCallbackNonFatal": "Drift callback failed (HTTP %s): %s. Continuing because failOnCallbackError is disabled.",
   "loc.messages.DriftPostedToTsm": "Drift result posted to TSM (HTTP %s).",
   "loc.messages.CallbackUrlAndTokenRequired": "Both callbackUrl and callbackToken are required to POST results; skipping callback.",
   "loc.messages.DriftDetectedFailed": "Drift detected: %s changed resource(s).",
