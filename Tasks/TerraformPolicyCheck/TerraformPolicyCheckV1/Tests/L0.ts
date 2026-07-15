@@ -78,10 +78,57 @@ describe('TerraformPolicyCheck Test Suite', function () {
     expectSuccess('SentinelSoftOverride');
     expectFailure('SentinelUnrecognizedExitFail');
 
+    it('SentinelConfigTempDir — generated config and results land in Agent.TempDirectory', async () => {
+        const agentTemp = path.join(os.tmpdir(), 'tpc-sentinel-tempdir', 'agent-temp');
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'SentinelConfigTempDir.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            // The generated sentinel.hcl dir must be created under
+            // Agent.TempDirectory (job-end purged), not bare os.tmpdir()
+            // (issues #503/#505); the cleanup debug line proves where it lived.
+            const configDir = path.join(agentTemp, 'sentinel-config-fixed-tempdir-uuid');
+            assert(
+                tr.stdout.includes(`Cleaned up temp dir: ${configDir}`),
+                `sentinel config dir should be created (and cleaned up) under Agent.TempDirectory; stdout: ${tr.stdout}`,
+            );
+            // The raw-results file must also land under Agent.TempDirectory
+            // (issue #487). It is deliberately NOT deleted at step end — later
+            // steps consume it via the resultsFilePath output variable, and the
+            // agent purges Agent.TempDirectory when the job finishes.
+            const resultsFile = path.join(agentTemp, 'policy-results-fixed-tempdir-uuid.txt');
+            assert(fs.existsSync(resultsFile), `results file should exist under Agent.TempDirectory at ${resultsFile}`);
+            assert(
+                tr.stdout.includes(resultsFile),
+                'resultsFilePath output variable should point at the Agent.TempDirectory file',
+            );
+        }, tr);
+    });
+
     // --- Policy source ---
     expectSuccess('GitSourceClone');
-    expectSuccess('GitShaCheckout');
     expectFailure('InsecureGitUrlReject');
+
+    it('GitShaCheckout — SHA checkout succeeds and masks the policy repo token', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitShaCheckout.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            // Both the raw token and its derived Basic credential must be
+            // registered as secrets so the agent masks them in every log line;
+            // guards against accidental removal of the setSecret calls in
+            // policy-source.ts (issue #510).
+            assert(
+                tr.stdout.includes('##vso[task.setsecret]secrettoken'),
+                'policyRepoToken should be registered as a secret',
+            );
+            assert(
+                tr.stdout.includes(`##vso[task.setsecret]${Buffer.from(':secrettoken').toString('base64')}`),
+                'derived Basic credential should be registered as a secret',
+            );
+        }, tr);
+    });
 
     it('GitRefInjectionReject — a leading-dash ref is rejected before git runs', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitRefInjectionReject.js'));

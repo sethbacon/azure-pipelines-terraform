@@ -1,9 +1,9 @@
-import { describe, it } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import assert = require('assert');
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildPolicySarif, writeJUnit, writeSarif } from '../src/results';
+import { buildPolicySarif, writeJUnit, writeResultsFile, writeSarif } from '../src/results';
 import { PolicyResult } from '../src/types';
 
 // Direct (parent-process) unit tests for the reporting helpers. The MockTestRunner
@@ -73,6 +73,57 @@ describe('results: SARIF generation', () => {
         const defaulted = writeSarif(result, 'opa');
         assert.ok(defaulted.endsWith('.sarif') && fs.existsSync(defaulted));
         fs.rmSync(defaulted, { force: true });
+    });
+});
+
+describe('results: temp file hygiene', () => {
+    // The writers must land in Agent.TempDirectory (job-end purged by the ADO
+    // agent) rather than bare os.tmpdir(), with owner-only permissions — the raw
+    // engine output can embed plan resource values (see issue #487).
+    let agentTemp: string;
+    let savedAgentTemp: string | undefined;
+
+    beforeEach(() => {
+        savedAgentTemp = process.env['AGENT_TEMPDIRECTORY'];
+        agentTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-agent-temp-'));
+        process.env['AGENT_TEMPDIRECTORY'] = agentTemp;
+    });
+
+    afterEach(() => {
+        if (savedAgentTemp === undefined) {
+            delete process.env['AGENT_TEMPDIRECTORY'];
+        } else {
+            process.env['AGENT_TEMPDIRECTORY'] = savedAgentTemp;
+        }
+        fs.rmSync(agentTemp, { recursive: true, force: true });
+    });
+
+    function assertPrivateFileUnderAgentTemp(filePath: string) {
+        assert(
+            filePath.startsWith(agentTemp + path.sep),
+            `file should be under Agent.TempDirectory (${agentTemp}); got: ${filePath}`,
+        );
+        assert.ok(fs.existsSync(filePath), 'file should exist');
+        if (process.platform !== 'win32') {
+            assert.strictEqual(
+                fs.statSync(filePath).mode & 0o777,
+                0o600,
+                'file should be owner-only (0600)',
+            );
+        }
+    }
+
+    it('writeResultsFile writes an owner-only file under Agent.TempDirectory', () => {
+        assertPrivateFileUnderAgentTemp(writeResultsFile('raw engine output'));
+    });
+
+    it('writeJUnit writes an owner-only file under Agent.TempDirectory', () => {
+        assertPrivateFileUnderAgentTemp(writeJUnit([{ name: 'p1', passed: true }], 'opa'));
+    });
+
+    it('writeSarif (default path) writes an owner-only file under Agent.TempDirectory', () => {
+        const result: PolicyResult = { passed: true, violations: [], rawOutput: '', cases: [] };
+        assertPrivateFileUnderAgentTemp(writeSarif(result, 'opa'));
     });
 });
 
