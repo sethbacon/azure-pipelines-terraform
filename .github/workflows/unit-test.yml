@@ -388,6 +388,25 @@ jobs:
       - name: Run tab unit tests
         run: npm run test:tab
 
+  # Stable required-status-check context for the Tab tests. Branch protection
+  # on main pins the bare "Build and Test Tab" context, but the matrix job
+  # above only reports the OS-suffixed "Build and Test Tab (ubuntu-latest)" /
+  # "Build and Test Tab (windows-2025)" contexts. This gate re-exposes the
+  # pinned context — succeeding only when every matrix leg passed — so the OS
+  # matrix (issue #512) can be added without orphaning the required check,
+  # which would otherwise stay perpetually "Expected" and block every future
+  # PR into main until branch protection is repointed. No branch-protection
+  # change is needed on merge as a result.
+  build-and-test-tab-gate:
+    name: Build and Test Tab
+    needs: build-and-test-tab
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all Tab matrix legs passed
+        if: needs.build-and-test-tab.result != 'success'
+        run: exit 1
+
   actionlint:
     name: Lint GitHub Actions
     runs-on: ubuntu-latest
