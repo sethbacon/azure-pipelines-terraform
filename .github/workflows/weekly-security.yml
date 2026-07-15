@@ -130,11 +130,12 @@ jobs:
                 core.setFailed(`The '${ENVIRONMENT}' GitHub Environment does not exist — publish-marketplace in release.yml references an environment with no protection rules at all.`);
                 return;
               }
-              // Reading environment protection rules only requires ordinary repo
-              // read access (unlike branch-protection/admin endpoints, which
-              // GITHUB_TOKEN cannot satisfy — see the legitify job above). A
-              // failure here is unexpected; surface it distinctly from a real
-              // policy gap so the two aren't confused.
+              // Confirmed against GitHub's REST API docs: reading environment
+              // protection rules only requires ordinary repo read access (unlike
+              // branch-protection/admin-settings endpoints, which need the
+              // `administration` permission -- a scope GITHUB_TOKEN cannot grant
+              // at all). A failure here is therefore unexpected; surface it
+              // distinctly from a real policy gap so the two aren't confused.
               core.warning(`Could not verify the '${ENVIRONMENT}' environment's protection rules (HTTP ${err.status ?? 'unknown'}): ${err.message}. Verify manually via Settings -> Environments.`);
               return;
             }
