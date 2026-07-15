@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
@@ -74,16 +74,12 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 
     // Reject <form> (no legitimate use in a KB article; an action="javascript:..."
     // attribute is otherwise a blocklist-fragile per-element check) and SVG SMIL
-    // animation elements (animate/animateTransform/animateMotion/set), which can
-    // dynamically assign a javascript: URI into a referenced attribute (e.g. an
-    // <a>'s href) via their to/from/values attributes at runtime — a vector the
-    // static attribute-value scan below never sees (#446 follow-up). Matched by
-    // tagName rather than a CSS tag selector: per the HTML5 foreign-content
-    // parsing algorithm, cheerio/parse5 preserves the SVG spec's camelCase
-    // spelling for animateTransform/animateMotion (unlike ordinary HTML tags,
-    // which are lower-cased), and a css-select tag selector does not match
-    // these foreign-namespaced nodes by name in either case (verified empirically).
-    const DANGEROUS_TAGS = new Set(['form', 'animate', 'animatetransform', 'animatemotion', 'set']);
+    // animation elements (animate/animateColor/animateTransform/animateMotion/set),
+    // which can dynamically assign a javascript: URI into a referenced attribute
+    // (e.g. an <a>'s href) via their to/from/values attributes at runtime — a
+    // vector the static attribute-value scan below never sees (#446 follow-up).
+    // DANGEROUS_TAGS is the shared, byte-identity-gated set (uri-scheme-guard.ts)
+    // also used by Markdown2Html's render-time sanitizeRenderedHtml.
     let formOrSvgAnimationFound = false;
     $('*').each((_, el) => {
         if (DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())) {

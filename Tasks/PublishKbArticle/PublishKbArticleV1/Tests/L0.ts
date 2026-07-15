@@ -489,6 +489,45 @@ describe('client.findArticleBySourceKey', () => {
             /Key collision|SourceKeyCollision/,
         );
     });
+
+    it('#372/#29 follow-up: returns null (not a TypeError) when a 2xx response is not a JSON array', async () => {
+        // servicenow-http.ts defaults a non-JSON 2xx body to `data = {}` -- an
+        // object, not an array. The old `(result || [])` cast kept the truthy
+        // object and crashed on results[0]; Array.isArray must reject it to [].
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge')
+            .query(true)
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
+        assert.strictEqual(id, null);
+    });
+});
+
+// ===========================================================================
+// servicenow-client — getKbCategories
+// ===========================================================================
+describe('client.getKbCategories', () => {
+    it('returns the category list', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [{ sys_id: 'cat1', label: 'General' }] });
+
+        const categories = await client.getKbCategories(INSTANCE, HEADERS, 'kb123');
+        assert.strictEqual(categories.length, 1);
+        assert.strictEqual(categories[0].label, 'General');
+    });
+
+    it('returns an empty array (not a crash) when a 2xx response is not a JSON array', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        const categories = await client.getKbCategories(INSTANCE, HEADERS, 'kb123');
+        assert.deepStrictEqual(categories, []);
+    });
 });
 
 // ===========================================================================
@@ -773,8 +812,8 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
-    it('throws on animateTransform, animateMotion and set elements alongside animate', () => {
-        for (const tag of ['animateTransform', 'animateMotion', 'set']) {
+    it('throws on animateTransform, animateMotion, animateColor and set elements alongside animate', () => {
+        for (const tag of ['animateTransform', 'animateMotion', 'animateColor', 'set']) {
             const html = `<html><body><svg><${tag} attributeName="href" to="javascript:alert(1)"/></svg></body></html>`;
             assert.throws(
                 () => htmlValidate.validateHtmlContent(html, false),

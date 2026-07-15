@@ -123,7 +123,10 @@ export async function processFrontMatterDriven(
 
         const sectionId = sectionIds.get(incPath);
         if (sectionAnchors && sectionId) {
-            contentBlocks.push(`<section id="${sectionId}">`);
+            // pathToSectionId only replaces '/', '\' and '.' -- a relative include
+            // path containing '"' (illegal in Windows filenames, but valid on
+            // Linux/macOS agents) would otherwise break out of this attribute (#12).
+            contentBlocks.push(`<section id="${escapeHtml(sectionId)}">`);
             contentBlocks.push(incHtml);
             contentBlocks.push('</section>');
         } else {

@@ -330,6 +330,18 @@ describe('buildToc', () => {
         assert.ok(!/<img[\s>]/i.test(toc), `TOC must not contain a live <img> element (got: ${toc})`);
         assert.ok(toc.includes('&lt;img'), `TOC should contain the re-escaped heading text (got: ${toc})`);
     });
+
+    it('escapes an author-supplied raw heading id, closing an href attribute-breakout (#12 follow-up)', () => {
+        // markdown-it runs with html:true, so a heading can carry its own raw `id`
+        // attribute straight from the source markdown/HTML. cheerio's .attr('id')
+        // decodes it the same way .text() decodes heading content -- an id
+        // containing a literal double-quote would otherwise break out of the
+        // TOC's href="#..." attribute and inject live markup.
+        const html = '<h1 id=\'a"><iframe srcdoc="x"></iframe><a href="b\'>Heading</h1>';
+        const { toc } = buildToc(html);
+        assert.ok(!/<iframe[\s>]/i.test(toc), `TOC must not contain a live <iframe> element (got: ${toc})`);
+        assert.ok(toc.includes('&quot;'), `TOC should contain the re-escaped id value (got: ${toc})`);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -513,8 +525,8 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(!/<animate[\s/>]/i.test(html), `<animate> must be removed (got: ${html})`);
     });
 
-    it('removes animateTransform, animateMotion and set elements alongside animate', () => {
-        for (const tag of ['animateTransform', 'animateMotion', 'set']) {
+    it('removes animateTransform, animateMotion, animateColor and set elements alongside animate', () => {
+        for (const tag of ['animateTransform', 'animateMotion', 'animateColor', 'set']) {
             const html = convertMarkdownToHtml(`<svg><${tag} attributeName="href" to="javascript:alert(1)"/></svg>`);
             assert.ok(!new RegExp(`<${tag}[\\s/>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
         }
@@ -675,6 +687,31 @@ describe('processFrontMatterDriven', () => {
         assert.ok(/Table of Contents/i.test(html), 'expected a generated TOC');
         assert.ok(html.includes('file-divider'), 'expected the hr separator between includes');
         assert.ok(html.includes('<section id='), 'expected section-anchor wrappers');
+    });
+
+    it('escapes an ampersand in a section-anchor id (#12 follow-up: sectionId is interpolated unescaped)', async () => {
+        // '"'/'<'/'>' are illegal in Windows filenames (this repo's own CI matrix
+        // runs Windows), so '&' is used here to stay cross-platform while still
+        // proving escapeHtml() runs on the path-derived sectionId before it is
+        // interpolated into an HTML attribute that skips sanitizeRenderedHtml.
+        const dir = writeTmpDir({
+            'main.md': [
+                '---',
+                'includes:',
+                '  - Q&A.md',
+                'include-options:',
+                '  section-anchors: true',
+                '---',
+                '# Intro',
+                '',
+            ].join('\n'),
+            'Q&A.md': '# Part\n\nContent.\n',
+        });
+        const out = path.join(dir, 'out.html');
+        await processFrontMatterDriven(path.join(dir, 'main.md'), out);
+        const html = fs.readFileSync(out, 'utf8');
+        assert.ok(!html.includes('id="q&a-md"'), `raw ampersand in the section id must be escaped (got: ${html})`);
+        assert.ok(html.includes('id="q&amp;a-md"'), `expected the escaped section id to appear (got: ${html})`);
     });
 
     it('derives the title from the first h1 when front matter has none', async () => {

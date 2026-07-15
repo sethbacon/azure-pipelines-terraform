@@ -15,6 +15,23 @@
 export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'formaction', 'action']);
 
 /**
+ * Element (tag) names rejected outright by both layers: <form> has no
+ * legitimate use in a KB article fragment and an action="javascript:..."
+ * attribute is otherwise a blocklist-fragile per-attribute check (#446
+ * follow-up); the SVG SMIL animation elements (animate/animateColor/
+ * animateTransform/animateMotion/set) can dynamically assign a javascript:
+ * URI into a referenced attribute (e.g. an <a>'s href) at RUNTIME via their
+ * to/from/values attributes, a vector the static attribute-value scan above
+ * cannot catch. Lower-cased tag names -- match by comparing a lower-cased
+ * tagName, NOT a CSS tag selector: per the HTML5 foreign-content parsing
+ * algorithm, cheerio/parse5 preserves the SVG spec's camelCase spelling for
+ * animateColor/animateTransform/animateMotion (unlike ordinary HTML tags,
+ * which are lower-cased), and a css-select tag selector does not match these
+ * foreign-namespaced nodes by name in either case (verified empirically).
+ */
+export const DANGEROUS_TAGS = new Set(['form', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
+
+/**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the
  * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
  * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can

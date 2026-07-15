@@ -8,7 +8,7 @@ import path = require('path');
 import MarkdownIt = require('markdown-it');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
 
 // ---------------------------------------------------------------------------
 // preprocessMarkdown
@@ -109,16 +109,12 @@ export function sanitizeRenderedHtml(html: string): string {
     // <form> has no legitimate use in a KB article fragment, and an
     // action="javascript:..." attribute is otherwise a blocklist-fragile
     // per-attribute check (#446 follow-up). SVG SMIL animation elements
-    // (animate/animateTransform/animateMotion/set) can dynamically assign a
-    // javascript: URI into a referenced attribute (e.g. an <a>'s href) at
-    // runtime via their to/from/values attributes, a vector a static
-    // attribute-value scan cannot catch -- drop them outright too. Matched by
-    // tagName rather than a CSS tag selector: per the HTML5 foreign-content
-    // parsing algorithm, cheerio/parse5 preserves the SVG spec's camelCase
-    // spelling for animateTransform/animateMotion (unlike ordinary HTML tags,
-    // which are lower-cased), and a css-select tag selector does not match
-    // these foreign-namespaced nodes by name in either case (verified empirically).
-    const DANGEROUS_TAGS = new Set(['form', 'animate', 'animatetransform', 'animatemotion', 'set']);
+    // (animate/animateColor/animateTransform/animateMotion/set) can
+    // dynamically assign a javascript: URI into a referenced attribute (e.g.
+    // an <a>'s href) at runtime via their to/from/values attributes, a vector
+    // a static attribute-value scan cannot catch -- drop them outright too.
+    // DANGEROUS_TAGS is the shared, byte-identity-gated set (uri-scheme-guard.ts)
+    // also used by PublishKbArticle's validateHtmlContent gate.
     $('*').filter((_, el) => DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())).remove();
     // <base> can redirect every relative URL in the document; not needed in a
     // KB article fragment, so drop it outright rather than trying to validate it.
@@ -229,12 +225,17 @@ export function buildToc(html: string): TocResult {
         const tagName = $el.prop('tagName') ?? '';
         const level = parseInt(tagName.slice(1), 10);
         const indent = '  '.repeat(level - 1);
-        // hid is a slug ([\w-]+ only, see above) so it is always attribute-safe;
-        // text is the raw heading content and MUST be escaped -- this TOC block is
-        // built from html that has ALREADY been through sanitizeRenderedHtml, so an
-        // unescaped heading (e.g. from a code span containing a tag) would
-        // reintroduce live markup after the sanitizer already ran (#12).
-        tocItems.push(`${indent}<li><a href="#${hid}">${escapeHtml(text)}</a></li>`);
+        // hid is EITHER a computed slug ([\w-]+ only, attribute-safe) OR an
+        // author-supplied raw `id` attribute from the source HTML (markdown-it
+        // runs with html:true, so a heading like `<h2 id='a"><iframe ...'>` is
+        // possible) -- cheerio's .attr('id') decodes it just like .text() decodes
+        // heading content, so it is NOT safe to assume attribute-clean. Escaping
+        // it here closes an href="#..." attribute-breakout that a raw id would
+        // otherwise reopen; text is the raw heading content and separately MUST be
+        // escaped for the same reason -- this TOC block is built from html that
+        // has ALREADY been through sanitizeRenderedHtml, so either unescaped value
+        // would reintroduce live markup after the sanitizer already ran (#12).
+        tocItems.push(`${indent}<li><a href="#${escapeHtml(hid)}">${escapeHtml(text)}</a></li>`);
     }
 
     const toc =
