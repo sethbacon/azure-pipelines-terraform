@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
@@ -120,10 +120,12 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     // one to fetch anything) -- closes that gap regardless of where the
     // <style> element sits, and Markdown2Html's own generated CSS is a fixed,
     // hardcoded string with no `url(...)`/`@import` (verified), so this never
-    // rejects the legitimate document wrapper. Deliberately not part of the
-    // shared DANGEROUS_TAGS set (which is element-presence-based, not
-    // content-based) -- see uri-scheme-guard.ts for why <style> isn't there.
-    const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
+    // rejects the legitimate document wrapper. The <style> ELEMENT is
+    // deliberately not part of the shared DANGEROUS_TAGS set (element-presence-
+    // based, not content-based) -- see uri-scheme-guard.ts for why. The CSS
+    // construct pattern itself is DANGEROUS_CSS_PATTERN, shared from that same
+    // byte-identity-gated module (the inline `style` attribute check below uses
+    // it too).
     let dangerousStyleContentFound = false;
     $('style').each((_, el) => {
         if (DANGEROUS_CSS_PATTERN.test($(el).text())) {
@@ -134,11 +136,18 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         throw new Error(tasks.loc('DangerousStyleContentNotAllowed'));
     }
 
-    // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
-    // and javascript:/vbscript:/non-image data: URIs — stored-XSS vectors the
-    // external <script src> check above does not cover.
+    // Reject inline event-handler attributes (onerror=, onload=, onclick=, …),
+    // javascript:/vbscript:/non-image data: URIs, and an inline `style=`
+    // attribute carrying a network-fetching CSS construct — all stored-XSS /
+    // CSS-exfiltration vectors the external <script src> check above does not
+    // cover. The inline `style` attribute is the simplest delivery mechanism
+    // for the exact #523 exfiltration primitive (background: url(...)) and,
+    // unlike the <style>-element check above, was previously unguarded here --
+    // it is checked against the same shared DANGEROUS_CSS_PATTERN, on the RAW
+    // (cheerio-decoded) value for parity with that element-content check.
     let eventHandlerFound = false;
     let dangerousUriFound = false;
+    let dangerousStyleAttrFound = false;
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
@@ -146,6 +155,8 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 eventHandlerFound = true;
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
+                dangerousStyleAttrFound = true;
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&
                 isDangerousUriScheme(value)
@@ -157,6 +168,10 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 
     if (eventHandlerFound) {
         throw new Error(tasks.loc('EventHandlerNotAllowed'));
+    }
+
+    if (dangerousStyleAttrFound) {
+        throw new Error(tasks.loc('DangerousStyleAttributeNotAllowed'));
     }
 
     if (dangerousUriFound) {

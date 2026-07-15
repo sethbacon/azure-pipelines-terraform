@@ -8,7 +8,7 @@ import path = require('path');
 import MarkdownIt = require('markdown-it');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
 
 // ---------------------------------------------------------------------------
 // preprocessMarkdown
@@ -155,13 +155,21 @@ export function sanitizeRenderedHtml(html: string): string {
             $(el).remove();
         }
     });
-    // Strip event-handler attributes and dangerous URIs from every element.
+    // Strip event-handler attributes, dangerous URIs, and an inline `style=`
+    // attribute carrying a network-fetching CSS construct from every element.
+    // The <style> ELEMENT is dropped wholesale above, but an inline `style`
+    // ATTRIBUTE (e.g. <div style="background:url(...)">) is the simplest carrier
+    // of the same #523 CSS-exfiltration primitive and was previously left
+    // intact -- match it against the same shared DANGEROUS_CSS_PATTERN, on the
+    // RAW (cheerio-decoded) value for parity with PublishKbArticle's gate.
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
             const lname = name.toLowerCase();
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
+                $(el).removeAttr(name);
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
                 $(el).removeAttr(name);
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&

@@ -265,6 +265,7 @@
         "BaseOrMetaRefreshNotAllowed": "<base> elements and <meta http-equiv=\"refresh\"> redirects to javascript:/vbscript: are not allowed in KB articles",
         "FormOrSvgAnimationNotAllowed": "<iframe>/<object>/<embed>/<noscript>/<link>, <form>, and SVG SMIL animation elements (animate/animateTransform/animateMotion/set) are not allowed in KB articles",
         "DangerousStyleContentNotAllowed": "<style> content containing url(...), @import, expression(...), -moz-binding or behavior: is not allowed in KB articles (CSS-injection/exfiltration risk)",
+        "DangerousStyleAttributeNotAllowed": "An inline style attribute containing url(...), @import, expression(...), -moz-binding or behavior: is not allowed in KB articles (CSS-injection/exfiltration risk)",
         "EventHandlerNotAllowed": "Inline event-handler attributes (on*) are not allowed in KB articles",
         "DangerousUriNotAllowed": "javascript:, vbscript: and non-image data: URIs are not allowed in KB articles",
         "HtmlFileNotFound": "File '%s' not found.",

