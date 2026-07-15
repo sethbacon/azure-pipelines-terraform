@@ -72,6 +72,28 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         throw new Error(tasks.loc('BaseOrMetaRefreshNotAllowed'));
     }
 
+    // Reject <form> (no legitimate use in a KB article; an action="javascript:..."
+    // attribute is otherwise a blocklist-fragile per-element check) and SVG SMIL
+    // animation elements (animate/animateTransform/animateMotion/set), which can
+    // dynamically assign a javascript: URI into a referenced attribute (e.g. an
+    // <a>'s href) via their to/from/values attributes at runtime — a vector the
+    // static attribute-value scan below never sees (#446 follow-up). Matched by
+    // tagName rather than a CSS tag selector: per the HTML5 foreign-content
+    // parsing algorithm, cheerio/parse5 preserves the SVG spec's camelCase
+    // spelling for animateTransform/animateMotion (unlike ordinary HTML tags,
+    // which are lower-cased), and a css-select tag selector does not match
+    // these foreign-namespaced nodes by name in either case (verified empirically).
+    const DANGEROUS_TAGS = new Set(['form', 'animate', 'animatetransform', 'animatemotion', 'set']);
+    let formOrSvgAnimationFound = false;
+    $('*').each((_, el) => {
+        if (DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())) {
+            formOrSvgAnimationFound = true;
+        }
+    });
+    if (formOrSvgAnimationFound) {
+        throw new Error(tasks.loc('FormOrSvgAnimationNotAllowed'));
+    }
+
     // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
     // and javascript:/vbscript:/non-image data: URIs — stored-XSS vectors the
     // external <script src> check above does not cover.

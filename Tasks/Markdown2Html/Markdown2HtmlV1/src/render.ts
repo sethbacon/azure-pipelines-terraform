@@ -47,7 +47,7 @@ export function preprocessMarkdown(text: string): string {
  * <pre><code class="hljs ...">…</code></pre>. Falls back to escaped plain text
  * when the language is unknown or highlighting throws.
  */
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
     return s
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -106,6 +106,20 @@ export function sanitizeRenderedHtml(html: string): string {
     const $ = cheerio.load(html, { xmlMode: false });
     // Remove executable / embedding elements outright.
     $('script, iframe, object, embed, noscript').remove();
+    // <form> has no legitimate use in a KB article fragment, and an
+    // action="javascript:..." attribute is otherwise a blocklist-fragile
+    // per-attribute check (#446 follow-up). SVG SMIL animation elements
+    // (animate/animateTransform/animateMotion/set) can dynamically assign a
+    // javascript: URI into a referenced attribute (e.g. an <a>'s href) at
+    // runtime via their to/from/values attributes, a vector a static
+    // attribute-value scan cannot catch -- drop them outright too. Matched by
+    // tagName rather than a CSS tag selector: per the HTML5 foreign-content
+    // parsing algorithm, cheerio/parse5 preserves the SVG spec's camelCase
+    // spelling for animateTransform/animateMotion (unlike ordinary HTML tags,
+    // which are lower-cased), and a css-select tag selector does not match
+    // these foreign-namespaced nodes by name in either case (verified empirically).
+    const DANGEROUS_TAGS = new Set(['form', 'animate', 'animatetransform', 'animatemotion', 'set']);
+    $('*').filter((_, el) => DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())).remove();
     // <base> can redirect every relative URL in the document; not needed in a
     // KB article fragment, so drop it outright rather than trying to validate it.
     $('base').remove();
@@ -215,7 +229,12 @@ export function buildToc(html: string): TocResult {
         const tagName = $el.prop('tagName') ?? '';
         const level = parseInt(tagName.slice(1), 10);
         const indent = '  '.repeat(level - 1);
-        tocItems.push(`${indent}<li><a href="#${hid}">${text}</a></li>`);
+        // hid is a slug ([\w-]+ only, see above) so it is always attribute-safe;
+        // text is the raw heading content and MUST be escaped -- this TOC block is
+        // built from html that has ALREADY been through sanitizeRenderedHtml, so an
+        // unescaped heading (e.g. from a code span containing a tag) would
+        // reintroduce live markup after the sanitizer already ran (#12).
+        tocItems.push(`${indent}<li><a href="#${hid}">${escapeHtml(text)}</a></li>`);
     }
 
     const toc =

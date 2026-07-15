@@ -11,6 +11,7 @@
   "loc.messages.ExternalScriptNotAllowed": "External script sources are not allowed in KB articles",
   "loc.messages.InlineScriptNotAllowed": "Inline <script> elements are not allowed in KB articles",
   "loc.messages.BaseOrMetaRefreshNotAllowed": "<base> elements and <meta http-equiv=\"refresh\"> redirects to javascript:/vbscript: are not allowed in KB articles",
+  "loc.messages.FormOrSvgAnimationNotAllowed": "<form> elements and SVG SMIL animation elements (animate/animateTransform/animateMotion/set) are not allowed in KB articles",
   "loc.messages.EventHandlerNotAllowed": "Inline event-handler attributes (on*) are not allowed in KB articles",
   "loc.messages.DangerousUriNotAllowed": "javascript:, vbscript: and non-image data: URIs are not allowed in KB articles",
   "loc.messages.HtmlFileNotFound": "File '%s' not found.",

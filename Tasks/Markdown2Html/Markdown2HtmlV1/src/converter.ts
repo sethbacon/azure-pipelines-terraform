@@ -14,6 +14,7 @@ import {
     buildToc,
     rewriteMdLinks,
     pathToSectionId,
+    escapeHtml,
 } from './render';
 import { generateHtmlDocument } from './document';
 
@@ -171,7 +172,10 @@ export async function processFileList(
         for (let i = 0; i < inputFiles.length; i++) {
             const fileName = path.basename(inputFiles[i]);
             const fileId = `file-${i + 1}`;
-            toc.push(`<li><a href="#${fileId}">${fileName}</a></li>`);
+            // fileId is always the safe, machine-generated `file-N`; fileName is an
+            // operator/contributor-supplied filename and must be escaped -- this TOC
+            // entry is never passed through sanitizeRenderedHtml (#12).
+            toc.push(`<li><a href="#${fileId}">${escapeHtml(fileName)}</a></li>`);
             fileTitles.push({ id: fileId, name: fileName });
         }
         toc.push('</ul>', '</div>');
@@ -190,7 +194,8 @@ export async function processFileList(
 
         if (addSections) {
             const { id: fileId, name: fileName } = fileTitles[i] ?? { id: `file-${i + 1}`, name: path.basename(filePath) };
-            contentBlocks.push(`<h2 id="${fileId}" class="file-title">${fileName}</h2>`);
+            // fileName is escaped for the same reason as the TOC entry above (#12).
+            contentBlocks.push(`<h2 id="${fileId}" class="file-title">${escapeHtml(fileName)}</h2>`);
         }
 
         const htmlContent = convertMarkdownToHtml(markdownContent);

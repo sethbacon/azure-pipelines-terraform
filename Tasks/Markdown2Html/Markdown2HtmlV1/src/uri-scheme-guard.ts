@@ -12,7 +12,7 @@
  */
 
 /** Attribute names that can carry a URI capable of triggering navigation or resource loading. */
-export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'formaction']);
+export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'formaction', 'action']);
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the
