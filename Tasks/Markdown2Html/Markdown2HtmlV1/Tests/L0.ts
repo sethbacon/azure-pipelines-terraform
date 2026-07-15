@@ -319,6 +319,29 @@ describe('buildToc', () => {
         assert.ok(modified.includes('id="title"'));
         assert.ok(modified.includes('id="sub"'));
     });
+
+    it('escapes heading text in TOC entries, closing a decode-then-reinject XSS gap (#12)', () => {
+        // A heading whose rendered HTML already has the tag ENCODED (e.g. because
+        // it came from a markdown code span, which sanitizeRenderedHtml sees only
+        // as inert escaped text) still decodes back to live markup via cheerio's
+        // .text() -- buildToc must re-escape it before building the TOC <li>.
+        const html = '<h1>&lt;img src=x onerror=alert(1)&gt;</h1><p>text</p>';
+        const { toc } = buildToc(html);
+        assert.ok(!/<img[\s>]/i.test(toc), `TOC must not contain a live <img> element (got: ${toc})`);
+        assert.ok(toc.includes('&lt;img'), `TOC should contain the re-escaped heading text (got: ${toc})`);
+    });
+
+    it('escapes an author-supplied raw heading id, closing an href attribute-breakout (#12 follow-up)', () => {
+        // markdown-it runs with html:true, so a heading can carry its own raw `id`
+        // attribute straight from the source markdown/HTML. cheerio's .attr('id')
+        // decodes it the same way .text() decodes heading content -- an id
+        // containing a literal double-quote would otherwise break out of the
+        // TOC's href="#..." attribute and inject live markup.
+        const html = '<h1 id=\'a"><iframe srcdoc="x"></iframe><a href="b\'>Heading</h1>';
+        const { toc } = buildToc(html);
+        assert.ok(!/<iframe[\s>]/i.test(toc), `TOC must not contain a live <iframe> element (got: ${toc})`);
+        assert.ok(toc.includes('&quot;'), `TOC should contain the re-escaped id value (got: ${toc})`);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -482,8 +505,42 @@ describe('convertMarkdownToHtml', () => {
         const anchorHtml = convertMarkdownToHtml('<a href="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</a>');
         assert.ok(!/href\s*=/.test(anchorHtml), `<a href> must be stripped (got: ${anchorHtml})`);
 
-        const formHtml = convertMarkdownToHtml('<form><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></form>');
+        // Not wrapped in <form>: this specifically tests the formaction attribute
+        // check (a standalone <button> is valid HTML), independent of the separate
+        // wholesale <form>-element removal covered below.
+        const formHtml = convertMarkdownToHtml('<button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button>');
         assert.ok(!/formaction\s*=/.test(formHtml), `formaction must be stripped (got: ${formHtml})`);
+    });
+
+    it('removes <form> elements outright, closing the action="javascript:..." bypass (#446 follow-up)', () => {
+        const html = convertMarkdownToHtml('Before\n\n<form action="javascript:alert(1)"><button>Submit</button></form>\n\nAfter');
+        assert.ok(!/<form[\s>]/i.test(html), `<form> must be removed entirely (got: ${html})`);
+        assert.ok(!/action\s*=/.test(html), `no action= attribute should survive (got: ${html})`);
+    });
+
+    it('removes iframe/object/embed/noscript via the shared DANGEROUS_TAGS filter (final-review regression check)', () => {
+        // sanitizeRenderedHtml's removal mechanism for these elements was
+        // refactored from a plain CSS selector to the shared DANGEROUS_TAGS
+        // tagName-filter (so PublishKbArticle's gate could reuse the exact same
+        // set) -- confirm the refactor didn't change render-time behavior.
+        for (const tag of ['iframe', 'object', 'embed', 'noscript']) {
+            const html = convertMarkdownToHtml(`Before\n\n<${tag}>x</${tag}>\n\nAfter`);
+            assert.ok(!new RegExp(`<${tag}[\\s>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
+        }
+    });
+
+    it('removes SVG SMIL animation elements that can dynamically assign a javascript: URI (#446 follow-up)', () => {
+        const html = convertMarkdownToHtml(
+            '<svg><a href="#safe"><animate attributeName="href" to="javascript:alert(1)"/>x</a></svg>',
+        );
+        assert.ok(!/<animate[\s/>]/i.test(html), `<animate> must be removed (got: ${html})`);
+    });
+
+    it('removes animateTransform, animateMotion, animateColor and set elements alongside animate', () => {
+        for (const tag of ['animateTransform', 'animateMotion', 'animateColor', 'set']) {
+            const html = convertMarkdownToHtml(`<svg><${tag} attributeName="href" to="javascript:alert(1)"/></svg>`);
+            assert.ok(!new RegExp(`<${tag}[\\s/>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
+        }
     });
 });
 
@@ -580,6 +637,22 @@ describe('processFileList', () => {
         assert.ok(fs.existsSync(out), 'expected the nested output file to be written');
     });
 
+    it('escapes an ampersand in a filename in both the TOC entry and the file-title heading (#12)', async () => {
+        // '<'/'>' are illegal in Windows filenames, so this uses '&' -- still
+        // enough to prove escapeHtml() runs on the operator/contributor-supplied
+        // filename before it is interpolated into HTML that skips sanitizeRenderedHtml.
+        const dir = writeTmpDir({ 'Q&A.md': '# Alpha\n\nOne.\n', 'b.md': '# Beta\n\nTwo.\n' });
+        const out = path.join(dir, 'out.html');
+        await processFileList(
+            [path.join(dir, 'Q&A.md'), path.join(dir, 'b.md')],
+            out,
+            { addSections: true },
+        );
+        const html = fs.readFileSync(out, 'utf8');
+        assert.ok(!html.includes('>Q&A<'), `raw ampersand must be escaped (got: ${html})`);
+        assert.ok(html.includes('Q&amp;A'), `expected the escaped filename to appear (got: ${html})`);
+    });
+
     it('throws when an input file cannot be converted', async () => {
         const dir = writeTmpDir({ 'empty.md': '   \n' });
         await assert.rejects(
@@ -625,6 +698,31 @@ describe('processFrontMatterDriven', () => {
         assert.ok(/Table of Contents/i.test(html), 'expected a generated TOC');
         assert.ok(html.includes('file-divider'), 'expected the hr separator between includes');
         assert.ok(html.includes('<section id='), 'expected section-anchor wrappers');
+    });
+
+    it('escapes an ampersand in a section-anchor id (#12 follow-up: sectionId is interpolated unescaped)', async () => {
+        // '"'/'<'/'>' are illegal in Windows filenames (this repo's own CI matrix
+        // runs Windows), so '&' is used here to stay cross-platform while still
+        // proving escapeHtml() runs on the path-derived sectionId before it is
+        // interpolated into an HTML attribute that skips sanitizeRenderedHtml.
+        const dir = writeTmpDir({
+            'main.md': [
+                '---',
+                'includes:',
+                '  - Q&A.md',
+                'include-options:',
+                '  section-anchors: true',
+                '---',
+                '# Intro',
+                '',
+            ].join('\n'),
+            'Q&A.md': '# Part\n\nContent.\n',
+        });
+        const out = path.join(dir, 'out.html');
+        await processFrontMatterDriven(path.join(dir, 'main.md'), out);
+        const html = fs.readFileSync(out, 'utf8');
+        assert.ok(!html.includes('id="q&a-md"'), `raw ampersand in the section id must be escaped (got: ${html})`);
+        assert.ok(html.includes('id="q&amp;a-md"'), `expected the escaped section id to appear (got: ${html})`);
     });
 
     it('derives the title from the first h1 when front matter has none', async () => {

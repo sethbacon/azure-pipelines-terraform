@@ -12,7 +12,31 @@
  */
 
 /** Attribute names that can carry a URI capable of triggering navigation or resource loading. */
-export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'formaction']);
+export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'formaction', 'action']);
+
+/**
+ * Element (tag) names rejected outright by both layers: <script>/<iframe>/
+ * <object>/<embed>/<noscript> are executable/embedding elements with no
+ * legitimate use in a KB article fragment; <form> likewise has none, and an
+ * action="javascript:..." attribute is otherwise a blocklist-fragile
+ * per-attribute check (#446 follow-up); the SVG SMIL animation elements
+ * (animate/animateColor/animateTransform/animateMotion/set) can dynamically
+ * assign a javascript: URI into a referenced attribute (e.g. an <a>'s href)
+ * at RUNTIME via their to/from/values attributes, a vector the static
+ * attribute-value scan above cannot catch. Lower-cased tag names -- match by
+ * comparing a lower-cased tagName, NOT a CSS tag selector: per the HTML5
+ * foreign-content parsing algorithm, cheerio/parse5 preserves the SVG spec's
+ * camelCase spelling for animateColor/animateTransform/animateMotion (unlike
+ * ordinary HTML tags, which are lower-cased), and a css-select tag selector
+ * does not match these foreign-namespaced nodes by name in either case
+ * (verified empirically). Before this set covered iframe/object/embed/
+ * noscript, PublishKbArticle's validateHtmlContent() gate never rejected them
+ * at all -- only Markdown2Html's render-time sanitizer stripped them -- so
+ * HTML supplied directly via the htmlFile input (bypassing Markdown2Html
+ * entirely) could carry a live <iframe srcdoc="..."> or <object data="...">
+ * straight past the fail-closed gate.
+ */
+export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the

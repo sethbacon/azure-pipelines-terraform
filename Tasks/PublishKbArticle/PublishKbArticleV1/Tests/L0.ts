@@ -297,6 +297,21 @@ describe('client.createKnowledgeArticle', () => {
         );
         assert.strictEqual(capturedBody['workflow_state'], 'published');
     });
+
+    it('#372/#29: throws a clear error instead of a generic TypeError when a 2xx response is not a JSON article object', async () => {
+        // Mirrors servicenow-http.ts's documented fallback: a non-JSON 2xx body
+        // (e.g. a corporate proxy/WAF returning an HTML page) parses to `data = {}`,
+        // so `result` is undefined -- this must be a clear ArticleNotObject error,
+        // not an unguarded `undefined.sys_id` crash further up the call chain.
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        await assert.rejects(
+            () => client.createKnowledgeArticle(INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author'),
+            /no article object in "result"|ArticleNotObject/,
+        );
+    });
 });
 
 // ===========================================================================
@@ -317,6 +332,17 @@ describe('client.getArticle', () => {
 
         const found = await client.getArticle(INSTANCE, HEADERS, 'a/b');
         assert.strictEqual(found.sys_id, 'a/b');
+    });
+
+    it('#372/#29: throws a clear error instead of a generic TypeError when a 2xx response is not a JSON article object', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/art_missing')
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        await assert.rejects(
+            () => client.getArticle(INSTANCE, HEADERS, 'art_missing'),
+            /no article object in "result"|ArticleNotObject/,
+        );
     });
 });
 
@@ -398,6 +424,27 @@ describe('client.updateKnowledgeArticle', () => {
         );
         assert.strictEqual(patchedBody['meta_description'], 'wiki-source: key1');
     });
+
+    it('#372/#29: throws a clear error instead of a generic TypeError when a 2xx PATCH response is not a JSON article object', async () => {
+        const existingArticle = {
+            sys_id: 'art_004',
+            number: 'KB0013',
+            short_description: 'Title',
+            workflow_state: 'draft',
+            kb_knowledge_base: 'kb123',
+        };
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/art_004')
+            .reply(200, { result: existingArticle });
+        nock(BASE_URL)
+            .patch('/api/now/table/kb_knowledge/art_004')
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        await assert.rejects(
+            () => client.updateKnowledgeArticle(INSTANCE, HEADERS, 'art_004', 'New Title'),
+            /no article object in "result"|ArticleNotObject/,
+        );
+    });
 });
 
 // ===========================================================================
@@ -441,6 +488,45 @@ describe('client.findArticleBySourceKey', () => {
             () => client.findArticleBySourceKey(INSTANCE, HEADERS, 'dup-key'),
             /Key collision|SourceKeyCollision/,
         );
+    });
+
+    it('#372/#29 follow-up: returns null (not a TypeError) when a 2xx response is not a JSON array', async () => {
+        // servicenow-http.ts defaults a non-JSON 2xx body to `data = {}` -- an
+        // object, not an array. The old `(result || [])` cast kept the truthy
+        // object and crashed on results[0]; Array.isArray must reject it to [].
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge')
+            .query(true)
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
+        assert.strictEqual(id, null);
+    });
+});
+
+// ===========================================================================
+// servicenow-client — getKbCategories
+// ===========================================================================
+describe('client.getKbCategories', () => {
+    it('returns the category list', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [{ sys_id: 'cat1', label: 'General' }] });
+
+        const categories = await client.getKbCategories(INSTANCE, HEADERS, 'kb123');
+        assert.strictEqual(categories.length, 1);
+        assert.strictEqual(categories[0].label, 'General');
+    });
+
+    it('returns an empty array (not a crash) when a 2xx response is not a JSON array', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        const categories = await client.getKbCategories(INSTANCE, HEADERS, 'kb123');
+        assert.deepStrictEqual(categories, []);
     });
 });
 
@@ -566,6 +652,18 @@ describe('client.changeWorkflowState', () => {
         const article = await client.changeWorkflowState(INSTANCE, HEADERS, articleId, 'draft');
         assert.strictEqual(article.workflow_state, 'draft');
     });
+
+    it('#372/#29: throws a clear error instead of a generic TypeError when a 2xx response is not a JSON article object', async () => {
+        const articleId = 'pub_art_002';
+        nock(BASE_URL)
+            .patch(`/api/now/table/kb_knowledge/${articleId}`)
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        await assert.rejects(
+            () => client.changeWorkflowState(INSTANCE, HEADERS, articleId, 'publish'),
+            /no article object in "result"|ArticleNotObject/,
+        );
+    });
 });
 
 // ===========================================================================
@@ -690,6 +788,75 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
+    it('throws on an <iframe srcdoc="..."> that was never checked (final review: the gate never rejected iframe/object/embed/noscript before)', () => {
+        // Untrusted HTML supplied directly via the htmlFile input bypasses
+        // Markdown2Html's render-time sanitizer entirely -- this fail-closed
+        // gate must reject iframe/object/embed/noscript on its own, not rely on
+        // the upstream sanitizer having already stripped them.
+        const html = '<html><body><iframe srcdoc="<img src=x onerror=alert(1)>"></iframe></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on <object>/<embed>/<noscript> elements alongside iframe', () => {
+        for (const html of [
+            '<html><body><object data="javascript:alert(1)"></object></body></html>',
+            '<html><body><embed src="javascript:alert(1)"></embed></body></html>',
+            '<html><body><noscript><img src=x onerror=alert(1)></noscript></body></html>',
+        ]) {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+                `expected a throw for: ${html}`,
+            );
+        }
+    });
+
+    it('throws on an <iframe> even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><body><iframe srcdoc="<img src=x onerror=alert(1)>"></iframe></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<iframe>\/<object>\/<embed>\/<noscript>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on a <form> element when force=false (#446 follow-up: form action="javascript:..." blocklist gap)', () => {
+        const html = '<html><body><form action="javascript:alert(1)"><button>Submit</button></form></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<form> elements and SVG SMIL animation elements|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on a <form> element even when force=true (#446: force no longer bypasses XSS checks)', () => {
+        const html = '<html><body><form action="https://example.com/submit"><button>Submit</button></form></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<form> elements and SVG SMIL animation elements|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on an SVG SMIL <animate> element that could reassign href to a javascript: URI (#446 follow-up)', () => {
+        const html = '<html><body><svg><a href="#safe"><animate attributeName="href" to="javascript:alert(1)"/>x</a></svg></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<form> elements and SVG SMIL animation elements|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on animateTransform, animateMotion, animateColor and set elements alongside animate', () => {
+        for (const tag of ['animateTransform', 'animateMotion', 'animateColor', 'set']) {
+            const html = `<html><body><svg><${tag} attributeName="href" to="javascript:alert(1)"/></svg></body></html>`;
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /<form> elements and SVG SMIL animation elements|FormOrSvgAnimationNotAllowed/,
+                `expected a throw for <${tag}>`,
+            );
+        }
+    });
+
     it('throws on a data:image/svg+xml URI even on an <img> element (an SVG document can embed active content, unlike a raster format)', () => {
         const html = '<html><body><img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+"></body></html>';
         assert.throws(
@@ -705,7 +872,10 @@ describe('htmlValidate.validateHtmlContent', () => {
             /data: URIs are not allowed|DangerousUriNotAllowed/,
         );
 
-        const formHtml = '<html><body><form><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></form></body></html>';
+        // Not wrapped in <form>: this specifically tests the formaction
+        // attribute check (a standalone <button> is valid HTML), independent
+        // of the separate <form>-element rejection covered above.
+        const formHtml = '<html><body><button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(formHtml, false),
             /data: URIs are not allowed|DangerousUriNotAllowed/,

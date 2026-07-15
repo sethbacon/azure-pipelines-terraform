@@ -30,6 +30,20 @@ export function baseUrl(instance: string): string {
     return `https://${instance}.service-now.com`;
 }
 
+/**
+ * Validate that a ServiceNow Table API response's `result` is a single record
+ * object (not undefined/null/an array), narrowing it to KbArticle. servicenow-http.ts
+ * silently defaults the parsed body to `{}` when a 2xx response fails JSON.parse
+ * (e.g. a corporate proxy/WAF intercepting the request and returning 200 with an
+ * HTML page), which would otherwise flow through as `undefined` result and crash
+ * the caller with a generic TypeError instead of a clear, actionable diagnostic.
+ */
+function assertArticleResult(result: unknown, context: string): asserts result is KbArticle {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw new Error(tasks.loc('ArticleNotObject', context));
+    }
+}
+
 /** Retrieve all knowledge bases. */
 export async function getKnowledgeBases(instance: string, headers: Record<string, string>): Promise<unknown[]> {
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge_base`;
@@ -48,10 +62,8 @@ export async function getArticle(instance: string, headers: Record<string, strin
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     const response = await snRequest('GET', url, { headers });
     const result = response.data.result;
-    if (!result || typeof result !== 'object' || Array.isArray(result)) {
-        throw new Error(tasks.loc('ArticleNotObject', articleId));
-    }
-    return result as KbArticle;
+    assertArticleResult(result, articleId);
+    return result;
 }
 
 /**
@@ -118,7 +130,8 @@ export async function createKnowledgeArticle(
     const response = await withRetry(() => snRequest('POST', url, { headers, body: payload }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
-    return response.data.result as KbArticle;
+    assertArticleResult(response.data.result, title);
+    return response.data.result;
 }
 
 /** Update an existing knowledge base article. */
@@ -180,7 +193,8 @@ export async function updateKnowledgeArticle(
     const response = await withRetry(() => snRequest('PATCH', url, { headers, body: payload }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
-    return response.data.result as KbArticle;
+    assertArticleResult(response.data.result, articleId);
+    return response.data.result;
 }
 
 /**
@@ -230,7 +244,8 @@ export async function changeWorkflowState(
     }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
-    return response.data.result as KbArticle;
+    assertArticleResult(response.data.result, articleId);
+    return response.data.result;
 }
 
 /** Retrieve knowledge categories, optionally filtered by KB. */
@@ -246,7 +261,7 @@ export async function getKbCategories(
         params['sysparm_query'] = `kb_knowledge_base=${kbId}`;
     }
     const response = await snRequest('GET', url, { headers, params });
-    return response.data.result as KbCategory[];
+    return Array.isArray(response.data.result) ? (response.data.result as KbCategory[]) : [];
 }
 
 /** Create a new category (or subcategory) in the given knowledge base. */
@@ -375,7 +390,12 @@ export async function findArticleBySourceKey(
     };
 
     const response = await snRequest('GET', url, { headers, params });
-    const results = (response.data.result || []) as KbArticle[];
+    // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
+    // documented on assertArticleResult applies here -- a malformed response's
+    // data defaults to `{}`, which is truthy, so `results || []` alone would keep
+    // the object and crash on `results[0]` (#372/#29 follow-up; matches the
+    // existing pattern in findOrCreateCategory below).
+    const results = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
 
     if (results.length === 0) return null;
 
