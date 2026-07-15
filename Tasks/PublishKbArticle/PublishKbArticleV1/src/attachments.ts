@@ -137,7 +137,18 @@ export async function syncImageAttachment(
         instance, headers, articleId, filePath, fileName, contentTypeFor(fileName),
     );
     if (match) {
-        await deleteAttachment(instance, headers, match.sys_id);
+        // Retried (#509) the same as uploadAttachment above -- deleteAttachment
+        // previously had no retry of its own. This is deliberately a retry of the
+        // single DELETE call, not of syncImageAttachment as a whole: retrying the
+        // whole function (which processArticleImages did in an earlier version of
+        // this change) re-runs the already-succeeded upload step too on every
+        // retry attempt -- since `existing` is a snapshot captured once before the
+        // loop and never refreshed, a transient failure on delete would silently
+        // accumulate duplicate attachments instead of safely retrying the one
+        // call that actually failed.
+        await withRetry(() => deleteAttachment(instance, headers, match.sys_id), {
+            log: (message) => console.log(`[WARN] ${message}`),
+        });
     }
     return newId;
 }
@@ -178,22 +189,49 @@ export async function processArticleImages(
     const missing: string[] = [];
     let uploaded = 0;
 
-    for (const ref of refs) {
-        if (!fs.existsSync(ref.absPath)) {
-            const msg = tasks.loc('ImageNotFound', ref.originalSrc, ref.absPath);
-            if (failOnMissing) {
-                throw new Error(msg);
+    try {
+        for (const ref of refs) {
+            if (!fs.existsSync(ref.absPath)) {
+                const msg = tasks.loc('ImageNotFound', ref.originalSrc, ref.absPath);
+                if (failOnMissing) {
+                    throw new Error(msg);
+                }
+                log(`[WARN] ${msg}`);
+                missing.push(ref.originalSrc);
+                continue;
             }
-            log(`[WARN] ${msg}`);
-            missing.push(ref.originalSrc);
-            continue;
+            // syncImageAttachment's own upload/delete network calls are each
+            // individually wrapped in withRetry (#509) to reduce spurious mid-loop
+            // failures on a transient ServiceNow/network blip -- without that, a
+            // single failed image in the middle of a multi-image article aborts the
+            // whole loop (and the caller's subsequent updateArticleBody rewrite
+            // never runs), even though every image already uploaded in this run is
+            // self-healing on the next pipeline re-run via syncImageAttachment's
+            // filename-based idempotency. Retrying at the individual-call level
+            // (rather than wrapping this whole call) avoids re-running an
+            // already-succeeded upload on a retry of a later step -- see
+            // syncImageAttachment's comment.
+            const attachmentId = await syncImageAttachment(
+                instance, headers, articleId, ref.absPath, ref.fileName, existing,
+            );
+            srcToId.set(ref.originalSrc, attachmentId);
+            uploaded++;
+            log(tasks.loc('ImageAttached', ref.fileName, attachmentId));
         }
-        const attachmentId = await syncImageAttachment(
-            instance, headers, articleId, ref.absPath, ref.fileName, existing,
-        );
-        srcToId.set(ref.originalSrc, attachmentId);
-        uploaded++;
-        log(tasks.loc('ImageAttached', ref.fileName, attachmentId));
+    } catch (err) {
+        // If the loop aborts mid-way (a missing file with failOnMissing, or a
+        // retry-exhausted ServiceNow error), the images uploaded so far are real,
+        // already-attached ServiceNow records -- surface them as a warning so an
+        // operator isn't surprised by attached-but-unlinked attachments before the
+        // next run's idempotent re-sync catches up (#509).
+        if (srcToId.size > 0) {
+            const uploadedNames = refs
+                .filter((ref) => srcToId.has(ref.originalSrc))
+                .map((ref) => ref.fileName)
+                .join(', ');
+            tasks.warning(tasks.loc('ImagesUploadedBeforeAbort', srcToId.size, uploadedNames));
+        }
+        throw err;
     }
 
     return { html: rewriteImageSrcs(html, srcToId), uploaded, missing };

@@ -35,8 +35,39 @@ export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'for
  * HTML supplied directly via the htmlFile input (bypassing Markdown2Html
  * entirely) could carry a live <iframe srcdoc="..."> or <object data="...">
  * straight past the fail-closed gate.
+ *
+ * `link` joins this set for #523: it has no legitimate use in either
+ * consumer's input (Markdown2Html's generated document never emits one), and
+ * a `<link rel="stylesheet" href="...">` is a CSS-injection/exfiltration
+ * vector (attribute-selector-driven `background: url(...)` requests can leak
+ * page content byte-by-byte) regardless of URI scheme -- the existing
+ * URI_BEARING_ATTRIBUTES scheme check does not cover it, since it only flags
+ * javascript:/vbscript:/data: schemes, not an ordinary-looking https:// URL.
+ *
+ * `style` is deliberately NOT in this shared set, unlike every other #523
+ * candidate: Markdown2Html's generateHtmlDocument() unconditionally injects
+ * its own `<head><style>...</style></head>` into every document it produces,
+ * ServiceNow is verified to preserve and render that block (see
+ * Markdown2Html/src/highlight-theme.ts), and the documented Markdown2Html ->
+ * PublishKbArticle pipeline feeds that WHOLE generated document (head, style
+ * and all) into PublishKbArticleV1's `htmlFile` input, which
+ * validateHtmlContent() reads verbatim. Adding `style` here would make
+ * PublishKbArticle's gate reject its own upstream task's output on every
+ * run. A location-based split (allow `<style>` inside `<head>`, reject
+ * elsewhere) was also considered and rejected: a raw htmlFile input that
+ * bypasses Markdown2Html entirely can trivially wrap a hostile `<style>` in
+ * its own `<head>`, defeating a location-based check outright. Each consumer
+ * instead applies its own narrower `<style>` handling, scoped to what is
+ * actually safe for its own input shape -- see sanitizeRenderedHtml() in
+ * Markdown2Html's render.ts (strips any `<style>` from the body-only content
+ * it sanitizes, before the trusted document wrapper is applied -- no
+ * location ambiguity there) and validateHtmlContent() in PublishKbArticle's
+ * html-validate.ts (rejects `<style>` CONTENT containing a network-fetching
+ * CSS construct, e.g. `url(...)`/`@import`, regardless of where the element
+ * sits -- Markdown2Html's own generated CSS is a fixed string with neither,
+ * verified).
  */
-export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
+export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'link', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the

