@@ -292,6 +292,26 @@ Execute Terraform commands. Most pipelines combine `init` → `plan` → `apply`
     environmentServiceNameOCI: 'my-oci-service-connection'
 ```
 
+#### Plan (OCI, Workload Identity Federation)
+
+See the [OCI WIF Setup Guide](setup/oci-wif-setup.md) for the one-time Identity Domain configuration this requires.
+
+```yaml
+- task: PipelineTerraformTask@5
+  name: terraformPlan
+  displayName: 'Terraform Plan'
+  inputs:
+    provider: 'oci'
+    command: 'plan'
+    commandOptions: '-out=tfplan'
+    environmentServiceNameOCI: 'my-oci-service-connection'
+    environmentAuthSchemeOCI: 'WorkloadIdentityFederation'
+    ociWifTenancyOcid: 'ocid1.tenancy.oc1..aaaaaaaa...'
+    ociWifRegion: 'us-ashburn-1'
+    ociWifIdentityDomainUrl: 'https://idcs-abc123.identity.oraclecloud.com'
+    ociWifClientId: 'my-identity-domain-app-client-id'
+```
+
 ---
 
 ### Additional commands

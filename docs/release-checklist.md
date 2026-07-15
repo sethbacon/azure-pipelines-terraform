@@ -10,6 +10,7 @@ Manual verification steps to run before publishing a release to the VS Marketpla
 - [ ] Version in `azure-devops-extension.json` matches the intended tag (e.g. `1.0.0` for `v1.0.0`) — release-please sets this in the Release PR
 - [ ] `CHANGELOG.md` has an entry for the release version (release-please generates this)
 - [ ] **Minor bumps (mandatory):** every task whose `src/` changed since the last release tag has its `Minor` incremented in `task.json`. ADO agents cache tasks by `Major.Minor`, so a code (especially security) fix to an un-bumped task would ship to the Marketplace but never reach running agents. The release `guard` job enforces this via `scripts/check-minor-bumps.js`; run it locally too: `node scripts/check-minor-bumps.js` (defaults to comparing `HEAD` against the previous `v*` tag).
+- [ ] **Sibling-fork scan (recurring):** skim recent commits/issues in [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) and [jason-johnson/azure-pipelines-tasks-terraform](https://github.com/jason-johnson/azure-pipelines-tasks-terraform) since the last release for auth- or security-relevant fixes or reports worth reviewing or backporting to this fork.
 
 ## 2. Build the `.vsix` locally
 
@@ -78,15 +79,15 @@ npm run package:release   # or package:self for a private test extension
 
 ## 4i. Markdown2Html smoke test
 
-- [ ] `PipelineMarkdown2Html@1` on a sample `.md` — writes HTML and sets `htmlFilePath`
+- [ ] `Markdown2Html@1` on a sample `.md` — writes HTML and sets `htmlFilePath`
 - [ ] Front matter (`title`, `includes`) is honored; an `includes:` entry outside the base directory is rejected
 - [ ] A raw `<script>`, an `onerror=` handler, and a `javascript:`/non-image `data:` URI in the source are stripped by the sanitizer (inspect the generated HTML)
 
 ## 4j. PublishKbArticle smoke test
 
-- [ ] `PipelinePublishKbArticle@1` with `dryRun: true` — reports the planned create/update without calling ServiceNow
+- [ ] `PublishKbArticle@1` with `dryRun: true` — reports the planned create/update without calling ServiceNow
 - [ ] Create then update against a test ServiceNow instance — `kbArticleId`/`kbArticleNumber`/`kbWorkflowState` outputs are set
-- [ ] HTML that fails validation (inline `<script>`, `on*` handler, `javascript:`/`data:` URI) is rejected unless `force: true`
+- [ ] HTML that fails validation (inline `<script>`, `on*` handler, `javascript:`/`data:` URI) is always rejected, regardless of `force` — only the content-loss heuristic (output retains too little of the input's length) is downgraded to a warning when `force: true`
 - [ ] Image upload rewrites `<img src>` to ServiceNow attachments; a missing image fails unless `force: true`; a crafted `instance` value (not `^[a-z0-9-]+$`) is rejected
 
 ## 5. Core commands smoke test (AzureRM)

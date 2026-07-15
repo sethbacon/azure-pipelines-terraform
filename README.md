@@ -86,6 +86,129 @@ Runs Terraform commands. Supports 16 commands:
 | `refresh`     | Reconcile state with real-world resources. Supports `varFile`, `targetResources`, parallelism. |
 | `custom`      | Run any Terraform command via `customCommand` input.                                           |
 
+#### Core inputs
+
+| Input              | Default                            | Description                                                                                                                                        |
+| ------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`          | `azurerm`                          | Cloud provider used in the Terraform configuration: `azurerm`, `aws`, `gcp`, or `oci`. Selects the provider auth handler for all commands except `init` (which uses `backendType`). |
+| `binaryName`        | `terraform`                        | `terraform` or `tofu` (OpenTofu). The selected binary must already be on `PATH` (run `PipelineTerraformInstaller@1` first).                          |
+| `command`           | `init`                              | The Terraform command to run. See the command table above.                                                                                          |
+| `backendType`       | `azurerm`                          | State backend for `init` only: `azurerm`, `s3`, `gcs`, `oci`, `hcp`, `generic`, or `local`. Decoupled from `provider` — see [Backend Types](#backend-types). |
+| `workingDirectory`  | `$(System.DefaultWorkingDirectory)` | Directory containing the Terraform configuration files.                                                                                              |
+| `commandOptions`    | —                                   | Additional raw arguments appended to the command, e.g. `-out=tfplan`.                                                                                |
+
+#### Command-specific inputs
+
+| Input                | Applies to                                     | Default     | Description                                                                                                                                                                                                                                    |
+| --------------------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `publishPlanResults`  | `plan`                                          | —           | Name for a plan published to the **Terraform Plan** results tab (e.g. `production`). Leave empty to disable.                                                                                                                                  |
+| `secureVarsFile`      | `plan`, `apply`, `destroy`, `import`, `refresh` | —           | A `.tfvars` file from the ADO Secure Files library, downloaded to a temp path and passed as `-var-file`, then deleted after execution.                                                                                                        |
+| `terraformVariables`  | `plan`, `apply`, `destroy`, `import`, `refresh` | —           | Newline-separated `key=value` pairs, each passed as `-var`. Not for secrets — command-line `-var` values can be visible in process listings/logs; use `secureVarsFile` or `TF_VAR_` pipeline secret variables instead.                       |
+| `replaceAddress`      | `plan`, `apply`                                 | —           | Forces replacement of a resource address via `-replace=ADDRESS` (Terraform 1.0+).                                                                                                                                                             |
+| `importAddress`       | `import` (required)                             | —           | Resource address to import into, e.g. `aws_instance.web`.                                                                                                                                                                                      |
+| `importId`            | `import` (required)                             | —           | Provider-specific ID of the resource to import.                                                                                                                                                                                                 |
+| `lockId`              | `forceunlock` (required)                        | —           | Lock ID shown in the error message when acquiring the state lock failed.                                                                                                                                                                       |
+| `refreshOnly`         | `plan`, `apply`                                 | `false`     | Run in refresh-only mode — reconciles state against real infrastructure without proposing changes.                                                                                                                                            |
+| `lockfileReadonly`    | `init`                                          | `false`     | Sets `-lockfile=readonly` to prevent Terraform from updating `.terraform.lock.hcl`. Recommended for CI.                                                                                                                                        |
+| `parallelism`         | `plan`, `apply`, `destroy`, `refresh`           | —           | Limits concurrent operations via `-parallelism=N`.                                                                                                                                                                                             |
+| `varFile`             | `plan`, `apply`, `destroy`, `import`, `refresh` | —           | Newline-separated `.tfvars` paths (relative to `workingDirectory`), each passed as `-var-file=<path>`.                                                                                                                                        |
+| `targetResources`     | `plan`, `apply`, `destroy`, `refresh`           | —           | Newline-separated resource addresses, each passed as `-target=<address>`.                                                                                                                                                                      |
+| `testJunitXmlPath`    | `test`                                          | —           | Path to write JUnit XML results via `-junit-xml=PATH` (Terraform 1.6+). Publish it with `PublishTestResults@2` for the ADO **Tests** tab.                                                                                                     |
+| `testFilter`          | `test`                                          | —           | Restricts `terraform test` to files matching this `-filter=TESTFILE`.                                                                                                                                                                          |
+| `workspaceSubCommand` | `workspace` (required)                          | —           | `new`, `select`, `list`, `delete`, or `show`.                                                                                                                                                                                                   |
+| `workspaceName`       | `workspace`                                     | —           | Workspace to create, select, or delete.                                                                                                                                                                                                         |
+| `stateSubCommand`     | `state` (required)                              | —           | `list`, `pull`, `push`, `mv`, `rm`, `show`, or `replace-provider`.                                                                                                                                                                              |
+| `stateAddress`        | `state`                                         | —           | Resource address(es)/arguments for the state sub-command (e.g. `SOURCE DESTINATION` for `mv`).                                                                                                                                                |
+| `fmtCheck`            | `fmt`                                           | `true`      | Runs `terraform fmt -check` and fails if files need reformatting.                                                                                                                                                                              |
+| `fmtRecursive`        | `fmt`                                           | `true`      | Runs `terraform fmt -recursive`.                                                                                                                                                                                                                |
+| `fmtDiff`             | `fmt`                                           | `false`     | Runs `terraform fmt -diff` to display formatting changes.                                                                                                                                                                                       |
+| `outputTo`            | `show`, `custom` (required)                     | `console`   | `file` or `console`.                                                                                                                                                                                                                            |
+| `customCommand`       | `custom` (required)                             | —           | The raw Terraform command to execute.                                                                                                                                                                                                           |
+| `outputFormat`        | `show` (required)                               | `default`   | `json` or `default`.                                                                                                                                                                                                                             |
+| `filename`            | `show`/`custom` when `outputTo = file` (required) | —         | Path (relative to `workingDirectory`) to write the command output to.                                                                                                                                                                          |
+| `cleanupOutputFile`   | `output`                                        | `false`     | Deletes the `output`-command's JSON file (every output's real value, **including any marked `sensitive`**) when the step finishes. **Retained by default** so downstream steps can read it via the `jsonOutputVariablesPath` output variable — enable this if a step only needs the auto-set `TF_OUT_*` pipeline variables (see below) and not the file itself, especially on a self-hosted agent whose working directory persists between jobs. |
+
+#### Provider authentication inputs
+
+Shown on all commands except `init`/`validate`/`workspace`/`state`/`fmt`/`get`/`forceunlock`, and `test` (where the service connection is optional). See [Providers](#providers) and the WIF setup guides.
+
+| Input                                       | Provider   | Default             | Description                                                                                                                     |
+| --------------------------------------------- | ---------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `environmentServiceNameAzureRM`             | Azure      | — (required)         | Azure Resource Manager service connection.                                                                                       |
+| `environmentAzureRmOverrideSubscriptionID`  | Azure      | —                    | Overrides `ARM_SUBSCRIPTION_ID`; defaults to the service connection's subscription.                                              |
+| `environmentAzureRmUseIdTokenGeneration`    | Azure      | `false`              | Use ID token generation as a fallback for older AzureRM provider versions.                                                       |
+| `runAzLogin`                                | Azure      | `false`              | Run `az login` with the service connection credentials before the Terraform command (for `local-exec`/CLI-based auth). **Security-sensitive** — see the `runAzLogin` help text and [SECURITY.md](SECURITY.md) for the argv-visibility caveat. |
+| `environmentServiceNameAWS`                 | AWS        | — (required)         | Pipeline AWS for Terraform service connection.                                                                                    |
+| `environmentAuthSchemeAWS`                  | AWS        | `ServiceConnection`  | `ServiceConnection` (static credentials) or `WorkloadIdentityFederation`.                                                        |
+| `awsRoleArn`                                 | AWS        | — (required for WIF) | IAM role ARN to assume via OIDC.                                                                                                  |
+| `awsRegion`                                  | AWS        | — (required for WIF) | AWS region for the provider.                                                                                                      |
+| `awsSessionName`                             | AWS        | `AzureDevOps-Terraform` | Assumed-role session name.                                                                                                     |
+| `environmentServiceNameGCP`                 | GCP        | — (required)         | Pipeline GCP for Terraform service connection.                                                                                    |
+| `environmentAuthSchemeGCP`                  | GCP        | `ServiceConnection`  | `ServiceConnection` (service account key) or `WorkloadIdentityFederation`.                                                       |
+| `gcpProjectNumber`                           | GCP        | — (required for WIF) | Numeric GCP project number hosting the Workload Identity Pool.                                                                    |
+| `gcpWorkloadIdentityPoolId`                  | GCP        | — (required for WIF) | Workload Identity Pool ID.                                                                                                        |
+| `gcpWorkloadIdentityProviderId`              | GCP        | — (required for WIF) | OIDC provider ID within the pool.                                                                                                  |
+| `gcpServiceAccountEmail`                     | GCP        | — (required for WIF) | Service account to impersonate.                                                                                                   |
+| `environmentServiceNameOCI`                 | OCI        | — (required)         | Pipeline OCI for Terraform service connection.                                                                                    |
+| `environmentAuthSchemeOCI`                  | OCI        | `ServiceConnection`  | `ServiceConnection` (API key) or `WorkloadIdentityFederation`. See the [OCI WIF Setup Guide](docs/setup/oci-wif-setup.md).       |
+| `ociWifTenancyOcid`                          | OCI        | — (required for WIF) | OCID of the OCI tenancy.                                                                                                          |
+| `ociWifRegion`                               | OCI        | — (required for WIF) | OCI region identifier.                                                                                                             |
+| `ociWifIdentityDomainUrl`                    | OCI        | — (required for WIF) | URL of the OCI Identity Domain configured for OIDC federation.                                                                    |
+| `ociWifClientId`                             | OCI        | — (required for WIF) | Client ID of the Identity Domains application configured to accept OIDC tokens from Azure DevOps.                                |
+
+#### Backend configuration inputs (`init` only)
+
+Shown when `command = init` and `backendType` selects the matching backend (independent of `provider` — see [Backend Types](#backend-types)).
+
+| Input                                       | Backend   | Default | Description                                                                                                                  |
+| --------------------------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `backendServiceArm`                          | azurerm   | — (required) | Azure Resource Manager service connection for the backend.                                                              |
+| `backendAzureRmUseEntraIdForAuthentication`  | azurerm   | `true`  | Sets Terraform's `use_azuread_auth` for the azurerm backend.                                                                |
+| `backendAzureRmUseCliFlagsForAuthentication` | azurerm   | `false` | Use CLI flags (`client_id`, `ado_pipeline_service_connection_id`, `use_oidc`) so the backend can use a separate service connection from the provider. |
+| `backendAzureRmUseIdTokenGeneration`         | azurerm   | `false` | ID token generation fallback for older azurerm backend versions.                                                            |
+| `backendAzureRmOverrideSubscriptionID`       | azurerm   | —       | Subscription containing the storage account (only needed for URI lookup).                                                  |
+| `backendAzureRmResourceGroupName`            | azurerm   | —       | Resource group containing the storage account (only needed for URI lookup).                                                |
+| `backendAzureRmStorageAccountName`           | azurerm   | — (required) | Storage account holding the Blob container.                                                                            |
+| `backendAzureRmContainerName`                | azurerm   | — (required) | Blob container name.                                                                                                    |
+| `backendAzureRmKey`                          | azurerm   | — (required) | Path to the state file inside the container.                                                                            |
+| `backendServiceAWS`                          | s3        | — (required) | AWS service connection for the backend.                                                                                 |
+| `backendAuthSchemeAWS`                       | s3        | `ServiceConnection` | `ServiceConnection` (static credentials) or `WorkloadIdentityFederation`.                                        |
+| `backendAWSBucketName`                       | s3        | — (required) | S3 bucket for the state file.                                                                                           |
+| `backendAWSKey`                              | s3        | — (required) | Path to the state file inside the bucket.                                                                               |
+| `backendAWSRoleArn`                          | s3        | — (required for WIF) | IAM role ARN to assume via OIDC for backend access.                                                             |
+| `backendAWSRegion`                           | s3        | — (required for WIF) | AWS region of the S3 bucket.                                                                                     |
+| `backendAWSSessionName`                      | s3        | `AzureDevOps-Terraform-Backend` | Assumed-role session name.                                                                            |
+| `backendServiceGCP`                          | gcs       | — (required) | GCP service connection for the backend.                                                                                 |
+| `backendAuthSchemeGCP`                       | gcs       | `ServiceConnection` | `ServiceConnection` (service account key) or `WorkloadIdentityFederation`.                                       |
+| `backendGCPBucketName`                       | gcs       | — (required) | GCS bucket for the state file.                                                                                          |
+| `backendGCPPrefix`                           | gcs       | —       | Relative path/prefix inside the bucket for the state object.                                                                |
+| `backendGCPProjectNumber`                    | gcs       | — (required for WIF) | GCP project number hosting the Workload Identity Pool.                                                          |
+| `backendGCPWorkloadIdentityPoolId`           | gcs       | — (required for WIF) | Workload Identity Pool ID.                                                                                       |
+| `backendGCPWorkloadIdentityProviderId`       | gcs       | — (required for WIF) | OIDC provider ID within the pool.                                                                                |
+| `backendGCPServiceAccountEmail`              | gcs       | — (required for WIF) | Service account to impersonate for backend access.                                                              |
+| `backendServiceOCI`                          | oci       | — (required) | OCI service connection for the backend.                                                                                 |
+| `backendOCIPar`                              | oci       | —       | OCI Object Storage pre-authenticated request (PAR) URL for the state file.                                                  |
+| `backendOCIConfigGenerate`                   | oci       | `yes`   | Generates the `backend "http"` Terraform config from `backendOCIPar` at runtime; set `no` if the backend block is already in your `.tf` files. |
+| `backendHCPToken`                            | hcp       | — (required) | HCP Terraform / Terraform Cloud API token. Sets `TF_TOKEN_app_terraform_io`.                                        |
+| `backendHCPOrganization`                     | hcp       | —       | HCP organization name; falls back to the `cloud{}` block in `.tf` files if unset. Sets `TF_CLOUD_ORGANIZATION`.             |
+| `backendHCPWorkspace`                        | hcp       | —       | HCP workspace name; falls back to the `cloud{}` block in `.tf` files if unset. Sets `TF_WORKSPACE`.                         |
+| `backendConfigFile`                          | generic   | —       | Path to a `.tfbackend` file, passed as `-backend-config=<file>`.                                                            |
+| `backendConfigArgs`                          | generic   | —       | Newline-separated `key=value` pairs, each passed as a separate `-backend-config` flag.                                      |
+
+Backend inputs are also required on non-`init` state-accessing commands when the detected backend differs from `provider` — see [Cross-cloud state backends](docs/yaml-examples.md#cross-cloud-state-backends).
+
+**Output variables:**
+
+| Variable                    | Description                                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jsonPlanFilePath`           | Path to the `plan` command's JSON plan file (`terraform show -json` equivalent input for policy tooling). Set only when `command = plan`. |
+| `jsonOutputVariablesPath`    | Path to the `output` command's JSON file. Set only when `command = output`. See `cleanupOutputFile` above.                              |
+| `changesPresent`             | Boolean — whether the `plan` found changes to apply.                                                                                     |
+| `destroyChangesPresent`      | Boolean — whether the plan contains resource deletions. Set when `command = show`, `outputTo = file`, `outputFormat = json`.             |
+| `showFilePath`               | Path to the `show` command's output file. Set only when `command = show` and `outputTo = file`.                                          |
+| `customFilePath`             | Path to the `custom` command's output file. Set only when `command = custom` and `outputTo = file`.                                      |
+| `TF_OUT_<name>`              | On `command = output`, every Terraform output is auto-set as a pipeline variable named `TF_OUT_<output name>`. **The variable is masked as secret only when the module declares that output `sensitive = true`** in its own Terraform configuration — an output a module author forgot to mark `sensitive` is written as an unmasked pipeline variable, even though `terraform output -json` itself always emits every value (including sensitive ones) in cleartext. Values that fail a length/printable-ASCII sanity check are skipped (with a task warning) rather than set. Do not rely on `TF_OUT_*` masking as the sole safeguard for a module whose `sensitive` annotations you don't fully trust. |
+
 ---
 
 ### `PipelineTerraformModulePublish@1` — Module Publisher
@@ -361,10 +484,11 @@ Azure uses the standard **Azure Resource Manager** service connection built into
 
 ## Workload Identity Federation
 
-AWS and GCP support Workload Identity Federation — no static credentials are stored in the service connection. Azure DevOps issues an OIDC token that is exchanged for temporary cloud credentials at runtime.
+AWS, GCP, and OCI support Workload Identity Federation — no static credentials are stored in the service connection. Azure DevOps issues an OIDC token that is exchanged for temporary cloud credentials at runtime.
 
 - [AWS WIF Setup Guide](docs/setup/aws-wif-setup.md)
 - [GCP WIF Setup Guide](docs/setup/gcp-wif-setup.md)
+- [OCI WIF Setup Guide](docs/setup/oci-wif-setup.md)
 
 ### AWS WIF — quick reference
 
@@ -393,6 +517,21 @@ AWS and GCP support Workload Identity Federation — no static credentials are s
     gcpWorkloadIdentityPoolId: azure-devops-pool
     gcpWorkloadIdentityProviderId: azure-devops-provider
     gcpServiceAccountEmail: terraform@my-project.iam.gserviceaccount.com
+```
+
+### OCI WIF — quick reference
+
+```yaml
+- task: PipelineTerraformTask@5
+  inputs:
+    provider: oci
+    command: plan
+    environmentServiceNameOCI: my-oci-service-connection
+    environmentAuthSchemeOCI: WorkloadIdentityFederation
+    ociWifTenancyOcid: ocid1.tenancy.oc1..aaaaaaaa...
+    ociWifRegion: us-ashburn-1
+    ociWifIdentityDomainUrl: https://idcs-abc123.identity.oraclecloud.com
+    ociWifClientId: my-identity-domain-app-client-id
 ```
 
 ---

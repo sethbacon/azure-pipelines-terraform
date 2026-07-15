@@ -493,6 +493,11 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 `terraform`, `azure-devops`, `azure-pipelines`, `infrastructure-as-code`, `azure-devops-extension`, `devops`
 
+### Accepted Risk Register
+
+- **Admin bypass of required review, sole CODEOWNERS reviewer (audit #499):** `Enforce admins: no` lets the sole maintainer (`@sethbacon`) push to `main` or merge without satisfying the required-review/required-status-check rules, and CODEOWNERS names that same single account for every path (including `.github/`), so there is structurally no independent second reviewer even when the rule is respected. **Accepted** for a solo-maintainer project: enabling `enforce_admins` today would deadlock every PR that requires code-owner review, since no other codeowner could ever approve it. Revisit once a second maintainer/codeowner exists — see the second-maintainer item below (audit #518).
+- **Sole maintainer bus factor (audit #518):** the entire task/provider surface (11 tasks, GPG/cosign trust roots, WIF for 4 clouds, a ServiceNow integration) is maintained by one person — a real availability risk for timely key rotation, incident response, and CVE triage as the surface keeps growing. Recruiting at least a limited-scope second reviewer (e.g., security-only CODEOWNERS rights) remains an **open recommendation**, tracked below under "Remaining Recommendations"; not yet actioned.
+
 ### Remaining Recommendations (not yet applied)
 
 - **Enable secret scanning non-provider patterns and validity checks** for broader secret detection

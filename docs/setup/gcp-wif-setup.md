@@ -82,14 +82,19 @@ gcloud iam service-accounts create "terraform-deployer" \
     --display-name="Terraform Deployer"
 ```
 
-Attach the permissions your Terraform configuration requires:
+Attach the permissions your Terraform configuration requires. Prefer narrow, service-specific predefined roles over `roles/editor` — for example, a configuration that only manages Compute Engine instances and needs to act as a service account on them:
 
 ```bash
-# Example: Editor role (adjust to the minimum required)
 gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
     --member="serviceAccount:terraform-deployer@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
-    --role="roles/editor"
+    --role="roles/compute.instanceAdmin.v1"
+
+gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+    --member="serviceAccount:terraform-deployer@<YOUR_PROJECT_ID>.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
 ```
+
+> **Security note:** grant only the predefined (or custom) roles your Terraform configuration actually needs. `roles/editor` is close to project-wide write access — a leaked plan file, a compromised pipeline dependency, or a misconfigured attribute condition (see below) then has a correspondingly larger blast radius. Combine narrow roles like the ones above (or a custom role) to match your configuration, and widen only as needed.
 
 ## Step 5: Grant Workload Identity User Role
 
