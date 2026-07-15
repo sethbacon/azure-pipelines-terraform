@@ -22,6 +22,23 @@ jobs:
           persist-credentials: false
       - name: Validate version fields
         run: node scripts/check-versions.js
+      - name: Validate task list consistency
+        run: node scripts/check-task-list.js
+      - name: Self-test check-versions.js
+        run: node scripts/test-check-versions.js
+      - name: Check for mojibake encoding corruption
+        shell: bash
+        # Catches recurrence of the UTF-8-decoded-as-Windows-1252 corruption
+        # fixed in azure-devops-extension.json, where a plain em dash had
+        # been mis-decoded into three separate replacement characters, by
+        # scanning the whole repo for the same byte signature.
+        run: |
+          set -uo pipefail
+          if grep -rIl --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build $'\xc3\xa2\xe2\x82\xac' .; then
+            echo "::error::Mojibake encoding corruption found in the file(s) listed above (UTF-8 text mis-decoded as Windows-1252, then re-saved as UTF-8). Re-save as UTF-8 and replace the corrupted bytes with the intended character (e.g. a plain em dash)." >&2
+            exit 1
+          fi
+          echo "No mojibake encoding corruption found."
 
   check-shared-modules:
     name: Check Shared Module Parity
@@ -32,6 +49,8 @@ jobs:
           persist-credentials: false
       - name: Validate shared installer modules are identical
         run: node scripts/check-shared-modules.js
+      - name: Self-test check-shared-modules.js
+        run: node scripts/test-check-shared-modules.js
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})
@@ -342,8 +361,12 @@ jobs:
         run: npm run test:coverage
 
   build-and-test-tab:
-    name: Build and Test Tab
-    runs-on: ubuntu-latest
+    name: Build and Test Tab (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -401,10 +424,26 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - name: Download and verify zizmor
+        shell: bash
+        # Downloads the zizmor wheel directly from PyPI and verifies it
+        # against PyPI's own published SHA256 digest before use, rather than
+        # `pipx run --spec zizmor==1.26.1` (a version-string pin only, with no
+        # integrity check). Matches this repo's verify-before-use convention
+        # used everywhere else (see the actionlint step above). zizmor ships
+        # no runtime Python dependencies (requires_dist is empty per the PyPI
+        # JSON API), so verifying the single wheel it resolves to is
+        # sufficient. Checksum from
+        # https://pypi.org/pypi/zizmor/1.26.1/json (manylinux_2_28_x86_64
+        # wheel, matching this job's ubuntu-latest x86_64 runner).
+        run: |
+          set -euo pipefail
+          curl -sSfLO https://files.pythonhosted.org/packages/a8/2b/61ab13d45d6ce57ef5a08bb3246981f62e30bb4938098b17bb7b88110b79/zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl
+          echo "6a958d8a0941d7e1d0de8436670b5cb7fc64c8028b4d16e3f519ccc77f953cef  zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl" | sha256sum -c -
       # Online audits (ref-version-mismatch, impostor-commit, known-vulnerable
       # actions) use GITHUB_TOKEN; the rest (unpinned-uses, template-injection,
       # excessive-permissions) run regardless. Pinned for a deterministic gate.
       - name: Run zizmor
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pipx run --spec zizmor==1.26.1 zizmor .github/workflows/
+        run: pipx run --spec ./zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl zizmor .github/workflows/
