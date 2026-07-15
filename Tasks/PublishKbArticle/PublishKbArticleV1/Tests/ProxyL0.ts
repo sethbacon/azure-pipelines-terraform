@@ -2,6 +2,7 @@ import { describe, it, before, after } from 'mocha';
 import assert = require('assert');
 import * as net from 'net';
 import * as https from 'https';
+import * as tls from 'tls';
 import nock = require('nock');
 import tasks = require('azure-pipelines-task-lib/task');
 import { snRequest } from '../src/servicenow-http';
@@ -12,15 +13,6 @@ import { startConnectProxy, startRefusingConnectProxy } from './proxy-connect-se
 // support (tasks.getHttpProxyConfiguration() -> a CONNECT-tunneling
 // https.Agent). New file rather than an addition to L0.ts to avoid rebase
 // conflicts with the kb-hardening PR, which also touches L0.ts.
-//
-// A few tests below set process.env.NODE_TLS_REJECT_UNAUTHORIZED='0' for their
-// duration, restoring it in a finally block. This is TEST-ONLY: snRequest()
-// (unlike the DriftReport/ModulePublish https-client.ts) has no
-// rejectUnauthorized/ca override of its own, so it is the only way to make it
-// accept the loopback self-signed cert used to exercise a real CONNECT tunnel
-// end-to-end. Every server involved is bound to 127.0.0.1, the flag is
-// restored immediately after each test, and no production code path is
-// affected.
 describe('servicenow-http: agent proxy support', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
     const t = tasks as any;
@@ -47,6 +39,31 @@ describe('servicenow-http: agent proxy support', function () {
         t.setSecret = origSetSecret;
     });
 
+    /**
+     * Runs `fn` with tls.connect() patched to trust TLS_CERT as an additional CA,
+     * so a request through the real CONNECT-tunneling ProxyTunnelAgent (which
+     * calls tls.connect() itself, and which -- unlike DriftReport/ModulePublish's
+     * https-client.ts -- servicenow-http.ts gives no rejectUnauthorized override
+     * for) can complete a genuine, verified TLS handshake against the loopback
+     * self-signed server. This exercises real certificate validation end-to-end
+     * rather than disabling it, unlike NODE_TLS_REJECT_UNAUTHORIZED=0 or
+     * rejectUnauthorized: false (both flagged by CodeQL's
+     * disabling-certificate-validation query, and both weaker than pinning a
+     * specific trusted CA).
+     */
+    async function withTestCaTrusted<T>(fn: () => Promise<T>): Promise<T> {
+        const originalConnect = tls.connect;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- narrow test-only patch of tls.connect's options-object overload
+        (tls as any).connect = (options: tls.ConnectionOptions, callback?: () => void) =>
+            originalConnect({ ...options, ca: TLS_CERT }, callback);
+        try {
+            return await fn();
+        } finally {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restoring the same test-only patch above
+            (tls as any).connect = originalConnect;
+        }
+    }
+
     it('routes a request through a configured HTTP CONNECT proxy', async () => {
         const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
             res.statusCode = 200;
@@ -59,14 +76,11 @@ describe('servicenow-http: agent proxy support', function () {
         await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
         const proxyPort = (proxy.address() as net.AddressInfo).port;
 
-        // servicenow-http.ts has no rejectUnauthorized input of its own; disable
-        // TLS verification process-wide for this one test so the self-signed
-        // loopback cert is accepted end-to-end through the tunnel.
-        const originalReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
         try {
-            const resp = await snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`);
+            const resp = await withTestCaTrusted(() =>
+                snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`),
+            );
             assert.strictEqual(resp.status, 200);
             assert.deepStrictEqual(resp.data, { result: { ok: true } });
             assert.strictEqual(seen.length, 1, 'the proxy should have seen exactly one CONNECT');
@@ -74,11 +88,6 @@ describe('servicenow-http: agent proxy support', function () {
         } finally {
             target.close();
             proxy.close();
-            if (originalReject === undefined) {
-                delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-            } else {
-                process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalReject;
-            }
         }
     });
 
@@ -103,10 +112,10 @@ describe('servicenow-http: agent proxy support', function () {
             proxyPassword: 'p@ss',
         });
 
-        const originalReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         try {
-            const resp = await snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`);
+            const resp = await withTestCaTrusted(() =>
+                snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`),
+            );
             assert.strictEqual(resp.status, 200);
             assert.strictEqual(seen.length, 1);
             assert.strictEqual(seen[0].proxyAuthorization, expectedAuth);
@@ -114,11 +123,6 @@ describe('servicenow-http: agent proxy support', function () {
         } finally {
             target.close();
             proxy.close();
-            if (originalReject === undefined) {
-                delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-            } else {
-                process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalReject;
-            }
         }
     });
 
@@ -154,18 +158,21 @@ describe('servicenow-http: agent proxy support', function () {
         const targetPort = (target.address() as net.AddressInfo).port;
         t.getHttpProxyConfiguration = () => undefined;
 
-        const originalReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         try {
-            const resp = await snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`);
-            assert.strictEqual(resp.status, 200);
+            // No proxy configured -> agent stays undefined -> https.request() falls
+            // back to https.globalAgent, which never calls our patched tls.connect().
+            // Verify the (production) https.globalAgent trusts TLS_CERT for this one
+            // request instead, the equivalent of the CA pinning above.
+            const originalCreateSecureContext = https.globalAgent.options.ca;
+            https.globalAgent.options.ca = TLS_CERT;
+            try {
+                const resp = await snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`);
+                assert.strictEqual(resp.status, 200);
+            } finally {
+                https.globalAgent.options.ca = originalCreateSecureContext;
+            }
         } finally {
             target.close();
-            if (originalReject === undefined) {
-                delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-            } else {
-                process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalReject;
-            }
         }
     });
 });
