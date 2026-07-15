@@ -18,6 +18,8 @@ jobs:
   guard:
     name: Verify tag is on main
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve-sha.outputs.sha }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -50,6 +52,12 @@ jobs:
           # Major.Minor, so an un-bumped fix would ship to the Marketplace but never
           # reach running agents.
           node scripts/check-minor-bumps.js
+      - name: Resolve validated commit SHA
+        id: resolve-sha
+        # Every downstream job checks out this exact commit instead of
+        # re-resolving the tag name, so nothing published later in the
+        # pipeline can be swapped out by a tag move after this point.
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   ci:
     name: CI (build + test)
@@ -58,12 +66,12 @@ jobs:
 
   build:
     name: Build release bundle
-    needs: ci
+    needs: [guard, ci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -81,12 +89,12 @@ jobs:
 
   package:
     name: Package extension (.vsix)
-    needs: build
+    needs: [guard, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -109,7 +117,7 @@ jobs:
 
   sbom-and-sign:
     name: Generate SBOM and sign VSIX
-    needs: package
+    needs: [guard, package]
     permissions:
       contents: read
       id-token: write
@@ -118,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -267,7 +275,7 @@ jobs:
 
   draft-release:
     name: Create Draft GitHub Release
-    needs: [package, sbom-and-sign]
+    needs: [guard, package, sbom-and-sign]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -276,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Download vsix artifact
@@ -301,7 +309,7 @@ jobs:
 
   publish-marketplace:
     name: Publish to VS Marketplace
-    needs: draft-release
+    needs: [guard, draft-release]
     runs-on: ubuntu-latest
     environment: marketplace
     permissions:
@@ -310,7 +318,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
