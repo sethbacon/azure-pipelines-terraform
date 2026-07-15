@@ -100,7 +100,7 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 As of PR #218, `release.yml` publishes via **GitHub OIDC federated to Microsoft Entra** — there is no stored `TFX_PAT`. The publish job (under the `marketplace` environment, `id-token: write`) signs in with `azure/login` using the two `AZDO_PUBLISH_*` variables, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app needs a federated credential with subject `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 
-The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
+The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval. This is verified automatically by the `verify-marketplace-environment-protection` job in `weekly-security.yml`, which fails the scheduled run (filing an issue) if the required-reviewer rule is missing, removed, or the environment itself no longer exists.
 
 ## Publisher Registration
 

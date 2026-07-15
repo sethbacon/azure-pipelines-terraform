@@ -99,11 +99,66 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --add-label "stale-security-patch" || true
 
+  # ── Marketplace environment protection verification ───
+  # Verifies the `marketplace` GitHub Environment (which gates publish-marketplace
+  # in release.yml) has at least one required reviewer configured. This closes the
+  # verifiability gap from audit finding #19/#396: the "must have at least one
+  # required reviewer" policy (CLAUDE.md) was previously asserted only in prose,
+  # with no repository-visible or CI-checked source of truth, so silent removal
+  # or misconfiguration of the rule would go undetected.
+  verify-marketplace-environment-protection:
+    name: Verify marketplace environment protection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check required reviewers on the marketplace environment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const ENVIRONMENT = 'marketplace';
+            let env;
+            try {
+              const response = await github.request('GET /repos/{owner}/{repo}/environments/{environment_name}', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                environment_name: ENVIRONMENT,
+              });
+              env = response.data;
+            } catch (err) {
+              if (err.status === 404) {
+                core.setFailed(`The '${ENVIRONMENT}' GitHub Environment does not exist — publish-marketplace in release.yml references an environment with no protection rules at all.`);
+                return;
+              }
+              // Reading environment protection rules only requires ordinary repo
+              // read access (unlike branch-protection/admin endpoints, which
+              // GITHUB_TOKEN cannot satisfy — see the legitify job above). A
+              // failure here is unexpected; surface it distinctly from a real
+              // policy gap so the two aren't confused.
+              core.warning(`Could not verify the '${ENVIRONMENT}' environment's protection rules (HTTP ${err.status ?? 'unknown'}): ${err.message}. Verify manually via Settings -> Environments.`);
+              return;
+            }
+
+            const rules = env.protection_rules ?? [];
+            const requiredReviewersRule = rules.find((rule) => rule.type === 'required_reviewers');
+            const hasRequiredReviewers = Boolean(requiredReviewersRule && Array.isArray(requiredReviewersRule.reviewers) && requiredReviewersRule.reviewers.length > 0);
+
+            if (!hasRequiredReviewers) {
+              core.setFailed(
+                `The '${ENVIRONMENT}' GitHub Environment has no required-reviewer protection rule configured. ` +
+                `CLAUDE.md documents this as mandatory ("must have at least one required reviewer") for every VS Marketplace publish. ` +
+                `Configure it under Settings -> Environments -> ${ENVIRONMENT} -> Required reviewers.`
+              );
+              return;
+            }
+
+            core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) configured.`);
+
   # ── Notify on failure ─────────────────────────────────
   notify-on-failure:
     name: Create issue on failure
     runs-on: ubuntu-latest
-    needs: [ci, osv-scan, stale-dependabot]
+    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection]
     if: failure() && github.event_name == 'schedule'
     permissions:
       issues: write
