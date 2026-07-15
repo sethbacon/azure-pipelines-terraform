@@ -53,6 +53,7 @@ class ProxyTunnelAgent extends https.Agent {
         private readonly proxyHostname: string,
         private readonly proxyPort: number,
         private readonly proxyAuthHeader: string | undefined,
+        private readonly tunnelTimeoutMs: number,
     ) {
         super();
     }
@@ -64,6 +65,10 @@ class ProxyTunnelAgent extends https.Agent {
         const targetHost = String(options.hostname ?? options.host ?? '');
         const targetPort = options.port ? Number(options.port) : 443;
         const target = `${targetHost}:${targetPort}`;
+        let settled = false;
+        let tlsSocket: tls.TLSSocket | undefined;
+        // Boxed so settle() (defined before the timer is armed) can clear it.
+        const deadline: { timer?: ReturnType<typeof setTimeout> } = {};
         const connectReq = http.request({
             host: this.proxyHostname,
             port: this.proxyPort,
@@ -74,10 +79,39 @@ class ProxyTunnelAgent extends https.Agent {
                 ...(this.proxyAuthHeader ? { 'Proxy-Authorization': this.proxyAuthHeader } : {}),
             },
         });
+        // Settle this connection attempt exactly once, then stop the deadline timer.
+        // On failure, actively tear down the pending CONNECT request and any
+        // half-open TLS socket so a wedged proxy leaves nothing dangling.
+        const settle = (err: Error | null, stream?: tls.TLSSocket) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            if (deadline.timer) {
+                clearTimeout(deadline.timer);
+            }
+            if (err) {
+                connectReq.destroy();
+                tlsSocket?.destroy();
+            }
+            callback?.(err, (stream ?? undefined) as unknown as Duplex);
+        };
+        // Bound the whole CONNECT round-trip AND the inner TLS handshake below with
+        // the caller's configured timeout. The outer request's req.setTimeout() only
+        // arms once this createConnection callback fires (invoking that callback is
+        // what emits the request's 'socket' event), so a proxy that accepts the TCP
+        // connection but never answers the CONNECT -- a wedged/overloaded corporate
+        // proxy -- would otherwise hang past timeoutMs until the agent job timeout.
+        // This timer is that phase's only deadline; it is cleared the instant the
+        // tunnel is established (or fails), after which req.setTimeout() takes over.
+        deadline.timer = setTimeout(
+            () => settle(new Error(`Proxy CONNECT tunnel to ${target} via ${this.proxyHostname}:${this.proxyPort} timed out after ${this.tunnelTimeoutMs}ms.`)),
+            this.tunnelTimeoutMs,
+        );
         connectReq.on('connect', (res, socket) => {
             if (res.statusCode !== 200) {
                 socket.destroy();
-                callback?.(new Error(`Proxy CONNECT to ${target} failed with status ${res.statusCode}.`), undefined as unknown as Duplex);
+                settle(new Error(`Proxy CONNECT to ${target} failed with status ${res.statusCode}.`));
                 return;
             }
             try {
@@ -99,15 +133,15 @@ class ProxyTunnelAgent extends https.Agent {
                 if (options.rejectUnauthorized !== undefined) {
                     tlsOptions.rejectUnauthorized = options.rejectUnauthorized;
                 }
-                const tlsSocket = tls.connect(tlsOptions);
-                tlsSocket.once('secureConnect', () => callback?.(null, tlsSocket));
-                tlsSocket.once('error', (err) => callback?.(err, undefined as unknown as Duplex));
+                tlsSocket = tls.connect(tlsOptions);
+                tlsSocket.once('secureConnect', () => settle(null, tlsSocket));
+                tlsSocket.once('error', (err) => settle(err));
             } catch (err) {
                 socket.destroy();
-                callback?.(err instanceof Error ? err : new Error(String(err)), undefined as unknown as Duplex);
+                settle(err instanceof Error ? err : new Error(String(err)));
             }
         });
-        connectReq.on('error', (err) => callback?.(err, undefined as unknown as Duplex));
+        connectReq.on('error', (err) => settle(err));
         connectReq.end();
         return undefined;
     }
@@ -123,8 +157,12 @@ class ProxyTunnelAgent extends https.Agent {
  * import) so merely importing this module never loads it -- see the identical
  * note in https-client.ts's buildProxyAgent for the mock-run test-harness
  * ordering hazard this avoids.
+ *
+ * @param tunnelTimeoutMs bounds the proxy CONNECT round-trip and inner TLS
+ *        handshake, which run before the outer request's socket-timeout can
+ *        arm; passed straight through to the returned ProxyTunnelAgent.
  */
-function buildProxyAgent(): https.Agent | undefined {
+function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
     const tasks = require('azure-pipelines-task-lib/task') as typeof TaskLib;
     const proxy = tasks.getHttpProxyConfiguration();
     if (!proxy) {
@@ -144,7 +182,7 @@ function buildProxyAgent(): https.Agent | undefined {
         proxyAuthHeader = `Basic ${Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64')}`;
     }
     const proxyPort = Number(proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80));
-    return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader);
+    return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader, tunnelTimeoutMs);
 }
 
 export interface SnRequestOptions {
@@ -236,7 +274,7 @@ export function snRequest(
                 port: parsed.port || 443,
                 path: parsed.pathname + parsed.search,
                 headers,
-                agent: buildProxyAgent(),
+                agent: buildProxyAgent(timeoutMs),
             },
             (res) => {
                 const chunks: Buffer[] = [];

@@ -7,7 +7,7 @@ import nock = require('nock');
 import tasks = require('azure-pipelines-task-lib/task');
 import { snRequest } from '../src/servicenow-http';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
-import { startConnectProxy, startRefusingConnectProxy } from './proxy-connect-server';
+import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
 
 // Direct (non-MockTestRunner) unit tests for servicenow-http.ts's agent proxy
 // support (tasks.getHttpProxyConfiguration() -> a CONNECT-tunneling
@@ -143,6 +143,27 @@ describe('servicenow-http: agent proxy support', function () {
             await assert.rejects(
                 snRequest('GET', 'https://127.0.0.1:1/api/now/table/kb_knowledge'),
                 /Proxy CONNECT.*failed with status 502/,
+            );
+        } finally {
+            proxy.close();
+        }
+    });
+
+    it('times out a hung proxy CONNECT tunnel instead of hanging', async () => {
+        // A proxy that accepts the TCP connection but never answers the CONNECT
+        // request (a wedged/overloaded corporate proxy). The tunnel-establishment
+        // handshake runs inside ProxyTunnelAgent.createConnection, before the outer
+        // request's 'socket' event fires, so it is NOT covered by req.setTimeout();
+        // the agent must bound it with the same configured timeout or the request
+        // hangs until the agent job timeout rather than failing after timeoutMs.
+        const proxy = startHangingConnectProxy();
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            await assert.rejects(
+                snRequest('GET', 'https://127.0.0.1:1/api/now/table/kb_knowledge', { timeoutMs: 150 }),
+                /timed out after 150ms/,
             );
         } finally {
             proxy.close();

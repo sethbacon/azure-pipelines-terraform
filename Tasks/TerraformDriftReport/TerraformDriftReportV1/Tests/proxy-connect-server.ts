@@ -52,3 +52,21 @@ export function startRefusingConnectProxy(statusCode: number): http.Server {
     });
     return server;
 }
+
+/**
+ * A CONNECT proxy that accepts the TCP connection but never answers the CONNECT
+ * request -- modelling a wedged/overloaded corporate proxy that leaves the
+ * tunnel half-open. Lets a test assert the CONNECT + inner-TLS-handshake phase
+ * is bounded by the request timeout rather than hanging until the agent job
+ * timeout.
+ */
+export function startHangingConnectProxy(): http.Server {
+    const server = http.createServer();
+    server.on('connect', (_req, clientSocket) => {
+        // Accept the socket and stall forever: never write a CONNECT response.
+        // Swallow the error the client raises when it destroys the half-open
+        // tunnel on timeout, so it never surfaces as an unhandled 'error'.
+        clientSocket.on('error', () => { /* client tore down the stalled tunnel */ });
+    });
+    return server;
+}

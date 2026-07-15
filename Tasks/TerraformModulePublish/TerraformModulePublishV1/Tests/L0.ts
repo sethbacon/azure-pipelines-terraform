@@ -9,7 +9,7 @@ import { HttpClient, HttpResponse, createHttpsClient, parseJson, retryHttp, trun
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
-import { startConnectProxy, startRefusingConnectProxy } from './proxy-connect-server';
+import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
 
 const noop = (): void => {
     /* suppress log output during tests */
@@ -192,6 +192,28 @@ describe('http client transport: agent proxy support', function () {
             await assert.rejects(
                 client('GET', 'https://127.0.0.1:1/api', {}),
                 /Proxy CONNECT.*failed with status 502/,
+            );
+        } finally {
+            proxy.close();
+        }
+    });
+
+    it('times out a hung proxy CONNECT tunnel instead of hanging', async () => {
+        // A proxy that accepts the TCP connection but never answers the CONNECT
+        // request (a wedged/overloaded corporate proxy). The tunnel-establishment
+        // handshake runs inside ProxyTunnelAgent.createConnection, before the outer
+        // request's 'socket' event fires, so it is NOT covered by req.setTimeout();
+        // the agent must bound it with the same configured timeout or the request
+        // hangs until the agent job timeout rather than failing after timeoutMs.
+        const proxy = startHangingConnectProxy();
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => ({ proxyUrl: `http://127.0.0.1:${proxyPort}` });
+        try {
+            const client = createHttpsClient(true, 150);
+            await assert.rejects(
+                client('GET', 'https://127.0.0.1:1/api', {}),
+                /timed out after 150ms/,
             );
         } finally {
             proxy.close();
