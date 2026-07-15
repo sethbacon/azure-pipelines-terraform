@@ -261,7 +261,7 @@ export async function getKbCategories(
         params['sysparm_query'] = `kb_knowledge_base=${kbId}`;
     }
     const response = await snRequest('GET', url, { headers, params });
-    return response.data.result as KbCategory[];
+    return Array.isArray(response.data.result) ? (response.data.result as KbCategory[]) : [];
 }
 
 /** Create a new category (or subcategory) in the given knowledge base. */
@@ -390,7 +390,12 @@ export async function findArticleBySourceKey(
     };
 
     const response = await snRequest('GET', url, { headers, params });
-    const results = (response.data.result || []) as KbArticle[];
+    // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
+    // documented on assertArticleResult applies here -- a malformed response's
+    // data defaults to `{}`, which is truthy, so `results || []` alone would keep
+    // the object and crash on `results[0]` (#372/#29 follow-up; matches the
+    // existing pattern in findOrCreateCategory below).
+    const results = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
 
     if (results.length === 0) return null;
 
