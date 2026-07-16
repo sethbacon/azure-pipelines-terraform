@@ -18,19 +18,94 @@ jest.mock('azure-devops-extension-api/Build', () => ({
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getClient } from 'azure-devops-extension-api';
 import { TerraformPlanTab } from './tabContent';
-import { ansiToHtml } from './ansi-to-html';
 
-/**
- * Creates an unmounted TerraformPlanTab with setState monkey-patched to merge
- * synchronously into the instance's own state — a real (unmounted) component's
- * setState is a no-op (there is no updater attached outside a live React tree),
- * which is why every test that exercises state transitions needs this. An
- * optional partial state can be applied up front for render-only fixtures.
- */
-function makeTestableTab(initialState: Record<string, unknown> = {}): TerraformPlanTab {
+const PLAN_SUMMARY_TYPE = 'terraform-plan-summary';
+const APPLY_SUMMARY_TYPE = 'terraform-apply-summary';
+const LEGACY_RAW_TYPE = 'terraform-plan-results';
+
+function validPlanDigest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: 'plan',
+    producedBy: { task: 'TerraformTaskV5', taskVersion: '5.12.0' },
+    tool: { name: 'terraform', version: '1.14.6' },
+    meta: { name: 'plan-main', createdIso: '2026-07-01T12:00:00.000Z' },
+    truncated: false,
+    summary: { add: 2, change: 0, destroy: 0, replace: 0, read: 0, noChanges: false, driftDetected: false },
+    resources: [
+      {
+        address: 'aws_instance.web',
+        type: 'aws_instance',
+        name: 'web',
+        providerName: 'registry.terraform.io/hashicorp/aws',
+        actions: ['create'],
+        attributeChanges: [
+          { path: 'instance_type', before: { kind: 'unknown' }, after: { kind: 'value', json: '"t3.micro"' } },
+        ],
+      },
+    ],
+    outputChanges: [{ name: 'url', action: 'create', value: { kind: 'unknown' } }],
+    ...overrides,
+  };
+}
+
+function validApplyDigest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: 'apply',
+    producedBy: { task: 'TerraformTaskV5', taskVersion: '5.12.0' },
+    tool: { name: 'terraform', version: '1.14.6' },
+    meta: { name: 'apply-main', createdIso: '2026-07-01T12:05:00.000Z' },
+    truncated: false,
+    outcome: 'succeeded',
+    summary: { add: 1, change: 0, destroy: 0, durationMs: 1234 },
+    resources: [{ address: 'aws_instance.web', action: 'create', status: 'complete', durationMs: 900 }],
+    diagnostics: [],
+    outputs: [{ name: 'url', action: 'create', value: { kind: 'unknown' } }],
+    ...overrides,
+  };
+}
+
+function attachment(name: string) {
+  return { name, _links: { self: { href: `https://example.test/${name}` } } };
+}
+
+/** Wires getClient(BuildRestClient).getAttachments to branch by attachment type, and fetch to return the given text bodies keyed by name. */
+function mockLoad(options: {
+  planNames?: string[];
+  applyNames?: string[];
+  legacyNames?: string[];
+  bodies: Record<string, string>;
+}) {
+  const { planNames = [], applyNames = [], legacyNames = [], bodies } = options;
+
+  (getClient as jest.Mock).mockReturnValue({
+    getAttachments: jest.fn((_project: string, _id: number, type: string) => {
+      if (type === PLAN_SUMMARY_TYPE) return Promise.resolve(planNames.map(attachment));
+      if (type === APPLY_SUMMARY_TYPE) return Promise.resolve(applyNames.map(attachment));
+      if (type === LEGACY_RAW_TYPE) return Promise.resolve(legacyNames.map(attachment));
+      return Promise.resolve([]);
+    }),
+  });
+
+  (global as unknown as { fetch: jest.Mock }).fetch = jest.fn((url: string) => {
+    const name = url.split('/').pop() as string;
+    const body = bodies[name];
+    if (body === undefined) {
+      return Promise.resolve({ ok: false, text: () => Promise.resolve(''), headers: { get: () => null } });
+    }
+    return Promise.resolve({
+      ok: true,
+      text: () => Promise.resolve(body),
+      headers: { get: (h: string) => (h === 'content-length' ? String(body.length) : null) },
+    });
+  });
+}
+
+/** Creates an unmounted TerraformPlanTab with setState monkey-patched to merge synchronously into instance state. */
+function makeTestableTab(): TerraformPlanTab {
   const tab = new TerraformPlanTab({});
   const inst = tab as unknown as { state: Record<string, unknown> };
-  inst.state = { ...inst.state, ...initialState };
   (tab as unknown as { setState: (u: unknown) => void }).setState = (update: unknown): void => {
     const next = typeof update === 'function' ? (update as (s: unknown) => object)(inst.state) : update;
     inst.state = { ...inst.state, ...(next as object) };
@@ -38,147 +113,182 @@ function makeTestableTab(initialState: Record<string, unknown> = {}): TerraformP
   return tab;
 }
 
+function html(tab: TerraformPlanTab): string {
+  return renderToStaticMarkup(tab.render());
+}
+
+const build = { project: { id: 'proj' }, id: 1 } as never;
+
 describe('TerraformPlanTab', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('routes fetched plan content through ansiToHtml before rendering (no raw HTML injected)', async () => {
-    // A malicious/coloured attachment: raw HTML tag plus an ANSI SGR sequence.
-    const rawContent = '<script>alert(1)</script>\x1b[31mred & <b>bold</b>\x1b[0m';
-
-    (getClient as jest.Mock).mockReturnValue({
-      getAttachments: jest.fn().mockResolvedValue([
-        { name: 'plan.txt', _links: { self: { href: 'https://example.test/attachment' } } },
-      ]),
-    });
-
-    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve(rawContent),
-    });
-
+  it('renders a loading indicator before any results have been fetched', () => {
     const tab = makeTestableTab();
-
-    await tab.loadPlans({ project: { id: 'proj' }, id: 1 } as never);
-
-    // Render the populated component to a static HTML string (no DOM required).
-    const html = renderToStaticMarkup(tab.render());
-
-    // Content is routed through ansiToHtml (HTML-escaped), not injected raw into
-    // the dangerouslySetInnerHTML sink.
-    expect(html).toContain(ansiToHtml(rawContent));
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html(tab)).toContain('Loading terraform results...');
   });
 
-  it('renders a loading indicator before any plans have been fetched', () => {
-    const tab = makeTestableTab();
-    const html = renderToStaticMarkup(tab.render());
-    expect(html).toContain('Loading terraform plans...');
-  });
-
-  it('renders an error message when loading the attachments failed', () => {
-    const tab = makeTestableTab({ loading: false, error: 'boom' });
-    const html = renderToStaticMarkup(tab.render());
-    expect(html).toContain('Error: boom');
-  });
-
-  it('renders an empty-state message when the build published no plans', () => {
-    const tab = makeTestableTab({ loading: false, error: null, plans: [] });
-    const html = renderToStaticMarkup(tab.render());
-    expect(html).toContain('No terraform plans have been published for this pipeline run.');
-  });
-
-  it('renders a <select> plan picker for multiple plans, and onPlanSelect updates the selected index', () => {
-    const tab = makeTestableTab({
-      loading: false,
-      error: null,
-      plans: [
-        { name: 'plan-a.txt', content: 'aaa' },
-        { name: 'plan-b.txt', content: 'bbb' },
-      ],
-      selectedIndex: 0,
-    });
-
-    const html = renderToStaticMarkup(tab.render());
-    expect(html).toContain('<select');
-    expect(html).toContain('plan-a.txt');
-    expect(html).toContain('plan-b.txt');
-
-    (tab as unknown as { onPlanSelect: (e: unknown) => void }).onPlanSelect({ target: { value: '1' } });
-    expect((tab as unknown as { state: { selectedIndex: number } }).state.selectedIndex).toBe(1);
-  });
-
-  it('renders a download link instead of inline output when plan content exceeds the render-size cap', () => {
-    const oversized = 'x'.repeat(2 * 1024 * 1024 + 1);
-    const tab = makeTestableTab({
-      loading: false,
-      error: null,
-      plans: [{ name: 'huge-plan.txt', content: oversized }],
-      selectedIndex: 0,
-    });
-
-    const html = renderToStaticMarkup(tab.render());
-    expect(html).toContain('too large to render inline');
-    expect(html).toContain('Download raw output');
-    expect(html).not.toContain('dangerouslySetInnerHTML');
-  });
-
-  it('loadPlans sets an empty plans list and stops loading when the build has no attachments', async () => {
-    (getClient as jest.Mock).mockReturnValue({
-      getAttachments: jest.fn().mockResolvedValue([]),
-    });
-
-    const tab = makeTestableTab();
-    await tab.loadPlans({ project: { id: 'proj' }, id: 1 } as never);
-
-    const state = (tab as unknown as { state: { plans: unknown[]; loading: boolean } }).state;
-    expect(state.plans).toEqual([]);
-    expect(state.loading).toBe(false);
-  });
-
-  it('loadPlans skips an attachment whose download throws and one that returns a non-OK response, keeping only the successful download', async () => {
-    (getClient as jest.Mock).mockReturnValue({
-      getAttachments: jest.fn().mockResolvedValue([
-        { name: 'network-error.txt', _links: { self: { href: 'https://example.test/a' } } },
-        { name: 'not-found.txt', _links: { self: { href: 'https://example.test/b' } } },
-        { name: 'ok.txt', _links: { self: { href: 'https://example.test/c' } } },
-      ]),
-    });
-
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { /* silence expected log */ });
-
-    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn()
-      .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce({ ok: false, text: () => Promise.resolve('') })
-      .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('plan output') });
-
-    const tab = makeTestableTab();
-    await tab.loadPlans({ project: { id: 'proj' }, id: 1 } as never);
-
-    const state = (tab as unknown as { state: { plans: Array<{ name: string }>; loading: boolean } }).state;
-    expect(state.plans).toHaveLength(1);
-    expect(state.plans[0].name).toBe('ok.txt');
-    expect(state.loading).toBe(false);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to download attachment network-error.txt:'),
-      expect.any(Error),
-    );
-
-    consoleErrorSpy.mockRestore();
-  });
-
-  it('loadPlans sets an error state when fetching the attachment list itself fails', async () => {
+  it('renders an error message when the attachment list itself fails to load', async () => {
     (getClient as jest.Mock).mockReturnValue({
       getAttachments: jest.fn().mockRejectedValue(new Error('attachments API unavailable')),
     });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('Error: attachments API unavailable');
+  });
+
+  it('renders an empty state when nothing has been published', async () => {
+    mockLoad({ bodies: {} });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('No terraform plans or applies have been published');
+  });
+
+  it('renders a single plan digest: summary header + resource list, no overview list for one item', async () => {
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('plan-a');
+    expect(out).toContain('aws_instance.web');
+    expect(out).toContain('+2');
+    expect(out).not.toContain('overview-list');
+  });
+
+  it('renders a roll-up header + overview list for multiple plan digests, and switches detail on select', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest({ meta: { name: 'plan-a', createdIso: 'x' } })),
+        'plan-b': JSON.stringify(
+          validPlanDigest({
+            meta: { name: 'plan-b', createdIso: 'x' },
+            resources: [
+              {
+                address: 'aws_instance.other',
+                type: 'aws_instance',
+                name: 'other',
+                providerName: 'registry.terraform.io/hashicorp/aws',
+                actions: ['delete'],
+                attributeChanges: [],
+              },
+            ],
+            summary: { add: 0, change: 0, destroy: 1, replace: 0, read: 0, noChanges: false, driftDetected: false },
+          })
+        ),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    let out = html(tab);
+    expect(out).toContain('All plans (2)');
+    expect(out).toContain('plan-a');
+    expect(out).toContain('plan-b');
+    // First item selected by default.
+    expect(out).toContain('aws_instance.web');
+
+    (tab as unknown as { onSelectPlan: (id: string) => void }).onSelectPlan('plan-b#1');
+    out = html(tab);
+    expect(out).toContain('aws_instance.other');
+  });
+
+  it('falls back to the legacy raw view when no structured plan attachments exist', async () => {
+    mockLoad({ legacyNames: ['legacy-plan.txt'], bodies: { 'legacy-plan.txt': 'Plan: 1 to add' } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('Plan: 1 to add');
+  });
+
+  it('renders the Apply pivot with timeline, diagnostics, and outputs', async () => {
+    mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify(validApplyDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    // No plan/legacy published, so the tab defaults to the Apply pivot.
+    const out = html(tab);
+    expect(out).toContain('apply-a');
+    expect(out).toContain('Succeeded');
+    expect(out).toContain('aws_instance.web');
+  });
+
+  it('switches between Plan and Apply pivots via setActivePivot', async () => {
+    mockLoad({
+      planNames: ['plan-a'],
+      applyNames: ['apply-a'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest()),
+        'apply-a': JSON.stringify(validApplyDigest()),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('plan-a');
+
+    (tab as unknown as { setActivePivot: (p: 'plan' | 'apply') => void }).setActivePivot('apply');
+    expect(html(tab)).toContain('apply-a');
+  });
+
+  it('shows a parse-error item with its raw content instead of crashing', async () => {
+    mockLoad({ planNames: ['broken-plan'], bodies: { 'broken-plan': '{ not valid json' } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('Could not render structured results');
+    expect(out).toContain('broken-plan');
+  });
+
+  it('degrades (does not crash) on a schemaVersion:999 plan digest and shows the unknown-version banner + raw fallback', async () => {
+    const futureDigest = { schemaVersion: 999, kind: 'plan', resources: [], outputChanges: [], summary: {} };
+    mockLoad({ planNames: ['future-plan'], bodies: { 'future-plan': JSON.stringify(futureDigest) } });
+    const tab = makeTestableTab();
+    expect(async () => tab.loadAll(build)).not.toThrow();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('schemaVersion 999');
+    expect(out).toContain('View raw digest');
+  });
+
+  it('selecting a resource shows its attribute diff, selecting again hides it', async () => {
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    (tab as unknown as { onSelectResource: (a: string) => void }).onSelectResource('aws_instance.web');
+    let out = html(tab);
+    expect(out).toContain('instance_type');
+    expect(out).toContain('t3.micro');
+
+    (tab as unknown as { onSelectResource: (a: string) => void }).onSelectResource('aws_instance.web');
+    out = html(tab);
+    expect(out).not.toContain('resource-diff-table');
+  });
+
+  it('skips an attachment whose fetch throws, keeping the others', async () => {
+    (getClient as jest.Mock).mockReturnValue({
+      getAttachments: jest.fn((_p: string, _id: number, type: string) => {
+        if (type === PLAN_SUMMARY_TYPE) return Promise.resolve([attachment('ok-plan'), attachment('network-error')]);
+        return Promise.resolve([]);
+      }),
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest
+      .fn()
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(JSON.stringify(validPlanDigest())),
+          headers: { get: () => null },
+        })
+      )
+      .mockImplementationOnce(() => Promise.reject(new Error('network down')));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { /* silence expected log */ });
 
     const tab = makeTestableTab();
-    await tab.loadPlans({ project: { id: 'proj' }, id: 1 } as never);
-
-    const state = (tab as unknown as { state: { error: string | null; loading: boolean } }).state;
-    expect(state.error).toBe('attachments API unavailable');
-    expect(state.loading).toBe(false);
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('ok-plan');
+    expect(out).not.toContain('network-error');
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });
