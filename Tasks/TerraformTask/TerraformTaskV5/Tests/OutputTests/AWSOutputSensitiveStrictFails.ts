@@ -4,28 +4,33 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 
-// Regression guard for the default (cleanupOutputFile unset/false) path: the
-// JSON file must remain on disk for downstream steps to read via
-// `jsonOutputVariablesPath`, and must be written with restrictive (0600)
-// permissions rather than the default umask. Per #492 it must live under
-// Agent.TempDirectory (job-purged), NOT in the repo working directory, so a
-// naive "publish the working directory" artifact step can never sweep it up.
-const workingDirectory = path.join(os.tmpdir(), 'tf-output-retain-test');
+// Strict mode (#488/#492): with failOnSensitiveOutputs=true and cleanup NOT
+// requested, a sensitive output in the terraform output -json file must fail
+// the task instead of only warning -- and the just-written file must be
+// deleted by the end-of-step cleanup so the failure doesn't leave the
+// cleartext values behind. Uses a real working directory and the
+// ParentCommandHandler (via runViaParentHandler) so cleanupTempFiles()
+// actually runs from the execute() finally block.
+const workingDirectory = path.join(os.tmpdir(), 'tf-output-strict-fail-test');
 fs.rmSync(workingDirectory, { recursive: true, force: true });
 fs.mkdirSync(workingDirectory, { recursive: true });
-const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-retain-agenttemp');
+// The file is written under Agent.TempDirectory (#492), so point it at a
+// scrubbed per-scenario directory the L0 assertions can inspect.
+const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-strict-fail-agenttemp');
 fs.rmSync(agentTempDirectory, { recursive: true, force: true });
 fs.mkdirSync(agentTempDirectory, { recursive: true });
 process.env['AGENT_TEMPDIRECTORY'] = agentTempDirectory;
 
-let tp = path.join(__dirname, './AWSOutputFileRetainedByDefaultL0.js');
+let tp = path.join(__dirname, './AWSOutputSensitiveStrictFailsL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('provider', 'aws');
 tr.setInput('command', 'output');
 tr.setInput('commandOptions', '');
 tr.setInput('workingDirectory', workingDirectory);
-// cleanupOutputFile intentionally left unset -- must default to false.
+tr.setInput('failOnSensitiveOutputs', 'true');
+// cleanupOutputFile intentionally left unset -- strict mode only fails when
+// the file would be retained.
 tr.setInput('environmentServiceNameAWS', 'AWS');
 
 process.env['ENDPOINT_AUTH_SCHEME_AWS'] = 'Basic';
@@ -39,7 +44,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "exec": {
         "terraform output -json": {
             "code": 0,
-            "stdout": "{ \"test_output\": { \"value\": \"hello\" } }"
+            "stdout": "{ \"db_password\": { \"value\": \"hunter2\", \"sensitive\": true }, \"safe_output\": { \"value\": \"hello\" } }"
         }
     }
 };
