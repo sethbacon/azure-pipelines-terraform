@@ -48,6 +48,23 @@ export interface DigestByteLimits {
   hardMaxBytes?: number;
 }
 
+/** Plan-specific build options (destroy marker + the byte-cap test seam). */
+export interface PlanDigestOptions extends DigestByteLimits {
+  /**
+   * Set to `"destroy"` when this digest is built for a destroy plan
+   * (`terraform plan -destroy -out=<f>` → `show -json`, or `terraform destroy`
+   * against a saved plan file → `show -json`), so the resulting `PlanDigest`
+   * carries `planMode: "destroy"` and the tab can LABEL the view (spec §7.1).
+   * This is taken FROM THE CALLER, never inferred from the change counts: a
+   * destroy plan's resource_changes are all deletes, but an ordinary plan can
+   * legitimately be all-deletes too, so inferring from counts would mislabel it.
+   * `planMode` is a presentation hint only — it changes no redaction, no cap,
+   * and no other field. Absent / `"plan"` leaves `planMode` unset so every
+   * existing plan golden and consumer is byte-unaffected (§7.1).
+   */
+  mode?: 'plan' | 'destroy';
+}
+
 // A Terraform "Change" object (shared by resource_changes[].change and
 // output_changes[name]). All fields optional/defensive — a malformed plan must
 // degrade, not throw.
@@ -65,11 +82,11 @@ const KNOWN_ACTIONS = new Set(['no-op', 'create', 'read', 'update', 'delete', 'r
 
 /**
  * Build a redacted PlanDigest from a parsed `terraform show -json` object.
- * @param plan   parsed show -json (untrusted; validated defensively)
- * @param meta   provenance/identity supplied by the caller
- * @param limits optional test seam for the soft/hard byte ceilings
+ * @param plan    parsed show -json (untrusted; validated defensively)
+ * @param meta    provenance/identity supplied by the caller
+ * @param options destroy marker (`mode`) + the soft/hard byte-ceiling test seam
  */
-export function buildPlanDigest(plan: unknown, meta: DigestMeta, limits?: DigestByteLimits): PlanDigest {
+export function buildPlanDigest(plan: unknown, meta: DigestMeta, options?: PlanDigestOptions): PlanDigest {
   const ctx = newRedactContext();
   const p = (plan && typeof plan === 'object' ? (plan as Record<string, unknown>) : {}) as Record<string, unknown>;
 
@@ -136,6 +153,10 @@ export function buildPlanDigest(plan: unknown, meta: DigestMeta, limits?: Digest
       createdIso: meta.createdIso,
     },
     truncated: false,
+    // Presentation hint only (§7.1): set ONLY for a destroy plan, taken from the
+    // caller (never inferred from all-delete counts). Absent/"plan" leaves it
+    // unset so existing plan goldens/consumers are byte-unchanged.
+    ...(options?.mode === 'destroy' ? { planMode: 'destroy' as const } : {}),
     summary,
     resources,
     outputChanges,
@@ -143,7 +164,7 @@ export function buildPlanDigest(plan: unknown, meta: DigestMeta, limits?: Digest
   };
   finalizeTruncation(digest, ctx);
 
-  return capDigestBytes(digest, limits?.softMaxBytes ?? SOFT_MAX_DIGEST_BYTES, limits?.hardMaxBytes ?? HARD_MAX_DIGEST_BYTES);
+  return capDigestBytes(digest, options?.softMaxBytes ?? SOFT_MAX_DIGEST_BYTES, options?.hardMaxBytes ?? HARD_MAX_DIGEST_BYTES);
 }
 
 function buildPlanResource(rc: unknown, ctx: RedactContext): PlanResource | null {

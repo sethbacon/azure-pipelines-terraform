@@ -195,8 +195,16 @@
             "type": "string",
             "label": "Publish structured plan summary",
             "required": false,
-            "visibleRule": "command = plan",
-            "helpMarkDown": "Publish a structured, redacted JSON summary of the plan (resource changes, outputs, drift) to the 'Terraform' tab in the pipeline results. Enter a name for the plan (e.g. 'production' or 'stage'). Leave empty to disable.<br><br>When set, the task adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it to build the summary; the summary is redacted before it is attached and every sensitive value renders as `(sensitive)`. Independent of 'Publish plan results' -- either, both, or neither may be enabled.<br><br>Note: sensitive-value redaction relies entirely on Terraform correctly marking a value `sensitive` (`after_sensitive`/`sensitive_values`); a provider that fails to mark a value sensitive can still leak it in the summary."
+            "visibleRule": "command = plan || command = destroy",
+            "helpMarkDown": "Publish a structured, redacted JSON summary of the plan (resource changes, outputs, drift) to the 'Terraform' tab in the pipeline results. Enter a name for the plan (e.g. 'production' or 'stage'). Leave empty to disable.<br><br>When set, the task adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it to build the summary; the summary is redacted before it is attached and every sensitive value renders as `(sensitive)`. Independent of 'Publish plan results' -- either, both, or neither may be enabled.<br><br>For `destroy`, the same summary is built from the destroy's own plan (Terraform computes and saves one before applying, exactly like `plan`); the tab labels it as a destroy. Destroy still auto-approves and still fails the task on a non-zero exit -- publishing this summary does not change that.<br><br>Note: sensitive-value redaction relies entirely on Terraform correctly marking a value `sensitive` (`after_sensitive`/`sensitive_values`); a provider that fails to mark a value sensitive can still leak it in the summary."
+        },
+        {
+            "name": "publishStateResults",
+            "type": "string",
+            "label": "Publish structured state summary",
+            "required": false,
+            "visibleRule": "command = show",
+            "helpMarkDown": "Publish a structured, redacted JSON inventory of the current Terraform state (managed resources, data sources, outputs -- no change actions) to the 'Terraform' tab in the pipeline results. Enter a name for the inventory (e.g. 'production' or 'stage'). Leave empty to disable.<br><br>When set, the task runs its own `terraform show -json` of the CURRENT state (independent of this step's own 'Additional command arguments' / output settings) and attaches the redacted inventory; every sensitive value (per each resource's `sensitive_values`) renders as `(sensitive)`.<br><br>Only applies to a STATE show, i.e. 'Additional command arguments' does not itself name a saved plan file -- if it does (this step is showing a plan file, not the current state), this input has no effect and the plan file's existing output/sensitive-output handling is unaffected."
         },
         {
             "name": "secureVarsFile",
@@ -1018,6 +1026,7 @@
         "TerraformToolNotFound": "Could not locate the terraform/tofu binary. Run PipelineTerraformInstaller in the same job as this task, or ensure the binary is installed on the agent's PATH.",
         "TerraformPlanFailed": "Terraform plan failed with exit code %s",
         "TerraformApplyFailed": "Terraform apply failed with exit code %s",
+        "TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
         "OidcRequestUriHostNotAllowed": "SYSTEM_OIDCREQUESTURI host '%s' is not a recognized Azure DevOps host (expected dev.azure.com, *.dev.azure.com, *.visualstudio.com, or the host of System.CollectionUri); refusing to send the job access token to it.",
         "GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
         "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",

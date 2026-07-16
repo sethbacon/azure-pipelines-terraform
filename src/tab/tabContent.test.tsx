@@ -21,6 +21,7 @@ import { TerraformPlanTab } from './tabContent';
 
 const PLAN_SUMMARY_TYPE = 'terraform-plan-summary';
 const APPLY_SUMMARY_TYPE = 'terraform-apply-summary';
+const STATE_SUMMARY_TYPE = 'terraform-state-summary';
 const LEGACY_RAW_TYPE = 'terraform-plan-results';
 
 function validPlanDigest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -66,6 +67,30 @@ function validApplyDigest(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
+function validStateDigest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: 'state',
+    producedBy: { task: 'TerraformTaskV5', taskVersion: '5.12.0' },
+    tool: { name: 'terraform', version: '1.14.6' },
+    meta: { name: 'state-main', createdIso: '2026-07-01T12:10:00.000Z' },
+    truncated: false,
+    summary: { resourceCount: 1, dataSourceCount: 0 },
+    resources: [
+      {
+        address: 'aws_instance.web',
+        type: 'aws_instance',
+        name: 'web',
+        providerName: 'registry.terraform.io/hashicorp/aws',
+        mode: 'managed',
+        attributes: [{ name: 'instance_type', value: { kind: 'value', json: '"t3.micro"' } }],
+      },
+    ],
+    outputs: [{ name: 'url', value: { kind: 'unknown' } }],
+    ...overrides,
+  };
+}
+
 function attachment(name: string) {
   return { name, _links: { self: { href: `https://example.test/${name}` } } };
 }
@@ -74,15 +99,17 @@ function attachment(name: string) {
 function mockLoad(options: {
   planNames?: string[];
   applyNames?: string[];
+  stateNames?: string[];
   legacyNames?: string[];
   bodies: Record<string, string>;
 }) {
-  const { planNames = [], applyNames = [], legacyNames = [], bodies } = options;
+  const { planNames = [], applyNames = [], stateNames = [], legacyNames = [], bodies } = options;
 
   (getClient as jest.Mock).mockReturnValue({
     getAttachments: jest.fn((_project: string, _id: number, type: string) => {
       if (type === PLAN_SUMMARY_TYPE) return Promise.resolve(planNames.map(attachment));
       if (type === APPLY_SUMMARY_TYPE) return Promise.resolve(applyNames.map(attachment));
+      if (type === STATE_SUMMARY_TYPE) return Promise.resolve(stateNames.map(attachment));
       if (type === LEGACY_RAW_TYPE) return Promise.resolve(legacyNames.map(attachment));
       return Promise.resolve([]);
     }),
@@ -142,7 +169,7 @@ describe('TerraformPlanTab', () => {
     mockLoad({ bodies: {} });
     const tab = makeTestableTab();
     await tab.loadAll(build);
-    expect(html(tab)).toContain('No terraform plans or applies have been published');
+    expect(html(tab)).toContain('No terraform plans, applies, or state have been published');
   });
 
   it('renders a single plan digest: summary header + resource list, no overview list for one item', async () => {
@@ -225,8 +252,105 @@ describe('TerraformPlanTab', () => {
     await tab.loadAll(build);
     expect(html(tab)).toContain('plan-a');
 
-    (tab as unknown as { setActivePivot: (p: 'plan' | 'apply') => void }).setActivePivot('apply');
+    (tab as unknown as { setActivePivot: (p: 'plan' | 'apply' | 'state') => void }).setActivePivot('apply');
     expect(html(tab)).toContain('apply-a');
+  });
+
+  it('renders the State pivot with a resource inventory and outputs', async () => {
+    mockLoad({ stateNames: ['state-a'], bodies: { 'state-a': JSON.stringify(validStateDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    // No plan/apply/legacy published, so the tab defaults to the State pivot.
+    const out = html(tab);
+    expect(out).toContain('state-a');
+    expect(out).toContain('aws_instance.web');
+    expect(out).toContain('1 resources');
+    expect(out).not.toContain('overview-list');
+  });
+
+  it('renders a roll-up header + overview list for multiple state digests, and switches detail on select', async () => {
+    mockLoad({
+      stateNames: ['state-a', 'state-b'],
+      bodies: {
+        'state-a': JSON.stringify(validStateDigest({ meta: { name: 'state-a', createdIso: 'x' } })),
+        'state-b': JSON.stringify(
+          validStateDigest({
+            meta: { name: 'state-b', createdIso: 'x' },
+            summary: { resourceCount: 2, dataSourceCount: 1 },
+            resources: [
+              {
+                address: 'data.aws_ami.latest',
+                type: 'aws_ami',
+                name: 'latest',
+                providerName: 'registry.terraform.io/hashicorp/aws',
+                mode: 'data',
+                attributes: [],
+              },
+            ],
+          })
+        ),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    let out = html(tab);
+    expect(out).toContain('All state (2)');
+    expect(out).toContain('state-a');
+    expect(out).toContain('state-b');
+    // First item selected by default.
+    expect(out).toContain('aws_instance.web');
+
+    (tab as unknown as { onSelectState: (id: string) => void }).onSelectState('state-b#1');
+    out = html(tab);
+    expect(out).toContain('data.aws_ami.latest');
+  });
+
+  it('switches to the State pivot via setActivePivot and shows the empty state when nothing is published for it', async () => {
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    (tab as unknown as { setActivePivot: (p: 'plan' | 'apply' | 'state') => void }).setActivePivot('state');
+    expect(html(tab)).toContain('No terraform state has been published for this pipeline run.');
+  });
+
+  it('labels a destroy-mode plan digest with a Destroy badge (digest spec §7.1)', async () => {
+    mockLoad({
+      planNames: ['destroy-a'],
+      bodies: { 'destroy-a': JSON.stringify(validPlanDigest({ planMode: 'destroy', meta: { name: 'destroy-a', createdIso: 'x' } })) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('Destroy');
+    expect(out).toContain('badge-destroy');
+  });
+
+  it('selecting a state resource shows its attribute table, selecting again hides it', async () => {
+    mockLoad({ stateNames: ['state-a'], bodies: { 'state-a': JSON.stringify(validStateDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    (tab as unknown as { onSelectStateResource: (a: string) => void }).onSelectStateResource('aws_instance.web');
+    let out = html(tab);
+    expect(out).toContain('instance_type');
+    expect(out).toContain('t3.micro');
+
+    (tab as unknown as { onSelectStateResource: (a: string) => void }).onSelectStateResource('aws_instance.web');
+    out = html(tab);
+    expect(out).not.toContain('state-inventory-attrs-table');
+  });
+
+  it('degrades (does not crash) on a schemaVersion:999 state digest and shows the unknown-version banner + raw fallback', async () => {
+    const futureDigest = { schemaVersion: 999, kind: 'state' };
+    mockLoad({ stateNames: ['future-state'], bodies: { 'future-state': JSON.stringify(futureDigest) } });
+    const tab = makeTestableTab();
+    expect(async () => tab.loadAll(build)).not.toThrow();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('schemaVersion 999');
+    expect(out).toContain('View raw digest');
   });
 
   it('shows a parse-error item with its raw content instead of crashing', async () => {

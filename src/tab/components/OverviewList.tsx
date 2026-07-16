@@ -1,15 +1,20 @@
 import * as React from "react";
-import { SummaryHeaderCounts } from "./SummaryHeader";
+import { SummaryHeaderCounts, SummaryHeaderStateCounts } from "./SummaryHeader";
 
 export type OverviewItem =
     | {
           id: string;
           name: string;
           status: "ok";
-          counts: SummaryHeaderCounts;
+          /** Plan/apply items only; a state item carries `stateCounts` instead. */
+          counts?: SummaryHeaderCounts;
+          /** State items only (digest spec §7.2). */
+          stateCounts?: SummaryHeaderStateCounts;
           noChanges?: boolean;
           driftDetected?: boolean;
           outcome?: "succeeded" | "failed";
+          /** Plan items only: true when the digest's `planMode === "destroy"` (digest spec §7.1). */
+          destroyMode?: boolean;
       }
     | {
           id: string;
@@ -53,10 +58,21 @@ export function OverviewList({ items, selectedId, onSelect }: OverviewListProps)
                         </span>
                     ) : (
                         <span className="overview-item-badges">
-                            <span className="count count-add">+{item.counts.add}</span>
-                            <span className="count count-change">~{item.counts.change}</span>
-                            <span className="count count-destroy">-{item.counts.destroy}</span>
-                            {!!item.counts.replace && <span className="badge badge-replace">Replace</span>}
+                            {item.destroyMode && <span className="badge badge-destroy">Destroy</span>}
+                            {item.counts && (
+                                <React.Fragment>
+                                    <span className="count count-add">+{item.counts.add}</span>
+                                    <span className="count count-change">~{item.counts.change}</span>
+                                    <span className="count count-destroy">-{item.counts.destroy}</span>
+                                    {!!item.counts.replace && <span className="badge badge-replace">Replace</span>}
+                                </React.Fragment>
+                            )}
+                            {item.stateCounts && (
+                                <React.Fragment>
+                                    <span className="count count-resources">{item.stateCounts.resourceCount} resources</span>
+                                    <span className="count count-data-sources">{item.stateCounts.dataSourceCount} data sources</span>
+                                </React.Fragment>
+                            )}
                             {item.driftDetected && <span className="badge badge-drift">Drift</span>}
                             {item.noChanges && <span className="badge badge-no-changes">No changes</span>}
                             {item.outcome && (

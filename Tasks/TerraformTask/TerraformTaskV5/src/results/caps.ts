@@ -32,6 +32,16 @@ export const MAX_OUTPUTS = 1000;
 /** Max drift resources kept (plan `drift`). Excess dropped in address order. */
 export const MAX_DRIFT = 2000;
 
+/** Max resources kept in a STATE inventory digest (Phase 5). Same value as
+ * MAX_RESOURCES (2000); a state inventory has no natural action priority, so on
+ * exceed keep the first N in walk order and note the count. */
+export const MAX_STATE_RESOURCES = 2000;
+
+/** Max attributes kept per resource in a STATE inventory digest (Phase 5). Same
+ * value as MAX_ATTR_CHANGES_PER_RESOURCE (200); excess dropped alphabetically by
+ * name, note remainder. */
+export const MAX_STATE_ATTRS_PER_RESOURCE = 200;
+
 /** Max truncationNotes kept; excess collapsed to a single "N more notes not shown" note. */
 export const MAX_NOTES = 1000;
 

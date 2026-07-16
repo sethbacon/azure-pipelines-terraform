@@ -1,0 +1,38 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.5",
+  "values": {
+    "outputs": {
+      "bucket_name": { "value": "app-assets-prod", "type": "string", "sensitive": false },
+      "region": { "value": "us-east-1", "type": "string", "sensitive": false }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "app-assets-prod",
+            "force_destroy": false,
+            "tags": { "env": "prod", "team": "platform" },
+            "versioning": [{ "enabled": true, "mfa_delete": false }]
+          },
+          "sensitive_values": { "tags": {}, "versioning": [{}] }
+        },
+        {
+          "address": "data.aws_caller_identity.current",
+          "mode": "data",
+          "type": "aws_caller_identity",
+          "name": "current",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": { "account_id": "123456789012", "id": "123456789012" },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  }
+}
