@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "kind": "apply",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-apply",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "outcome": "succeeded",
+  "summary": {
+    "add": 1,
+    "change": 0,
+    "destroy": 0,
+    "durationMs": 3600
+  },
+  "resources": [
+    {
+      "address": "aws_s3_bucket.data",
+      "action": "create",
+      "status": "complete",
+      "durationMs": 2000
+    }
+  ],
+  "diagnostics": [],
+  "outputs": [
+    {
+      "name": "bucket_name",
+      "action": "no-op",
+      "value": {
+        "kind": "value",
+        "json": "\"my-data-bucket\""
+      }
+    }
+  ]
+}

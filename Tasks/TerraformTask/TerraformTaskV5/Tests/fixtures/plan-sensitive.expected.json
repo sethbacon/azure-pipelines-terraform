@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "kind": "plan",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-plan",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "summary": {
+    "add": 1,
+    "change": 0,
+    "destroy": 0,
+    "replace": 0,
+    "read": 0,
+    "noChanges": false,
+    "driftDetected": false
+  },
+  "resources": [
+    {
+      "address": "aws_db_instance.main",
+      "type": "aws_db_instance",
+      "name": "main",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "actions": [
+        "create"
+      ],
+      "attributeChanges": [
+        {
+          "path": "config",
+          "before": {
+            "kind": "value",
+            "json": "null"
+          },
+          "after": {
+            "kind": "value",
+            "json": "{\"host\":\"db.internal\",\"token\":\"(sensitive)\"}"
+          }
+        },
+        {
+          "path": "endpoint",
+          "before": {
+            "kind": "value",
+            "json": "null"
+          },
+          "after": {
+            "kind": "unknown"
+          }
+        },
+        {
+          "path": "password",
+          "before": {
+            "kind": "value",
+            "json": "null"
+          },
+          "after": {
+            "kind": "sensitive"
+          }
+        },
+        {
+          "path": "ports",
+          "before": {
+            "kind": "value",
+            "json": "null"
+          },
+          "after": {
+            "kind": "value",
+            "json": "[5432,\"(sensitive)\"]"
+          }
+        },
+        {
+          "path": "username",
+          "before": {
+            "kind": "value",
+            "json": "null"
+          },
+          "after": {
+            "kind": "value",
+            "json": "\"admin\""
+          }
+        }
+      ]
+    }
+  ],
+  "outputChanges": [
+    {
+      "name": "db_host",
+      "action": "create",
+      "value": {
+        "kind": "value",
+        "json": "\"db.internal\""
+      }
+    },
+    {
+      "name": "db_password",
+      "action": "create",
+      "value": {
+        "kind": "sensitive"
+      }
+    }
+  ]
+}

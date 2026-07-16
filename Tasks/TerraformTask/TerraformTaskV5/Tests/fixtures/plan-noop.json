@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "null_resource.noop",
+      "type": "null_resource",
+      "name": "noop",
+      "provider_name": "registry.terraform.io/hashicorp/null",
+      "change": {
+        "actions": ["no-op"],
+        "before": { "id": "8140581574625882000", "triggers": null },
+        "after": { "id": "8140581574625882000", "triggers": null },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "output_changes": {}
+}

@@ -1,0 +1,23 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_instance.web",
+      "type": "aws_instance",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "action_reason": "replace_because_cannot_update",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": { "ami": "ami-0old", "instance_type": "t3.micro", "id": "i-0123456789" },
+        "after": { "ami": "ami-1new", "instance_type": "t3.micro", "id": null },
+        "after_unknown": { "id": true },
+        "before_sensitive": {},
+        "after_sensitive": {},
+        "replace_paths": [["ami"]]
+      }
+    }
+  ],
+  "output_changes": {}
+}
