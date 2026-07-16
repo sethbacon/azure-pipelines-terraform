@@ -36,20 +36,28 @@ WIF eliminates the need to store static AWS access keys in Azure DevOps. Instead
        {
          "Effect": "Allow",
          "Action": [
-           "ec2:DescribeInstances",
-           "ec2:DescribeTags",
            "ec2:RunInstances",
-           "ec2:TerminateInstances",
            "ec2:CreateTags"
          ],
          "Resource": "*",
          "Condition": {
            "StringLike": { "aws:RequestTag/Name": "terraform-*" }
          }
+       },
+       {
+         "Effect": "Allow",
+         "Action": [
+           "ec2:DescribeInstances",
+           "ec2:DescribeTags",
+           "ec2:TerminateInstances"
+         ],
+         "Resource": "*"
        }
      ]
    }
    ```
+
+   > **Security note:** `aws:RequestTag` only constrains actions that create or apply tags (here, `RunInstances` and `CreateTags`); it has no effect on read-only `Describe*` calls or on `TerminateInstances`, which act on resources that already exist. Use `aws:ResourceTag` or an explicit resource ARN if you need to scope those to specific instances.
 
    Adjust the actions/resources/conditions to match your configuration; avoid an AWS managed `*FullAccess` policy unless your Terraform configuration genuinely spans the whole service.
 

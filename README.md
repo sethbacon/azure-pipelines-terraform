@@ -127,6 +127,7 @@ Runs Terraform commands. Supports 16 commands:
 | `outputFormat`        | `show` (required)                               | `default`   | `json` or `default`.                                                                                                                                                                                                                             |
 | `filename`            | `show`/`custom` when `outputTo = file` (required) | —         | Path (relative to `workingDirectory`) to write the command output to.                                                                                                                                                                          |
 | `cleanupOutputFile`   | `output`                                        | `false`     | Deletes the `output`-command's JSON file (every output's real value, **including any marked `sensitive`**) when the step finishes. **Retained by default** so downstream steps can read it via the `jsonOutputVariablesPath` output variable — enable this if a step only needs the auto-set `TF_OUT_*` pipeline variables (see below) and not the file itself, especially on a self-hosted agent whose working directory persists between jobs. |
+| `failOnSensitiveOutputs` | `output`, `show`                             | `false`     | Fails the task (instead of only warning) when an `output`/`show` JSON output file would retain cleartext `sensitive = true` outputs on disk; the file is deleted at the end of the step on failure. Depends on the module declaring its outputs `sensitive` — same limitation as the `TF_OUT_*` masking described below. |
 
 #### Provider authentication inputs
 
@@ -158,7 +159,7 @@ Shown on all commands except `init`/`validate`/`workspace`/`state`/`fmt`/`get`/`
 
 #### Backend configuration inputs (`init` only)
 
-Shown when `command = init` and `backendType` selects the matching backend (independent of `provider` — see [Backend Types](#backend-types)).
+Shown when `command = init`. The `azurerm`/`s3`/`gcs`/`oci` field groups are shown based on the selected `provider` (not `backendType`); the `hcp` and `generic` groups are shown based on `backendType` — see [Backend Types](#backend-types).
 
 | Input                                       | Backend   | Default | Description                                                                                                                  |
 | --------------------------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
