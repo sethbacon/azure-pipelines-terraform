@@ -3,6 +3,10 @@ import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import { replaceSecretFile } from './secure-temp';
+import { buildPlanDigest, DigestMeta } from './results/plan-digest';
+import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
+import { serializeDigest } from './results/redact';
+import { sanitizeAttachmentName } from './results/secret-scrub';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -53,6 +57,51 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
         }
     }
     return lines.map(a => `-target=${a}`);
+}
+
+/**
+ * Recursively checks whether a Terraform sensitivity mask (e.g.
+ * `planned_values.outputs[].sensitive`, or `resource_changes[].change.after_sensitive`)
+ * marks ANY leaf sensitive. Mirrors the same "mask === true at any depth" rule the
+ * WP-1 redaction core (`src/results/redact.ts`'s `redactNode`) uses to decide
+ * sensitivity, so `warnIfSensitiveOutputs`'s detection and the structured digest's
+ * redaction are driven by one shared predicate and cannot silently drift apart
+ * (design §5.2.7). Unlike a shallow one-level scan, this also catches sensitivity
+ * nested under an object/array mask.
+ */
+export function maskHasSensitiveLeaf(mask: unknown): boolean {
+    if (mask === true) return true;
+    if (Array.isArray(mask)) return mask.some(maskHasSensitiveLeaf);
+    if (mask !== null && typeof mask === 'object') return Object.values(mask as Record<string, unknown>).some(maskHasSensitiveLeaf);
+    return false;
+}
+
+/**
+ * Reads this task's own version from task.json (Major.Minor.Patch) for the
+ * structured digest's `producedBy.taskVersion` field (design §4.1). Falls back
+ * to 'unknown' rather than throwing -- a version-read failure must not prevent
+ * an already-redacted, already-computed digest from being attached.
+ */
+export function getTaskVersion(): string {
+    try {
+        const raw = fs.readFileSync(path.join(__dirname, '..', 'task.json'), 'utf-8');
+        const v = JSON.parse(raw).version;
+        return `${v.Major}.${v.Minor}.${v.Patch}`;
+    } catch {
+        return 'unknown';
+    }
+}
+
+/**
+ * The digest's `meta.workingDirectory` must be a relative path only, never an
+ * absolute host filesystem path (design §4.1 -- avoids leaking agent directory
+ * layout into a build-read-scoped attachment). The `workingDirectory` task
+ * input is normally relative, but is not validated as such; an absolute value
+ * is simply omitted rather than passed through.
+ */
+export function relativeWorkingDirectoryForDigest(workingDirectory: string): string | undefined {
+    if (!workingDirectory || path.isAbsolute(workingDirectory)) return undefined;
+    return workingDirectory;
 }
 
 /**
@@ -450,26 +499,30 @@ export abstract class BaseTerraformCommandHandler {
         await this.warnIfMultipleProviders();
 
         const publishPlanResults = tasks.getInput("publishPlanResults");
+        const publishPlanSummary = tasks.getInput("publishPlanSummary");
+        const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+
+        // Structured path (design §7/D1): ensure a plan file exists so the
+        // `terraform show -json <planfile>` run below (after this command
+        // completes) has something to show. -out is added ONLY when
+        // publishPlanSummary is set so a publishPlanResults-only (or neither) run's
+        // command line -- and therefore its attachment -- is byte-for-byte
+        // unchanged (backward-compat regression, design §12.3).
+        let planFilePath: string | undefined;
+        if (publishPlanSummary) {
+            planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
+            terraformTool.arg(`-out=${planFilePath}`);
+        }
 
         let result: number;
+        let planStdout: string | undefined;
         if (publishPlanResults) {
             const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
             });
             result = commandOutput.code;
-
-            // Write the attachment into the agent-managed temp directory, which the
-            // agent cleans automatically at job end. The agent uploads attachment
-            // files asynchronously after reading the ##vso[task.addattachment] line
-            // from stdout, so we must NOT add this path to `tempFiles`: cleanupTempFiles()
-            // runs in the finally of the parent handler milliseconds later and would
-            // unlink the file before the agent has uploaded it, causing the upload to
-            // fail with "attachment file does not exist on disk".
-            const attachmentDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
-            const attachmentPath = path.join(attachmentDir, `terraform-plan-${uuidV4()}.txt`);
-            fs.writeFileSync(attachmentPath, commandOutput.stdout, "utf-8");
-            tasks.addAttachment("terraform-plan-results", publishPlanResults, attachmentPath);
+            planStdout = commandOutput.stdout;
         } else {
             result = await terraformTool.execAsync(<IExecOptions>{
                 cwd: planCommand.workingDirectory,
@@ -477,11 +530,87 @@ export abstract class BaseTerraformCommandHandler {
             });
         }
 
+        if (publishPlanResults && planStdout !== undefined) {
+            // Write the attachment into the agent-managed temp directory, which the
+            // agent cleans automatically at job end. The agent uploads attachment
+            // files asynchronously after reading the ##vso[task.addattachment] line
+            // from stdout, so we must NOT add this path to `tempFiles`: cleanupTempFiles()
+            // runs in the finally of the parent handler milliseconds later and would
+            // unlink the file before the agent has uploaded it, causing the upload to
+            // fail with "attachment file does not exist on disk".
+            const attachmentPath = path.join(tempDir, `terraform-plan-${uuidV4()}.txt`);
+            fs.writeFileSync(attachmentPath, planStdout, "utf-8");
+            tasks.addAttachment("terraform-plan-results", sanitizeAttachmentName(publishPlanResults).name, attachmentPath);
+        }
+
+        if (publishPlanSummary && planFilePath && (result === 0 || result === 2)) {
+            await this.publishPlanSummaryAttachment(planFilePath, planCommand.workingDirectory, publishPlanSummary, tempDir);
+        }
+
         if (result !== 0 && result !== 2) {
             throw new Error(tasks.loc("TerraformPlanFailed", result));
         }
         tasks.setVariable('changesPresent', (result === 2).toString(), false, true);
         return result;
+    }
+
+    /**
+     * Builds and attaches the redacted PlanDigest (`terraform-plan-summary`) for
+     * the structured results path (design §7, D1). Runs `terraform show -json
+     * <planFilePath>` against the plan file just produced by `-out`, redacts it
+     * via the WP-1 digest core, and writes/attaches it under Agent.TempDirectory.
+     * Never fails the task on its own: a problem running or parsing `show -json`
+     * is reported as a warning and the attachment is skipped, so the (already
+     * succeeded or changes-present) plan result and the raw publishPlanResults
+     * attachment, if also requested, are unaffected.
+     */
+    private async publishPlanSummaryAttachment(
+        planFilePath: string,
+        workingDirectory: string,
+        publishName: string,
+        tempDir: string,
+    ): Promise<void> {
+        const showCommand = this.createBaseCommand("show", "-json");
+        const showTool = this.terraformToolHandler.createToolRunner(showCommand);
+        showTool.arg(planFilePath);
+
+        const showOutput = await this.execWithStdoutCapture(showTool, {
+            cwd: workingDirectory,
+            ignoreReturnCode: true,
+        });
+        if (showOutput.code !== 0) {
+            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured plan summary; skipping the 'terraform-plan-summary' attachment.`);
+            return;
+        }
+
+        let planJson: unknown;
+        try {
+            planJson = JSON.parse(showOutput.stdout);
+        } catch (error) {
+            tasks.warning(`Could not parse 'terraform show -json' output for the structured plan summary; skipping the 'terraform-plan-summary' attachment: ${String(error)}`);
+            return;
+        }
+
+        const digest = buildPlanDigest(planJson, this.buildDigestMeta(publishName, workingDirectory));
+        const digestPath = path.join(tempDir, `terraform-plan-summary-${uuidV4()}.json`);
+        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+        tasks.addAttachment('terraform-plan-summary', digest.meta.name, digestPath);
+    }
+
+    /**
+     * Builds the DigestMeta identity/provenance fields (design §4.1) shared by
+     * both the plan and apply structured attachments.
+     */
+    private buildDigestMeta(publishName: string, workingDirectory: string): DigestMeta {
+        return {
+            taskVersion: getTaskVersion(),
+            toolName: 'terraform',
+            name: publishName,
+            workingDirectory: relativeWorkingDirectoryForDigest(workingDirectory),
+            stage: tasks.getVariable('System.StageDisplayName') || undefined,
+            job: tasks.getVariable('System.JobDisplayName') || undefined,
+            createdIso: tasks.getVariable('System.PipelineStartTime') || new Date().toISOString(),
+        };
     }
 
     public async custom(): Promise<number> {
@@ -526,9 +655,90 @@ export abstract class BaseTerraformCommandHandler {
         await this.handleProvider(applyCommand);
         await this.warnIfMultipleProviders();
 
-        return terraformTool.execAsync(<IExecOptions>{
-            cwd: applyCommand.workingDirectory
+        const publishApplyResults = tasks.getInput("publishApplyResults");
+        if (!publishApplyResults) {
+            return terraformTool.execAsync(<IExecOptions>{
+                cwd: applyCommand.workingDirectory
+            });
+        }
+
+        // Structured path (design §7/D2): -json replaces terraform's
+        // human-readable apply log, so the raw NDJSON must not hit the console
+        // (silent) -- each event's already-human-readable @message is echoed
+        // explicitly below instead, preserving the live-log experience while the
+        // structured (secret-bearing) fields are consumed only by the redaction
+        // pipeline, never printed.
+        terraformTool.arg("-json");
+        const commandOutput = await this.execWithStdoutCapture(terraformTool, {
+            cwd: applyCommand.workingDirectory,
+            silent: true,
+            ignoreReturnCode: true,
         });
+        this.echoApplyMessages(commandOutput.stdout);
+
+        await this.publishApplySummaryAttachment(commandOutput.stdout, applyCommand.workingDirectory, publishApplyResults);
+
+        // Preserve exit-code semantics exactly: apply still fails the task on a
+        // non-zero exit, same as the non-structured path's native execAsync
+        // rejection above (ignoreReturnCode was needed here only so a FAILED
+        // apply's NDJSON is still available to build the digest's
+        // appliedBeforeFailure/diagnostics picture).
+        if (commandOutput.code !== 0) {
+            throw new Error(tasks.loc("TerraformApplyFailed", commandOutput.code));
+        }
+        return commandOutput.code;
+    }
+
+    /**
+     * Echoes each `apply -json` NDJSON event's `@message` field verbatim to the
+     * console so the live log stays human-readable when `-json` replaces
+     * Terraform's normal human-readable apply output (design D2/§5.4). Never
+     * echoes raw structured event fields -- only the already-human-readable
+     * `@message` line Terraform itself produced; the structured fields are
+     * consumed only by the redaction pipeline. Malformed lines are skipped
+     * silently here -- apply-digest.ts's own parser separately counts and notes
+     * them in the digest's truncationNotes.
+     */
+    private echoApplyMessages(ndjson: string): void {
+        for (const rawLine of ndjson.split('\n')) {
+            const line = rawLine.replace(/\r$/, '').trim();
+            if (!line) continue;
+            try {
+                const event = JSON.parse(line);
+                if (event && typeof event === 'object' && typeof event['@message'] === 'string') {
+                    console.log(event['@message']);
+                }
+            } catch {
+                // ignore -- see doc comment above.
+            }
+        }
+    }
+
+    /**
+     * Builds and attaches the redacted ApplyDigest (`terraform-apply-summary`)
+     * for the structured results path (design §7).
+     */
+    private async publishApplySummaryAttachment(
+        ndjson: string,
+        workingDirectory: string,
+        publishName: string,
+    ): Promise<void> {
+        const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+        const options: ApplyDigestOptions = {
+            includeDiagnosticDetail: tasks.getBoolInput('includeDiagnosticDetail', false),
+            // §5.4: the task has no general readback of every secret registered via
+            // setSecret() across the provider handlers, so the freeform diagnostic
+            // scrub relies on secret-scrub.ts's PEM/high-entropy heuristic alone
+            // here (best-effort, documented residual risk -- design §5.10).
+            // includeDiagnosticDetail defaults to false so the more leak-prone
+            // 'detail' field is omitted unless explicitly opted in.
+            knownSecrets: [],
+        };
+
+        const digest = buildApplyDigest(ndjson, this.buildDigestMeta(publishName, workingDirectory), options);
+        const digestPath = path.join(tempDir, `terraform-apply-summary-${uuidV4()}.json`);
+        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+        tasks.addAttachment('terraform-apply-summary', digest.meta.name, digestPath);
     }
 
     public async destroy(): Promise<number> {
@@ -821,11 +1031,14 @@ export abstract class BaseTerraformCommandHandler {
             return;
         }
 
-        // Check for sensitive values in planned_values outputs
+        // Check for sensitive values in planned_values outputs. maskHasSensitiveLeaf
+        // shares its "mask === true at any depth" predicate with the WP-1 redaction
+        // core (design §5.2.7) so this detection cannot silently drift from what the
+        // structured digest actually redacts.
         const outputs = plan?.planned_values?.outputs;
         if (outputs && typeof outputs === 'object') {
             const sensitiveKeys = Object.entries(outputs)
-                .filter(([, v]) => (v as { sensitive?: boolean }).sensitive === true)
+                .filter(([, v]) => maskHasSensitiveLeaf((v as { sensitive?: unknown }).sensitive))
                 .map(([k]) => k);
             if (sensitiveKeys.length > 0) {
                 if (tasks.getBoolInput('failOnSensitiveOutputs', false)) {
@@ -836,14 +1049,15 @@ export abstract class BaseTerraformCommandHandler {
             }
         }
 
-        // Check for sensitive attributes in resource changes
+        // Check for sensitive attributes in resource changes. Recursive (via
+        // maskHasSensitiveLeaf) so sensitivity nested under an object/array mask is
+        // caught too, not just a top-level `{key: true}` entry -- the previous
+        // one-level-only scan could miss it.
         const resourceChanges = plan?.resource_changes;
         if (Array.isArray(resourceChanges)) {
-            const sensitiveResources = resourceChanges.filter((rc: { change?: { after_sensitive?: unknown } }) => {
-                const afterSensitive = rc.change?.after_sensitive;
-                if (!afterSensitive || typeof afterSensitive !== 'object') return false;
-                return Object.values(afterSensitive as Record<string, unknown>).some(v => v === true);
-            });
+            const sensitiveResources = resourceChanges.filter((rc: { change?: { after_sensitive?: unknown } }) =>
+                maskHasSensitiveLeaf(rc.change?.after_sensitive)
+            );
             if (sensitiveResources.length > 0) {
                 tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
             }
