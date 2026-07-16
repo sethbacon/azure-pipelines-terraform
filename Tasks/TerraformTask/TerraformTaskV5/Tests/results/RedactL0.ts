@@ -296,7 +296,12 @@ describe('capDigestBytes — digest-level byte ceilings (§3)', () => {
   // kind:"state") into dropApplyDiagnosticDetail, which iterates `d.diagnostics`
   // — a field a StateDigest does not have — throwing `d.diagnostics is not
   // iterable` and failing the whole task on any large real-world state.
-  function stateWithAttrs(resourceCount: number, attrsPerResource: number, valueBytes: number): StateDigest {
+  function stateWithAttrs(
+    resourceCount: number,
+    attrsPerResource: number,
+    valueBytes: number,
+    outputs: StateDigest['outputs'] = [],
+  ): StateDigest {
     const resources: StateResource[] = [];
     for (let i = 0; i < resourceCount; i++) {
       const attributes: StateResource['attributes'] = [];
@@ -313,15 +318,21 @@ describe('capDigestBytes — digest-level byte ceilings (§3)', () => {
       meta: { name: 'n', createdIso: 'i' },
       truncated: false,
       resources,
-      outputs: [],
+      outputs,
       summary: { resourceCount, dataSourceCount: 0 },
     };
   }
 
-  it('state digest over the REAL soft ceiling: no throw, drops attributes arrays, keeps rows + summary', () => {
+  it('state digest over the REAL soft ceiling: no throw, drops attributes AND outputs, keeps rows + summary', () => {
     // ~8 resources x 200 attrs x ~4KB each ≈ 6.5MB > SOFT (5MB), < HARD (12MB):
     // a realistic large state (IAM policies, base64 user_data, cert bundles).
-    const d = stateWithAttrs(8, 200, 4096);
+    // Plant heavy current outputs too: unlike plan's kept `outputChanges`, the
+    // state soft reducer sheds `outputs` (current values) as well.
+    const outputs: StateDigest['outputs'] = [];
+    for (let k = 0; k < 20; k++) {
+      outputs.push({ name: `out${k}`, value: { kind: 'value', json: '"' + 'o'.repeat(1024) + '"' } });
+    }
+    const d = stateWithAttrs(8, 200, 4096, outputs);
     assert.ok(utf8ByteLength(serializeDigest(d)) > SOFT_MAX_DIGEST_BYTES, 'fixture must actually exceed the soft ceiling');
     assert.ok(utf8ByteLength(serializeDigest(d)) < HARD_MAX_DIGEST_BYTES, 'fixture must stay under the hard ceiling');
     let out!: StateDigest;
@@ -330,6 +341,7 @@ describe('capDigestBytes — digest-level byte ceilings (§3)', () => {
     });
     assert.strictEqual(out.resources.length, 8, 'resource rows preserved');
     assert.ok(out.resources.every((r) => r.attributes.length === 0), 'attribute arrays dropped');
+    assert.strictEqual(out.outputs.length, 0, 'current outputs dropped at the soft tier');
     assert.strictEqual(out.truncated, true);
     assert.ok((out.truncationNotes ?? []).some((n) => n.includes('soft size ceiling')));
   });

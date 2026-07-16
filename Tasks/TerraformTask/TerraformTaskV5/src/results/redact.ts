@@ -301,6 +301,11 @@ function dropApplyDiagnosticDetail(d: ApplyDigest): void {
 
 function dropStateAttributeArrays(d: StateDigest): void {
   for (const r of d.resources) r.attributes = [];
+  // Unlike plan (whose small change-delta `outputChanges` are kept at the soft
+  // tier), a StateDigest's `outputs` are CURRENT values — a flat map that can
+  // itself carry heavy redacted payloads — so shed them too, keeping only the
+  // resource rows + summary. The hard tier (toSummaryOnly) drops them anyway.
+  d.outputs = [];
 }
 
 function addNote(d: Digest, msg: string): void {
