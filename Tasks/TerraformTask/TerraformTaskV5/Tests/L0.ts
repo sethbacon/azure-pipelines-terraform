@@ -37,6 +37,14 @@ import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredenti
 import './BinaryNameAllowlistL0';
 // Direct unit tests for the GCP static-key token_uri (Audience) validation.
 import './GcpTokenUriValidationL0';
+// Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
+// most security-critical unit): recursive redaction, digest builders, freeform
+// diagnostic scrub, and the golden-fixture regression + no-leak tripwire.
+import './results/RedactL0';
+import './results/PlanDigestL0';
+import './results/ApplyDigestL0';
+import './results/SecretScrubL0';
+import './results/GoldenFixturesL0';
 
 describe('Terraform Test Suite', function () {
 

@@ -1,0 +1,5 @@
+{"@level":"info","@message":"Terraform 1.9.5","@timestamp":"2026-07-15T10:00:00.000000Z","type":"version","terraform":"1.9.5","ui":"1.2"}
+{"@level":"info","@message":"aws_s3_bucket.data: Creating...","@timestamp":"2026-07-15T10:00:01.000000Z","type":"apply_start","hook":{"resource":{"addr":"aws_s3_bucket.data","resource_type":"aws_s3_bucket","resource_name":"data"},"action":"create"}}
+{"@level":"info","@message":"aws_s3_bucket.data: Creation complete after 2s [id=my-data-bucket]","@timestamp":"2026-07-15T10:00:03.000000Z","type":"apply_complete","hook":{"resource":{"addr":"aws_s3_bucket.data"},"action":"create","id_key":"id","id_value":"my-data-bucket","elapsed_seconds":2}}
+{"@level":"info","@message":"Apply complete! Resources: 1 added, 0 changed, 0 destroyed.","@timestamp":"2026-07-15T10:00:03.500000Z","type":"change_summary","changes":{"add":1,"change":0,"remove":0,"operation":"apply"}}
+{"@level":"info","@message":"Outputs: 1","@timestamp":"2026-07-15T10:00:03.600000Z","type":"outputs","outputs":{"bucket_name":{"sensitive":false,"type":"string","value":"my-data-bucket"}}}

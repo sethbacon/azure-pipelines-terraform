@@ -1,0 +1,48 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.main",
+      "type": "aws_db_instance",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "username": "admin",
+          "password": "SUPERSECRET_pw_9f3k",
+          "endpoint": null,
+          "config": { "host": "db.internal", "token": "TOK_abc123secret" },
+          "ports": [5432, "PORTSECRET_literal"]
+        },
+        "after_unknown": { "endpoint": true },
+        "before_sensitive": false,
+        "after_sensitive": {
+          "password": true,
+          "config": { "token": true },
+          "ports": [false, true]
+        }
+      }
+    }
+  ],
+  "output_changes": {
+    "db_password": {
+      "actions": ["create"],
+      "before": null,
+      "after": "OUTPUTSECRET_xyz",
+      "after_unknown": false,
+      "before_sensitive": false,
+      "after_sensitive": true
+    },
+    "db_host": {
+      "actions": ["create"],
+      "before": null,
+      "after": "db.internal",
+      "after_unknown": false,
+      "before_sensitive": false,
+      "after_sensitive": false
+    }
+  }
+}
