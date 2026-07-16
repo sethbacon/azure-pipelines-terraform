@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.9.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.4...v1.9.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* proxy support, live-TLS regression tests, and callback failure gating for credential-bearing HTTP clients ([#530](https://github.com/sethbacon/azure-pipelines-terraform/issues/530)) ([2f45527](https://github.com/sethbacon/azure-pipelines-terraform/commit/2f45527f9ffea16153c54225ab52ded92e73147a))
+
+
+### Documentation
+
+* OCI WIF setup guide, V5 inputs/outputs reference, release-checklist and CONTRIBUTING corrections ([#531](https://github.com/sethbacon/azure-pipelines-terraform/issues/531)) ([32f42bf](https://github.com/sethbacon/azure-pipelines-terraform/commit/32f42bfa2f66849169c6ec1d11e151381d5b0637))
+
+
+### Security
+
+* fix Markdown2Html/PublishKbArticle XSS gaps and ServiceNow response validation (audit [#12](https://github.com/sethbacon/azure-pipelines-terraform/issues/12), [#13](https://github.com/sethbacon/azure-pipelines-terraform/issues/13)/[#446](https://github.com/sethbacon/azure-pipelines-terraform/issues/446), [#29](https://github.com/sethbacon/azure-pipelines-terraform/issues/29)/[#372](https://github.com/sethbacon/azure-pipelines-terraform/issues/372), [#19](https://github.com/sethbacon/azure-pipelines-terraform/issues/19)/[#396](https://github.com/sethbacon/azure-pipelines-terraform/issues/396)) ([#483](https://github.com/sethbacon/azure-pipelines-terraform/issues/483)) ([b3af23c](https://github.com/sethbacon/azure-pipelines-terraform/commit/b3af23c84aecdfbf5029232f24fd9ae033e501d6))
+* harden PolicyCheck temp file handling ([#526](https://github.com/sethbacon/azure-pipelines-terraform/issues/526)) ([bdc3f1e](https://github.com/sethbacon/azure-pipelines-terraform/commit/bdc3f1ea4f22152c68541db204716fbf7eb84a22)), closes [#487](https://github.com/sethbacon/azure-pipelines-terraform/issues/487) [#503](https://github.com/sethbacon/azure-pipelines-terraform/issues/503) [#505](https://github.com/sethbacon/azure-pipelines-terraform/issues/505) [#510](https://github.com/sethbacon/azure-pipelines-terraform/issues/510)
+* harden TerraformTaskV5 credential/output file handling and WIF endpoint validation ([#532](https://github.com/sethbacon/azure-pipelines-terraform/issues/532)) ([0351ef6](https://github.com/sethbacon/azure-pipelines-terraform/commit/0351ef6978a14b02489387b7142a47e02a12a1d8))
+* KB/Markdown2Html sanitizer and ServiceNow client follow-ups from the [#483](https://github.com/sethbacon/azure-pipelines-terraform/issues/483) adversarial review ([#528](https://github.com/sethbacon/azure-pipelines-terraform/issues/528)) ([64e1e91](https://github.com/sethbacon/azure-pipelines-terraform/commit/64e1e914c50ba8ed0ffb98bedfdc53937d1f60cd))
+* re-verify cached tools, add trust-root canary fixtures, and fail closed on missing agent temp dir ([#529](https://github.com/sethbacon/azure-pipelines-terraform/issues/529)) ([b24de2b](https://github.com/sethbacon/azure-pipelines-terraform/commit/b24de2b93203630166243d27fbae43ce7faf624a)), closes [#496](https://github.com/sethbacon/azure-pipelines-terraform/issues/496)
+
 ## [1.9.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.3...v1.9.4) (2026-07-14)
 
 
