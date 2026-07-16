@@ -1,11 +1,16 @@
 /**
  * Terraform Tab — Azure DevOps Pipeline Build Results Tab
  *
- * Displays structured plan/apply digests (Plan/Apply pivots) published as
- * pipeline attachments, with a raw ANSI fallback for legacy attachments and
- * for any digest that fails to parse. Uses the standard Azure DevOps
- * Extension SDK pattern: SDK.init() -> SDK.ready() -> config.onBuildChanged()
- * -> BuildRestClient.getAttachments().
+ * Displays structured plan/apply/state digests (Plan/Apply/State pivots)
+ * published as pipeline attachments, with a raw ANSI fallback for legacy
+ * attachments and for any digest that fails to parse. Uses the standard
+ * Azure DevOps Extension SDK pattern: SDK.init() -> SDK.ready() ->
+ * config.onBuildChanged() -> BuildRestClient.getAttachments().
+ *
+ * The State pivot (Phase 5, digest spec §7.2) renders a `terraform-state-summary`
+ * attachment's resource inventory. A destroy plan (`PlanDigest.planMode ===
+ * "destroy"`, digest spec §7.1) reuses the Plan pivot unchanged and is only
+ * LABELED with a "Destroy" badge in the overview row and detail header.
  *
  * Architecture informed by studying:
  *   - jason-johnson/azure-pipelines-tasks-terraform (MIT, Copyright 2021 Charles Zipp, 2023 Jason Johnson)
@@ -28,19 +33,22 @@ import { getClient } from "azure-devops-extension-api";
 import { parseDigestText } from "./digest-model";
 import { Digest, PlanResource } from "./digest-schema";
 import { TAB_MAX_RENDERED_ROWS, TAB_PARSE_CEILING_BYTES } from "./caps";
-import { SummaryHeader, SummaryHeaderCounts } from "./components/SummaryHeader";
+import { SummaryHeader, SummaryHeaderCounts, SummaryHeaderStateCounts } from "./components/SummaryHeader";
 import { OverviewList, OverviewItem } from "./components/OverviewList";
 import { ResourceList } from "./components/ResourceList";
 import { ResourceDiff } from "./components/ResourceDiff";
 import { ApplyTimeline } from "./components/ApplyTimeline";
 import { OutputsPanel } from "./components/OutputsPanel";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { StateInventory } from "./components/StateInventory";
 import { RawView } from "./components/RawView";
 import "./tabContent.css";
 
 /** New structured attachment types (§7 of the design doc), additive to the legacy raw attachment. */
 const PLAN_SUMMARY_ATTACHMENT_TYPE = "terraform-plan-summary";
 const APPLY_SUMMARY_ATTACHMENT_TYPE = "terraform-apply-summary";
+/** State-inventory attachment type (Phase 5, digest spec §7.2), additive alongside plan/apply. */
+const STATE_SUMMARY_ATTACHMENT_TYPE = "terraform-state-summary";
 /** Legacy raw attachment type, kept for backward compatibility (jason-johnson migration convention). */
 const LEGACY_RAW_ATTACHMENT_TYPE = "terraform-plan-results";
 
@@ -62,15 +70,19 @@ type DigestItem =
 interface TerraformTabState {
     loading: boolean;
     error: string | null;
-    activePivot: "plan" | "apply";
+    activePivot: "plan" | "apply" | "state";
     planItems: DigestItem[];
     applyItems: DigestItem[];
+    stateItems: DigestItem[];
     legacyRaw: RawAttachment[];
     selectedPlanId: string | null;
     selectedApplyId: string | null;
+    selectedStateId: string | null;
     selectedLegacyIndex: number;
     selectedResourceAddress: string | null;
     resourceSearchText: string;
+    selectedStateAddress: string | null;
+    stateSearchText: string;
 }
 
 function byNameCaseInsensitive<T extends { name: string }>(a: T, b: T): number {
@@ -91,12 +103,16 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             activePivot: "plan",
             planItems: [],
             applyItems: [],
+            stateItems: [],
             legacyRaw: [],
             selectedPlanId: null,
             selectedApplyId: null,
+            selectedStateId: null,
             selectedLegacyIndex: 0,
             selectedResourceAddress: null,
             resourceSearchText: "",
+            selectedStateAddress: null,
+            stateSearchText: "",
         };
     }
 
@@ -111,11 +127,11 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             return <div className="plan-empty">Error: {error}</div>;
         }
 
-        const { planItems, applyItems, legacyRaw } = this.state;
-        if (planItems.length === 0 && applyItems.length === 0 && legacyRaw.length === 0) {
+        const { planItems, applyItems, stateItems, legacyRaw } = this.state;
+        if (planItems.length === 0 && applyItems.length === 0 && stateItems.length === 0 && legacyRaw.length === 0) {
             return (
                 <div className="plan-empty">
-                    No terraform plans or applies have been published for this pipeline run.
+                    No terraform plans, applies, or state have been published for this pipeline run.
                     <br />
                     <br />
                     Set <code>publishPlanResults</code>, <code>publishPlanSummary</code>, or{" "}
@@ -143,8 +159,18 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     >
                         Apply
                     </button>
+                    <button
+                        role="tab"
+                        aria-selected={this.state.activePivot === "state"}
+                        className={`pivot-tab${this.state.activePivot === "state" ? " active" : ""}`}
+                        onClick={() => this.setActivePivot("state")}
+                    >
+                        State
+                    </button>
                 </div>
-                {this.state.activePivot === "plan" ? this.renderPlanPivot() : this.renderApplyPivot()}
+                {this.state.activePivot === "plan" && this.renderPlanPivot()}
+                {this.state.activePivot === "apply" && this.renderApplyPivot()}
+                {this.state.activePivot === "state" && this.renderStatePivot()}
             </div>
         );
     }
@@ -203,6 +229,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     counts={digest.summary}
                     noChanges={digest.summary.noChanges}
                     driftDetected={digest.summary.driftDetected}
+                    destroyMode={digest.planMode === "destroy"}
                     truncated={digest.truncated}
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
@@ -290,6 +317,65 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         );
     }
 
+    private renderStatePivot(): JSX.Element {
+        const { stateItems, selectedStateId } = this.state;
+
+        if (stateItems.length === 0) {
+            return <div className="plan-empty">No terraform state has been published for this pipeline run.</div>;
+        }
+
+        const okItems = stateItems.filter((i): i is Extract<DigestItem, { status: "ok" }> => i.status === "ok");
+        const rollup = aggregateStateRollup(okItems);
+        const overviewItems: OverviewItem[] = stateItems.map(toStateOverviewItem);
+        const selected = stateItems.find((i) => i.id === selectedStateId) ?? stateItems[0];
+
+        return (
+            <div className="pivot-panel">
+                {stateItems.length > 1 && (
+                    <SummaryHeader title={`All state (${stateItems.length})`} kind="state" stateCounts={rollup} />
+                )}
+                {stateItems.length > 1 && (
+                    <OverviewList items={overviewItems} selectedId={selectedStateId} onSelect={this.onSelectState} />
+                )}
+                {selected && this.renderStateDetail(selected)}
+            </div>
+        );
+    }
+
+    private renderStateDetail(item: DigestItem): JSX.Element {
+        if (item.status === "error") {
+            return this.renderDigestError(item);
+        }
+        if (item.digest.kind !== "state") {
+            return this.renderDigestError({ message: "Unexpected digest kind.", raw: item.raw, name: item.name });
+        }
+        const digest = item.digest;
+        const { selectedStateAddress, stateSearchText } = this.state;
+
+        return (
+            <div className="digest-detail">
+                {item.unknownVersion && <div className="unknown-version-banner">{item.notes.join(" ")}</div>}
+                <SummaryHeader
+                    title={item.name}
+                    kind="state"
+                    stateCounts={digest.summary}
+                    truncated={digest.truncated}
+                    truncationNotes={digest.truncationNotes}
+                    toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+                />
+                <StateInventory
+                    resources={digest.resources}
+                    selectedAddress={selectedStateAddress}
+                    onSelect={this.onSelectStateResource}
+                    searchText={stateSearchText}
+                    onSearchTextChange={this.onStateSearchTextChange}
+                />
+                <OutputsPanel outputs={digest.outputs} />
+                {this.renderRawDetails(item.raw)}
+            </div>
+        );
+    }
+
     private renderDigestError(item: { message: string; raw: RawAttachment; name: string }): JSX.Element {
         return (
             <div className="digest-parse-error">
@@ -343,7 +429,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         );
     }
 
-    private setActivePivot = (pivot: "plan" | "apply"): void => {
+    private setActivePivot = (pivot: "plan" | "apply" | "state"): void => {
         this.setState({ activePivot: pivot });
     };
 
@@ -353,6 +439,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
 
     private onSelectApply = (id: string): void => {
         this.setState({ selectedApplyId: id });
+    };
+
+    private onSelectState = (id: string): void => {
+        this.setState({ selectedStateId: id, selectedStateAddress: null, stateSearchText: "" });
     };
 
     private onSelectResource = (address: string): void => {
@@ -365,6 +455,16 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         this.setState({ resourceSearchText: text });
     };
 
+    private onSelectStateResource = (address: string): void => {
+        this.setState((prev: TerraformTabState) => ({
+            selectedStateAddress: prev.selectedStateAddress === address ? null : address,
+        }));
+    };
+
+    private onStateSearchTextChange = (text: string): void => {
+        this.setState({ stateSearchText: text });
+    };
+
     private onSelectLegacy = (event: React.ChangeEvent<HTMLSelectElement>): void => {
         this.setState({ selectedLegacyIndex: parseInt(event.target.value, 10) });
     };
@@ -373,7 +473,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     private async loadDigestItems(
         attachments: AttachmentRef[],
         authHeader: string,
-        expectedKind: "plan" | "apply"
+        expectedKind: "plan" | "apply" | "state"
     ): Promise<DigestItem[]> {
         const items: DigestItem[] = [];
         for (let i = 0; i < attachments.length; i++) {
@@ -456,33 +556,45 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             const accessToken = await SDK.getAccessToken();
             const authHeader = "Basic " + btoa(":" + accessToken);
 
-            const [planAttachments, applyAttachments, legacyAttachments] = await Promise.all([
+            const [planAttachments, applyAttachments, stateAttachments, legacyAttachments] = await Promise.all([
                 buildClient.getAttachments(build.project.id, build.id, PLAN_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, APPLY_SUMMARY_ATTACHMENT_TYPE),
+                buildClient.getAttachments(build.project.id, build.id, STATE_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, LEGACY_RAW_ATTACHMENT_TYPE),
             ]);
 
-            const [planItems, applyItems, legacyRaw] = await Promise.all([
+            const [planItems, applyItems, stateItems, legacyRaw] = await Promise.all([
                 this.loadDigestItems(planAttachments ?? [], authHeader, "plan"),
                 this.loadDigestItems(applyAttachments ?? [], authHeader, "apply"),
+                this.loadDigestItems(stateAttachments ?? [], authHeader, "state"),
                 this.loadRawAttachments(legacyAttachments ?? [], authHeader),
             ]);
 
             planItems.sort(byNameCaseInsensitive);
             applyItems.sort(byNameCaseInsensitive);
+            stateItems.sort(byNameCaseInsensitive);
             legacyRaw.sort(byNameCaseInsensitive);
 
-            const activePivot = planItems.length === 0 && legacyRaw.length === 0 && applyItems.length > 0 ? "apply" : "plan";
+            const activePivot =
+                planItems.length === 0 && legacyRaw.length === 0 && applyItems.length === 0 && stateItems.length > 0
+                    ? "state"
+                    : planItems.length === 0 && legacyRaw.length === 0 && applyItems.length > 0
+                    ? "apply"
+                    : "plan";
 
             this.setState({
                 planItems,
                 applyItems,
+                stateItems,
                 legacyRaw,
                 selectedPlanId: planItems[0]?.id ?? null,
                 selectedApplyId: applyItems[0]?.id ?? null,
+                selectedStateId: stateItems[0]?.id ?? null,
                 selectedLegacyIndex: 0,
                 selectedResourceAddress: null,
                 resourceSearchText: "",
+                selectedStateAddress: null,
+                stateSearchText: "",
                 activePivot,
                 loading: false,
             });
@@ -505,6 +617,7 @@ function toPlanOverviewItem(item: DigestItem): OverviewItem {
         counts: { add: s.add, change: s.change, destroy: s.destroy, replace: s.replace, read: s.read },
         noChanges: s.noChanges,
         driftDetected: s.driftDetected,
+        destroyMode: item.digest.planMode === "destroy",
     };
 }
 
@@ -558,6 +671,30 @@ function aggregateApplyRollup(items: Array<Extract<DigestItem, { status: "ok" }>
         counts.destroy += s.destroy;
     }
     return { counts };
+}
+
+function toStateOverviewItem(item: DigestItem): OverviewItem {
+    if (item.status === "error" || item.digest.kind !== "state") {
+        return { id: item.id, name: item.name, status: "error", message: item.status === "error" ? item.message : "Unexpected digest kind." };
+    }
+    const s = item.digest.summary;
+    return {
+        id: item.id,
+        name: item.name,
+        status: "ok",
+        stateCounts: { resourceCount: s.resourceCount, dataSourceCount: s.dataSourceCount },
+    };
+}
+
+function aggregateStateRollup(items: Array<Extract<DigestItem, { status: "ok" }>>): SummaryHeaderStateCounts {
+    const counts: SummaryHeaderStateCounts = { resourceCount: 0, dataSourceCount: 0 };
+    for (const item of items) {
+        if (item.digest.kind !== "state") continue;
+        const s = item.digest.summary;
+        counts.resourceCount += s.resourceCount;
+        counts.dataSourceCount += s.dataSourceCount;
+    }
+    return counts;
 }
 
 // Initialize the Azure DevOps Extension SDK and render the tab

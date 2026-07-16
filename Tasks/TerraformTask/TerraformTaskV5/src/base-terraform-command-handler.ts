@@ -5,6 +5,7 @@ import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import { replaceSecretFile } from './secure-temp';
 import { buildPlanDigest, DigestMeta } from './results/plan-digest';
 import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
+import { buildStateDigest } from './results/state-digest';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
@@ -56,6 +57,31 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
         }
     }
     return lines.map(a => `-target=${a}`);
+}
+
+/**
+ * Best-effort heuristic (Phase 5 §5.5) for whether a `show` command's
+ * `commandOptions` carries a positional plan-file argument (e.g. `tfplan.out`,
+ * or `-no-color tfplan.out`) as opposed to flags only. Terraform's `show`
+ * reads a saved plan file when given one, or the CURRENT state when given
+ * none -- and this task has no other signal to distinguish the two, since a
+ * plan-file path is free text embedded in `commandOptions` alongside any
+ * flags, not a separate input. Used ONLY to gate the new `publishStateResults`
+ * structured-state-summary path (never the pre-existing show-of-planfile
+ * sensitive-output/destroy-change detection, which is unconditional and
+ * unaffected by this function): a positional token found here means this run
+ * is a planfile show, so the state-summary attachment is skipped even if
+ * `publishStateResults` is set (documented in the task's helpMarkDown).
+ *
+ * Deliberately NOT a full shell parser -- it recognizes double-quoted tokens
+ * (`"a plan file.out"`) but not single quotes or backslash escapes, matching
+ * ToolRunner's own `.line()` closely enough for this best-effort gate. A
+ * value that isn't a flag (doesn't start with `-`) is treated as positional.
+ */
+export function hasPositionalCommandArg(commandOptions: string | undefined): boolean {
+    if (!commandOptions) return false;
+    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
+    return tokens.some(t => !t.startsWith('-'));
 }
 
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
@@ -410,8 +436,9 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(showCommand);
         await this.handleProvider(showCommand);
 
+        let result: number;
         if (outputTo === "console") {
-            return terraformTool.execAsync(<IExecOptions>{
+            result = await terraformTool.execAsync(<IExecOptions>{
                 cwd: showCommand.workingDirectory
             });
         } else if (outputTo === "file") {
@@ -429,9 +456,30 @@ export abstract class BaseTerraformCommandHandler {
                 this.warnIfSensitiveOutputs(commandOutput.stdout, showFilePath);
             }
 
-            return commandOutput.code;
+            result = commandOutput.code;
+        } else {
+            throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
         }
-        throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
+
+        // Structured state-inventory path (Phase 5 §5.5): publishStateResults is a
+        // NEW opt-in input, so this never runs (and therefore never changes the
+        // command line or behavior above) unless it is explicitly set -- the
+        // strongest backward-compat guarantee, mirroring publishPlanSummary's own
+        // gating. When set, and this show has no plan-file positional argument
+        // (hasPositionalCommandArg -- a positional token means this is a planfile
+        // show instead, which the existing sensitive-output/destroy-change
+        // detection above already covers and which this path leaves untouched),
+        // run a SEPARATE `terraform show -json` of the CURRENT state (mirroring
+        // publishPlanSummaryAttachment's independent `show -json` call) and attach
+        // the redacted StateDigest. Runs after the primary command above so a
+        // failing primary command's throw is never masked by this attachment.
+        const publishStateResults = tasks.getInput("publishStateResults");
+        if (publishStateResults && !hasPositionalCommandArg(commandOptions)) {
+            const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+            await this.publishStateSummaryAttachment(showCommand.workingDirectory, publishStateResults, tempDir);
+        }
+
+        return result;
     }
 
     public async output(): Promise<number> {
@@ -560,12 +608,18 @@ export abstract class BaseTerraformCommandHandler {
      * is reported as a warning and the attachment is skipped, so the (already
      * succeeded or changes-present) plan result and the raw publishPlanResults
      * attachment, if also requested, are unaffected.
+     *
+     * `mode` is `"destroy"` when called from destroy() (Phase 5 §5.5 -- a destroy
+     * plan is a PlanDigest whose resource_changes are all deletes) so the digest
+     * carries `planMode: "destroy"` for the tab to label; omitted (plan) leaves
+     * every existing plan() caller byte-unaffected.
      */
     private async publishPlanSummaryAttachment(
         planFilePath: string,
         workingDirectory: string,
         publishName: string,
         tempDir: string,
+        mode?: 'destroy',
     ): Promise<void> {
         const showCommand = this.createBaseCommand("show", "-json");
         const showTool = this.terraformToolHandler.createToolRunner(showCommand);
@@ -588,10 +642,63 @@ export abstract class BaseTerraformCommandHandler {
             return;
         }
 
-        const digest = buildPlanDigest(planJson, this.buildDigestMeta(publishName, workingDirectory));
+        const digest = buildPlanDigest(planJson, this.buildDigestMeta(publishName, workingDirectory), mode ? { mode } : undefined);
         const digestPath = path.join(tempDir, `terraform-plan-summary-${uuidV4()}.json`);
         fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
         tasks.addAttachment('terraform-plan-summary', digest.meta.name, digestPath);
+    }
+
+    /**
+     * Builds and attaches the redacted StateDigest (`terraform-state-summary`)
+     * for the structured state-inventory path (Phase 5 §5.5). Runs a SEPARATE
+     * `terraform show -json` (no plan-file argument, so Terraform shows the
+     * CURRENT state) independent of the main `show()` command that triggered it,
+     * mirroring publishPlanSummaryAttachment's independent `show -json
+     * <planFilePath>` call. Never fails the task on its own: a problem running or
+     * parsing `show -json`, or building/serializing/attaching the digest, is
+     * reported as a warning and the attachment is skipped, exactly like the
+     * plan-summary path.
+     */
+    private async publishStateSummaryAttachment(
+        workingDirectory: string,
+        publishName: string,
+        tempDir: string,
+    ): Promise<void> {
+        const showCommand = this.createBaseCommand("show", "-json");
+        const showTool = this.terraformToolHandler.createToolRunner(showCommand);
+
+        const showOutput = await this.execWithStdoutCapture(showTool, {
+            cwd: workingDirectory,
+            ignoreReturnCode: true,
+        });
+        if (showOutput.code !== 0) {
+            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured state summary; skipping the 'terraform-state-summary' attachment.`);
+            return;
+        }
+
+        let stateJson: unknown;
+        try {
+            stateJson = JSON.parse(showOutput.stdout);
+        } catch (error) {
+            tasks.warning(`Could not parse 'terraform show -json' output for the structured state summary; skipping the 'terraform-state-summary' attachment: ${String(error)}`);
+            return;
+        }
+
+        // Build + attach is guarded (warn-and-skip) exactly like the show/parse
+        // steps above: the structured state summary must NEVER fail the task on
+        // its own. buildStateDigest is pure but fails closed by throwing on an
+        // unexpected shape, and its size-cap step (capDigestBytes) is the last
+        // line of defense against a multi-megabyte state -- so an unexpected
+        // throw here degrades to a skipped attachment, not a failed `terraform
+        // show` (the caller in show() awaits this with no try/catch of its own).
+        try {
+            const digest = buildStateDigest(stateJson, this.buildDigestMeta(publishName, workingDirectory));
+            const digestPath = path.join(tempDir, `terraform-state-summary-${uuidV4()}.json`);
+            fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+            tasks.addAttachment('terraform-state-summary', digest.meta.name, digestPath);
+        } catch (error) {
+            tasks.warning(`Could not build the structured state summary; skipping the 'terraform-state-summary' attachment: ${String(error)}`);
+        }
     }
 
     /**
@@ -764,9 +871,46 @@ export abstract class BaseTerraformCommandHandler {
         await this.handleProvider(destroyCommand);
         await this.warnIfMultipleProviders();
 
-        return terraformTool.execAsync(<IExecOptions>{
-            cwd: destroyCommand.workingDirectory
+        const publishPlanSummary = tasks.getInput("publishPlanSummary");
+        const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+
+        // Structured path (Phase 5 §5.5): a destroy plan IS a PlanDigest whose
+        // resource_changes are all deletes, so this reuses buildPlanDigest /
+        // publishPlanSummaryAttachment exactly as plan() does above, passing
+        // mode:"destroy" so the tab can label the view. -out is added ONLY when
+        // publishPlanSummary is set (same gating as plan()'s -out), so a run with
+        // neither publish input set has a byte-for-byte unchanged command line
+        // (backward-compat, design §12.3 applied to destroy).
+        let planFilePath: string | undefined;
+        if (publishPlanSummary) {
+            planFilePath = path.join(tempDir, `terraform-destroy-${uuidV4()}.tfplan`);
+            terraformTool.arg(`-out=${planFilePath}`);
+        }
+
+        if (!publishPlanSummary) {
+            return terraformTool.execAsync(<IExecOptions>{
+                cwd: destroyCommand.workingDirectory
+            });
+        }
+
+        // ignoreReturnCode is needed ONLY so a FAILED destroy's already-written
+        // plan file (terraform writes -out during planning, before the
+        // auto-approved apply phase runs) is still available to build+attach the
+        // structured summary below -- mirrors apply()'s identical
+        // ignoreReturnCode/manual-throw pattern for the same reason (design D2).
+        // Destroy still auto-approves and still fails the task on a non-zero exit
+        // exactly as the non-structured path above.
+        const result = await terraformTool.execAsync(<IExecOptions>{
+            cwd: destroyCommand.workingDirectory,
+            ignoreReturnCode: true,
         });
+
+        await this.publishPlanSummaryAttachment(planFilePath!, destroyCommand.workingDirectory, publishPlanSummary, tempDir, 'destroy');
+
+        if (result !== 0) {
+            throw new Error(tasks.loc("TerraformDestroyFailed", result));
+        }
+        return result;
     }
 
     /**

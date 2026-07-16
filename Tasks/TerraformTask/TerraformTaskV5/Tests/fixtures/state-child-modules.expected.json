@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "kind": "state",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-state",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "summary": {
+    "resourceCount": 3,
+    "dataSourceCount": 1
+  },
+  "resources": [
+    {
+      "address": "aws_vpc.main",
+      "type": "aws_vpc",
+      "name": "main",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "managed",
+      "attributes": [
+        {
+          "name": "cidr_block",
+          "value": {
+            "kind": "value",
+            "json": "\"10.0.0.0/16\""
+          }
+        },
+        {
+          "name": "id",
+          "value": {
+            "kind": "value",
+            "json": "\"vpc-0abc123\""
+          }
+        }
+      ]
+    },
+    {
+      "address": "module.database.aws_db_instance.this",
+      "type": "aws_db_instance",
+      "name": "this",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "managed",
+      "moduleAddress": "module.database",
+      "attributes": [
+        {
+          "name": "identifier",
+          "value": {
+            "kind": "value",
+            "json": "\"moddb\""
+          }
+        },
+        {
+          "name": "password",
+          "value": {
+            "kind": "sensitive"
+          }
+        }
+      ]
+    },
+    {
+      "address": "module.database.module.kms.aws_kms_key.this",
+      "type": "aws_kms_key",
+      "name": "this",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "managed",
+      "moduleAddress": "module.database.module.kms",
+      "attributes": [
+        {
+          "name": "key_id",
+          "value": {
+            "kind": "value",
+            "json": "\"key-0xyz\""
+          }
+        },
+        {
+          "name": "policy",
+          "value": {
+            "kind": "value",
+            "json": "\"{\\\"Version\\\":\\\"2012-10-17\\\"}\""
+          }
+        }
+      ]
+    },
+    {
+      "address": "module.app.data.aws_ami.ubuntu",
+      "type": "aws_ami",
+      "name": "ubuntu",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "data",
+      "moduleAddress": "module.app",
+      "attributes": [
+        {
+          "name": "architecture",
+          "value": {
+            "kind": "value",
+            "json": "\"x86_64\""
+          }
+        },
+        {
+          "name": "id",
+          "value": {
+            "kind": "value",
+            "json": "\"ami-0123\""
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "vpc_id",
+      "value": {
+        "kind": "value",
+        "json": "\"vpc-0abc123\""
+      }
+    }
+  ]
+}

@@ -26,7 +26,7 @@
 // (`capDigestBytes`) — so those helpers have exactly one implementation and the
 // producer cannot drift from itself.
 
-import { RedactedValue, Digest, PlanDigest, ApplyDigest } from './digest-schema';
+import { RedactedValue, Digest, PlanDigest, ApplyDigest, StateDigest } from './digest-schema';
 import { MAX_REDACTED_VALUE_BYTES } from './caps';
 
 /**
@@ -272,8 +272,14 @@ export function capDigestBytes<T extends Digest>(digest: T, softMax: number, har
 
   if (digest.kind === 'plan') {
     dropPlanAttributeArrays(digest as PlanDigest);
-  } else {
+  } else if (digest.kind === 'apply') {
     dropApplyDiagnosticDetail(digest as ApplyDigest);
+  } else {
+    // A StateDigest has no `diagnostics`; shed its heavy per-resource `attributes`
+    // arrays (keep resource rows + summary), mirroring the plan reduction. Without
+    // this branch a state over the soft ceiling fell into dropApplyDiagnosticDetail
+    // and threw `d.diagnostics is not iterable`, failing the whole task.
+    dropStateAttributeArrays(digest as StateDigest);
   }
   digest.truncated = true;
   addNote(digest, 'digest exceeded soft size ceiling; dropped detailed change arrays');
@@ -291,6 +297,15 @@ function dropPlanAttributeArrays(d: PlanDigest): void {
 
 function dropApplyDiagnosticDetail(d: ApplyDigest): void {
   for (const diag of d.diagnostics) delete diag.detail;
+}
+
+function dropStateAttributeArrays(d: StateDigest): void {
+  for (const r of d.resources) r.attributes = [];
+  // Unlike plan (whose small change-delta `outputChanges` are kept at the soft
+  // tier), a StateDigest's `outputs` are CURRENT values — a flat map that can
+  // itself carry heavy redacted payloads — so shed them too, keeping only the
+  // resource rows + summary. The hard tier (toSummaryOnly) drops them anyway.
+  d.outputs = [];
 }
 
 function addNote(d: Digest, msg: string): void {
@@ -313,6 +328,10 @@ function toSummaryOnly(d: Digest): Digest {
   if (d.kind === 'plan') {
     const p: PlanDigest = { ...base, kind: 'plan', summary: d.summary, resources: [], outputChanges: [] };
     return p;
+  }
+  if (d.kind === 'state') {
+    const s: StateDigest = { ...base, kind: 'state', summary: d.summary, resources: [], outputs: [] };
+    return s;
   }
   const a: ApplyDigest = {
     ...base,

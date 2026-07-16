@@ -51,6 +51,50 @@ function validApplyDigestObj(): Record<string, unknown> {
   };
 }
 
+/** A minimal, schema-valid v1 state (inventory) digest (Phase 5, digest spec §7.2). */
+function validStateDigestObj(): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    kind: "state",
+    producedBy: { task: "TerraformTaskV5", taskVersion: "5.12.0" },
+    tool: { name: "terraform", version: "1.14.6" },
+    meta: { name: "state-main", createdIso: "2026-07-01T12:10:00.000Z" },
+    truncated: false,
+    summary: { resourceCount: 2, dataSourceCount: 1 },
+    resources: [
+      {
+        address: "aws_instance.web",
+        type: "aws_instance",
+        name: "web",
+        providerName: "registry.terraform.io/hashicorp/aws",
+        mode: "managed",
+        attributes: [
+          { name: "instance_type", value: { kind: "value", json: '"t3.micro"' } },
+          { name: "password", value: { kind: "sensitive" } },
+        ],
+      },
+      {
+        address: "module.db.aws_db_instance.this[0]",
+        type: "aws_db_instance",
+        name: "this",
+        providerName: "registry.terraform.io/hashicorp/aws",
+        mode: "managed",
+        moduleAddress: "module.db",
+        attributes: [],
+      },
+      {
+        address: "data.aws_ami.latest",
+        type: "aws_ami",
+        name: "latest",
+        providerName: "registry.terraform.io/hashicorp/aws",
+        mode: "data",
+        attributes: [],
+      },
+    ],
+    outputs: [{ name: "db_password", value: { kind: "sensitive" } }],
+  };
+}
+
 function json(obj: unknown): string {
   return JSON.stringify(obj);
 }
@@ -89,6 +133,28 @@ describe("parseDigestText — valid v1 digests", () => {
     const a = parseDigestText(raw);
     const b = parseDigestText(raw);
     expect(a).toEqual(b);
+  });
+
+  it("parses a valid v1 state digest into a typed object", () => {
+    const result = parseDigestText(json(validStateDigestObj()));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.unknownVersion).toBe(false);
+    expect(result.digest.kind).toBe("state");
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.summary).toEqual({ resourceCount: 2, dataSourceCount: 1 });
+    expect(result.digest.resources).toHaveLength(3);
+    expect(result.digest.resources[0].address).toBe("aws_instance.web");
+    expect(result.digest.resources[0].mode).toBe("managed");
+    expect(result.digest.resources[0].attributes[0]).toEqual({
+      name: "instance_type",
+      value: { kind: "value", json: '"t3.micro"' },
+    });
+    expect(result.digest.resources[0].attributes[1]).toEqual({ name: "password", value: { kind: "sensitive" } });
+    expect(result.digest.resources[1].moduleAddress).toBe("module.db");
+    expect(result.digest.resources[2].mode).toBe("data");
+    expect(result.digest.outputs[0]).toEqual({ name: "db_password", value: { kind: "sensitive" } });
+    expect(result.digest.meta.name).toBe("state-main");
   });
 });
 
@@ -650,5 +716,279 @@ describe("parseDigestText — malformed array elements are skipped, not fatal", 
     const obj = validPlanDigestObj();
     obj.resources = { not: "an array" };
     expect(() => parseDigestText(json(obj))).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// State (inventory) digest — Phase 5 (digest spec §7.2). Mirrors the plan/apply
+// coverage above: valid parse (see "valid v1 digests" block), malformed,
+// oversize, prototype-pollution, missing-field rejection, RedactedValue
+// fail-closed, and defensive tab-side caps.
+// ---------------------------------------------------------------------------
+
+describe("parseDigestText — state digest: missing/malformed required fields (rejected safely)", () => {
+  it("rejects a v1 state digest missing `resources` entirely", () => {
+    const obj = validStateDigestObj();
+    delete obj.resources;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("invalid-envelope");
+  });
+
+  it("rejects a v1 state digest missing `outputs` entirely", () => {
+    const obj = validStateDigestObj();
+    delete obj.outputs;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("invalid-envelope");
+  });
+
+  it("rejects a v1 state digest missing `summary` entirely", () => {
+    const obj = validStateDigestObj();
+    delete obj.summary;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("invalid-envelope");
+  });
+
+  it("does not crash when `resources` is the wrong JSON type (an object, not an array)", () => {
+    const obj = validStateDigestObj();
+    obj.resources = { not: "an array" };
+    expect(() => parseDigestText(json(obj))).not.toThrow();
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(false);
+  });
+
+  it("skips a state resource array element that is not an object, and one missing an address", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as unknown[]).push("not-an-object", { type: "aws_instance", name: "no-address" });
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources).toHaveLength(3);
+    expect(result.notes.length).toBeGreaterThan(0);
+  });
+
+  it("defaults a state resource's `mode` to \"managed\" when missing/unrecognized", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as Array<Record<string, unknown>>)[0].mode = "bogus-mode";
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources[0].mode).toBe("managed");
+  });
+
+  it("skips a state attribute element that is not an object, and one missing a name", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as Array<Record<string, unknown>>)[0].attributes = [
+      "not-an-object",
+      { value: { kind: "unknown" } },
+      { name: "kept", value: { kind: "value", json: "1" } },
+    ];
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources[0].attributes).toEqual([{ name: "kept", value: { kind: "value", json: "1" } }]);
+  });
+
+  it("skips a state output element that is not an object, and one missing a name", () => {
+    const obj = validStateDigestObj();
+    obj.outputs = ["not-an-object", { value: { kind: "unknown" } }, { name: "kept", value: { kind: "unknown" } }];
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.outputs).toEqual([{ name: "kept", value: { kind: "unknown" } }]);
+  });
+});
+
+describe("parseDigestText — state digest: oversize refusal", () => {
+  it("refuses an oversize state digest before JSON.parse runs", () => {
+    const parseSpy = jest.spyOn(JSON, "parse");
+    const result = parseDigestText("{}", caps.TAB_PARSE_CEILING_BYTES + 1);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("oversize");
+    expect(parseSpy).not.toHaveBeenCalled();
+    parseSpy.mockRestore();
+  });
+
+  it("refuses an oversize state digest measured from the raw text", () => {
+    const huge = json({ ...validStateDigestObj(), padding: "x".repeat(caps.TAB_PARSE_CEILING_BYTES) });
+    const result = parseDigestText(huge);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("oversize");
+  });
+});
+
+describe("parseDigestText — state digest: prototype-pollution keys", () => {
+  it("rejects a state digest with a top-level __proto__ key", () => {
+    const raw = '{"__proto__":{"polluted":true},' + json(validStateDigestObj()).slice(1);
+    const result = parseDigestText(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("unsafe-keys");
+  });
+
+  it("rejects a state digest with a nested constructor/prototype key inside a resource attribute", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as Array<Record<string, unknown>>)[0].attributes = [
+      { constructor: { prototype: { polluted: true } } },
+    ];
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("unsafe-keys");
+  });
+});
+
+describe("parseDigestText — state digest: RedactedValue fail-closed on shape mismatch", () => {
+  it("masks a state attribute's RedactedValue claiming kind:\"value\" with no json string", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as Array<Record<string, unknown>>)[0].attributes = [
+      { name: "secret_url", value: { kind: "value" } },
+    ];
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources[0].attributes[0].value).toEqual({ kind: "sensitive" });
+  });
+
+  it("masks a state attribute's RedactedValue with an unrecognized kind rather than passing it through", () => {
+    const obj = validStateDigestObj();
+    (obj.resources as Array<Record<string, unknown>>)[0].attributes = [
+      { name: "x", value: { kind: "totally-new-kind", raw: "leaked-state-secret" } },
+    ];
+    const raw = json(obj);
+    expect(raw).toContain("leaked-state-secret");
+    const result = parseDigestText(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources[0].attributes[0].value).toEqual({ kind: "sensitive" });
+    expect(JSON.stringify(result.digest)).not.toContain("leaked-state-secret");
+  });
+
+  it("masks a state output's RedactedValue that is not an object at all", () => {
+    const obj = validStateDigestObj();
+    obj.outputs = [{ name: "weird", value: null }];
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.outputs[0].value).toEqual({ kind: "sensitive" });
+  });
+});
+
+describe("parseDigestText — state digest: defensive tab-side caps (§6, don't trust `truncated`)", () => {
+  it("caps the resources array at MAX_STATE_RESOURCES even when the digest claims truncated:false", () => {
+    const obj = validStateDigestObj();
+    const template = (obj.resources as unknown[])[0] as Record<string, unknown>;
+    obj.resources = Array.from({ length: caps.MAX_STATE_RESOURCES + 5 }, (_, i) => ({
+      ...template,
+      address: `aws_instance.web[${i}]`,
+    }));
+    obj.truncated = false;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources).toHaveLength(caps.MAX_STATE_RESOURCES);
+    expect(result.digest.truncated).toBe(true);
+  });
+
+  it("caps attributes per resource at MAX_STATE_ATTRS_PER_RESOURCE", () => {
+    const obj = validStateDigestObj();
+    const many = Array.from({ length: caps.MAX_STATE_ATTRS_PER_RESOURCE + 3 }, (_, i) => ({
+      name: `attr_${i}`,
+      value: { kind: "value", json: String(i) },
+    }));
+    (obj.resources as Array<Record<string, unknown>>)[0].attributes = many;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources[0].attributes).toHaveLength(caps.MAX_STATE_ATTRS_PER_RESOURCE);
+  });
+
+  it("caps state outputs at MAX_OUTPUTS and marks truncated", () => {
+    const obj = validStateDigestObj();
+    obj.outputs = Array.from({ length: caps.MAX_OUTPUTS + 7 }, (_, i) => ({
+      name: `o${i}`,
+      value: { kind: "value", json: String(i) },
+    }));
+    obj.truncated = false;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "state") return;
+    expect(result.digest.outputs).toHaveLength(caps.MAX_OUTPUTS);
+    expect(result.digest.truncated).toBe(true);
+  });
+});
+
+describe("parseDigestText — state digest: unknown newer schemaVersion degrades gracefully", () => {
+  it("degrades (no crash) on a far-future schemaVersion for a state digest", () => {
+    const obj = { ...validStateDigestObj(), schemaVersion: 999 };
+    expect(() => parseDigestText(json(obj))).not.toThrow();
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.unknownVersion).toBe(true);
+    expect(result.detectedSchemaVersion).toBe(999);
+    expect(result.digest.kind).toBe("state");
+  });
+
+  it("degrades gracefully even when a schemaVersion:999 state digest is missing most fields", () => {
+    const raw = json({ schemaVersion: 999, kind: "state" });
+    const result = parseDigestText(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.unknownVersion).toBe(true);
+    expect(result.digest.kind).toBe("state");
+    if (result.digest.kind !== "state") return;
+    expect(result.digest.resources).toEqual([]);
+    expect(result.digest.outputs).toEqual([]);
+  });
+});
+
+describe("parseDigestText — PlanDigest.planMode (destroy marker, digest spec §7.1)", () => {
+  it("is undefined on a plan digest that omits planMode (normal plan)", () => {
+    const result = parseDigestText(json(validPlanDigestObj()));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.planMode).toBeUndefined();
+  });
+
+  it('parses planMode: "destroy" through unchanged', () => {
+    const obj = { ...validPlanDigestObj(), planMode: "destroy" };
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.planMode).toBe("destroy");
+  });
+
+  it('parses planMode: "plan" through unchanged', () => {
+    const obj = { ...validPlanDigestObj(), planMode: "plan" };
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.planMode).toBe("plan");
+  });
+
+  it("drops an invalid planMode value with a note, rather than passing it through", () => {
+    const obj = { ...validPlanDigestObj(), planMode: "obliterate" };
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.planMode).toBeUndefined();
+    expect(result.notes.some((n) => n.includes("planMode"))).toBe(true);
   });
 });

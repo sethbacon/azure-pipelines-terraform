@@ -45,6 +45,10 @@ import './results/PlanDigestL0';
 import './results/ApplyDigestL0';
 import './results/SecretScrubL0';
 import './results/GoldenFixturesL0';
+// Phase 5 (P5-WP-1): state-inventory digest builder + destroy marker, plus the
+// Phase 5 golden-fixture regression + no-leak tripwire.
+import './results/StateDigestL0';
+import './results/Phase5GoldenFixturesL0';
 // Direct unit tests for maskHasSensitiveLeaf, the shared sensitivity predicate
 // warnIfSensitiveOutputs was rerouted onto (design §5.2.7, WP-2).
 import './MaskHasSensitiveLeafL0';
@@ -2625,6 +2629,85 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureApplyDefaultOmitsDiagnosticsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* structured destroy/state summary tests (Phase 5 §5.5) */
+
+    it('azure destroy should succeed and publish a redacted structured plan summary attachment with planMode "destroy"', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Azure/AzureDestroySuccessPublishSummary.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureDestroySuccessPublishSummaryL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure destroy with publishPlanSummary still fails the task on a non-zero exit code, and still attaches the destroy summary', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Azure/AzureDestroyFailurePublishSummaryExitCodePreserved.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureDestroyFailurePublishSummaryExitCodePreservedL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('a destroy run without publishPlanSummary emits no terraform-plan-summary attachment (backward-compat regression)', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Azure/AzureDestroyPublishSummaryBackwardCompat.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureDestroyPublishSummaryBackwardCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure show should succeed and publish a redacted structured state summary attachment', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowStateSuccessPublishSummary.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowStateSuccessPublishSummaryL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('publishStateResults rejects logging-command injection characters in the attachment name', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowStatePublishSummaryNameInjectionRejected.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowStatePublishSummaryNameInjectionRejectedL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('a show run without publishStateResults emits no terraform-state-summary attachment (backward-compat regression)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowPublishSummaryBackwardCompat.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowPublishSummaryBackwardCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('publishStateResults has no effect on a planfile show (positional-argument heuristic gate)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowPlanFileSkipsStateSummary.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureShowPlanFileSkipsStateSummaryL0 should have succeeded.'));
         }, tr);
     });
 

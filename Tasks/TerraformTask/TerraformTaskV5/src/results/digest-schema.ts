@@ -11,25 +11,28 @@
 // / uri-scheme-guard.ts).
 //
 // FROZEN DIGEST CONTRACT — schemaVersion 1. This is the normative TypeScript shape
-// of the REDACTED plan/apply digest that the task attaches (terraform-plan-summary /
+// of the REDACTED plan / apply / state digest that the task attaches (terraform-plan-summary /
 // terraform-apply-summary) and the tab renders. See:
 //   docs/design/plan-apply-digest-spec.md                 (redaction algorithm + schemaVersion history)
 //   docs/initiatives/structured-plan-apply-tabs.md §4     (design source of these interfaces)
 // Every string in a digest is POST-REDACTION and is rendered by the tab as a React
 // TEXT NODE only (never HTML — no dangerouslySetInnerHTML in the structured path).
 
-/** Fields shared by every digest document (both plan and apply). */
+/** Metadata common to every digest document (plan, apply, and state). */
+export interface DigestMeta {
+  name: string;               // publish name (attachment name), also echoed here (validated)
+  workingDirectory?: string;  // relative path only; never absolute host paths
+  stage?: string; job?: string;
+  createdIso: string;         // from agent-provided timestamp, not Date.now() in workflow context
+}
+
+/** Fields shared by every digest document (plan, apply, and state). */
 export interface DigestEnvelope {
   schemaVersion: 1;
-  kind: "plan" | "apply";
+  kind: "plan" | "apply" | "state";
   producedBy: { task: "TerraformTaskV5"; taskVersion: string };
   tool: { name: "terraform" | "opentofu"; version: string };
-  meta: {
-    name: string;               // publish name (attachment name), also echoed here (validated)
-    workingDirectory?: string;  // relative path only; never absolute host paths
-    stage?: string; job?: string;
-    createdIso: string;         // from agent-provided timestamp, not Date.now() in workflow context
-  };
+  meta: DigestMeta;
   truncated: boolean;           // true if any size cap (see spec §6) was hit
   truncationNotes?: string[];   // human-readable ("resource list capped at 2000", etc.)
 }
@@ -37,6 +40,11 @@ export interface DigestEnvelope {
 /** Plan digest — built from `terraform show -json <planfile>`. */
 export interface PlanDigest extends DigestEnvelope {
   kind: "plan";
+  // Distinguishes a normal plan from a `-destroy` plan (a plan whose resource_changes
+  // are all deletes). Optional/absent = normal plan; the tab uses it ONLY to LABEL the
+  // view ("Destroy plan"). A destroy plan REUSES this PlanDigest shape unchanged
+  // (spec §7). Kept optional so existing plan goldens/consumers are unaffected.
+  planMode?: "plan" | "destroy";
   summary: {
     add: number; change: number; destroy: number; replace: number; read: number;
     noChanges: boolean;
@@ -107,12 +115,46 @@ export interface Diagnostic {
   address?: string;                // resource address if attributable
 }
 
-export interface OutputChange {
+// A single named output value after redaction. Shared base for a plan/apply output
+// CHANGE (OutputChange, which adds an `action`) and a state-inventory output
+// (StateDigest.outputs — no action, current value only; spec §7).
+export interface OutputValue {
   name: string;
-  action: "create" | "update" | "delete" | "no-op";
   value: RedactedValue;
+}
+
+export interface OutputChange extends OutputValue {
+  action: "create" | "update" | "delete" | "no-op";
+}
+
+// ── State inventory digest (Phase 5) ─────────────────────────────────────────
+// Built from `terraform show -json` of the CURRENT state (no plan file): walk
+// values.root_module.resources[], recursing child_modules and flattening the
+// module path into each resource's `address`. Unlike plan/apply this is a
+// point-in-time INVENTORY — resources carry their CURRENT attribute values only:
+// NO change actions, NO before/after, NO known-after-apply. Each attribute value
+// is redacted against that resource's `sensitive_values` mask via the SAME shared
+// redactValue (spec §7); sensitive marks NEVER appear in the digest.
+export interface StateDigest extends DigestEnvelope {
+  kind: "state";
+  resources: StateResource[];      // capped; MAX_STATE_RESOURCES (spec §7 / caps.ts)
+  outputs: OutputValue[];          // masked; current output values (no action)
+  summary: {
+    resourceCount: number;         // managed resource instances (mode === "managed")
+    dataSourceCount: number;       // data source instances (mode === "data")
+  };
+}
+
+export interface StateResource {
+  address: string;                 // full flattened address incl. module path, e.g. module.db.aws_db_instance.this[0]
+  type: string; name: string; providerName: string;
+  mode: "managed" | "data";
+  moduleAddress?: string;          // e.g. "module.db"; absent for root-module resources
+  // Current `values` of the resource, each redacted against its `sensitive_values`.
+  // Capped per resource; MAX_STATE_ATTRS_PER_RESOURCE (spec §7 / caps.ts).
+  attributes: { name: string; value: RedactedValue }[];
 }
 
 // Discriminated union over `kind` for consumers (the tab's digest-model) that
 // parse an attachment of unknown type. Narrow on `.kind` before use.
-export type Digest = PlanDigest | ApplyDigest;
+export type Digest = PlanDigest | ApplyDigest | StateDigest;

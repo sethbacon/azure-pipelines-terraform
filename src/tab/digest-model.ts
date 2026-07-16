@@ -1,6 +1,7 @@
 /**
- * Safe parsing & validation of a plan/apply digest fetched from a pipeline
- * attachment (§5.3.4 of docs/initiatives/structured-plan-apply-tabs.md).
+ * Safe parsing & validation of a plan/apply/state digest fetched from a
+ * pipeline attachment (§5.3.4 of docs/initiatives/structured-plan-apply-tabs.md;
+ * state inventory added in Phase 5, see docs/design/plan-apply-digest-spec.md §7).
  *
  * The digest is UNTRUSTED INPUT: it was produced by a task run inside a
  * customer pipeline, but the tab (running in the ADO web UI) must not assume
@@ -39,13 +40,16 @@ import {
   Digest,
   PlanDigest,
   ApplyDigest,
+  StateDigest,
   PlanResource,
   DriftResource,
   AttrChange,
   RedactedValue,
   OutputChange,
+  OutputValue,
   ApplyResource,
   Diagnostic,
+  StateResource,
 } from "./digest-schema";
 import {
   MAX_RESOURCES,
@@ -54,6 +58,8 @@ import {
   MAX_DIAGNOSTICS,
   MAX_OUTPUTS,
   MAX_DRIFT,
+  MAX_STATE_RESOURCES,
+  MAX_STATE_ATTRS_PER_RESOURCE,
   MAX_NOTES,
   TAB_PARSE_CEILING_BYTES,
 } from "./caps";
@@ -128,7 +134,7 @@ export function parseDigestText(raw: string, byteLength?: number): DigestParseRe
   }
 
   const kind = parsed["kind"];
-  if (kind !== "plan" && kind !== "apply") {
+  if (kind !== "plan" && kind !== "apply" && kind !== "state") {
     return { ok: false, reason: "unsupported-kind", message: `Unrecognized digest kind: ${JSON.stringify(kind)}` };
   }
 
@@ -153,7 +159,9 @@ export function parseDigestText(raw: string, byteLength?: number): DigestParseRe
   const built =
     kind === "plan"
       ? coercePlanDigest(parsed, envelope.value, unknownVersion, notes)
-      : coerceApplyDigest(parsed, envelope.value, unknownVersion, notes);
+      : kind === "apply"
+      ? coerceApplyDigest(parsed, envelope.value, unknownVersion, notes)
+      : coerceStateDigest(parsed, envelope.value, unknownVersion, notes);
 
   if (!built.ok) {
     return { ok: false, reason: "invalid-envelope", message: built.message };
@@ -320,6 +328,21 @@ function softEnum<T extends string>(
   return fallback;
 }
 
+/** An OPTIONAL enum field (e.g. PlanDigest.planMode): absent is valid and silent; present-but-invalid is dropped with a note. */
+function optionalEnum<T extends string>(
+  obj: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+  notes: string[],
+  path: string
+): T | undefined {
+  const v = obj[key];
+  if (v === undefined) return undefined;
+  if (typeof v === "string" && (allowed as readonly string[]).includes(v)) return v as T;
+  notes.push(`${path}.${key} present but not one of ${allowed.join("/")}; ignored.`);
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Envelope
 // ---------------------------------------------------------------------------
@@ -431,6 +454,8 @@ function coerceRedactedValue(v: unknown, notes: string[], path: string): Redacte
 // ---------------------------------------------------------------------------
 
 const PLAN_ACTIONS = ["no-op", "create", "read", "update", "delete", "replace", "forget"] as const;
+/** PlanDigest.planMode (§7.1 of the digest spec): a presentation-only hint, absent = normal plan. */
+const PLAN_MODES = ["plan", "destroy"] as const;
 
 function coercePlanDigest(
   obj: Record<string, unknown>,
@@ -496,6 +521,7 @@ function coercePlanDigest(
       truncated,
       truncationNotes: truncationNotes.length > 0 ? truncationNotes : undefined,
       kind: "plan",
+      planMode: optionalEnum(obj, "planMode", PLAN_MODES, notes, "digest"),
       summary,
       resources,
       outputChanges,
@@ -739,4 +765,124 @@ function coerceDiagnostic(v: unknown, notes: string[], path: string): Diagnostic
     detail: optionalString(v, "detail"),
     address: optionalString(v, "address"),
   };
+}
+
+// ---------------------------------------------------------------------------
+// State (inventory) digest — Phase 5, spec §7.2. A point-in-time inventory:
+// no change actions, no before/after, no known-after-apply. Resources/outputs
+// are re-capped defensively at MAX_STATE_RESOURCES / MAX_OUTPUTS exactly like
+// the plan/apply arrays above, regardless of the digest's own `truncated`
+// claim (§5.5).
+// ---------------------------------------------------------------------------
+
+const STATE_MODES = ["managed", "data"] as const;
+
+function coerceStateDigest(
+  obj: Record<string, unknown>,
+  env: EnvelopeFields,
+  lenient: boolean,
+  notes: string[]
+): FieldResult<StateDigest> {
+  const summaryObj = requireObject(obj, "summary", lenient, notes, "digest");
+  if (!summaryObj.ok) return summaryObj;
+  const resourcesArr = requireArray(obj, "resources", lenient, notes, "digest");
+  if (!resourcesArr.ok) return resourcesArr;
+  const outputsArr = requireArray(obj, "outputs", lenient, notes, "digest");
+  if (!outputsArr.ok) return outputsArr;
+
+  const summary = {
+    resourceCount: softNumber(summaryObj.value, "resourceCount", 0, notes, "digest.summary"),
+    dataSourceCount: softNumber(summaryObj.value, "dataSourceCount", 0, notes, "digest.summary"),
+  };
+
+  let truncated = env.truncated;
+  const truncationNotes = capTruncationNotes(env.truncationNotes, notes);
+
+  let resources = resourcesArr.value
+    .map((r, i) => coerceStateResource(r, notes, `digest.resources[${i}]`))
+    .filter((r): r is StateResource => r !== null);
+  if (resources.length > MAX_STATE_RESOURCES) {
+    resources = resources.slice(0, MAX_STATE_RESOURCES);
+    truncated = true;
+    truncationNotes.push(`resource list capped at ${MAX_STATE_RESOURCES} (tab-side defensive cap)`);
+  }
+
+  let outputs = outputsArr.value
+    .map((o, i) => coerceOutputValue(o, notes, `digest.outputs[${i}]`))
+    .filter((o): o is OutputValue => o !== null);
+  if (outputs.length > MAX_OUTPUTS) {
+    outputs = outputs.slice(0, MAX_OUTPUTS);
+    truncated = true;
+    truncationNotes.push(`output list capped at ${MAX_OUTPUTS} (tab-side defensive cap)`);
+  }
+
+  return {
+    ok: true,
+    value: {
+      ...envelopeBase(env),
+      truncated,
+      truncationNotes: truncationNotes.length > 0 ? truncationNotes : undefined,
+      kind: "state",
+      resources,
+      outputs,
+      summary,
+    },
+  };
+}
+
+function coerceStateResource(v: unknown, notes: string[], path: string): StateResource | null {
+  if (!isPlainObject(v)) {
+    notes.push(`${path} skipped: not an object.`);
+    return null;
+  }
+  const address = optionalString(v, "address");
+  if (!address) {
+    notes.push(`${path} skipped: missing "address".`);
+    return null;
+  }
+
+  let attributes = (Array.isArray(v["attributes"]) ? (v["attributes"] as unknown[]) : [])
+    .map((a, i) => coerceStateAttribute(a, notes, `${path}.attributes[${i}]`))
+    .filter((a): a is StateResource["attributes"][number] => a !== null);
+  if (attributes.length > MAX_STATE_ATTRS_PER_RESOURCE) {
+    attributes = attributes.slice(0, MAX_STATE_ATTRS_PER_RESOURCE);
+    notes.push(`${path}.attributes capped at ${MAX_STATE_ATTRS_PER_RESOURCE} (tab-side defensive cap)`);
+  }
+
+  return {
+    address,
+    type: softString(v, "type", "", notes, path),
+    name: softString(v, "name", "", notes, path),
+    providerName: softString(v, "providerName", "", notes, path),
+    mode: softEnum(v, "mode", STATE_MODES, "managed", notes, path),
+    moduleAddress: optionalString(v, "moduleAddress"),
+    attributes,
+  };
+}
+
+function coerceStateAttribute(v: unknown, notes: string[], path: string): { name: string; value: RedactedValue } | null {
+  if (!isPlainObject(v)) {
+    notes.push(`${path} skipped: not an object.`);
+    return null;
+  }
+  const name = optionalString(v, "name");
+  if (name === undefined) {
+    notes.push(`${path} skipped: missing "name".`);
+    return null;
+  }
+  return { name, value: coerceRedactedValue(v["value"], notes, `${path}.value`) };
+}
+
+/** A state output: same shape as an OutputChange but with no `action` (state is not a change set). */
+function coerceOutputValue(v: unknown, notes: string[], path: string): OutputValue | null {
+  if (!isPlainObject(v)) {
+    notes.push(`${path} skipped: not an object.`);
+    return null;
+  }
+  const name = optionalString(v, "name");
+  if (!name) {
+    notes.push(`${path} skipped: missing "name".`);
+    return null;
+  }
+  return { name, value: coerceRedactedValue(v["value"], notes, `${path}.value`) };
 }

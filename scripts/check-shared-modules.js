@@ -149,6 +149,15 @@ const FAMILIES = [
         // from this family rather than silently forgotten (design §9/§5.2.6).
         // If a redact.ts (or equivalent) copy is ever bundled into src/tab/, add
         // it to `modules` above in the same commit.
+        //
+        // Phase 5 (destroy/state): state-digest.ts is the same single-copy
+        // pattern as redact.ts — only the task produces a StateDigest, so it is
+        // also NOT listed here. The StateDigest TYPE and the state caps
+        // (MAX_STATE_RESOURCES / MAX_STATE_ATTRS_PER_RESOURCE) landed as
+        // additive members of the EXISTING digest-schema.ts / caps.ts files
+        // above, so this family already covers them; destroy needed no schema
+        // change at all (it reuses PlanDigest via the optional `planMode`
+        // field). No new family was needed for Phase 5.
     },
 ];
 
