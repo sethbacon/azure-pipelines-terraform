@@ -13,7 +13,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "9",
+        "Minor": "10",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -103,8 +103,7 @@
             "label": "Require checksum verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "policyAgent = opa || downloadSource = mirror",
-            "helpMarkDown": "When enabled, fail if a SHA256 checksum is not available for the requested version/platform. Note: OPA (and any mirror source) publishes no GPG/cosign signature here, so this checksum is a same-origin transport-integrity check, not independent-authenticity verification (see SECURITY.md)."
+            "helpMarkDown": "When enabled (default), fail if a SHA256 checksum is not available for the requested version/platform. Note: OPA (and any mirror source) publishes no GPG/cosign signature here, so this checksum is a same-origin transport-integrity check, not independent-authenticity verification (see SECURITY.md). Also controls tool-cache re-verification on persistent/self-hosted agents: when enabled, a cached tool that carries no local integrity marker (cached by an older installer version, or by a job that ran with verification disabled) is re-downloaded and re-verified before use, degrading to a warning only when the source is unreachable (offline/air-gapped agents keep working). Avoid mixing requireChecksum values across jobs that share an agent's tool cache."
         }
     ],
     "restrictions": {
@@ -151,6 +150,11 @@
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
         "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
-        "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s"
+        "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
+        "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
+        "ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",
+        "CachedToolReverificationUnavailable": "Could not re-verify cached %s: %s. Proceeding with the cached executable — expected for offline/air-gapped agents; set requireChecksum to false to skip the attempt and silence this warning.",
+        "CachedToolReverificationMismatch": "Cached %s does not match the freshly downloaded, verified release (verified: %s, cached: %s). The cached copy was either never verified or has been altered since caching; clear the agent's tool cache for this version and re-run.",
+        "CachedToolReverified": "Cached %s re-verified against the freshly downloaded, verified release; integrity marker written for future cache hits."
     }
 }

@@ -33,7 +33,10 @@ async function run() {
 
         const hcl = generateProviderInstallationConfig(config);
 
-        const tempDir = tasks.getVariable('Agent.TempDirectory') || process.env['AGENT_TEMPDIRECTORY'] || '/tmp';
+        const tempDir = tasks.getVariable('Agent.TempDirectory') || process.env['AGENT_TEMPDIRECTORY'];
+        if (!tempDir) {
+            throw new Error(tasks.loc('AgentTempDirectoryNotSet'));
+        }
         const configPath = path.join(tempDir, '.terraformrc');
 
         fs.writeFileSync(configPath, hcl, { encoding: 'utf8' });

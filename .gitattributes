@@ -1,0 +1,8 @@
+# The HashiCorp trust-root canary fixtures (#497) are byte-for-byte GPG-signed
+# content: SHA256SUMS is signed over its exact bytes (LF line endings), and
+# SHA256SUMS.sig is a binary OpenPGP signature. Git's default CRLF conversion on
+# Windows checkouts corrupts the signed text (breaking gpg-verifier's signature
+# check even though the committed blob is correct), so both are pinned to their
+# exact on-disk bytes regardless of platform/core.autocrlf.
+Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS -text
+Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS.sig -text
