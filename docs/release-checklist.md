@@ -111,10 +111,18 @@ Use a minimal Terraform configuration with an AzureRM backend and provider.
 - [ ] **GCP** — `plan` with service connection credentials
 - [ ] **OCI** — `plan` with service connection credentials (API key)
 
-## 7. Plan tab
+## 7. Terraform results tab
 
-- [ ] Run a `plan` with `publishPlanResults: <name>` — plan tab appears in build results
-- [ ] Plan output renders correctly (ANSI colors, no truncation for reasonable-sized plans)
+- [ ] Run a `plan` with `publishPlanResults: <name>` — the **Terraform** tab appears in build results (raw fallback view) and output renders correctly (ANSI colors, no truncation for reasonable-sized plans)
+- [ ] Run a `plan` with `publishPlanSummary: <name>` — the tab's Plan pivot shows the overview list, summary header, grouped resource list, and a per-resource attribute diff
+- [ ] Run an `apply` with `publishApplyResults: <name>` — the tab's Apply pivot shows the overview list, per-resource timeline, outputs panel, and diagnostics panel
+- [ ] A plan/apply with no summary/apply-results input still shows only the legacy raw view — structured behavior is opt-in and does not change unrelated runs
+
+**Manual no-leak verification (complements the automated no-leak tripwire, design §12.4.1):**
+
+- [ ] Publish a `plan`/`apply` against a module with at least one `sensitive = true` output and one sensitive resource attribute, with `publishPlanSummary`/`publishApplyResults` set
+- [ ] Confirm the Terraform tab renders `(sensitive)` for every sensitive value (never the cleartext value, never a value it shouldn't reveal the type of)
+- [ ] Download the `terraform-plan-summary`/`terraform-apply-summary` attachment file directly (Build → Artifacts/Attachments) and confirm the raw JSON contains **no cleartext secret** — grep it for the known test secret literal and confirm zero matches
 
 ## 8. Tag and release (release-please)
 

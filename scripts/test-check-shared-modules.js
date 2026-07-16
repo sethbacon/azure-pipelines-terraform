@@ -6,9 +6,17 @@
 // in its own FAMILIES list or diff logic would otherwise pass CI while
 // verifying nothing.
 //
-// Runs check-shared-modules.js twice against a scratch copy of Tasks/:
+// Runs check-shared-modules.js three times against a scratch copy of Tasks/
+// (+ src/, needed by the digest-contract family below):
 //   1. unmodified copy -> must exit 0
-//   2. one paired file deliberately diverged -> must exit non-zero
+//   2. one paired file (installer family, both dirs under Tasks/) deliberately
+//      diverged -> must exit non-zero
+//   3. one paired file from the plan/apply digest-contract family (design
+//      decision D4) deliberately diverged -> must exit non-zero. This family
+//      is exercised separately from case 2 because its second directory
+//      (src/tab) is NOT under Tasks/ — a bug that only resolved paths
+//      relative to Tasks/ would pass case 2 while silently never comparing
+//      this family at all.
 // The scratch copy is removed afterwards either way.
 
 const fs = require('fs');
@@ -22,6 +30,9 @@ const scriptPath = path.join(repoRoot, 'scripts', 'check-shared-modules.js');
 // list (the installer trust-chain family); PolicyAgentInstallerV1's copy is
 // not the canonical one, so diverging it exercises the comparison branch.
 const targetFile = path.join('Tasks', 'PolicyAgentInstaller', 'PolicyAgentInstallerV1', 'src', 'http-client.ts');
+// The plan/apply digest-contract family's non-canonical copy (src/tab/,
+// repo-root — not under Tasks/). See case 3 in the header comment above.
+const digestFamilyTargetFile = path.join('src', 'tab', 'caps.ts');
 
 function runCheck(cwd) {
     return spawnSync(process.execPath, [scriptPath], { cwd, encoding: 'utf8' });
@@ -56,6 +67,21 @@ try {
         failed = true;
     } else {
         console.log('OK: check-shared-modules.js exits non-zero on a diverged copy.');
+    }
+
+    // Case 3: revert the first divergence, then diverge only the digest-contract
+    // family's non-Tasks/ copy, to prove that family specifically is enforced
+    // (not just families whose second directory happens to live under Tasks/).
+    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
+    const digestFamilyScratchTarget = path.join(scratchDir, digestFamilyTargetFile);
+    fs.appendFileSync(digestFamilyScratchTarget, '\n// check-shared-modules self-test divergence marker\n');
+
+    const digestFamilyDivergedResult = runCheck(scratchDir);
+    if (digestFamilyDivergedResult.status === 0) {
+        console.error('FAIL: check-shared-modules.js exited 0 despite the digest-contract family (src/tab) being deliberately diverged.');
+        failed = true;
+    } else {
+        console.log('OK: check-shared-modules.js exits non-zero on a diverged digest-contract family copy (src/tab).');
     }
 } finally {
     fs.rmSync(scratchDir, { recursive: true, force: true });
