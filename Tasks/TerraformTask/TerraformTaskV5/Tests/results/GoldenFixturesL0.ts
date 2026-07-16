@@ -21,7 +21,10 @@ describe('golden fixtures (§12.3 regression) + no-leak tripwire (§12.4.1)', ()
   for (const spec of FIXTURES) {
     describe(spec.input, () => {
       it('reproduces the committed golden byte-for-byte', () => {
-        const expected = fs.readFileSync(path.join(FIXTURES_DIR, spec.expected), 'utf8').replace(/\r?\n$/, '');
+        // JSON.stringify always emits LF; normalize the committed golden's line
+        // endings (a Windows checkout with core.autocrlf may deliver CRLF) and
+        // its trailing newline so the comparison is content-exact on both OS legs.
+        const expected = fs.readFileSync(path.join(FIXTURES_DIR, spec.expected), 'utf8').replace(/\r\n/g, '\n').replace(/\n$/, '');
         assert.strictEqual(serializeFixture(spec), expected, `${spec.expected} drifted — review the redaction/digest change`);
       });
 
