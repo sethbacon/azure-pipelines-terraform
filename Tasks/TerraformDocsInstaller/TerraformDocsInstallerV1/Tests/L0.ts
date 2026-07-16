@@ -98,7 +98,13 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
-  it('cache hit hash unavailable: no stored marker, degrades to trusting the cache', async () => {
+  // --- Cache-hit remote re-verification (#496, second half): a cache hit with
+  // NO stored marker is re-downloaded through the normal verified path and
+  // compared against the cached executable — failing closed on a mismatch, and
+  // degrading gracefully (warn + trust the cache) only when the source is
+  // unreachable, so offline/air-gapped cache reuse keeps working. ---
+
+  it('cache hit, no marker, source unreachable: degrades to trusting the cache with a warning', async () => {
     const tp = path.join(__dirname, 'CacheHitHashUnavailable.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
     await tr.runAsync();
@@ -106,7 +112,60 @@ describe('TerraformDocsInstaller Test Suite', function () {
       assert(tr.succeeded, 'task should have succeeded');
       assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
       assert(
-        tr.stdout.includes('no stored integrity marker found'),
+        tr.stdout.includes('ReverifyingCachedTool'),
+        'should announce the re-verification attempt. stdout: ' + tr.stdout
+      );
+      assert(
+        tr.warningIssues.some((w) => w.includes('CachedToolReverificationUnavailable')),
+        'should warn that re-verification material was unavailable. warnings: ' + tr.warningIssues
+      );
+    }, tr);
+  });
+
+  it('cache hit, no marker: re-downloads, matches, writes the integrity marker', async () => {
+    const tp = path.join(__dirname, 'CacheHitReverifyPass.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      assert(
+        tr.stdout.includes('REVERIFY_DOWNLOAD_CALLED:'),
+        'should have re-downloaded the release to re-verify the cache entry. stdout: ' + tr.stdout
+      );
+      assert(
+        tr.stdout.includes('MARKER_WRITTEN:') && tr.stdout.includes('.installer-verified.sha256'),
+        'should write the integrity marker after a successful re-verification. stdout: ' + tr.stdout
+      );
+    }, tr);
+  });
+
+  it('cache hit, no marker: cached executable mismatches the verified release, rejects it', async () => {
+    const tp = path.join(__dirname, 'CacheHitReverifyMismatch.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.failed, 'task should have failed');
+      assert(
+        tr.errorIssues.some((e) => e.includes('CachedToolReverificationMismatch')),
+        'should fail closed via the re-verification mismatch. errors: ' + tr.errorIssues
+      );
+    }, tr);
+  });
+
+  it('cache hit, no marker, requireChecksum=false: skips remote re-verification', async () => {
+    const tp = path.join(__dirname, 'CacheHitReverifySkipped.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      assert(
+        !tr.stdout.includes('DOWNLOAD_ATTEMPTED:'),
+        'should not attempt any download when the operator opted out. stdout: ' + tr.stdout
+      );
+      assert(
+        tr.stdout.includes('skipping remote re-verification'),
         'should log a debug note that re-verification was skipped. stdout: ' + tr.stdout
       );
     }, tr);

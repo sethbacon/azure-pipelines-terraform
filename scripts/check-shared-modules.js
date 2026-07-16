@@ -51,6 +51,21 @@ const FAMILIES = [
         ],
     },
     {
+        // Verification-failure classification (cache-hit re-verification): typed
+        // marker distinguishing "material failed verification" (fail closed) from
+        // "material unavailable" (degrade gracefully to the cached tool). A drift
+        // here could silently reclassify a bad signature as a mere availability
+        // warning, so keep it byte-identical across the three installer tasks.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'verification-failure.ts',
+        ],
+    },
+    {
         // Registry download-host allowlist (SSRF-relevant): shared across all three
         // installer tasks that accept a registryAllowedHosts input.
         dirs: [
