@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
@@ -75,18 +75,20 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     // Reject executable/embedding elements (<iframe>/<object>/<embed>/
     // <noscript> -- the <script> checks above already cover <script>),
     // <form> (no legitimate use in a KB article; an action="javascript:..."
-    // attribute is otherwise a blocklist-fragile per-element check), and SVG
-    // SMIL animation elements (animate/animateColor/animateTransform/
-    // animateMotion/set), which can dynamically assign a javascript: URI into
-    // a referenced attribute (e.g. an <a>'s href) via their to/from/values
-    // attributes at runtime — a vector the static attribute-value scan below
-    // never sees (#446 follow-up). Before iframe/object/embed/noscript were
-    // added here, this fail-closed gate never rejected them at all -- only
-    // Markdown2Html's render-time sanitizer stripped them -- so HTML supplied
-    // directly via the htmlFile input (bypassing Markdown2Html entirely)
-    // could carry a live <iframe srcdoc="..."> past the gate. DANGEROUS_TAGS
-    // is the shared, byte-identity-gated set (uri-scheme-guard.ts) also used
-    // by Markdown2Html's render-time sanitizeRenderedHtml.
+    // attribute is otherwise a blocklist-fragile per-element check), <link>
+    // (#523: a CSS-injection/exfiltration vector with no legitimate use in
+    // this task's input either), and SVG SMIL animation elements
+    // (animate/animateColor/animateTransform/animateMotion/set), which can
+    // dynamically assign a javascript: URI into a referenced attribute (e.g.
+    // an <a>'s href) via their to/from/values attributes at runtime — a
+    // vector the static attribute-value scan below never sees (#446
+    // follow-up). Before iframe/object/embed/noscript were added here, this
+    // fail-closed gate never rejected them at all -- only Markdown2Html's
+    // render-time sanitizer stripped them -- so HTML supplied directly via
+    // the htmlFile input (bypassing Markdown2Html entirely) could carry a
+    // live <iframe srcdoc="..."> past the gate. DANGEROUS_TAGS is the
+    // shared, byte-identity-gated set (uri-scheme-guard.ts) also used by
+    // Markdown2Html's render-time sanitizeRenderedHtml.
     let dangerousTagFound = false;
     $('*').each((_, el) => {
         if (DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())) {
@@ -97,11 +99,55 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
         throw new Error(tasks.loc('FormOrSvgAnimationNotAllowed'));
     }
 
-    // Reject inline event-handler attributes (onerror=, onload=, onclick=, …)
-    // and javascript:/vbscript:/non-image data: URIs — stored-XSS vectors the
-    // external <script src> check above does not cover.
+    // Reject <style> content containing a network-fetching CSS construct
+    // (#523). Markdown2Html's generateHtmlDocument() legitimately injects its
+    // own <head><style>...</style></head> into every document it produces --
+    // ServiceNow is verified to preserve and render it (see
+    // Markdown2Html/src/highlight-theme.ts) -- and the documented
+    // Markdown2Html -> PublishKbArticle pipeline feeds that whole generated
+    // document into this task's htmlFile input verbatim, so an outright,
+    // document-wide reject of every <style> (the pattern used for the
+    // DANGEROUS_TAGS members above) would fail this gate on every legitimate
+    // run. A structural "reject <style> outside <head>" check was considered
+    // instead but rejected: an attacker supplying a raw htmlFile that bypasses
+    // Markdown2Html entirely can trivially wrap a hostile <style> in its own
+    // `<head>...</head>` (implicit or explicit -- cheerio/parse5 places a
+    // `<style>` seen before any body content into <head> regardless), which
+    // would make a head/body-scoped check no real defense against a deliberate
+    // attacker. Checking the CSS content itself for the actual exfiltration
+    // primitive -- any `url(...)` reference (background-image, @import,
+    // @font-face src, list-style-image, cursor, etc. all ultimately require
+    // one to fetch anything) -- closes that gap regardless of where the
+    // <style> element sits, and Markdown2Html's own generated CSS is a fixed,
+    // hardcoded string with no `url(...)`/`@import` (verified), so this never
+    // rejects the legitimate document wrapper. The <style> ELEMENT is
+    // deliberately not part of the shared DANGEROUS_TAGS set (element-presence-
+    // based, not content-based) -- see uri-scheme-guard.ts for why. The CSS
+    // construct pattern itself is DANGEROUS_CSS_PATTERN, shared from that same
+    // byte-identity-gated module (the inline `style` attribute check below uses
+    // it too).
+    let dangerousStyleContentFound = false;
+    $('style').each((_, el) => {
+        if (DANGEROUS_CSS_PATTERN.test($(el).text())) {
+            dangerousStyleContentFound = true;
+        }
+    });
+    if (dangerousStyleContentFound) {
+        throw new Error(tasks.loc('DangerousStyleContentNotAllowed'));
+    }
+
+    // Reject inline event-handler attributes (onerror=, onload=, onclick=, …),
+    // javascript:/vbscript:/non-image data: URIs, and an inline `style=`
+    // attribute carrying a network-fetching CSS construct — all stored-XSS /
+    // CSS-exfiltration vectors the external <script src> check above does not
+    // cover. The inline `style` attribute is the simplest delivery mechanism
+    // for the exact #523 exfiltration primitive (background: url(...)) and,
+    // unlike the <style>-element check above, was previously unguarded here --
+    // it is checked against the same shared DANGEROUS_CSS_PATTERN, on the RAW
+    // (cheerio-decoded) value for parity with that element-content check.
     let eventHandlerFound = false;
     let dangerousUriFound = false;
+    let dangerousStyleAttrFound = false;
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
@@ -109,6 +155,8 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 eventHandlerFound = true;
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
+                dangerousStyleAttrFound = true;
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&
                 isDangerousUriScheme(value)
@@ -120,6 +168,10 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 
     if (eventHandlerFound) {
         throw new Error(tasks.loc('EventHandlerNotAllowed'));
+    }
+
+    if (dangerousStyleAttrFound) {
+        throw new Error(tasks.loc('DangerousStyleAttributeNotAllowed'));
     }
 
     if (dangerousUriFound) {

@@ -8,7 +8,7 @@ import path = require('path');
 import MarkdownIt = require('markdown-it');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
 
 // ---------------------------------------------------------------------------
 // preprocessMarkdown
@@ -67,12 +67,26 @@ function highlightCode(code: string, lang: string): string {
     return escapeHtml(code);
 }
 
+/** Characters valid in a highlight.js language name/alias -- see the highlight callback below. */
+const SAFE_LANG_TOKEN = /^[A-Za-z0-9_-]+$/;
+
 const md = new MarkdownIt({
     html: true,
     linkify: false,
     typographer: false,
     highlight: (code, lang) => {
-        const langClass = lang ? ` language-${lang}` : '';
+        // `lang` is the fenced-code-block info string -- untrusted document
+        // content -- interpolated into a double-quoted class attribute.
+        // sanitizeRenderedHtml re-parses and filters the rendered output
+        // afterwards (defense-in-depth), but this sink should not rely solely
+        // on that downstream pass (#498): allowlist to the characters valid in
+        // a highlight.js language name/alias before interpolating, dropping
+        // the class entirely otherwise. highlightCode still receives the raw
+        // `lang` for the hljs.getLanguage() lookup -- an unmatched/hostile
+        // token simply falls through to the plain-escaped-text path there,
+        // same as any other unknown language.
+        const safeLang = lang && SAFE_LANG_TOKEN.test(lang) ? lang : '';
+        const langClass = safeLang ? ` language-${safeLang}` : '';
         return `<pre><code class="hljs${langClass}">${highlightCode(code, lang)}</code></pre>`;
     },
 });
@@ -107,20 +121,30 @@ export function sanitizeRenderedHtml(html: string): string {
     // Remove executable / embedding elements (script/iframe/object/embed/
     // noscript) outright. <form> has no legitimate use in a KB article
     // fragment, and an action="javascript:..." attribute is otherwise a
-    // blocklist-fragile per-attribute check (#446 follow-up). SVG SMIL
-    // animation elements (animate/animateColor/animateTransform/
-    // animateMotion/set) can dynamically assign a javascript: URI into a
-    // referenced attribute (e.g. an <a>'s href) at runtime via their
-    // to/from/values attributes, a vector a static attribute-value scan
-    // cannot catch -- drop them outright too. DANGEROUS_TAGS is the shared,
-    // byte-identity-gated set (uri-scheme-guard.ts) also used by
-    // PublishKbArticle's validateHtmlContent gate -- keeping this single set
-    // shared (rather than a separately-hand-typed CSS selector here) is what
-    // keeps the two layers from drifting on which elements are dangerous.
+    // blocklist-fragile per-attribute check (#446 follow-up). <link> (#523)
+    // is a CSS-injection/exfiltration vector with no legitimate use here
+    // either. SVG SMIL animation elements (animate/animateColor/
+    // animateTransform/animateMotion/set) can dynamically assign a
+    // javascript: URI into a referenced attribute (e.g. an <a>'s href) at
+    // runtime via their to/from/values attributes, a vector a static
+    // attribute-value scan cannot catch -- drop them outright too.
+    // DANGEROUS_TAGS is the shared, byte-identity-gated set
+    // (uri-scheme-guard.ts) also used by PublishKbArticle's
+    // validateHtmlContent gate -- keeping this single set shared (rather than
+    // a separately-hand-typed CSS selector here) is what keeps the two layers
+    // from drifting on which elements are dangerous.
     $('*').filter((_, el) => DANGEROUS_TAGS.has(($(el).prop('tagName') ?? '').toLowerCase())).remove();
     // <base> can redirect every relative URL in the document; not needed in a
     // KB article fragment, so drop it outright rather than trying to validate it.
     $('base').remove();
+    // <style> has no legitimate use in author-supplied markdown/HTML source --
+    // this function only ever sees body-only content, before generateHtmlDocument
+    // wraps it in the document's own trusted <head><style> block, so any <style>
+    // reaching here came from the markdown source and is a CSS-injection vector
+    // (exfiltration via attribute-selector background: url(...), clickjacking via
+    // position: fixed). Deliberately handled here rather than via the shared
+    // DANGEROUS_TAGS set -- see uri-scheme-guard.ts for why (#523).
+    $('style').remove();
     // <meta http-equiv="refresh" content="0;url=javascript:..."> is a redirect-based
     // active-content vector the href/src attribute check below never sees (it's in
     // a `content` attribute, not `href`/`src`).
@@ -131,13 +155,21 @@ export function sanitizeRenderedHtml(html: string): string {
             $(el).remove();
         }
     });
-    // Strip event-handler attributes and dangerous URIs from every element.
+    // Strip event-handler attributes, dangerous URIs, and an inline `style=`
+    // attribute carrying a network-fetching CSS construct from every element.
+    // The <style> ELEMENT is dropped wholesale above, but an inline `style`
+    // ATTRIBUTE (e.g. <div style="background:url(...)">) is the simplest carrier
+    // of the same #523 CSS-exfiltration primitive and was previously left
+    // intact -- match it against the same shared DANGEROUS_CSS_PATTERN, on the
+    // RAW (cheerio-decoded) value for parity with PublishKbArticle's gate.
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
             const lname = name.toLowerCase();
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
+                $(el).removeAttr(name);
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
                 $(el).removeAttr(name);
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&

@@ -35,8 +35,64 @@ export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'for
  * HTML supplied directly via the htmlFile input (bypassing Markdown2Html
  * entirely) could carry a live <iframe srcdoc="..."> or <object data="...">
  * straight past the fail-closed gate.
+ *
+ * `link` joins this set for #523: it has no legitimate use in either
+ * consumer's input (Markdown2Html's generated document never emits one), and
+ * a `<link rel="stylesheet" href="...">` is a CSS-injection/exfiltration
+ * vector (attribute-selector-driven `background: url(...)` requests can leak
+ * page content byte-by-byte) regardless of URI scheme -- the existing
+ * URI_BEARING_ATTRIBUTES scheme check does not cover it, since it only flags
+ * javascript:/vbscript:/data: schemes, not an ordinary-looking https:// URL.
+ *
+ * `style` is deliberately NOT in this shared set, unlike every other #523
+ * candidate: Markdown2Html's generateHtmlDocument() unconditionally injects
+ * its own `<head><style>...</style></head>` into every document it produces,
+ * ServiceNow is verified to preserve and render that block (see
+ * Markdown2Html/src/highlight-theme.ts), and the documented Markdown2Html ->
+ * PublishKbArticle pipeline feeds that WHOLE generated document (head, style
+ * and all) into PublishKbArticleV1's `htmlFile` input, which
+ * validateHtmlContent() reads verbatim. Adding `style` here would make
+ * PublishKbArticle's gate reject its own upstream task's output on every
+ * run. A location-based split (allow `<style>` inside `<head>`, reject
+ * elsewhere) was also considered and rejected: a raw htmlFile input that
+ * bypasses Markdown2Html entirely can trivially wrap a hostile `<style>` in
+ * its own `<head>`, defeating a location-based check outright. Each consumer
+ * instead applies its own narrower `<style>` handling, scoped to what is
+ * actually safe for its own input shape -- see sanitizeRenderedHtml() in
+ * Markdown2Html's render.ts (strips any `<style>` from the body-only content
+ * it sanitizes, before the trusted document wrapper is applied -- no
+ * location ambiguity there) and validateHtmlContent() in PublishKbArticle's
+ * html-validate.ts (rejects `<style>` CONTENT containing a network-fetching
+ * CSS construct, e.g. `url(...)`/`@import`, regardless of where the element
+ * sits -- Markdown2Html's own generated CSS is a fixed string with neither,
+ * verified).
  */
-export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
+export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'link', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
+
+/**
+ * CSS constructs that can fetch a network resource or execute script from within
+ * a stylesheet or an inline `style` attribute: a `url(...)` reference
+ * (background-image, @import, @font-face src, list-style-image, cursor, … all
+ * ultimately need one to fetch anything), `@import`, IE `expression(...)`,
+ * `-moz-binding`, and `behavior:`. Any one of these in author-supplied CSS is a
+ * CSS-injection/exfiltration primitive (e.g. an attribute-selector-driven
+ * `background: url(...)` that leaks page content byte-by-byte) even when the URL
+ * uses an ordinary https:// scheme that the URI_BEARING_ATTRIBUTES check never
+ * flags.
+ *
+ * Unlike the `<style>` ELEMENT — which each consumer handles differently (see
+ * the DANGEROUS_TAGS note above: Markdown2Html strips every `<style>` from the
+ * body content it sanitizes, while PublishKbArticle must allow its upstream
+ * task's own trusted `<head><style>` document wrapper and so inspects the
+ * element's CONTENT with this pattern instead) — the inline `style` ATTRIBUTE
+ * has no legitimate `url(...)`/`@import` use in either consumer's input, so both
+ * the render-time sanitizer (removes the attribute) and the fail-closed gate
+ * (throws) apply this identical check to it. That shared behavior is why the
+ * pattern lives in this byte-identity-gated module rather than being hand-copied
+ * into each. The `i` flag makes it case-insensitive; it carries no `g` flag, so
+ * `.test()` is stateless and safe to call across many elements/attributes.
+ */
+export const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the
