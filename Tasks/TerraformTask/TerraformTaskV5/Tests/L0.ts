@@ -1974,12 +1974,18 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
 
         const workingDirectory = path.join(os.tmpdir(), 'tf-output-cleanup-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-cleanup-agenttemp');
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            const remaining = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
-            assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up, found: ${remaining.join(', ')}`);
+            // task-lib itself drops a .taskkey file into Agent.TempDirectory;
+            // only the task's own output file matters here.
+            const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
+            assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up from Agent.TempDirectory, found: ${remaining.join(', ')}`);
+            const inWorkingDir = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(inWorkingDir.length, 0, `nothing may be written to the working directory (#492), found: ${inWorkingDir.join(', ')}`);
         }, tr);
         fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
     it('aws output with failOnSensitiveOutputs=true fails when a sensitive output would be retained, and deletes the file', async () => {
@@ -1989,16 +1995,20 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
 
         const workingDirectory = path.join(os.tmpdir(), 'tf-output-strict-fail-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-strict-fail-agenttemp');
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(
                 tr.stdout.includes('OutputSensitiveOutputsStrictFailure'),
                 'should fail with the strict sensitive-outputs error. stdout: ' + tr.stdout
             );
-            const remaining = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
             assert.strictEqual(remaining.length, 0, `the sensitive output file must be deleted on a strict failure, found: ${remaining.join(', ')}`);
+            const inWorkingDir = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(inWorkingDir.length, 0, `nothing may be written to the working directory (#492), found: ${inWorkingDir.join(', ')}`);
         }, tr);
         fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
     it('aws output with failOnSensitiveOutputs=true still succeeds (warning only) when cleanupOutputFile is also set', async () => {
@@ -2008,37 +2018,49 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
 
         const workingDirectory = path.join(os.tmpdir(), 'tf-output-strict-cleanup-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-strict-cleanup-agenttemp');
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
                 tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
                 'should still warn about the sensitive output. warnings: ' + tr.warningIssues
             );
-            const remaining = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
-            assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up, found: ${remaining.join(', ')}`);
+            const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
+            assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up from Agent.TempDirectory, found: ${remaining.join(', ')}`);
+            const inWorkingDir = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(inWorkingDir.length, 0, `nothing may be written to the working directory (#492), found: ${inWorkingDir.join(', ')}`);
         }, tr);
         fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
-    it('aws output retains the JSON file by default (for downstream steps) with restrictive permissions', async () => {
+    it('aws output retains the JSON file by default under Agent.TempDirectory (never the working directory) with restrictive permissions', async () => {
         let tp = path.join(__dirname, './OutputTests/AWSOutputFileRetainedByDefault.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
 
         const workingDirectory = path.join(os.tmpdir(), 'tf-output-retain-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-retain-agenttemp');
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            const files = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
-            assert.strictEqual(files.length, 1, `expected exactly one retained output file, found: ${files.join(', ')}`);
-            const filePath = path.join(workingDirectory, files[0]);
+            const inWorkingDir = fs.existsSync(workingDirectory) ? fs.readdirSync(workingDirectory) : [];
+            assert.strictEqual(inWorkingDir.length, 0, `the output file must not be written to the working directory (#492), found: ${inWorkingDir.join(', ')}`);
+            const files = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
+            assert.strictEqual(files.length, 1, `expected exactly one retained output file in Agent.TempDirectory, found: ${files.join(', ')}`);
+            const filePath = path.join(agentTempDirectory, files[0]);
             assert(fs.existsSync(filePath), 'the output JSON file should still exist for downstream steps to read');
+            assert(
+                tr.stdout.includes(filePath),
+                `jsonOutputVariablesPath should point downstream steps at the relocated file (${filePath}). stdout: ` + tr.stdout
+            );
             if (process.platform !== 'win32') {
                 const mode = fs.statSync(filePath).mode & 0o777;
                 assert.strictEqual(mode, 0o600, `expected mode 0600, got ${mode.toString(8)}`);
             }
         }, tr);
         fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
     /* terraform custom tests */

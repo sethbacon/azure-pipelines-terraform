@@ -432,7 +432,7 @@
             "defaultValue": "false",
             "required": false,
             "visibleRule": "command = output",
-            "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. It is retained by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable -- enable this if the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself, especially on a self-hosted agent whose working directory is not wiped between jobs."
+            "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. The file is written under the agent temp directory (`Agent.TempDirectory`), which the agent purges at the end of the job; it is retained until then by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable. Enable this to delete it at the end of this step instead, e.g. when the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself."
         },
         {
             "name": "failOnSensitiveOutputs",
@@ -441,7 +441,7 @@
             "defaultValue": "false",
             "required": false,
             "visibleRule": "command = output || command = show",
-            "helpMarkDown": "Fail the task (instead of only warning) when the JSON file written by the `output` command, or by `show` with JSON output to a file, contains Terraform outputs declared `sensitive = true` in cleartext and the file would be retained on disk. On a strict failure the just-written file is deleted at the end of the step so the cleartext values are not left behind. For the `output` command, also enabling `cleanupOutputFile` keeps this a warning, since the file is deleted at the end of the step anyway. Note that this detection -- like the secret-masking of the auto-exported `TF_OUT_<name>` pipeline variables -- relies entirely on the module declaring its outputs `sensitive = true`: an output the module author forgot to mark sensitive is exported as an unmasked pipeline variable and is not detected here."
+            "helpMarkDown": "Fail the task (instead of only warning) when the JSON file written by the `output` command, or by `show` with JSON output to a file, contains Terraform outputs declared `sensitive = true` in cleartext and the file would be retained on disk for the rest of the job. On a strict failure the just-written file is deleted at the end of the step so the cleartext values are not left behind. For the `output` command, also enabling `cleanupOutputFile` keeps this a warning, since the file is deleted at the end of the step anyway. Note that this detection -- like the secret-masking of the auto-exported `TF_OUT_<name>` pipeline variables -- relies entirely on the module declaring its outputs `sensitive = true`: an output the module author forgot to mark sensitive is exported as an unmasked pipeline variable and is not detected here."
         },
         {
             "name": "environmentServiceNameAzureRM",

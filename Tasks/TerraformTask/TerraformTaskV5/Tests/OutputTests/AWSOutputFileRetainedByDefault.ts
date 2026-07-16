@@ -7,10 +7,16 @@ import os = require('os');
 // Regression guard for the default (cleanupOutputFile unset/false) path: the
 // JSON file must remain on disk for downstream steps to read via
 // `jsonOutputVariablesPath`, and must be written with restrictive (0600)
-// permissions rather than the default umask.
+// permissions rather than the default umask. Per #492 it must live under
+// Agent.TempDirectory (job-purged), NOT in the repo working directory, so a
+// naive "publish the working directory" artifact step can never sweep it up.
 const workingDirectory = path.join(os.tmpdir(), 'tf-output-retain-test');
 fs.rmSync(workingDirectory, { recursive: true, force: true });
 fs.mkdirSync(workingDirectory, { recursive: true });
+const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-retain-agenttemp');
+fs.rmSync(agentTempDirectory, { recursive: true, force: true });
+fs.mkdirSync(agentTempDirectory, { recursive: true });
+process.env['AGENT_TEMPDIRECTORY'] = agentTempDirectory;
 
 let tp = path.join(__dirname, './AWSOutputFileRetainedByDefaultL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);

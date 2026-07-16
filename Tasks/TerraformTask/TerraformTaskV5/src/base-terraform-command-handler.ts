@@ -404,7 +404,16 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
         await this.handleProvider(outputCommand);
 
-        const jsonOutputVariablesFilePath = path.resolve(outputCommand.workingDirectory, `output-${uuidV4()}.json`);
+        // #492: the -json file carries every output's real value in cleartext
+        // (including ones declared `sensitive = true`), so write it under
+        // Agent.TempDirectory -- which the agent purges at job end -- instead of
+        // the repo working directory, where a naive "publish the working
+        // directory" artifact step would sweep it up and a self-hosted agent
+        // would retain it across jobs. Downstream steps read the location from
+        // the `jsonOutputVariablesPath` output variable (the documented
+        // contract), so the relocation is transparent to them.
+        const outputFileDirectory = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+        const jsonOutputVariablesFilePath = path.join(outputFileDirectory, `output-${uuidV4()}.json`);
         const commandOutput = await this.execWithStdoutCapture(terraformTool, {
             cwd: outputCommand.workingDirectory,
         });
@@ -846,14 +855,15 @@ export abstract class BaseTerraformCommandHandler {
      * including ones declared `sensitive = true` in configuration (Terraform
      * only redacts the human-readable console format, not `-json`). Warn
      * loudly when that's the case so the file written by
-     * writeCommandOutputFile() -- restrictive permissions notwithstanding --
-     * doesn't get casually published as a build artifact or left for a
-     * downstream step to mishandle. When the opt-in `failOnSensitiveOutputs`
-     * input is set and cleanup was NOT requested via `cleanupOutputFile`, the
-     * task fails instead (#488/#492) -- the just-written file is registered
-     * for end-of-step deletion first so the failure doesn't leave the
-     * cleartext values behind. With `cleanupOutputFile` set the file is
-     * deleted at step end anyway, so strict mode stays a warning.
+     * writeCommandOutputFile() -- restrictive permissions and its job-purged
+     * Agent.TempDirectory location (#492) notwithstanding -- doesn't get
+     * casually published as a build artifact or left for a downstream step to
+     * mishandle before the agent purges it at job end. When the opt-in
+     * `failOnSensitiveOutputs` input is set and cleanup was NOT requested via
+     * `cleanupOutputFile`, the task fails instead (#488) -- the just-written
+     * file is registered for end-of-step deletion first so the failure
+     * doesn't leave the cleartext values behind. With `cleanupOutputFile` set
+     * the file is deleted at step end anyway, so strict mode stays a warning.
      */
     private warnIfSensitiveOutputFile(jsonOutput: string, filePath: string): void {
         let outputs: unknown;
