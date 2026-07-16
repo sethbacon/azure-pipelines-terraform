@@ -80,4 +80,23 @@ describe("OverviewList", () => {
     const html = renderToStaticMarkup(<OverviewList items={[]} selectedId={null} onSelect={() => {}} />);
     expect(html).toContain("No items");
   });
+
+  it("shows a Destroy badge for a plan item with destroyMode set (digest spec §7.1)", () => {
+    const items: OverviewItem[] = [
+      { id: "a", name: "destroy-plan", status: "ok", counts: { add: 0, change: 0, destroy: 3 }, destroyMode: true },
+    ];
+    const html = renderToStaticMarkup(<OverviewList items={items} selectedId="a" onSelect={() => {}} />);
+    expect(html).toContain("Destroy");
+    expect(html).toContain("badge-destroy");
+  });
+
+  it("renders state-item resource/data-source counts instead of add/change/destroy chips", () => {
+    const items: OverviewItem[] = [
+      { id: "s1", name: "state-main", status: "ok", stateCounts: { resourceCount: 7, dataSourceCount: 1 } },
+    ];
+    const html = renderToStaticMarkup(<OverviewList items={items} selectedId="s1" onSelect={() => {}} />);
+    expect(html).toContain("7 resources");
+    expect(html).toContain("1 data sources");
+    expect(html).not.toContain("count-add");
+  });
 });

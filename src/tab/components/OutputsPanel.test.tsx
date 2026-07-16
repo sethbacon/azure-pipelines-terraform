@@ -1,7 +1,7 @@
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OutputsPanel } from "./OutputsPanel";
-import { OutputChange } from "../digest-schema";
+import { OutputChange, OutputValue } from "../digest-schema";
 
 describe("OutputsPanel", () => {
   it("renders each output name, action, and value", () => {
@@ -48,5 +48,22 @@ describe("OutputsPanel", () => {
     expect(html).toContain("o1");
     expect(html).not.toContain("o4");
     expect(html).toMatch(/truncated to 2 of 5 outputs/i);
+  });
+
+  describe("state outputs (OutputValue, no action — digest spec §7.3)", () => {
+    it("renders a state output's name and value without an Action column", () => {
+      const outputs: OutputValue[] = [{ name: "db_endpoint", value: { kind: "value", json: '"db.example.test"' } }];
+      const html = renderToStaticMarkup(<OutputsPanel outputs={outputs} />);
+      expect(html).toContain("db_endpoint");
+      expect(html).toContain("db.example.test");
+      expect(html).not.toContain("<th>Action</th>");
+    });
+
+    it('renders a sensitive state output as "(sensitive)"', () => {
+      const outputs: OutputValue[] = [{ name: "db_password", value: { kind: "sensitive" } }];
+      const html = renderToStaticMarkup(<OutputsPanel outputs={outputs} />);
+      expect(html).toContain("(sensitive)");
+      expect(html).not.toContain("db_password_value");
+    });
   });
 });

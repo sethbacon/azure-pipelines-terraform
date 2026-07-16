@@ -70,4 +70,45 @@ describe("SummaryHeader", () => {
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;img");
   });
+
+  it("shows a Destroy badge on a plan digest with destroyMode set (digest spec §7.1)", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader
+        title="destroy-plan"
+        kind="plan"
+        counts={{ add: 0, change: 0, destroy: 3 }}
+        destroyMode={true}
+      />
+    );
+    expect(html).toContain("Destroy");
+    expect(html).toContain("badge-destroy");
+  });
+
+  it("does not show a Destroy badge on a normal plan (destroyMode absent/false)", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="normal-plan" kind="plan" counts={{ add: 1, change: 0, destroy: 0 }} />
+    );
+    expect(html).not.toContain("badge-destroy");
+  });
+
+  it("ignores destroyMode for a non-plan kind (apply)", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="apply-a" kind="apply" counts={{ add: 1, change: 0, destroy: 0 }} destroyMode={true} />
+    );
+    expect(html).not.toContain("badge-destroy");
+  });
+
+  it("renders state-inventory counts (resources/data sources) instead of add/change/destroy", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="state-main" kind="state" stateCounts={{ resourceCount: 5, dataSourceCount: 2 }} />
+    );
+    expect(html).toContain("5 resources");
+    expect(html).toContain("2 data sources");
+    expect(html).not.toContain("count-add");
+  });
+
+  it("renders no counts row for a state digest when stateCounts is omitted", () => {
+    const html = renderToStaticMarkup(<SummaryHeader title="state-main" kind="state" />);
+    expect(html).not.toContain("summary-header-counts");
+  });
 });
