@@ -45,6 +45,10 @@ import './results/PlanDigestL0';
 import './results/ApplyDigestL0';
 import './results/SecretScrubL0';
 import './results/GoldenFixturesL0';
+// Phase 5 (P5-WP-1): state-inventory digest builder + destroy marker, plus the
+// Phase 5 golden-fixture regression + no-leak tripwire.
+import './results/StateDigestL0';
+import './results/Phase5GoldenFixturesL0';
 // Direct unit tests for maskHasSensitiveLeaf, the shared sensitivity predicate
 // warnIfSensitiveOutputs was rerouted onto (design §5.2.7, WP-2).
 import './MaskHasSensitiveLeafL0';

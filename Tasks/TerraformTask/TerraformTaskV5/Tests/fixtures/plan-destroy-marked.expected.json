@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "kind": "plan",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-plan",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "planMode": "destroy",
+  "summary": {
+    "add": 0,
+    "change": 0,
+    "destroy": 1,
+    "replace": 0,
+    "read": 0,
+    "noChanges": false,
+    "driftDetected": false
+  },
+  "resources": [
+    {
+      "address": "aws_db_instance.main",
+      "type": "aws_db_instance",
+      "name": "main",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "actions": [
+        "delete"
+      ],
+      "attributeChanges": [
+        {
+          "path": "allocated_storage",
+          "before": {
+            "kind": "value",
+            "json": "20"
+          },
+          "after": {
+            "kind": "value",
+            "json": "null"
+          }
+        },
+        {
+          "path": "id",
+          "before": {
+            "kind": "value",
+            "json": "\"db-0123456789\""
+          },
+          "after": {
+            "kind": "value",
+            "json": "null"
+          }
+        },
+        {
+          "path": "identifier",
+          "before": {
+            "kind": "value",
+            "json": "\"maindb\""
+          },
+          "after": {
+            "kind": "value",
+            "json": "null"
+          }
+        }
+      ]
+    }
+  ],
+  "outputChanges": []
+}

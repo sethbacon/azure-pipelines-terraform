@@ -1,0 +1,35 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.5",
+  "values": {
+    "outputs": {
+      "db_connection": { "value": "DBCONN_SECRET_literal_9f3k", "type": "string", "sensitive": true },
+      "db_endpoint": { "value": "maindb.internal:5432", "type": "string", "sensitive": false }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_db_instance.main",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "identifier": "maindb",
+            "username": "admin",
+            "password": "STATEPW_SUPERSECRET_abc123",
+            "endpoint": "maindb.internal:5432",
+            "config": { "host": "maindb.internal", "auth_token": "STATETOKEN_xyz789" },
+            "replica_passwords": ["REPLICASECRET_0", "REPLICASECRET_1"]
+          },
+          "sensitive_values": {
+            "password": true,
+            "config": { "auth_token": true },
+            "replica_passwords": [true, true]
+          }
+        }
+      ]
+    }
+  }
+}

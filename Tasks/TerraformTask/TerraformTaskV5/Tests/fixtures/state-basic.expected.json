@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "kind": "state",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-state",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "summary": {
+    "resourceCount": 1,
+    "dataSourceCount": 1
+  },
+  "resources": [
+    {
+      "address": "aws_s3_bucket.assets",
+      "type": "aws_s3_bucket",
+      "name": "assets",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "managed",
+      "attributes": [
+        {
+          "name": "bucket",
+          "value": {
+            "kind": "value",
+            "json": "\"app-assets-prod\""
+          }
+        },
+        {
+          "name": "force_destroy",
+          "value": {
+            "kind": "value",
+            "json": "false"
+          }
+        },
+        {
+          "name": "tags",
+          "value": {
+            "kind": "value",
+            "json": "{\"env\":\"prod\",\"team\":\"platform\"}"
+          }
+        },
+        {
+          "name": "versioning",
+          "value": {
+            "kind": "value",
+            "json": "[{\"enabled\":true,\"mfa_delete\":false}]"
+          }
+        }
+      ]
+    },
+    {
+      "address": "data.aws_caller_identity.current",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "data",
+      "attributes": [
+        {
+          "name": "account_id",
+          "value": {
+            "kind": "value",
+            "json": "\"123456789012\""
+          }
+        },
+        {
+          "name": "id",
+          "value": {
+            "kind": "value",
+            "json": "\"123456789012\""
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "bucket_name",
+      "value": {
+        "kind": "value",
+        "json": "\"app-assets-prod\""
+      }
+    },
+    {
+      "name": "region",
+      "value": {
+        "kind": "value",
+        "json": "\"us-east-1\""
+      }
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "kind": "state",
+  "producedBy": {
+    "task": "TerraformTaskV5",
+    "taskVersion": "0.0.0-test"
+  },
+  "tool": {
+    "name": "terraform",
+    "version": "1.9.5"
+  },
+  "meta": {
+    "name": "terraform-state",
+    "workingDirectory": "infra",
+    "createdIso": "2026-07-15T00:00:00Z"
+  },
+  "truncated": false,
+  "summary": {
+    "resourceCount": 1,
+    "dataSourceCount": 0
+  },
+  "resources": [
+    {
+      "address": "aws_db_instance.main",
+      "type": "aws_db_instance",
+      "name": "main",
+      "providerName": "registry.terraform.io/hashicorp/aws",
+      "mode": "managed",
+      "attributes": [
+        {
+          "name": "config",
+          "value": {
+            "kind": "value",
+            "json": "{\"auth_token\":\"(sensitive)\",\"host\":\"maindb.internal\"}"
+          }
+        },
+        {
+          "name": "endpoint",
+          "value": {
+            "kind": "value",
+            "json": "\"maindb.internal:5432\""
+          }
+        },
+        {
+          "name": "identifier",
+          "value": {
+            "kind": "value",
+            "json": "\"maindb\""
+          }
+        },
+        {
+          "name": "password",
+          "value": {
+            "kind": "sensitive"
+          }
+        },
+        {
+          "name": "replica_passwords",
+          "value": {
+            "kind": "value",
+            "json": "[\"(sensitive)\",\"(sensitive)\"]"
+          }
+        },
+        {
+          "name": "username",
+          "value": {
+            "kind": "value",
+            "json": "\"admin\""
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "db_connection",
+      "value": {
+        "kind": "sensitive"
+      }
+    },
+    {
+      "name": "db_endpoint",
+      "value": {
+        "kind": "value",
+        "json": "\"maindb.internal:5432\""
+      }
+    }
+  ]
+}

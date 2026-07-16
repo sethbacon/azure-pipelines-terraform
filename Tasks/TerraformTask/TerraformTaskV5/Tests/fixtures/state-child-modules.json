@@ -1,0 +1,68 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.9.5",
+  "values": {
+    "outputs": {
+      "vpc_id": { "value": "vpc-0abc123", "type": "string", "sensitive": false }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": { "cidr_block": "10.0.0.0/16", "id": "vpc-0abc123" },
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.database",
+          "resources": [
+            {
+              "address": "module.database.aws_db_instance.this",
+              "mode": "managed",
+              "type": "aws_db_instance",
+              "name": "this",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": { "identifier": "moddb", "password": "MODULESECRET_pw_child" },
+              "sensitive_values": { "password": true }
+            }
+          ],
+          "child_modules": [
+            {
+              "address": "module.database.module.kms",
+              "resources": [
+                {
+                  "address": "module.database.module.kms.aws_kms_key.this",
+                  "mode": "managed",
+                  "type": "aws_kms_key",
+                  "name": "this",
+                  "provider_name": "registry.terraform.io/hashicorp/aws",
+                  "values": { "key_id": "key-0xyz", "policy": "{\"Version\":\"2012-10-17\"}" },
+                  "sensitive_values": {}
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "address": "module.app",
+          "resources": [
+            {
+              "address": "module.app.data.aws_ami.ubuntu",
+              "mode": "data",
+              "type": "aws_ami",
+              "name": "ubuntu",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": { "id": "ami-0123", "architecture": "x86_64" },
+              "sensitive_values": {}
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

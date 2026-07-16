@@ -338,4 +338,40 @@ describe('buildPlanDigest', () => {
     assert.ok(paths.includes('safe'));
     assert.strictEqual(({} as Record<string, unknown>).x, undefined);
   });
+
+  describe('planMode destroy marker (§7.1 — destroy reuses PlanDigest)', () => {
+    // A destroy plan's resource_changes are all deletes; the marker is taken
+    // FROM THE CALLER, never inferred from counts, so an all-delete NORMAL plan
+    // is not mislabeled.
+    const destroyPlan = {
+      terraform_version: '1.9.5',
+      resource_changes: [
+        { address: 'aws_db_instance.main', type: 'aws_db_instance', name: 'main', provider_name: 'p', change: change({ actions: ['delete'], before: { id: 'db-1' }, after: null }) },
+      ],
+      output_changes: {},
+    };
+
+    it('sets planMode="destroy" when the caller passes {mode:"destroy"}', () => {
+      const d = buildPlanDigest(destroyPlan, META, { mode: 'destroy' });
+      assert.strictEqual(d.planMode, 'destroy');
+      // marker is presentation-only: the deletes still appear as delete actions.
+      assert.deepStrictEqual(d.resources[0].actions, ['delete']);
+      assert.strictEqual(d.summary.destroy, 1);
+    });
+
+    it('leaves planMode absent by default (normal plan, unchanged contract)', () => {
+      assert.strictEqual(buildPlanDigest(destroyPlan, META).planMode, undefined);
+      assert.strictEqual(buildPlanDigest(destroyPlan, META, {}).planMode, undefined);
+    });
+
+    it('leaves planMode absent for {mode:"plan"} (default === absent)', () => {
+      assert.strictEqual(buildPlanDigest(destroyPlan, META, { mode: 'plan' }).planMode, undefined);
+    });
+
+    it('does NOT infer destroy from an all-delete plan built without the marker', () => {
+      // identical all-delete input, no mode option -> NOT labeled a destroy.
+      const d = buildPlanDigest(destroyPlan, META);
+      assert.strictEqual(d.planMode, undefined, 'all-delete alone must not imply destroy');
+    });
+  });
 });
