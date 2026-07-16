@@ -37,6 +37,17 @@ import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredenti
 import './BinaryNameAllowlistL0';
 // Direct unit tests for the GCP static-key token_uri (Audience) validation.
 import './GcpTokenUriValidationL0';
+// Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
+// most security-critical unit): recursive redaction, digest builders, freeform
+// diagnostic scrub, and the golden-fixture regression + no-leak tripwire.
+import './results/RedactL0';
+import './results/PlanDigestL0';
+import './results/ApplyDigestL0';
+import './results/SecretScrubL0';
+import './results/GoldenFixturesL0';
+// Direct unit tests for maskHasSensitiveLeaf, the shared sensitivity predicate
+// warnIfSensitiveOutputs was rerouted onto (design §5.2.7, WP-2).
+import './MaskHasSensitiveLeafL0';
 
 describe('Terraform Test Suite', function () {
 
@@ -2321,6 +2332,18 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('azure show to file with json detects sensitivity nested under after_sensitive that a one-level scan would miss (design §5.2.7 regression)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowFileJsonNestedSensitiveResourceAttribute.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length >= 1, 'should have warned about the nested sensitive resource attribute');
+            assert(tr.stdOutContained('AzureShowFileJsonNestedSensitiveResourceAttributeL0 should have succeeded.'));
+        }, tr);
+    });
+
     it('azure show to file with json and failOnSensitiveOutputs=true fails on sensitive outputs, and deletes the file', async () => {
         let tp = path.join(__dirname, './ShowTests/AzureShowFileJsonSensitiveStrict.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -2523,6 +2546,85 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanPublishResultsAttachmentSurvivesCleanupL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('a publishPlanResults-only run emits the byte-identical raw attachment and no summary attachment (backward-compat regression, design §12.3)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsOnlyBackwardCompat.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishResultsOnlyBackwardCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('passes the legacy terraform-plan-results attachment name raw (task-lib escapes it), not through sanitizeAttachmentName (compat regression)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsRawNameCompat.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishResultsRawNameCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    /* structured plan/apply summary tests (design §7) */
+
+    it('azure plan should succeed and publish a redacted structured plan summary attachment', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanSuccessPublishSummary.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanSuccessPublishSummaryL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('publishPlanSummary rejects logging-command injection characters in the attachment name', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishSummaryNameInjectionRejected.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishSummaryNameInjectionRejectedL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply should succeed and publish a redacted structured apply summary attachment, echoing @message to the console', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySuccessPublishResults.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplySuccessPublishResultsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply with publishApplyResults still fails the task on a non-zero exit code, and still attaches the failed-outcome summary', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyFailurePublishResultsExitCodePreserved.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplyFailurePublishResultsExitCodePreservedL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply with includeDiagnostics unset publishes a structured apply summary with NO diagnostics (safe default, opt-in)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyDefaultOmitsDiagnostics.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplyDefaultOmitsDiagnosticsL0 should have succeeded.'));
         }, tr);
     });
 

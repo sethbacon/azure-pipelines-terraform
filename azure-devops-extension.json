@@ -169,12 +169,12 @@
     {
       "id": "terraform-plan-tab",
       "type": "ms.vss-build-web.build-results-tab",
-      "description": "A tab to show terraform plan output in pipeline results",
+      "description": "A tab to show structured terraform plan and apply results in pipeline results, with Plan/Apply pivots and a raw-text fallback",
       "targets": [
         "ms.vss-build-web.build-results-view"
       ],
       "properties": {
-        "name": "Terraform Plan",
+        "name": "Terraform",
         "uri": "tab/index.html",
         "supportsTasks": [
           "981E87CD-B686-4A9E-B09E-B4AFDEDF126B"
