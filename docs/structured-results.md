@@ -1,9 +1,10 @@
 # Structured Terraform results tab — user walkthrough
 
 The `PipelineTerraformTask@5` task can publish a **structured, redacted JSON summary**
-of a `plan` or `apply` to the pipeline run's **Terraform** results tab, in addition
-to (or instead of) the legacy raw ANSI attachment. This page walks through enabling
-it and reading each section. It is the standalone companion to the summary in
+of a `plan`, `apply`, `destroy`, or the current state (`show`) to the pipeline run's
+**Terraform** results tab, in addition to (or instead of) the legacy raw ANSI attachment.
+This page walks through enabling it and reading each section. It is the standalone
+companion to the summary in
 [`README.md`](../README.md#structured-terraform-results-tab); see
 [`SECURITY.md`](../SECURITY.md) for the residual risks the redaction depends on and
 [`docs/design/plan-apply-digest-spec.md`](design/plan-apply-digest-spec.md) for the
@@ -16,9 +17,10 @@ All inputs are optional (`required: false`) and default to today's behavior when
 | Input | Command | Type / default | Effect |
 | --- | --- | --- | --- |
 | `publishPlanResults` | `plan` | string (name), unset | Legacy raw ANSI plan attachment. Independent of the summary below. |
-| `publishPlanSummary` | `plan` | string (name), unset | Structured, redacted **Plan** summary. Adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it. |
+| `publishPlanSummary` | `plan`, `destroy` | string (name), unset | Structured, redacted **Plan** summary. Adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it. On `destroy`, built from the destroy's own plan the same way and labeled **Destroy** in the tab; destroy still auto-approves and still fails the task on a non-zero exit. |
 | `publishApplyResults` | `apply` | string (name), unset | Structured, redacted **Apply** summary. Runs apply with `-json`; each event's human-readable message is still echoed to the console. |
 | `includeDiagnosticDetail` | `apply` | boolean, `false` | Include each apply diagnostic's longer `detail` field (higher residual leak risk than `summary`); no effect unless `publishApplyResults` is set. |
+| `publishStateResults` | `show` | string (name), unset | Structured, redacted **State** inventory. Runs its own `terraform show -json` of the current state, independent of this step's own `commandOptions`/output settings. Has no effect if `commandOptions` names a saved plan file (that show is a planfile show, not a state show). |
 
 Example (`azure-pipelines.yml`):
 
@@ -36,6 +38,18 @@ Example (`azure-pipelines.yml`):
     command: apply
     publishApplyResults: production     # structured Apply pivot
     # includeDiagnosticDetail: true     # optional: include diagnostic detail text
+
+- task: PipelineTerraformTask@5
+  inputs:
+    provider: azurerm
+    command: destroy
+    publishPlanSummary: production      # structured Plan pivot, labeled "Destroy"
+
+- task: PipelineTerraformTask@5
+  inputs:
+    provider: azurerm
+    command: show
+    publishStateResults: production     # structured State pivot (current state inventory)
 ```
 
 See [`docs/yaml-examples.md`](yaml-examples.md) for more.
@@ -44,6 +58,7 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
 
 - **Overview list** (when more than one plan is published) — each plan's name with
   add / change / destroy / replace counts and a drift badge; select one to open its detail.
+  A destroy plan additionally shows a **Destroy** badge.
 - **Summary header** — the counts, `No changes` / `Drift detected` badges, the tool and
   version, and a **`This digest was truncated.`** notice with per-note reasons when any
   size cap was hit (see [Size caps](#size-caps--truncation)).
@@ -53,6 +68,14 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
   changed attributes.
 - **Drift** — drifted resources (from `resource_drift`), rendered as before → after diffs.
 - **Outputs** — masked output changes.
+
+### Destroy plans
+
+A `destroy` run with `publishPlanSummary` set publishes to the **same Plan pivot** as an
+ordinary plan — a destroy plan is just a plan whose changes are all deletes, and Terraform
+computes and saves one before applying exactly like `plan` does. The only difference is a
+**Destroy** badge on the overview row and in the detail header. Destroy still auto-approves
+and still fails the task on a non-zero exit; publishing the summary does not change that.
 
 ## Reading the Apply pivot
 
@@ -66,6 +89,21 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
 - **Diagnostics** — errors first, then warnings; freeform text is scrubbed before display.
 - **Outputs** — masked final outputs.
 
+## Reading the State pivot
+
+The State pivot shows a **point-in-time inventory** of the current Terraform state — not a
+change set: no action, no before/after, no known-after-apply. Enable it with
+`publishStateResults` on a `show` step (see above).
+
+- **Overview list** (when more than one state inventory is published) — each inventory's
+  name with resource / data-source counts; select one to open its detail.
+- **Summary header** — the resource and data-source counts, the tool and version, and the
+  truncation notice when applicable.
+- **State inventory list** — grouped by resource type and filterable by address or type;
+  each row expands to an attribute table of that resource's **current** values (address,
+  type, provider, and — for a resource inside a module — its module path).
+- **Outputs** — masked current output values (no action, since state is not a change set).
+
 ## Redaction
 
 Every value is redacted **by the task, before the attachment is written** — the tab never
@@ -76,6 +114,10 @@ sensitivity mask's shape does not match its value, the value is **masked fail-cl
 (never shown) and the event is recorded in the truncation notes. Redaction relies on
 Terraform correctly emitting those marks — see [`SECURITY.md`](../SECURITY.md).
 
+The State inventory is redacted the same way, against each resource's own `sensitive_values`
+mask; because state values are fully materialized, there is no unknown/known-after-apply
+case for state.
+
 ## Size caps & truncation
 
 To keep a large (or hostile) digest from bloating the attachment or the browser, the task
@@ -83,11 +125,12 @@ bounds each part of the digest and the tab re-applies the same bounds defensivel
 bound is hit, `truncated` is set and a human-readable note explains what was capped; long
 rendered lists also show an inline "List truncated to N of M …" banner. The limits are the
 single-source-of-truth values in
-[`docs/design/plan-apply-digest-spec.md`](design/plan-apply-digest-spec.md) §3 / the
-initiative doc §6 (resources, attribute changes per resource, outputs, drift resources,
-diagnostics, per-value bytes, applied-before-failure addresses, truncation notes, and the
-total-digest soft/hard byte ceilings). A digest whose declared size exceeds the tab parse
-ceiling is not rendered structurally; download it from the build artifacts instead.
+[`docs/design/plan-apply-digest-spec.md`](design/plan-apply-digest-spec.md) §3 (resources,
+attribute changes per resource, outputs, drift resources, diagnostics, per-value bytes,
+applied-before-failure addresses, truncation notes, and the total-digest soft/hard byte
+ceilings — plus, for State, its own resource and per-resource attribute caps, §7.4). A
+digest whose declared size exceeds the tab parse ceiling is not rendered structurally;
+download it from the build artifacts instead.
 
 ## Same-run only
 
