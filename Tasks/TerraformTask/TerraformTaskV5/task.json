@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "277",
+        "Minor": "278",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -433,6 +433,15 @@
             "required": false,
             "visibleRule": "command = output",
             "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. It is retained by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable -- enable this if the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself, especially on a self-hosted agent whose working directory is not wiped between jobs."
+        },
+        {
+            "name": "failOnSensitiveOutputs",
+            "type": "boolean",
+            "label": "Fail when sensitive outputs would be retained",
+            "defaultValue": "false",
+            "required": false,
+            "visibleRule": "command = output || command = show",
+            "helpMarkDown": "Fail the task (instead of only warning) when the JSON file written by the `output` command, or by `show` with JSON output to a file, contains Terraform outputs declared `sensitive = true` in cleartext and the file would be retained on disk. On a strict failure the just-written file is deleted at the end of the step so the cleartext values are not left behind. For the `output` command, also enabling `cleanupOutputFile` keeps this a warning, since the file is deleted at the end of the step anyway. Note that this detection -- like the secret-masking of the auto-exported `TF_OUT_<name>` pipeline variables -- relies entirely on the module declaring its outputs `sensitive = true`: an output the module author forgot to mark sensitive is exported as an unmasked pipeline variable and is not detected here."
         },
         {
             "name": "environmentServiceNameAzureRM",
@@ -973,6 +982,10 @@
     ],
     "messages": {
         "TerraformToolNotFound": "Could not locate the terraform/tofu binary. Run PipelineTerraformInstaller in the same job as this task, or ensure the binary is installed on the agent's PATH.",
-        "TerraformPlanFailed": "Terraform plan failed with exit code %s"
+        "TerraformPlanFailed": "Terraform plan failed with exit code %s",
+        "OidcRequestUriHostNotAllowed": "SYSTEM_OIDCREQUESTURI host '%s' is not a recognized Azure DevOps host (expected dev.azure.com, *.dev.azure.com, *.visualstudio.com, or the host of System.CollectionUri); refusing to send the job access token to it.",
+        "GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
+        "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
+        "ShowSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Disable 'failOnSensitiveOutputs' to downgrade this to a warning."
     }
 }

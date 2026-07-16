@@ -14,6 +14,41 @@ class FederatedTokenError extends Error {
     }
 }
 
+/** Exact hosts that identify a genuine Azure DevOps (cloud) OIDC token endpoint. */
+const ADO_OIDC_HOSTS = ['dev.azure.com', 'vstoken.dev.azure.com'];
+/** Host suffixes that identify a genuine Azure DevOps (cloud) OIDC token endpoint. */
+const ADO_OIDC_HOST_SUFFIXES = ['.dev.azure.com', '.visualstudio.com'];
+
+/**
+ * The job's SystemVssConnection AccessToken is sent as a Bearer header to
+ * SYSTEM_OIDCREQUESTURI, so in addition to the https assertion the host is
+ * pinned to Azure DevOps endpoints (mirroring the OCI identity-domain suffix
+ * allowlist in oci-token-exchange.ts). On-prem Azure DevOps Server hosts the
+ * OIDC endpoint on the collection host itself, so a host equal to the host of
+ * System.CollectionUri / System.TeamFoundationCollectionUri is also allowed.
+ */
+function isAllowedOidcRequestHost(hostname: string): boolean {
+    const host = hostname.toLowerCase();
+    if (ADO_OIDC_HOSTS.includes(host)) {
+        return true;
+    }
+    if (ADO_OIDC_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix) && host.length > suffix.length)) {
+        return true;
+    }
+    for (const envName of ['SYSTEM_COLLECTIONURI', 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI']) {
+        const collectionUri = process.env[envName];
+        if (!collectionUri) continue;
+        try {
+            if (new URL(collectionUri).hostname.toLowerCase() === host) {
+                return true;
+            }
+        } catch {
+            // Unparseable collection URI -- it cannot vouch for any host.
+        }
+    }
+    return false;
+}
+
 export class TokenGenerator {
     private static readonly MAX_RETRIES = 3;
     private static readonly INITIAL_BACKOFF_MS = 200;
@@ -24,15 +59,19 @@ export class TokenGenerator {
             throw new Error("SYSTEM_OIDCREQUESTURI is not set. Ensure the pipeline is running on an agent that supports OIDC token generation.");
         }
         // SYSTEM_OIDCREQUESTURI carries the job's System.AccessToken as a Bearer
-        // header; assert https:// before that token is ever sent anywhere.
-        let scheme: string;
+        // header; assert https:// and an Azure DevOps host before that token is
+        // ever sent anywhere (#353, #493).
+        let parsedUri: URL;
         try {
-            scheme = new URL(oidcRequestUri).protocol;
+            parsedUri = new URL(oidcRequestUri);
         } catch {
             throw new Error(`SYSTEM_OIDCREQUESTURI is not a valid URL: ${oidcRequestUri}`);
         }
-        if (scheme !== 'https:') {
+        if (parsedUri.protocol !== 'https:') {
             throw new Error(`SYSTEM_OIDCREQUESTURI must be an https:// URL, got '${oidcRequestUri}'.`);
+        }
+        if (!isAllowedOidcRequestHost(parsedUri.hostname)) {
+            throw new Error(tasks.loc('OidcRequestUriHostNotAllowed', parsedUri.hostname));
         }
 
         // The federated token is requested with only the service-connection id; no

@@ -1,6 +1,18 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import fs = require('fs');
+import os = require('os');
+
+// This scenario mocks crypto.randomUUID to a fixed value, which makes the
+// credential temp-file paths deterministic across runs. writeSecretFile now
+// refuses to overwrite an existing file (O_EXCL, #484), so point
+// Agent.TempDirectory at a scrubbed per-scenario directory -- matching real
+// agents, where Agent.TempDirectory is always set and job-purged.
+const wifTempDir = path.join(os.tmpdir(), 'tf-wif-GCPInitFailInvalidWorkingDirectory');
+fs.rmSync(wifTempDir, { recursive: true, force: true });
+fs.mkdirSync(wifTempDir, { recursive: true });
+process.env['AGENT_TEMPDIRECTORY'] = wifTempDir;
 import { TEST_GCP_PRIVATE_KEY_SPACES } from '../../test-gcp-fixtures';
 
 let tp = path.join(__dirname, './GCPInitSuccessEmptyWorkingDirL0.js');
@@ -18,7 +30,7 @@ tr.setInput('backendGCPPrefix', 'DummyPrefix');
 process.env['ENDPOINT_AUTH_SCHEME_GCP'] = 'Jwt';
 process.env['ENDPOINT_DATA_GCP_PROJECT'] = 'DummyProject';
 process.env['ENDPOINT_AUTH_PARAMETER_GCP_ISSUER'] = 'Dummyissuer';
-process.env['ENDPOINT_AUTH_PARAMETER_GCP_AUDIENCE'] = 'DummyAudience';
+process.env['ENDPOINT_AUTH_PARAMETER_GCP_AUDIENCE'] = 'https://oauth2.googleapis.com/token';
 process.env['ENDPOINT_AUTH_PARAMETER_GCP_PRIVATEKEY'] = TEST_GCP_PRIVATE_KEY_SPACES;
 process.env['ENDPOINT_AUTH_PARAMETER_GCP_SCOPE'] = 'DummyScope';
 
