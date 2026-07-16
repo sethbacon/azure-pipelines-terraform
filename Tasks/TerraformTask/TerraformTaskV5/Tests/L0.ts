@@ -2617,6 +2617,17 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('azure apply with includeDiagnostics unset publishes a structured apply summary with NO diagnostics (safe default, opt-in)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyDefaultOmitsDiagnostics.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplyDefaultOmitsDiagnosticsL0 should have succeeded.'));
+        }, tr);
+    });
+
     /* parent handler error tests */
 
     it('unknown provider should fail with descriptive error', async () => {

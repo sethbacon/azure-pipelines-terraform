@@ -113,7 +113,8 @@ describe('buildApplyDigest', () => {
       // high-entropy runs / PEM. A short provider-echoed secret in a summary is
       // therefore NOT redacted -- asserted here so the residual is VISIBLE in the
       // suite rather than masked by an injected knownSecrets list (the exact gap
-      // recorded in SECURITY.md, mitigated by the includeDiagnostics opt-out).
+      // recorded in SECURITY.md, mitigated by includeDiagnostics defaulting to
+      // opt-in -- off unless the operator explicitly enables it).
       const l = line({ type: 'diagnostic', diagnostic: { severity: 'error', summary: 'invalid value for password: hunter2short' } });
       const d = buildApplyDigest(l, META);
       assert.ok(d.diagnostics[0].summary.includes('hunter2short'), 'short low-entropy secret is a documented residual, not scrubbed');

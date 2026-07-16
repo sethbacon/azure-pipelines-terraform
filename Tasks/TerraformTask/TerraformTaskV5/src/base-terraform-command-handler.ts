@@ -721,15 +721,17 @@ export abstract class BaseTerraformCommandHandler {
         publishName: string,
     ): Promise<void> {
         const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
-        // includeDiagnostics defaults to TRUE (opt-OUT): only an explicit 'false'
-        // disables it. task-lib's getBoolInput can't express a true-by-default, so
-        // read the raw value and treat unset/anything-but-'false' as enabled.
-        const includeDiagnostics = (tasks.getInput('includeDiagnostics', false) || 'true').toLowerCase() !== 'false';
+        // includeDiagnostics defaults to FALSE (opt-IN): diagnostics are omitted
+        // unless the operator explicitly enables them (safe default — a
+        // provider-echoed short secret in a diagnostic must not land in the
+        // build-read-readable attachment by default).
+        const includeDiagnostics = tasks.getBoolInput('includeDiagnostics', false);
         const options: ApplyDigestOptions = {
-            // Operator opt-out for the provider-echoed-secret residual (§5.10): when
-            // false, the whole diagnostics array is omitted so no freeform provider
-            // text reaches the (build-read-wide) attachment; the failure is still
-            // detectable via outcome + the agent-secret-masked live console log.
+            // Operator opt-in for the provider-echoed-secret residual (§5.10): unless
+            // explicitly set true, the whole diagnostics array is omitted so no
+            // freeform provider text reaches the (build-read-wide) attachment; the
+            // failure is still detectable via outcome + the agent-secret-masked live
+            // console log.
             includeDiagnostics,
             includeDiagnosticDetail: tasks.getBoolInput('includeDiagnosticDetail', false),
             // §5.4: the task has NO general readback of every secret it registered via

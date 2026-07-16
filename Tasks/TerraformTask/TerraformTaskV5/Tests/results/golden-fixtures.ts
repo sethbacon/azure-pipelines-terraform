@@ -67,14 +67,19 @@ export const FIXTURES: FixtureSpec[] = [
 
 /**
  * Build the digest for a fixture and return the canonical serialized form.
- * Apply fixtures are built with NO options so the golden mirrors the production
- * call site exactly (empty knownSecrets, includeDiagnosticDetail off,
- * includeDiagnostics on) — see base-terraform-command-handler.ts.
+ * Apply fixtures are built with `includeDiagnostics: true` EXPLICITLY (empty
+ * knownSecrets, includeDiagnosticDetail off) so the diagnostics-render golden
+ * coverage is preserved. This intentionally does NOT mirror the production
+ * call site's default: the task input `includeDiagnostics` now defaults to
+ * `false` (opt-in — see base-terraform-command-handler.ts), but the digest
+ * builder itself is exercised here with diagnostics enabled so the
+ * diagnostics-bearing fixtures keep asserting real coverage rather than an
+ * always-empty array.
  */
 export function serializeFixture(spec: FixtureSpec): string {
   const raw = fs.readFileSync(path.join(FIXTURES_DIR, spec.input), 'utf8');
   if (spec.kind === 'plan') {
     return serializeDigest(buildPlanDigest(JSON.parse(raw), PLAN_META));
   }
-  return serializeDigest(buildApplyDigest(raw, APPLY_META));
+  return serializeDigest(buildApplyDigest(raw, APPLY_META, { includeDiagnostics: true }));
 }

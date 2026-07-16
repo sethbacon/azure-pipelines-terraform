@@ -472,10 +472,10 @@
             "name": "includeDiagnostics",
             "type": "boolean",
             "label": "Include diagnostics in structured apply summary",
-            "defaultValue": "true",
+            "defaultValue": "false",
             "required": false,
             "visibleRule": "command = apply",
-            "helpMarkDown": "Include apply diagnostics (error/warning `summary`/`detail`) in the structured summary published by 'Publish structured apply summary'. Diagnostics are freeform text a provider can construct from user/resource input; the task applies a best-effort scrub (long high-entropy/base64/hex runs, PEM blocks) but a short provider-echoed secret can still slip through, and the attachment is readable by anyone with build-read on the pipeline. Set to **false** to omit the diagnostics entirely — the apply outcome and per-resource status are still published, and the full error text remains in the (agent-secret-masked) live job log. Defaults to on. Has no effect unless 'Publish structured apply summary' is also set."
+            "helpMarkDown": "Diagnostics (error/warning `summary`/`detail`) are freeform text a provider can construct from user/resource input; the task applies a best-effort scrub (long high-entropy/base64/hex runs, PEM blocks) but a short provider-echoed secret can still slip through, and the attachment is readable by anyone with build-read on the pipeline. **Omitted by default (safe default)** so no diagnostic text — and therefore no provider-echoed-secret exposure — reaches the published attachment unless an operator explicitly opts in. Set to **true** to include the apply `diagnostics[].summary` (and, with 'Include diagnostic detail in structured apply summary', `.detail`) in the structured summary, accepting the documented best-effort-scrub residual described above. The apply outcome and per-resource status are always published regardless of this setting, and the full error text always remains in the (agent-secret-masked) live job log. Has no effect unless 'Publish structured apply summary' is also set."
         },
         {
             "name": "environmentServiceNameAzureRM",

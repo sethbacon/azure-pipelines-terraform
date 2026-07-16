@@ -2,7 +2,7 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-let tp = path.join(__dirname, './AzureApplyFailurePublishResultsExitCodePreservedL0.js');
+let tp = path.join(__dirname, './AzureApplyDefaultOmitsDiagnosticsL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('provider', 'azurerm');
@@ -11,10 +11,8 @@ tr.setInput('workingDirectory', 'DummyWorkingDirectory');
 tr.setInput('environmentServiceNameAzureRM', 'AzureRM');
 tr.setInput('commandOptions', '');
 tr.setInput('publishApplyResults', 'my-apply');
-// includeDiagnostics now defaults to false (opt-in); this test's purpose is to
-// prove diagnostics ARE included (with detail omitted by default) on a failed
-// apply, so opt in explicitly rather than relying on the (now safe) default.
-tr.setInput('includeDiagnostics', 'true');
+// includeDiagnostics is deliberately left UNSET here to exercise the safe
+// default (opt-in, defaults to false).
 
 process.env['ENDPOINT_AUTH_SCHEME_AzureRM'] = 'ServicePrincipal';
 process.env['ENDPOINT_DATA_AzureRM_SUBSCRIPTIONID'] = 'DummmySubscriptionId';
