@@ -8,6 +8,7 @@ import * as openpgp from 'openpgp';
 
 import { fetchBufferAllow404 } from './http-client';
 import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
+import { VerificationFailure } from './verification-failure';
 
 /**
  * Verifies the GPG signature of a SHA256SUMS file against HashiCorp's public key.
@@ -43,15 +44,18 @@ export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl
         verificationKeys: publicKey,
     });
 
+    // From here on the signature material was OBTAINED but does not verify —
+    // throw the typed VerificationFailure so the cache-hit re-verification path
+    // fails closed instead of degrading to "material unavailable".
     if (!result.signatures || result.signatures.length === 0) {
-        throw new Error(`GPG signature verification failed: no signatures found in ${signatureUrl}`);
+        throw new VerificationFailure(`GPG signature verification failed: no signatures found in ${signatureUrl}`);
     }
     const { verified } = result.signatures[0];
     try {
         await verified;
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`GPG signature verification failed for SHA256SUMS: ${errorMessage}`);
+        throw new VerificationFailure(`GPG signature verification failed for SHA256SUMS: ${errorMessage}`);
     }
 
     tasks.debug('GPG signature verification passed');

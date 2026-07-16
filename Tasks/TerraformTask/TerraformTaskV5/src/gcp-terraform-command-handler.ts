@@ -12,6 +12,29 @@ import { randomUUID as uuidV4 } from 'crypto';
 
 const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
 
+/**
+ * The static-key path writes the service connection's "Audience" field
+ * straight into the credentials file as `token_uri` -- the URL the Google SDK
+ * POSTs the service-account-signed JWT assertion to. Constrain it to https
+ * Google token endpoints (mirroring the WIF path's hardcoded
+ * https://sts.googleapis.com/v1/token) so a hostile or mistyped value cannot
+ * direct the signed assertion to an arbitrary origin (#494).
+ */
+function assertGoogleTokenUri(tokenUri: string): void {
+    let parsed: URL;
+    try {
+        parsed = new URL(tokenUri);
+    } catch {
+        throw new Error(tasks.loc('GcpTokenUriNotAllowed', tokenUri));
+    }
+    const host = parsed.hostname.toLowerCase();
+    const hostAllowed = host === 'oauth2.googleapis.com'
+        || (host.endsWith('.googleapis.com') && host.length > '.googleapis.com'.length);
+    if (parsed.protocol !== 'https:' || !hostAllowed) {
+        throw new Error(tasks.loc('GcpTokenUriNotAllowed', tokenUri));
+    }
+}
+
 export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     constructor() {
         super();
@@ -37,6 +60,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
                 .filter(Boolean).join(", ");
             throw new Error(`GCP service connection is missing required fields: ${missing}`);
         }
+        assertGoogleTokenUri(tokenUri);
         // Mask the raw value first: a service connection may deliver the key
         // flattened to a single line (which itself starts with "-----BEGIN"),
         // so no boundary-line filtering here.

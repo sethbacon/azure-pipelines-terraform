@@ -15,6 +15,8 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
 
     let originalFetch: typeof globalThis.fetch;
     let originalEnv: string | undefined;
+    let originalCollectionUri: string | undefined;
+    let originalTfsCollectionUri: string | undefined;
     const setSecretCalls: string[] = [];
     let accessTokenValue: string | undefined;
 
@@ -30,7 +32,11 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
     beforeEach(() => {
         originalFetch = globalThis.fetch;
         originalEnv = process.env['SYSTEM_OIDCREQUESTURI'];
+        originalCollectionUri = process.env['SYSTEM_COLLECTIONURI'];
+        originalTfsCollectionUri = process.env['SYSTEM_TEAMFOUNDATIONCOLLECTIONURI'];
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://vstoken.dev.azure.com/oidc';
+        delete process.env['SYSTEM_COLLECTIONURI'];
+        delete process.env['SYSTEM_TEAMFOUNDATIONCOLLECTIONURI'];
         setSecretCalls.length = 0;
         accessTokenValue = 'access-token';
         t.debug = () => { /* silence */ };
@@ -45,6 +51,16 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
             delete process.env['SYSTEM_OIDCREQUESTURI'];
         } else {
             process.env['SYSTEM_OIDCREQUESTURI'] = originalEnv;
+        }
+        if (originalCollectionUri === undefined) {
+            delete process.env['SYSTEM_COLLECTIONURI'];
+        } else {
+            process.env['SYSTEM_COLLECTIONURI'] = originalCollectionUri;
+        }
+        if (originalTfsCollectionUri === undefined) {
+            delete process.env['SYSTEM_TEAMFOUNDATIONCOLLECTIONURI'];
+        } else {
+            process.env['SYSTEM_TEAMFOUNDATIONCOLLECTIONURI'] = originalTfsCollectionUri;
         }
         t.debug = taskOrig.debug;
         t.getEndpointAuthorizationParameter = taskOrig.getEndpointAuthorizationParameter;
@@ -88,6 +104,57 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
         await assert.rejects(new TokenGenerator().generate('sc-123'), /must be an https:\/\/ URL/);
         assert.strictEqual(called, false, 'must not call fetch with a non-https request URI');
+    });
+
+    it('accepts an https *.visualstudio.com host (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/distributedtask/hubs/build/plans/1/jobs/2/oidctoken';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'legacy-domain-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'legacy-domain-token');
+    });
+
+    it('accepts an on-prem host that matches the System.CollectionUri host (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://tfs.corp.example/tfs/DefaultCollection/_apis/oidctoken';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://tfs.corp.example/tfs/DefaultCollection/';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'onprem-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'onprem-token');
+    });
+
+    it('accepts an on-prem host that matches the System.TeamFoundationCollectionUri host (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://azdo-server.internal/_apis/oidctoken';
+        process.env['SYSTEM_TEAMFOUNDATIONCOLLECTIONURI'] = 'https://azdo-server.internal/DefaultCollection/';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'onprem-tfs-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'onprem-tfs-token');
+    });
+
+    it('rejects a foreign host and never sends the Bearer access token to it (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://evil.example.com/oidc';
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not call fetch with a non-ADO request URI host');
+    });
+
+    it('rejects a foreign host even when a collection URI is set for a different host (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://evil.example.com/oidc';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://tfs.corp.example/tfs/DefaultCollection/';
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not call fetch with a non-ADO request URI host');
+    });
+
+    it('rejects a lookalike host that merely embeds an allowed suffix (#493)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://dev.azure.com.evil.example/oidc';
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not call fetch with a lookalike host');
     });
 
     it('throws when the SystemVssConnection access token is unavailable', async () => {

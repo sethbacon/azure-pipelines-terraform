@@ -31,6 +31,17 @@ Example:
 For getting more details about exact version, refer [this link](https://releases.hashicorp.com/terraform/)
 
 
+### Tool cache integrity on self-hosted agents
+
+On persistent (self-hosted) agents the tool cache outlives the job that populated it, so a Terraform/OpenTofu version cached by an earlier job is reused by later jobs. The installer verifies cached tools rather than trusting them unconditionally:
+
+* After a checksum-verified download, a local integrity marker (`.installer-verified.sha256`) is written into the cached tool directory. Every later cache hit re-hashes the executable against that marker (offline, no network) and fails if the cached copy changed since it was verified.
+* A cache hit **without** a marker (cached by an older installer version, or by a job that ran with verification disabled) is re-verified remotely when `requireChecksum` is enabled (the default): the release is re-downloaded through the configured source with the normal signature/checksum verification, and the cached executable must match it. On a mismatch — or if the source serves material that fails verification — the task fails. If the source is simply unreachable (offline/air-gapped agents), the task warns and proceeds with the cached tool, so air-gapped cache reuse keeps working. After a successful re-verification the marker is written, so the extra download happens once per cache entry.
+
+**Do not mix `requireChecksum` values across jobs that share an agent's tool cache** — a job with verification disabled can seed the cache for jobs that require it. Set `requireChecksum: false` only when you deliberately accept unverified tools (it also skips the cache re-verification). To force a fresh, fully verified download, clear the agent's tool cache directory for that version.
+
+Note: the marker sits next to the executable it protects; it defends against corruption and mixed verification settings, not against an attacker who already has write access to the agent's tool cache.
+
 ### Output Variables
 
 * **Terraform location:** This variable can be used to refer to the location of the terraform binary that was installed on the agent in subsequent tasks.

@@ -11,8 +11,13 @@ import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './url-secret-redaction';
+import { VerificationFailure, isVerificationFailure } from './verification-failure';
 
 const isWindows = os.type().match(/^Win/);
+
+// File name of the local, per-cached-tool-directory integrity marker written after
+// a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
+const CACHE_INTEGRITY_MARKER = ".installer-verified.sha256";
 
 /**
  * Downloads the requested policy agent (Sentinel or OPA), verifies it, caches it
@@ -32,18 +37,21 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
     }
 
     let cachedToolPath = tools.findLocalTool(agent, version);
+    const cacheHit = !!cachedToolPath;
 
+    let verified = false;
     if (!cachedToolPath) {
-        const artifactPath = await downloadArtifact(agent, downloadSource, version);
+        const artifact = await downloadArtifact(agent, downloadSource, version);
+        verified = artifact.verified;
 
         let toolDir: string;
         if (agent === "sentinel") {
             // Sentinel is distributed as a zip archive.
-            toolDir = await tools.extractZip(artifactPath);
+            toolDir = await tools.extractZip(artifact.path);
         } else {
             // OPA is distributed as a single raw binary; place it in its own dir
             // under the canonical executable name so the tool cache can host it.
-            toolDir = placeBinaryInDir(artifactPath, agent);
+            toolDir = placeBinaryInDir(artifact.path, agent);
         }
         cachedToolPath = await tools.cacheDir(toolDir, agent, version);
     } else {
@@ -57,6 +65,21 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
 
     if (!isWindows) {
         fs.chmodSync(exePath, "755");
+    }
+
+    if (cacheHit) {
+        // A version cached by a possibly-earlier job on this (potentially persistent,
+        // self-hosted) agent is being reused without re-running the verification this
+        // job demands. Re-verify against the local integrity marker recorded when it
+        // was originally downloaded and verified — see verifyCachedTool — and, when
+        // no marker exists (cached before markers, or cached with verification
+        // disabled), re-verify against a freshly downloaded, verified release.
+        const markerVerified = verifyCachedTool(cachedToolPath, exePath, `${agent} ${version}`);
+        if (!markerVerified) {
+            await reverifyUnmarkedCacheEntry(agent, downloadSource, version, cachedToolPath, exePath);
+        }
+    } else if (verified) {
+        writeCacheIntegrityMarker(cachedToolPath, exePath);
     }
 
     tasks.setVariable('policyAgentLocation', exePath);
@@ -127,34 +150,35 @@ async function resolveVersionFromRegistry(registryUrl: string, mirrorName: strin
     return data.version;
 }
 
-// --- Download strategies (return the path to the downloaded artifact) ---
+// --- Download strategies (return the path to the downloaded artifact, and
+// whether it was actually checksum-verified) ---
 
-async function downloadArtifact(agent: string, downloadSource: string, version: string): Promise<string> {
+async function downloadArtifact(agent: string, downloadSource: string, version: string): Promise<{ path: string; verified: boolean }> {
     switch (downloadSource) {
         case "registry": {
             const registryUrl = tasks.getInput("registryUrl", true)!;
             const mirrorName = tasks.getInput("registryMirrorName", true)! || agent;
-            const filePath = await downloadFromRegistry(agent, version, registryUrl, mirrorName);
+            const result = await downloadFromRegistry(agent, version, registryUrl, mirrorName);
             tasks.setVariable('policyAgentDownloadedFrom', `registry:${registryUrl}`);
-            return filePath;
+            return result;
         }
         case "mirror": {
             const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
-            const filePath = await downloadFromMirror(agent, version, mirrorBaseUrl);
+            const result = await downloadFromMirror(agent, version, mirrorBaseUrl);
             tasks.setVariable('policyAgentDownloadedFrom', `mirror:${mirrorBaseUrl}`);
-            return filePath;
+            return result;
         }
         default: { // "official"
-            const filePath = agent === "sentinel"
+            const result = agent === "sentinel"
                 ? await downloadSentinelOfficial(version)
                 : await downloadOpaOfficial(version);
             tasks.setVariable('policyAgentDownloadedFrom', 'official');
-            return filePath;
+            return result;
         }
     }
 }
 
-async function downloadSentinelOfficial(version: string): Promise<string> {
+async function downloadSentinelOfficial(version: string): Promise<{ path: string; verified: boolean }> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const zipFileName = `sentinel_${version}_${osPlatform}_${arch}.zip`;
@@ -169,10 +193,10 @@ async function downloadSentinelOfficial(version: string): Promise<string> {
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
     await verifySha256(zipPath, expectedHash);
-    return zipPath;
+    return { path: zipPath, verified: true };
 }
 
-async function downloadOpaOfficial(version: string): Promise<string> {
+async function downloadOpaOfficial(version: string): Promise<{ path: string; verified: boolean }> {
     const assetName = getOpaAssetName();
     const downloadUrl = `https://github.com/open-policy-agent/opa/releases/download/v${version}/${assetName}`;
 
@@ -195,13 +219,13 @@ async function downloadOpaOfficial(version: string): Promise<string> {
             throw new Error(`Checksum verification is required but no .sha256 is published for the OPA download (${sha256Url}).`);
         }
         tasks.warning(`SHA256 verification skipped for OPA download: no checksum file published at ${sha256Url}.`);
-    } else {
-        await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+        return { path: binaryPath, verified: false };
     }
-    return binaryPath;
+    await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+    return { path: binaryPath, verified: true };
 }
 
-async function downloadFromRegistry(agent: string, version: string, registryUrl: string, mirrorName: string): Promise<string> {
+async function downloadFromRegistry(agent: string, version: string, registryUrl: string, mirrorName: string): Promise<{ path: string; verified: boolean }> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
@@ -259,6 +283,7 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
 
     if (data.sha256) {
         await verifySha256(filePath, data.sha256);
+        return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
@@ -266,10 +291,10 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
-    return filePath;
+    return { path: filePath, verified: false };
 }
 
-async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl: string): Promise<string> {
+async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl: string): Promise<{ path: string; verified: boolean }> {
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
     }
@@ -282,8 +307,8 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
         const zipPath = await downloadTo(downloadUrl, `sentinel-${version}-${uuidV4()}.zip`);
 
         const sha256SumsUrl = `${mirrorBaseUrl}/${version}/sentinel_${version}_SHA256SUMS`;
-        await verifyMirrorChecksum(zipPath, sha256SumsUrl, zipFileName);
-        return zipPath;
+        const verified = await verifyMirrorChecksum(zipPath, sha256SumsUrl, zipFileName);
+        return { path: zipPath, verified };
     }
 
     const assetName = getOpaAssetName();
@@ -298,13 +323,13 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
             throw new Error(`Checksum verification is required but no .sha256 is published for the mirror download (${sha256Url}).`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no checksum file published at ${sha256Url}.`);
-    } else {
-        await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+        return { path: binaryPath, verified: false };
     }
-    return binaryPath;
+    await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+    return { path: binaryPath, verified: true };
 }
 
-async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fileName: string): Promise<void> {
+async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fileName: string): Promise<boolean> {
     // Sentinel-only path. requireGpgSignature (default true) governs whether the
     // mirror's SHA256SUMS must carry a valid HashiCorp GPG signature; previously the
     // mirror path checked only sha256 (which a compromised mirror can recompute), so
@@ -321,13 +346,14 @@ async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fil
             throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
-        return;
+        return false;
     }
     // The file exists: verify its GPG signature against HashiCorp's pinned key
     // (a missing .sig is fatal only when requireGpgSignature is set), then verify
     // the hash. A missing asset entry or a hash mismatch is always fatal.
     await verifyGpgSignature(body, `${sha256SumsUrl}.sig`, requireGpg);
     await verifySha256(filePath, parseSha256(body, fileName));
+    return true;
 }
 
 // --- Helpers ---
@@ -361,14 +387,17 @@ export function parseSha256(sha256SumsContent: string, fileName: string): string
             return match[1];
         }
     }
-    throw new Error(`SHA256 checksum not found for ${fileName}`);
+    // The checksum file was obtained but does not cover the requested asset —
+    // typed as a verification failure so the cache-hit re-verification path
+    // fails closed instead of degrading to "material unavailable".
+    throw new VerificationFailure(`SHA256 checksum not found for ${fileName}`);
 }
 
 /** Extracts the first 64-hex digest from a single-asset .sha256 file. */
 export function parseFirstSha256(content: string): string {
     const match = content.match(/[a-fA-F0-9]{64}/);
     if (!match) {
-        throw new Error("SHA256 checksum not found in .sha256 file");
+        throw new VerificationFailure("SHA256 checksum not found in .sha256 file");
     }
     return match[0];
 }
@@ -377,9 +406,130 @@ export async function verifySha256(filePath: string, expectedHash: string): Prom
     const fileBuffer = fs.readFileSync(filePath);
     const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
     if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
-        throw new Error(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
+        throw new VerificationFailure(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
     }
     tasks.debug(`SHA256 verification passed: ${actualHash}`);
+}
+
+function hashFile(filePath: string): string {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+/**
+ * Writes a local integrity marker recording the SHA256 of the just-verified,
+ * just-cached executable, so a later job's cache hit for the same tool/version can
+ * re-verify it (see verifyCachedTool) without re-downloading anything. Best-effort:
+ * a write failure must never fail an install that has already been verified — it
+ * only means a future cache hit for this tool degrades to the pre-existing
+ * trust-the-cache behavior.
+ */
+function writeCacheIntegrityMarker(toolDir: string, exePath: string): void {
+    try {
+        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), hashFile(exePath), 'utf8');
+    } catch (err) {
+        tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
+    }
+}
+
+/**
+ * On a tool-cache hit, re-verifies the cached executable against the local
+ * integrity marker written when it was originally downloaded and verified. This is
+ * a purely local, offline comparison (no network call), so it can never break
+ * offline/air-gapped cache usage.
+ *
+ * - No marker (cached before this check existed, or cached by a run where checksum
+ *   verification was disabled): returns false — the caller escalates to a remote
+ *   re-verification against a freshly downloaded release (see
+ *   reverifyUnmarkedCacheEntry), closing the cross-job trust-on-first-use gap.
+ * - Marker present and it matches the cached executable's current hash: passes
+ *   silently, returns true.
+ * - Marker present but it does not match: the cached executable changed since it
+ *   was verified (tampering or corruption on a shared agent) — fail closed.
+ *
+ * Trust-boundary note: the marker lives next to the executable it protects, so an
+ * attacker who can rewrite the cached binary under the agent account can rewrite
+ * the marker to match. This check is defense-in-depth against corruption and
+ * cross-job verification-policy mixing, not against an attacker who already has
+ * write access to the agent's tool cache (who effectively owns the agent).
+ */
+function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): boolean {
+    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
+    if (!fs.existsSync(markerPath)) {
+        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification).`);
+        return false;
+    }
+    const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
+    const actualHash = hashFile(exePath).toLowerCase();
+    if (actualHash !== storedHash) {
+        throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
+    }
+    tasks.debug(`Cache hit for ${toolLabel}: integrity marker verified (${actualHash}).`);
+    return true;
+}
+
+/**
+ * #496: a cache hit with NO integrity marker means the tool was cached either
+ * before markers existed or by a job that ran with checksum verification
+ * disabled — the two cross-job trust gaps the issue names (a persistent agent
+ * silently serving a never-verified binary to later jobs that demand full
+ * verification). When this job demands verification (requireChecksum, default
+ * true), re-download the release through the exact same source/verification path
+ * a fresh install would use and require the cached executable to byte-match the
+ * freshly verified one:
+ *
+ * - Release material unavailable (network/DNS failure, offline or air-gapped
+ *   agent, version no longer published): degrade gracefully — warn and fall back
+ *   to the pre-existing trust-the-cache behavior. Offline cache reuse keeps
+ *   working; requireChecksum=false skips the attempt (and the warning) entirely.
+ * - Material obtained but FAILS verification (bad GPG signature, checksum
+ *   mismatch — see VerificationFailure): fail closed. The source is actively
+ *   serving material that does not verify; never fall back to the cached copy.
+ * - Cached executable differs from the freshly verified release: fail closed.
+ * - Match: write the integrity marker so future cache hits verify locally
+ *   (offline, one-time healing of pre-existing cache entries).
+ */
+async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string, version: string, toolDir: string, cachedExePath: string): Promise<void> {
+    const toolLabel = `${agent} ${version}`;
+    if (!getBoolInputDefaultTrue("requireChecksum")) {
+        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker and requireChecksum is false; skipping remote re-verification.`);
+        return;
+    }
+    console.log(tasks.loc("ReverifyingCachedTool", toolLabel));
+    let artifact: { path: string; verified: boolean };
+    try {
+        // Reuses the full fresh-install strategy (same inputs, same toggles, same
+        // trust roots). Under requireChecksum=true the strategies either verify or
+        // throw — they never return an unverified artifact.
+        artifact = await downloadArtifact(agent, downloadSource, version);
+    } catch (err) {
+        if (isVerificationFailure(err)) {
+            throw err;
+        }
+        tasks.warning(tasks.loc("CachedToolReverificationUnavailable", toolLabel, err instanceof Error ? err.message : String(err)));
+        return;
+    } finally {
+        // downloadArtifact records the source it fetched from; the executable this
+        // job actually runs still comes from the cache — re-assert that.
+        tasks.setVariable('policyAgentDownloadedFrom', 'cache');
+    }
+    let freshExePath: string;
+    if (agent === "sentinel") {
+        const freshDir = await tools.extractZip(artifact.path);
+        freshExePath = findExecutable(freshDir, agent);
+        if (!freshExePath) {
+            throw new Error(tasks.loc("PolicyAgentNotFoundInFolder", freshDir));
+        }
+    } else {
+        // OPA ships as the raw binary itself — compare it directly.
+        freshExePath = artifact.path;
+    }
+    const freshHash = hashFile(freshExePath).toLowerCase();
+    const cachedHash = hashFile(cachedExePath).toLowerCase();
+    if (freshHash !== cachedHash) {
+        throw new Error(tasks.loc("CachedToolReverificationMismatch", toolLabel, freshHash, cachedHash));
+    }
+    writeCacheIntegrityMarker(toolDir, cachedExePath);
+    console.log(tasks.loc("CachedToolReverified", toolLabel));
 }
 
 export function getPlatformString(): string {

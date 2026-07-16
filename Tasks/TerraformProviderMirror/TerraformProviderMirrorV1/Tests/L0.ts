@@ -288,4 +288,20 @@ describe('index entrypoint (mock run)', function () {
             'error should mention an invalid mirror URL: ' + tr.errorIssues
         );
     });
+
+    // #508: neither Agent.TempDirectory nor AGENT_TEMPDIRECTORY is set -- the task
+    // must fail closed with a clear error instead of silently writing .terraformrc
+    // to a hardcoded, non-agent-managed '/tmp'.
+    it('fails with an error issue when no agent temp directory is available', async () => {
+        const tp = path.join(__dirname, 'MirrorConfigNoTempDirFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        assert.ok(tr.failed, 'task should have failed. stdout: ' + tr.stdout);
+        assert.ok(tr.errorIssues.length > 0, 'should have at least one error issue');
+        assert.ok(
+            tr.errorIssues.some(e => e.indexOf('AgentTempDirectoryNotSet') >= 0),
+            'error should fail via the missing agent temp directory check: ' + tr.errorIssues
+        );
+    });
 });

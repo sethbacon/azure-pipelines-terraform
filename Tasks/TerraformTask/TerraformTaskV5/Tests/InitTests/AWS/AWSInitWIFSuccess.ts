@@ -1,6 +1,18 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import fs = require('fs');
+import os = require('os');
+
+// This scenario mocks crypto.randomUUID to a fixed value, which makes the
+// credential temp-file paths deterministic across runs. writeSecretFile now
+// refuses to overwrite an existing file (O_EXCL, #484), so point
+// Agent.TempDirectory at a scrubbed per-scenario directory -- matching real
+// agents, where Agent.TempDirectory is always set and job-purged.
+const wifTempDir = path.join(os.tmpdir(), 'tf-wif-AWSInitWIFSuccess');
+fs.rmSync(wifTempDir, { recursive: true, force: true });
+fs.mkdirSync(wifTempDir, { recursive: true });
+process.env['AGENT_TEMPDIRECTORY'] = wifTempDir;
 
 let tp = path.join(__dirname, './AWSInitWIFSuccessL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);

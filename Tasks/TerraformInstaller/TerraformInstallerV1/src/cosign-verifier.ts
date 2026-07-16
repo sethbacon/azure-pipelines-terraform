@@ -5,6 +5,7 @@ import path = require('path');
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchBufferAllow404 } from './http-client';
+import { VerificationFailure } from './verification-failure';
 
 /**
  * Anchored, escaped regular expression for the Fulcio certificate identity (SAN)
@@ -95,8 +96,11 @@ export async function verifyCosignSignature(
         }
         tasks.debug('Cosign signature verification passed');
     } catch (error) {
+        // The signature/certificate material was obtained and cosign ran against
+        // it — a failure here is a verification failure (typed so the cache-hit
+        // re-verification path fails closed), not an availability problem.
         const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Cosign signature verification failed for SHA256SUMS: ${errorMessage}`);
+        throw new VerificationFailure(`Cosign signature verification failed for SHA256SUMS: ${errorMessage}`);
     } finally {
         try { fs.unlinkSync(sha256SumsPath); } catch { /* ignore cleanup errors */ }
         try { fs.unlinkSync(signaturePath); } catch { /* ignore cleanup errors */ }

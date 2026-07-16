@@ -26,7 +26,32 @@ tr.registerMock('./http-client', {
     }
 });
 
-tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
+const CACHED_EXE_HASH = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
+
+// A stored integrity marker exists and matches the cached executable, so the
+// cache hit verifies locally with no download and no network call at all.
+tr.registerMock('fs', {
+    existsSync: (p: string) => p.includes('.installer-verified.sha256'),
+    readFileSync: (p: string, _enc?: string) => {
+        if (p.includes('.installer-verified.sha256')) {
+            return CACHED_EXE_HASH;
+        }
+        return Buffer.from('cached-exe-content');
+    },
+    writeFileSync: () => {
+        throw new Error('writeFileSync should not be called on a marker-verified cache hit');
+    },
+    chmodSync: (_path: string, _mode: string) => { }
+});
+
+tr.registerMock('crypto', {
+    randomUUID: () => 'test-uuid-1234',
+    createHash: (_algorithm: string) => ({
+        update: (_data: any) => ({
+            digest: (_encoding: string) => CACHED_EXE_HASH
+        })
+    })
+});
 tr.registerMock('undici', { ProxyAgent: class { } });
 
 tr.registerMock('./gpg-verifier', {

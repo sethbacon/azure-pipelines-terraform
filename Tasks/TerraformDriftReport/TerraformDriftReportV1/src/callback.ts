@@ -18,6 +18,19 @@ export function resolveRejectUnauthorized(raw: string | undefined): boolean {
 }
 
 /**
+ * Resolves the callback-failure gating flag, fail-secure (same pattern as
+ * resolveRejectUnauthorized above, for the same reason: tasks.getBoolInput
+ * returns false for an absent or blank runtime value, which would silently
+ * flip this from its non-breaking "true" default). The task defaults to
+ * failing the task on a non-2xx callback response, preserving the task's
+ * original behavior; only an explicit "false" makes a failed callback a
+ * non-fatal warning.
+ */
+export function resolveFailOnCallbackError(raw: string | undefined): boolean {
+    return (raw || 'true').trim().toUpperCase() !== 'FALSE';
+}
+
+/**
  * Minimal HTTPS POST backed by the shared https client. rejectUnauthorized
  * = false disables TLS verification — only for an internal TSM callback fronted
  * by a private CA the agent does not trust.

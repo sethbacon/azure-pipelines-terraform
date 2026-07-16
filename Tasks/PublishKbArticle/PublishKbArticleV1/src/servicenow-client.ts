@@ -44,10 +44,22 @@ function assertArticleResult(result: unknown, context: string): asserts result i
     }
 }
 
+/**
+ * Bounded-retry log helper for the GET/get-or-create calls below (#506):
+ * fully idempotent reads (and the naturally-idempotent get-or-create category
+ * create) are the safest and most valuable calls to retry on a transient
+ * failure -- no ambiguous-outcome risk at all -- yet were previously the only
+ * calls in this file NOT wrapped in withRetry, backwards from this repo's own
+ * retry rationale (applied correctly to the mutating calls below).
+ */
+function logRetry(message: string): void {
+    console.log(`[WARN] ${message}`);
+}
+
 /** Retrieve all knowledge bases. */
 export async function getKnowledgeBases(instance: string, headers: Record<string, string>): Promise<unknown[]> {
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge_base`;
-    const response = await snRequest('GET', url, { headers });
+    const response = await withRetry(() => snRequest('GET', url, { headers }), { log: logRetry });
     const result = response.data.result;
     if (!Array.isArray(result)) {
         throw new Error(tasks.loc('KbListNotArray'));
@@ -60,7 +72,7 @@ export async function getArticle(instance: string, headers: Record<string, strin
     // encodeURIComponent guards the path segment: an unencoded articleId containing
     // '/', '?', or '#' could otherwise alter the effective REST path/query.
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
-    const response = await snRequest('GET', url, { headers });
+    const response = await withRetry(() => snRequest('GET', url, { headers }), { log: logRetry });
     const result = response.data.result;
     assertArticleResult(result, articleId);
     return result;
@@ -260,8 +272,28 @@ export async function getKbCategories(
         assertQueryValueSafe(kbId, 'knowledge base id');
         params['sysparm_query'] = `kb_knowledge_base=${kbId}`;
     }
-    const response = await snRequest('GET', url, { headers, params });
+    const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
     return Array.isArray(response.data.result) ? (response.data.result as KbCategory[]) : [];
+}
+
+/**
+ * Validate that a ServiceNow Table API response's `result` for a category
+ * create is a single record object (not undefined/null/an array), narrowing
+ * it to KbCategory. Mirrors assertArticleResult -- see its comment for why
+ * servicenow-http.ts's 2xx-non-JSON-body fallback (`{}`) needs an explicit
+ * guard rather than a silent `(response.data.result || {}) as KbCategory`
+ * cast, which gave no diagnostic when ServiceNow returned an unexpected shape
+ * (e.g. an array or a string) and silently proceeded with sys_id: undefined --
+ * indistinguishable from "category legitimately doesn't exist yet" (#524).
+ * Like assertArticleResult, this only validates the shape is a plain object;
+ * a valid object missing `sys_id` (e.g. a ServiceNow error body returned with
+ * a 2xx status) still falls through to the `|| null` below, preserving
+ * resolveKbCategory's existing get-or-create fallback contract.
+ */
+function assertCategoryResult(result: unknown, context: string): asserts result is KbCategory {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw new Error(tasks.loc('CategoryNotObject', context));
+    }
 }
 
 /** Create a new category (or subcategory) in the given knowledge base. */
@@ -281,9 +313,14 @@ export async function createCategory(
 
     // Let a genuine HTTP/transport error propagate rather than masking it as
     // "category not created", which would silently drop the intended category.
-    const response = await snRequest('POST', url, { headers, body: payload });
-    const result = (response.data.result || {}) as KbCategory;
-    return result.sys_id || null;
+    // The get-or-create create itself is naturally idempotent (a retried POST
+    // after a transient failure either creates the category or -- if the first
+    // attempt actually succeeded server-side -- would be caught as a duplicate
+    // on the next findOrCreateCategory search rather than silently failing the
+    // whole publish), so it is retried the same as the mutating calls above.
+    const response = await withRetry(() => snRequest('POST', url, { headers, body: payload }), { log: logRetry });
+    assertCategoryResult(response.data.result, categoryName);
+    return response.data.result.sys_id || null;
 }
 
 /**
@@ -328,7 +365,7 @@ export async function findOrCreateCategory(
 
     // Let a genuine HTTP/transport error propagate rather than masking it as
     // "category not found", which would silently skip the intended category.
-    const response = await snRequest('GET', url, { headers, params });
+    const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
     const results = Array.isArray(response.data.result) ? (response.data.result as KbCategory[]) : [];
 
     if (results.length === 0) {
@@ -389,7 +426,7 @@ export async function findArticleBySourceKey(
         sysparm_limit: '2',
     };
 
-    const response = await snRequest('GET', url, { headers, params });
+    const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
     // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
     // documented on assertArticleResult applies here -- a malformed response's
     // data defaults to `{}`, which is truthy, so `results || []` alone would keep

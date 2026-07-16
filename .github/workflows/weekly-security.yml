@@ -155,11 +155,57 @@ jobs:
 
             core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) configured.`);
 
+  # ── OpenTofu cosign trust-root canary ──────────────────
+  # Exercises the real `cosign verify-blob` invocation -- with the exact same
+  # certificate-identity regexp and OIDC issuer pinned in
+  # TerraformInstallerV1/src/cosign-verifier.ts (OPENTOFU_CERT_IDENTITY_REGEXP) --
+  # against a current OpenTofu release's SHA256SUMS/.sig/.pem. Catches drift between
+  # that pinning and OpenTofu's actual release-signing identity, or a cosign CLI/flag
+  # change, before it breaks every default OpenTofu install in a customer pipeline
+  # (#497b). Non-required: a failure here only opens an issue via notify-on-failure
+  # below, it never blocks a PR.
+  opentofu-cosign-canary:
+    name: OpenTofu cosign trust-root canary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Resolve latest OpenTofu release version
+        id: version
+        run: |
+          version=$(curl -fsSL https://api.github.com/repos/opentofu/opentofu/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not resolve the latest OpenTofu release version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download SHA256SUMS + signature + certificate
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          base="https://github.com/opentofu/opentofu/releases/download/v${VERSION}"
+          curl -fsSL -o SHA256SUMS "${base}/tofu_${VERSION}_SHA256SUMS"
+          curl -fsSL -o SHA256SUMS.sig "${base}/tofu_${VERSION}_SHA256SUMS.sig"
+          curl -fsSL -o SHA256SUMS.pem "${base}/tofu_${VERSION}_SHA256SUMS.pem"
+
+      - name: Verify with cosign (same identity/issuer pinning as cosign-verifier.ts)
+        run: |
+          cosign verify-blob \
+            --certificate SHA256SUMS.pem \
+            --signature SHA256SUMS.sig \
+            --certificate-identity-regexp '^https://github\.com/opentofu/opentofu/\.github/workflows/.+@refs/tags/v[0-9].*$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            SHA256SUMS
+
   # ── Notify on failure ─────────────────────────────────
   notify-on-failure:
     name: Create issue on failure
     runs-on: ubuntu-latest
-    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection]
+    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection, opentofu-cosign-canary]
     if: failure() && github.event_name == 'schedule'
     permissions:
       issues: write

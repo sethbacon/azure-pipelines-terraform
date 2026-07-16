@@ -2,7 +2,7 @@ import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveTool
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
-import { writeSecretFile } from './secure-temp';
+import { replaceSecretFile } from './secure-temp';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -245,11 +245,14 @@ export abstract class BaseTerraformCommandHandler {
      * `terraform output -json`) to disk with restrictive 0600 permissions
      * instead of the default umask. The parent directory is created first
      * since `show`/`custom` accept a caller-supplied, possibly-nested
-     * `filename`.
+     * `filename`. Because that filename is user-supplied and predictable, the
+     * write refuses a pre-planted symlink and re-creates the file exclusively
+     * (see replaceSecretFile) instead of writing through whatever is already
+     * there (#484).
      */
     private writeCommandOutputFile(filePath: string, content: string): void {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        writeSecretFile(filePath, content);
+        replaceSecretFile(filePath, content);
     }
 
     /**
@@ -385,7 +388,7 @@ export abstract class BaseTerraformCommandHandler {
             // Detect destroy changes in JSON plan output
             if (outputFormat === "json") {
                 this.detectDestroyChanges(commandOutput.stdout);
-                this.warnIfSensitiveOutputs(commandOutput.stdout);
+                this.warnIfSensitiveOutputs(commandOutput.stdout, showFilePath);
             }
 
             return commandOutput.code;
@@ -401,7 +404,16 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(outputCommand);
         await this.handleProvider(outputCommand);
 
-        const jsonOutputVariablesFilePath = path.resolve(outputCommand.workingDirectory, `output-${uuidV4()}.json`);
+        // #492: the -json file carries every output's real value in cleartext
+        // (including ones declared `sensitive = true`), so write it under
+        // Agent.TempDirectory -- which the agent purges at job end -- instead of
+        // the repo working directory, where a naive "publish the working
+        // directory" artifact step would sweep it up and a self-hosted agent
+        // would retain it across jobs. Downstream steps read the location from
+        // the `jsonOutputVariablesPath` output variable (the documented
+        // contract), so the relocation is transparent to them.
+        const outputFileDirectory = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+        const jsonOutputVariablesFilePath = path.join(outputFileDirectory, `output-${uuidV4()}.json`);
         const commandOutput = await this.execWithStdoutCapture(terraformTool, {
             cwd: outputCommand.workingDirectory,
         });
@@ -790,35 +802,51 @@ export abstract class BaseTerraformCommandHandler {
         }
     }
 
-    private warnIfSensitiveOutputs(jsonOutput: string): void {
+    /**
+     * Detects `sensitive = true` outputs (and resource attributes) in a
+     * `terraform show -json` plan written to `filePath`. Warns by default;
+     * when the opt-in `failOnSensitiveOutputs` input is set, sensitive
+     * *outputs* instead fail the task (#488) -- the just-written file is
+     * registered for end-of-step deletion first so the cleartext values are
+     * not left behind by the failure. Sensitive resource *attributes* stay
+     * warning-only even in strict mode: nearly every real plan carries some,
+     * so failing on them would make the strict mode unusable.
+     */
+    private warnIfSensitiveOutputs(jsonOutput: string, filePath: string): void {
+        let plan: { planned_values?: { outputs?: unknown }, resource_changes?: unknown };
         try {
-            const plan = JSON.parse(jsonOutput);
-
-            // Check for sensitive values in planned_values outputs
-            const outputs = plan.planned_values?.outputs;
-            if (outputs && typeof outputs === 'object') {
-                const sensitiveKeys = Object.entries(outputs)
-                    .filter(([, v]) => (v as { sensitive?: boolean }).sensitive === true)
-                    .map(([k]) => k);
-                if (sensitiveKeys.length > 0) {
-                    tasks.warning(`Terraform plan output file contains ${sensitiveKeys.length} sensitive output(s): ${sensitiveKeys.join(', ')}. Ensure this file is not published as a pipeline artifact.`);
-                }
-            }
-
-            // Check for sensitive attributes in resource changes
-            const resourceChanges = plan.resource_changes;
-            if (Array.isArray(resourceChanges)) {
-                const sensitiveResources = resourceChanges.filter((rc: { change?: { after_sensitive?: unknown } }) => {
-                    const afterSensitive = rc.change?.after_sensitive;
-                    if (!afterSensitive || typeof afterSensitive !== 'object') return false;
-                    return Object.values(afterSensitive as Record<string, unknown>).some(v => v === true);
-                });
-                if (sensitiveResources.length > 0) {
-                    tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
-                }
-            }
+            plan = JSON.parse(jsonOutput);
         } catch (error) {
             tasks.warning(`Could not parse terraform plan for sensitive-output detection; the sensitive-value safety warning did not run: ${String(error)}`);
+            return;
+        }
+
+        // Check for sensitive values in planned_values outputs
+        const outputs = plan?.planned_values?.outputs;
+        if (outputs && typeof outputs === 'object') {
+            const sensitiveKeys = Object.entries(outputs)
+                .filter(([, v]) => (v as { sensitive?: boolean }).sensitive === true)
+                .map(([k]) => k);
+            if (sensitiveKeys.length > 0) {
+                if (tasks.getBoolInput('failOnSensitiveOutputs', false)) {
+                    this.tempFiles.push(filePath);
+                    throw new Error(tasks.loc('ShowSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
+                }
+                tasks.warning(`Terraform plan output file contains ${sensitiveKeys.length} sensitive output(s): ${sensitiveKeys.join(', ')}. Ensure this file is not published as a pipeline artifact.`);
+            }
+        }
+
+        // Check for sensitive attributes in resource changes
+        const resourceChanges = plan?.resource_changes;
+        if (Array.isArray(resourceChanges)) {
+            const sensitiveResources = resourceChanges.filter((rc: { change?: { after_sensitive?: unknown } }) => {
+                const afterSensitive = rc.change?.after_sensitive;
+                if (!afterSensitive || typeof afterSensitive !== 'object') return false;
+                return Object.values(afterSensitive as Record<string, unknown>).some(v => v === true);
+            });
+            if (sensitiveResources.length > 0) {
+                tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
+            }
         }
     }
 
@@ -827,28 +855,39 @@ export abstract class BaseTerraformCommandHandler {
      * including ones declared `sensitive = true` in configuration (Terraform
      * only redacts the human-readable console format, not `-json`). Warn
      * loudly when that's the case so the file written by
-     * writeCommandOutputFile() -- restrictive permissions notwithstanding --
-     * doesn't get casually published as a build artifact or left for a
-     * downstream step to mishandle.
+     * writeCommandOutputFile() -- restrictive permissions and its job-purged
+     * Agent.TempDirectory location (#492) notwithstanding -- doesn't get
+     * casually published as a build artifact or left for a downstream step to
+     * mishandle before the agent purges it at job end. When the opt-in
+     * `failOnSensitiveOutputs` input is set and cleanup was NOT requested via
+     * `cleanupOutputFile`, the task fails instead (#488) -- the just-written
+     * file is registered for end-of-step deletion first so the failure
+     * doesn't leave the cleartext values behind. With `cleanupOutputFile` set
+     * the file is deleted at step end anyway, so strict mode stays a warning.
      */
     private warnIfSensitiveOutputFile(jsonOutput: string, filePath: string): void {
+        let outputs: unknown;
         try {
-            const outputs = JSON.parse(jsonOutput);
-            if (!outputs || typeof outputs !== 'object') return;
-
-            const sensitiveKeys = Object.entries(outputs)
-                .filter(([, def]) => (def as { sensitive?: boolean }).sensitive === true)
-                .map(([key]) => key);
-
-            if (sensitiveKeys.length > 0) {
-                tasks.warning(
-                    `${filePath} contains ${sensitiveKeys.length} sensitive output(s) in cleartext (${sensitiveKeys.join(', ')}). ` +
-                    `Ensure this file is not published as a pipeline artifact. Set 'cleanupOutputFile' to remove it automatically ` +
-                    `at the end of this step if downstream steps don't need to read it from disk.`
-                );
-            }
+            outputs = JSON.parse(jsonOutput);
         } catch (error) {
             tasks.debug(`Could not parse terraform output as JSON for sensitive-output detection: ${error}`);
+            return;
         }
+        if (!outputs || typeof outputs !== 'object') return;
+
+        const sensitiveKeys = Object.entries(outputs)
+            .filter(([, def]) => (def as { sensitive?: boolean }).sensitive === true)
+            .map(([key]) => key);
+        if (sensitiveKeys.length === 0) return;
+
+        if (tasks.getBoolInput('failOnSensitiveOutputs', false) && !tasks.getBoolInput('cleanupOutputFile', false)) {
+            this.tempFiles.push(filePath);
+            throw new Error(tasks.loc('OutputSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
+        }
+        tasks.warning(
+            `${filePath} contains ${sensitiveKeys.length} sensitive output(s) in cleartext (${sensitiveKeys.join(', ')}). ` +
+            `Ensure this file is not published as a pipeline artifact. Set 'cleanupOutputFile' to remove it automatically ` +
+            `at the end of this step if downstream steps don't need to read it from disk.`
+        );
     }
 }
