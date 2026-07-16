@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { buildApplyDigest } from '../../src/results/apply-digest';
 import { DigestMeta } from '../../src/results/plan-digest';
-import { MAX_DIAGNOSTICS } from '../../src/results/caps';
+import { MAX_DIAGNOSTICS, MAX_OUTPUTS, MAX_RESOURCES } from '../../src/results/caps';
 
 const META: DigestMeta = {
   taskVersion: '0.0.0-test',
@@ -117,6 +117,36 @@ describe('buildApplyDigest', () => {
       assert.ok(d.diagnostics.every((x) => x.severity === 'error'), 'errors survive, warnings dropped past the cap');
       assert.strictEqual(d.truncated, true);
       assert.ok((d.truncationNotes ?? []).some((n) => n.includes('diagnostics capped')));
+    });
+  });
+
+  describe('caps (§3 DoS bounds)', () => {
+    it('caps the outputs list and notes the remainder', () => {
+      const outputs: Record<string, unknown> = {};
+      for (let i = 0; i < MAX_OUTPUTS + 20; i++) {
+        outputs[`o${String(i).padStart(5, '0')}`] = { sensitive: false, type: 'string', value: `v${i}` };
+      }
+      const ndjson = line({ type: 'outputs', outputs });
+      const d = buildApplyDigest(ndjson, META);
+      assert.strictEqual(d.outputs.length, MAX_OUTPUTS);
+      assert.strictEqual(d.truncated, true);
+      assert.ok((d.truncationNotes ?? []).some((n) => n.includes('output list capped')));
+    });
+
+    it('caps appliedBeforeFailure even when the same address repeats past the cap', () => {
+      // A hostile stream repeats apply_complete for the same address many times;
+      // appliedBeforeFailure (unlike resources) is not de-duplicated, so it must
+      // be bounded on its own.
+      const lines: string[] = [];
+      for (let i = 0; i < MAX_RESOURCES + 30; i++) {
+        lines.push(line({ type: 'apply_complete', hook: { resource: { addr: 'r.repeat' }, action: 'create' } }));
+      }
+      lines.push(line({ type: 'apply_errored', hook: { resource: { addr: 'r.bad' }, action: 'create' } }));
+      const d = buildApplyDigest(lines.join('\n'), META);
+      assert.strictEqual(d.outcome, 'failed');
+      assert.ok(d.appliedBeforeFailure && d.appliedBeforeFailure.length === MAX_RESOURCES);
+      assert.strictEqual(d.truncated, true);
+      assert.ok((d.truncationNotes ?? []).some((n) => n.includes('applied-before-failure list capped')));
     });
   });
 

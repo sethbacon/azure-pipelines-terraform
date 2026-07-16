@@ -11,10 +11,10 @@
 // thrown (§12.2).
 
 import { ApplyDigest, ApplyResource, Diagnostic, OutputChange } from './digest-schema';
-import { MAX_RESOURCES, MAX_DIAGNOSTICS, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from './caps';
+import { MAX_RESOURCES, MAX_DIAGNOSTICS, MAX_OUTPUTS, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from './caps';
 import { redactValue, newRedactContext, capDigestBytes, RedactContext } from './redact';
 import { scrubSecrets, sanitizeAttachmentName } from './secret-scrub';
-import { DigestMeta, DigestByteLimits } from './plan-digest';
+import { DigestMeta, DigestByteLimits, capNotes } from './plan-digest';
 
 /** Apply-specific build options (diagnostic handling + the byte-cap test seam). */
 export interface ApplyDigestOptions extends DigestByteLimits {
@@ -158,6 +158,16 @@ export function buildApplyDigest(ndjson: string, meta: DigestMeta, options?: App
   const outcome: ApplyDigest['outcome'] = sawErroredEvent || sawErrorDiag ? 'failed' : 'succeeded';
   const summary = buildSummary(changeSummary, resources, minTs, maxTs);
 
+  // appliedBeforeFailure cap (§3): an adversarial NDJSON can emit unbounded
+  // apply_complete lines (this list, unlike `resources`, is not de-duplicated by
+  // address), so bound it to MAX_RESOURCES and note the remainder.
+  let appliedBeforeFailure = appliedOrder;
+  const droppedApplied = appliedBeforeFailure.length - MAX_RESOURCES;
+  if (outcome === 'failed' && droppedApplied > 0) {
+    appliedBeforeFailure = appliedBeforeFailure.slice(0, MAX_RESOURCES);
+    ctx.notes.push(`applied-before-failure list capped at ${MAX_RESOURCES} (${droppedApplied} more not shown)`);
+  }
+
   const safeName = sanitizeAttachmentName(meta.name);
   if (safeName.note) ctx.notes.push(safeName.note);
 
@@ -179,7 +189,7 @@ export function buildApplyDigest(ndjson: string, meta: DigestMeta, options?: App
     resources,
     diagnostics: cappedDiags,
     outputs,
-    ...(outcome === 'failed' ? { appliedBeforeFailure: appliedOrder } : {}),
+    ...(outcome === 'failed' ? { appliedBeforeFailure } : {}),
   };
   finalizeTruncation(digest, ctx);
 
@@ -260,21 +270,26 @@ function capDiagnostics(diagnostics: Diagnostic[], ctx: RedactContext): Diagnost
 
 function buildOutputs(latestOutputs: Record<string, unknown> | undefined, ctx: RedactContext): OutputChange[] {
   if (!latestOutputs) return [];
-  return Object.keys(latestOutputs)
-    .sort()
-    .map((name) => {
-      const raw = latestOutputs[name];
-      const entry = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-      const sensitive = entry.sensitive === true;
-      ctx.path = `output.${name}`;
-      const value = redactValue(entry.value, sensitive, false, ctx);
-      ctx.path = '';
-      const action: OutputChange['action'] =
-        entry.action === 'create' || entry.action === 'update' || entry.action === 'delete' || entry.action === 'no-op'
-          ? (entry.action as OutputChange['action'])
-          : 'no-op';
-      return { name, action, value };
-    });
+  let names = Object.keys(latestOutputs).sort();
+  // output cap (§3): keep the first MAX_OUTPUTS by name, note the remainder.
+  const droppedOutputs = names.length - MAX_OUTPUTS;
+  if (droppedOutputs > 0) {
+    names = names.slice(0, MAX_OUTPUTS);
+    ctx.notes.push(`output list capped at ${MAX_OUTPUTS} (${droppedOutputs} more not shown)`);
+  }
+  return names.map((name) => {
+    const raw = latestOutputs[name];
+    const entry = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const sensitive = entry.sensitive === true;
+    ctx.path = `output.${name}`;
+    const value = redactValue(entry.value, sensitive, false, ctx);
+    ctx.path = '';
+    const action: OutputChange['action'] =
+      entry.action === 'create' || entry.action === 'update' || entry.action === 'delete' || entry.action === 'no-op'
+        ? (entry.action as OutputChange['action'])
+        : 'no-op';
+    return { name, action, value };
+  });
 }
 
 function buildSummary(
@@ -343,6 +358,6 @@ function num(v: unknown): number {
 function finalizeTruncation(digest: ApplyDigest, ctx: RedactContext): void {
   if (ctx.notes.length > 0) {
     digest.truncated = true;
-    digest.truncationNotes = [...ctx.notes];
+    digest.truncationNotes = capNotes(ctx.notes);
   }
 }

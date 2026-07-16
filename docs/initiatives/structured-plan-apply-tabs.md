@@ -253,6 +253,10 @@ Apply/plan **diagnostics are freeform strings** that Terraform/providers may bui
 | attribute changes / resource | 200 | keep changed attrs alphabetically, note remainder |
 | bytes / `RedactedValue.json` | 4 KB | emit `{kind:"omitted",reason:"too-large"}` |
 | diagnostics | 500 | keep all errors first, then warnings, note remainder |
+| output changes (plan `outputChanges` / apply `outputs`) | 1000 | keep first 1000 by name, set `truncated`, note remainder |
+| drift resources | 2000 | keep first 2000 in address order, set `truncated`, note remainder |
+| applied-before-failure addresses | 2000 (reuses resources) | keep first 2000, set `truncated`, note remainder |
+| truncationNotes | 1000 | keep first 1000, collapse remainder into one count note |
 | total digest bytes (soft) | 5 MB | drop `attributeChanges` arrays (keep resource rows + summary), set `truncated` |
 | total digest bytes (hard) | 12 MB | attach summary-only digest |
 | tab parse ceiling | 16 MB | refuse structured render, offer raw/download |

@@ -226,6 +226,8 @@ Both pivots also show a **raw fallback**: legacy `publishPlanResults` attachment
 
 **Same-run only.** The tab only loads attachments from the current pipeline run (build ID) — it does not correlate or display a plan/apply summary from a different run, and there is no cross-run plan↔apply pairing.
 
+For a step-by-step walkthrough of enabling structured results and reading each tab section, see [docs/structured-results.md](docs/structured-results.md).
+
 ---
 
 ### `PipelineTerraformModulePublish@1` — Module Publisher

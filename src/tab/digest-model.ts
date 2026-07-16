@@ -52,6 +52,9 @@ import {
   MAX_ATTR_CHANGES_PER_RESOURCE,
   MAX_REDACTED_VALUE_BYTES,
   MAX_DIAGNOSTICS,
+  MAX_OUTPUTS,
+  MAX_DRIFT,
+  MAX_NOTES,
   TAB_PARSE_CEILING_BYTES,
 } from "./caps";
 
@@ -253,6 +256,37 @@ function optionalStringArray(obj: Record<string, unknown>, key: string): string[
   return strings.length > 0 ? strings : undefined;
 }
 
+/**
+ * Defensively cap a string-address list (`appliedBeforeFailure`) tab-side to the
+ * §6 limit regardless of the digest's own `truncated` claim (§5.5). Returns the
+ * possibly-truncated list (or undefined) and records a parse note when it caps.
+ */
+function optionalCappedStringArray(
+  obj: Record<string, unknown>,
+  key: string,
+  max: number,
+  notes: string[],
+  path: string
+): string[] | undefined {
+  const list = optionalStringArray(obj, key);
+  if (!list || list.length <= max) return list;
+  notes.push(`${path}.${key} capped at ${max} (tab-side defensive cap)`);
+  return list.slice(0, max);
+}
+
+/**
+ * Defensively cap the producer's truncationNotes (§6): a hostile digest could
+ * ship an unbounded notes array. Keep the first MAX_NOTES and record the drop in
+ * the parse notes so the caller can still surface that it happened.
+ */
+function capTruncationNotes(notes: string[] | undefined, parseNotes: string[]): string[] {
+  const list = notes ? [...notes] : [];
+  if (list.length <= MAX_NOTES) return list;
+  const dropped = list.length - MAX_NOTES;
+  parseNotes.push(`truncationNotes capped at ${MAX_NOTES} (tab-side defensive cap; ${dropped} dropped)`);
+  return list.slice(0, MAX_NOTES);
+}
+
 function softNumber(obj: Record<string, unknown>, key: string, fallback: number, notes: string[], path: string): number {
   const v = obj[key];
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -422,7 +456,7 @@ function coercePlanDigest(
   };
 
   let truncated = env.truncated;
-  const truncationNotes = env.truncationNotes ? [...env.truncationNotes] : [];
+  const truncationNotes = capTruncationNotes(env.truncationNotes, notes);
 
   let resources = resourcesArr.value
     .map((r, i) => coercePlanResource(r, notes, `digest.resources[${i}]`))
@@ -433,9 +467,14 @@ function coercePlanDigest(
     truncationNotes.push(`resource list capped at ${MAX_RESOURCES} (tab-side defensive cap)`);
   }
 
-  const outputChanges = outputChangesArr.value
+  let outputChanges = outputChangesArr.value
     .map((o, i) => coerceOutputChange(o, notes, `digest.outputChanges[${i}]`))
     .filter((o): o is OutputChange => o !== null);
+  if (outputChanges.length > MAX_OUTPUTS) {
+    outputChanges = outputChanges.slice(0, MAX_OUTPUTS);
+    truncated = true;
+    truncationNotes.push(`output list capped at ${MAX_OUTPUTS} (tab-side defensive cap)`);
+  }
 
   const driftArr = obj["drift"];
   let drift: DriftResource[] | undefined;
@@ -443,6 +482,11 @@ function coercePlanDigest(
     drift = driftArr
       .map((d, i) => coerceDriftResource(d, notes, `digest.drift[${i}]`))
       .filter((d): d is DriftResource => d !== null);
+    if (drift.length > MAX_DRIFT) {
+      drift = drift.slice(0, MAX_DRIFT);
+      truncated = true;
+      truncationNotes.push(`drift list capped at ${MAX_DRIFT} (tab-side defensive cap)`);
+    }
   }
 
   return {
@@ -602,7 +646,7 @@ function coerceApplyDigest(
     .map((r, i) => coerceApplyResource(r, notes, `digest.resources[${i}]`))
     .filter((r): r is ApplyResource => r !== null);
   let truncated = env.truncated;
-  const truncationNotes = env.truncationNotes ? [...env.truncationNotes] : [];
+  const truncationNotes = capTruncationNotes(env.truncationNotes, notes);
   if (resources.length > MAX_RESOURCES) {
     resources = resources.slice(0, MAX_RESOURCES);
     truncated = true;
@@ -618,11 +662,16 @@ function coerceApplyDigest(
     truncationNotes.push(`diagnostics capped at ${MAX_DIAGNOSTICS} (tab-side defensive cap)`);
   }
 
-  const outputs = outputsArr.value
+  let outputs = outputsArr.value
     .map((o, i) => coerceOutputChange(o, notes, `digest.outputs[${i}]`))
     .filter((o): o is OutputChange => o !== null);
+  if (outputs.length > MAX_OUTPUTS) {
+    outputs = outputs.slice(0, MAX_OUTPUTS);
+    truncated = true;
+    truncationNotes.push(`output list capped at ${MAX_OUTPUTS} (tab-side defensive cap)`);
+  }
 
-  const appliedBeforeFailure = optionalStringArray(obj, "appliedBeforeFailure");
+  const appliedBeforeFailure = optionalCappedStringArray(obj, "appliedBeforeFailure", MAX_RESOURCES, notes, "digest");
 
   return {
     ok: true,

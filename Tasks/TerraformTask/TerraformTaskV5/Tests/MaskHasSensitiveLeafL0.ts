@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { maskHasSensitiveLeaf } from '../src/base-terraform-command-handler';
+import { maskHasSensitiveLeaf as redactMaskHasSensitiveLeaf } from '../src/results/redact';
 
 /**
  * Direct unit tests for maskHasSensitiveLeaf (design §5.2.7): the shared
@@ -9,6 +10,13 @@ import { maskHasSensitiveLeaf } from '../src/base-terraform-command-handler';
  * `Object.values(mask).some(v => v === true)` scan would have missed.
  */
 describe('maskHasSensitiveLeaf', () => {
+    it('is the SAME function the redaction core exports (one implementation, §5.2.7 anti-drift)', () => {
+        // Not a copy: the handler re-exports redact.ts's predicate, so detection
+        // and redaction cannot drift. A future refactor that re-forks a local copy
+        // fails here.
+        assert.strictEqual(maskHasSensitiveLeaf, redactMaskHasSensitiveLeaf, 'handler must re-export redact.ts maskHasSensitiveLeaf, not define its own');
+    });
+
     it('detects a top-level true', () => {
         assert.strictEqual(maskHasSensitiveLeaf(true), true);
     });

@@ -11,6 +11,9 @@ describe("digest caps (frozen §6 contract)", () => {
     expect(caps.MAX_ATTR_CHANGES_PER_RESOURCE).toBe(200);
     expect(caps.MAX_REDACTED_VALUE_BYTES).toBe(4 * 1024);
     expect(caps.MAX_DIAGNOSTICS).toBe(500);
+    expect(caps.MAX_OUTPUTS).toBe(1000);
+    expect(caps.MAX_DRIFT).toBe(2000);
+    expect(caps.MAX_NOTES).toBe(1000);
     expect(caps.SOFT_MAX_DIGEST_BYTES).toBe(5 * 1024 * 1024);
     expect(caps.HARD_MAX_DIGEST_BYTES).toBe(12 * 1024 * 1024);
     expect(caps.TAB_PARSE_CEILING_BYTES).toBe(16 * 1024 * 1024);

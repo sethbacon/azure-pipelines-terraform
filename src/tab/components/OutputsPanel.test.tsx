@@ -36,4 +36,17 @@ describe("OutputsPanel", () => {
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;img");
   });
+
+  it("hard-caps rendered rows and shows a truncation banner (§5.5 bounded rendering)", () => {
+    const outputs: OutputChange[] = Array.from({ length: 5 }, (_, i) => ({
+      name: `o${i}`,
+      action: "create",
+      value: { kind: "value", json: `"v${i}"` },
+    }));
+    const html = renderToStaticMarkup(<OutputsPanel outputs={outputs} maxRenderedRows={2} />);
+    expect(html).toContain("o0");
+    expect(html).toContain("o1");
+    expect(html).not.toContain("o4");
+    expect(html).toMatch(/truncated to 2 of 5 outputs/i);
+  });
 });

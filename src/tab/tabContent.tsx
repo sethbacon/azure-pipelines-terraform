@@ -27,6 +27,7 @@ import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
 import { getClient } from "azure-devops-extension-api";
 import { parseDigestText } from "./digest-model";
 import { Digest, PlanResource } from "./digest-schema";
+import { TAB_MAX_RENDERED_ROWS, TAB_PARSE_CEILING_BYTES } from "./caps";
 import { SummaryHeader, SummaryHeaderCounts } from "./components/SummaryHeader";
 import { OverviewList, OverviewItem } from "./components/OverviewList";
 import { ResourceList } from "./components/ResourceList";
@@ -217,7 +218,12 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 {digest.drift && digest.drift.length > 0 && (
                     <div className="drift-section">
                         <h3>Drift detected</h3>
-                        {digest.drift.map((d) => (
+                        {digest.drift.length > TAB_MAX_RENDERED_ROWS && (
+                            <div className="drift-section-truncated-banner">
+                                List truncated to {TAB_MAX_RENDERED_ROWS} of {digest.drift.length} drifted resources.
+                            </div>
+                        )}
+                        {digest.drift.slice(0, TAB_MAX_RENDERED_ROWS).map((d) => (
                             <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} />
                         ))}
                     </div>
@@ -376,10 +382,27 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
                 if (!response.ok) continue;
-                const content = await response.text();
                 const contentLengthHeader = response.headers.get("content-length");
                 const parsedLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
                 const byteLength = Number.isFinite(parsedLength) ? parsedLength : undefined;
+
+                // Guard the body size BEFORE buffering it: a declared Content-Length
+                // over the parse ceiling means we refuse to read the (potentially
+                // multi-MB) body into memory at all — reading it first would be the
+                // very OOM the ceiling exists to prevent. Without a declared length we
+                // fall through and let parseDigestText enforce the ceiling post-read.
+                if (byteLength !== undefined && byteLength > TAB_PARSE_CEILING_BYTES) {
+                    items.push({
+                        id,
+                        name: attachment.name,
+                        status: "error",
+                        message: `Digest is ${byteLength} bytes, over the ${TAB_PARSE_CEILING_BYTES}-byte tab parse ceiling; not loaded. Download it from the build artifacts instead.`,
+                        raw: { name: attachment.name, content: "" },
+                    });
+                    continue;
+                }
+
+                const content = await response.text();
                 const raw: RawAttachment = { name: attachment.name, content };
 
                 const parsed = parseDigestText(content, byteLength);

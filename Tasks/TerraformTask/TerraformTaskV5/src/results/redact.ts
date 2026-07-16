@@ -121,6 +121,16 @@ function redactNode(value: unknown, sMask: unknown, uMask: unknown, ctx: RedactC
       note(ctx, 'sensitivity mask shape mismatch (object mask over array); masked fail-closed');
       return { t: 'sensitive' };
     }
+    // "Same shape" for an array mask INCLUDES the same length. Terraform emits a
+    // per-element parallel mask array (or a whole-value boolean), never a short
+    // one; a mask array whose length disagrees with the value cannot be trusted
+    // to mark every element, and the trailing (unmasked) elements would leak in
+    // cleartext. Treat any length disagreement as a shape mismatch -> FAIL CLOSED
+    // (§2.8), mirroring the object/scalar mismatch handling above.
+    if ((Array.isArray(sMask) && sMask.length !== value.length) || (Array.isArray(uMask) && uMask.length !== value.length)) {
+      note(ctx, 'sensitivity mask shape mismatch (array length mismatch); masked fail-closed');
+      return { t: 'sensitive' };
+    }
     const out: unknown[] = [];
     for (let i = 0; i < value.length; i++) {
       out.push(materialize(redactNode(value[i], elem(sMask, i), elem(uMask, i), ctx)));
@@ -164,6 +174,26 @@ export function redactValue(value: unknown, sensitiveMask: unknown, unknownMask:
     return { kind: 'omitted', reason: 'too-large' };
   }
   return { kind: 'value', json };
+}
+
+/**
+ * Does a Terraform sensitivity/unknown MASK mark ANY leaf `true` (at any depth)?
+ *
+ * This is the exact "a mask of `true` means sensitive" rule `redactNode` applies
+ * at every node (a whole-subtree `true`, or a `true` nested inside an array/object
+ * mask). It is exposed here as a standalone predicate so a caller that has ONLY a
+ * mask and no value — the task's pre-flight `warnIfSensitiveOutputs` detection —
+ * shares ONE implementation with the redaction core and cannot silently drift
+ * from what the structured digest actually redacts (design §5.2.7; the #446
+ * detection-vs-redaction drift class). Living in the security-critical module,
+ * beside `redactNode`, is deliberate: the predicate and the redactor are read and
+ * changed together.
+ */
+export function maskHasSensitiveLeaf(mask: unknown): boolean {
+  if (mask === true) return true;
+  if (Array.isArray(mask)) return mask.some(maskHasSensitiveLeaf);
+  if (mask !== null && typeof mask === 'object') return Object.values(mask as Record<string, unknown>).some(maskHasSensitiveLeaf);
+  return false;
 }
 
 // ---------------------------------------------------------------------------

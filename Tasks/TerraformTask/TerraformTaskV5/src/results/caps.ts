@@ -26,6 +26,15 @@ export const MAX_REDACTED_VALUE_BYTES = 4 * 1024; // 4 KB
 /** Max diagnostics kept (errors first, then warnings). */
 export const MAX_DIAGNOSTICS = 500;
 
+/** Max output changes kept (plan outputChanges / apply outputs). Excess dropped alphabetically by name. */
+export const MAX_OUTPUTS = 1000;
+
+/** Max drift resources kept (plan `drift`). Excess dropped in address order. */
+export const MAX_DRIFT = 2000;
+
+/** Max truncationNotes kept; excess collapsed to a single "N more notes not shown" note. */
+export const MAX_NOTES = 1000;
+
 /** Soft total-digest ceiling: on exceed, drop attributeChanges arrays (keep rows + summary), set truncated. */
 export const SOFT_MAX_DIGEST_BYTES = 5 * 1024 * 1024; // 5 MB
 

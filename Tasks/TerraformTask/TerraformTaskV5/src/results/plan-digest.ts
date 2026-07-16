@@ -18,7 +18,15 @@ import {
   OutputChange,
   RedactedValue,
 } from './digest-schema';
-import { MAX_RESOURCES, MAX_ATTR_CHANGES_PER_RESOURCE, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from './caps';
+import {
+  MAX_RESOURCES,
+  MAX_ATTR_CHANGES_PER_RESOURCE,
+  MAX_OUTPUTS,
+  MAX_DRIFT,
+  MAX_NOTES,
+  SOFT_MAX_DIGEST_BYTES,
+  HARD_MAX_DIGEST_BYTES,
+} from './caps';
 import { redactValue, newRedactContext, deepEqual, capDigestBytes, RedactContext } from './redact';
 import { sanitizeAttachmentName } from './secret-scrub';
 
@@ -86,18 +94,30 @@ export function buildPlanDigest(plan: unknown, meta: DigestMeta, limits?: Digest
   }
 
   const rawOutputs = p.output_changes && typeof p.output_changes === 'object' ? (p.output_changes as Record<string, unknown>) : {};
-  const outputChanges: OutputChange[] = Object.keys(rawOutputs)
+  let outputChanges: OutputChange[] = Object.keys(rawOutputs)
     .sort()
     .map((name) => buildOutputChange(name, rawOutputs[name], ctx))
     .filter((o): o is OutputChange => o !== null);
+  // output cap (§3): keep the first MAX_OUTPUTS by name, note the remainder.
+  const droppedOutputs = outputChanges.length - MAX_OUTPUTS;
+  if (droppedOutputs > 0) {
+    outputChanges = outputChanges.slice(0, MAX_OUTPUTS);
+    ctx.notes.push(`output list capped at ${MAX_OUTPUTS} (${droppedOutputs} more not shown)`);
+  }
 
   const rawDrift = Array.isArray(p.resource_drift) ? (p.resource_drift as unknown[]) : [];
-  const drift: DriftResource[] = [];
+  let drift: DriftResource[] = [];
   for (const rd of rawDrift) {
     const d = buildDriftResource(rd, ctx);
     if (d) drift.push(d);
   }
   summary.driftDetected = drift.length > 0;
+  // drift cap (§3): keep the first MAX_DRIFT in address order, note the remainder.
+  const droppedDrift = drift.length - MAX_DRIFT;
+  if (droppedDrift > 0) {
+    drift = drift.slice(0, MAX_DRIFT);
+    ctx.notes.push(`drift list capped at ${MAX_DRIFT} (${droppedDrift} more not shown)`);
+  }
 
   const toolVersion = typeof p.terraform_version === 'string' ? p.terraform_version : 'unknown';
   const safeName = sanitizeAttachmentName(meta.name);
@@ -320,6 +340,15 @@ function anyTrue(mask: unknown): boolean {
 function finalizeTruncation(digest: PlanDigest, ctx: RedactContext): void {
   if (ctx.notes.length > 0) {
     digest.truncated = true;
-    digest.truncationNotes = [...ctx.notes];
+    digest.truncationNotes = capNotes(ctx.notes);
   }
+}
+
+// truncationNotes cap (§3): a pathological plan can generate one note per capped
+// resource, so bound the array itself. Keep the first MAX_NOTES and collapse the
+// remainder into a single count note so the truncation stays observable.
+export function capNotes(notes: string[]): string[] {
+  if (notes.length <= MAX_NOTES) return [...notes];
+  const dropped = notes.length - MAX_NOTES;
+  return [...notes.slice(0, MAX_NOTES), `truncation notes capped at ${MAX_NOTES} (${dropped} more not shown)`];
 }

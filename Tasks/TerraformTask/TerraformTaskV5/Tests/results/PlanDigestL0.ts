@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { buildPlanDigest, DigestMeta } from '../../src/results/plan-digest';
-import { MAX_RESOURCES, MAX_ATTR_CHANGES_PER_RESOURCE } from '../../src/results/caps';
+import { buildPlanDigest, DigestMeta, capNotes } from '../../src/results/plan-digest';
+import { MAX_RESOURCES, MAX_ATTR_CHANGES_PER_RESOURCE, MAX_OUTPUTS, MAX_DRIFT, MAX_NOTES } from '../../src/results/caps';
 
 const META: DigestMeta = {
   taskVersion: '0.0.0-test',
@@ -167,6 +167,63 @@ describe('buildPlanDigest', () => {
       const d = buildPlanDigest({ terraform_version: '1.9.5', resource_changes: [{ address: 'r.c', type: 't', name: 'c', provider_name: 'p', change: change({ actions: ['create'], before: null, after: { x: 1 } }) }], output_changes: {} }, META);
       assert.strictEqual(d.truncated, false);
       assert.strictEqual(d.truncationNotes, undefined);
+    });
+
+    it('caps the output list and notes the remainder (§3 DoS bound)', () => {
+      const output_changes: Record<string, unknown> = {};
+      for (let i = 0; i < MAX_OUTPUTS + 15; i++) {
+        output_changes[`o${String(i).padStart(5, '0')}`] = { actions: ['create'], before: null, after: `v${i}`, after_unknown: false, before_sensitive: false, after_sensitive: false };
+      }
+      const d = buildPlanDigest({ terraform_version: '1.9.5', resource_changes: [], output_changes }, META);
+      assert.strictEqual(d.outputChanges.length, MAX_OUTPUTS);
+      assert.strictEqual(d.truncated, true);
+      assert.ok((d.truncationNotes ?? []).some((n) => n.includes('output list capped')));
+    });
+
+    it('caps the drift list and notes the remainder (§3 DoS bound)', () => {
+      const resource_drift = [];
+      for (let i = 0; i < MAX_DRIFT + 5; i++) {
+        resource_drift.push({ address: `r.drift.${String(i).padStart(5, '0')}`, type: 't', name: `${i}`, provider_name: 'p', change: change({ actions: ['update'], before: { t: 'a' }, after: { t: 'b' } }) });
+      }
+      const d = buildPlanDigest({ terraform_version: '1.9.5', resource_changes: [], resource_drift, output_changes: {} }, META);
+      assert.ok(d.drift && d.drift.length === MAX_DRIFT);
+      assert.strictEqual(d.summary.driftDetected, true);
+      assert.strictEqual(d.truncated, true);
+      assert.ok((d.truncationNotes ?? []).some((n) => n.includes('drift list capped')));
+    });
+  });
+
+  describe('truncationNotes cap (§3 DoS bound)', () => {
+    it('capNotes keeps the first MAX_NOTES and collapses the remainder into one count note', () => {
+      const many = Array.from({ length: MAX_NOTES + 42 }, (_, i) => `note ${i}`);
+      const capped = capNotes(many);
+      assert.strictEqual(capped.length, MAX_NOTES + 1);
+      assert.strictEqual(capped[MAX_NOTES - 1], `note ${MAX_NOTES - 1}`);
+      assert.ok(capped[MAX_NOTES].includes('truncation notes capped at ' + MAX_NOTES));
+      assert.ok(capped[MAX_NOTES].includes('42 more not shown'));
+    });
+
+    it('capNotes returns a copy unchanged when within the cap', () => {
+      const few = ['a', 'b'];
+      const out = capNotes(few);
+      assert.deepStrictEqual(out, few);
+      assert.notStrictEqual(out, few, 'returns a copy, not the same array reference');
+    });
+
+    it('a plan that generates more than MAX_NOTES notes bounds truncationNotes', () => {
+      // MAX_NOTES+50 small resources, each carrying an unsafe attribute key ->
+      // exactly one "dropped unsafe attribute key" note apiece (and a small digest
+      // that stays well under the byte ceilings), so capNotes is the only thing
+      // bounding the array: MAX_NOTES kept + one collapse note.
+      const resource_changes = [];
+      for (let i = 0; i < MAX_NOTES + 50; i++) {
+        const after = JSON.parse('{"__proto__":{"x":1},"safe":1}');
+        resource_changes.push({ address: `r.n.${String(i).padStart(5, '0')}`, type: 't', name: `${i}`, provider_name: 'p', change: change({ actions: ['create'], before: null, after }) });
+      }
+      const d = buildPlanDigest({ terraform_version: '1.9.5', resource_changes, output_changes: {} }, META);
+      const noteCount = (d.truncationNotes ?? []).length;
+      assert.strictEqual(noteCount, MAX_NOTES + 1, 'truncationNotes bounded to MAX_NOTES + one collapse note');
+      assert.ok((d.truncationNotes ?? []).some((n) => n.includes('truncation notes capped')));
     });
   });
 

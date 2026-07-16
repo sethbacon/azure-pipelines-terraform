@@ -5,8 +5,7 @@ import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import { replaceSecretFile } from './secure-temp';
 import { buildPlanDigest, DigestMeta } from './results/plan-digest';
 import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
-import { serializeDigest } from './results/redact';
-import { sanitizeAttachmentName } from './results/secret-scrub';
+import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -59,22 +58,12 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
     return lines.map(a => `-target=${a}`);
 }
 
-/**
- * Recursively checks whether a Terraform sensitivity mask (e.g.
- * `planned_values.outputs[].sensitive`, or `resource_changes[].change.after_sensitive`)
- * marks ANY leaf sensitive. Mirrors the same "mask === true at any depth" rule the
- * WP-1 redaction core (`src/results/redact.ts`'s `redactNode`) uses to decide
- * sensitivity, so `warnIfSensitiveOutputs`'s detection and the structured digest's
- * redaction are driven by one shared predicate and cannot silently drift apart
- * (design §5.2.7). Unlike a shallow one-level scan, this also catches sensitivity
- * nested under an object/array mask.
- */
-export function maskHasSensitiveLeaf(mask: unknown): boolean {
-    if (mask === true) return true;
-    if (Array.isArray(mask)) return mask.some(maskHasSensitiveLeaf);
-    if (mask !== null && typeof mask === 'object') return Object.values(mask as Record<string, unknown>).some(maskHasSensitiveLeaf);
-    return false;
-}
+// `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
+// redaction core applies (design §5.2.7): rather than re-derive it here (the
+// detection-vs-redaction drift class, #446), it is defined ONCE in
+// `src/results/redact.ts` beside `redactNode` and re-exported here so existing
+// importers (Tests/MaskHasSensitiveLeafL0.ts) keep their entry point.
+export { maskHasSensitiveLeaf };
 
 /**
  * Reads this task's own version from task.json (Major.Minor.Patch) for the
@@ -540,7 +529,15 @@ export abstract class BaseTerraformCommandHandler {
             // fail with "attachment file does not exist on disk".
             const attachmentPath = path.join(tempDir, `terraform-plan-${uuidV4()}.txt`);
             fs.writeFileSync(attachmentPath, planStdout, "utf-8");
-            tasks.addAttachment("terraform-plan-results", sanitizeAttachmentName(publishPlanResults).name, attachmentPath);
+            // COMPAT (§ non-negotiable): the legacy terraform-plan-results attachment
+            // name is passed RAW, exactly as before the structured-summary feature.
+            // azure-pipelines-task-lib's addAttachment already escapes the value into
+            // the ##vso[task.addattachment ...;name=NAME;] logging command (see its
+            // taskcommand.escape: %/CR/LF/]/; are escaped), so publishPlanResults-only
+            // runs stay byte-for-byte identical. sanitizeAttachmentName() (which
+            // STRIPS those characters) is applied ONLY to the new -summary attachments,
+            // whose name is echoed unescaped into the digest's own meta.name.
+            tasks.addAttachment("terraform-plan-results", publishPlanResults, attachmentPath);
         }
 
         if (publishPlanSummary && planFilePath && (result === 0 || result === 2)) {

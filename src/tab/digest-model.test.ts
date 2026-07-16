@@ -333,6 +333,77 @@ describe("parseDigestText — defensive tab-side caps (§6, don't trust `truncat
     if (result.digest.kind !== "apply") return;
     expect(result.digest.diagnostics).toHaveLength(caps.MAX_DIAGNOSTICS);
   });
+
+  it("caps plan outputChanges at MAX_OUTPUTS and marks truncated", () => {
+    const obj = validPlanDigestObj();
+    obj.outputChanges = Array.from({ length: caps.MAX_OUTPUTS + 7 }, (_, i) => ({
+      name: `o${i}`,
+      action: "create",
+      value: { kind: "value", json: String(i) },
+    }));
+    obj.truncated = false;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.outputChanges).toHaveLength(caps.MAX_OUTPUTS);
+    expect(result.digest.truncated).toBe(true);
+    expect((result.digest.truncationNotes ?? []).some((n) => n.includes("output list capped"))).toBe(true);
+  });
+
+  it("caps plan drift at MAX_DRIFT and marks truncated", () => {
+    const obj = validPlanDigestObj();
+    obj.drift = Array.from({ length: caps.MAX_DRIFT + 3 }, (_, i) => ({
+      address: `aws_instance.drift[${i}]`,
+      type: "aws_instance",
+      name: "drift",
+      providerName: "p",
+      attributeChanges: [],
+    }));
+    obj.truncated = false;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.drift).toHaveLength(caps.MAX_DRIFT);
+    expect(result.digest.truncated).toBe(true);
+    expect((result.digest.truncationNotes ?? []).some((n) => n.includes("drift list capped"))).toBe(true);
+  });
+
+  it("caps apply outputs at MAX_OUTPUTS and marks truncated", () => {
+    const obj = validApplyDigestObj();
+    obj.outputs = Array.from({ length: caps.MAX_OUTPUTS + 4 }, (_, i) => ({
+      name: `o${i}`,
+      action: "create",
+      value: { kind: "value", json: String(i) },
+    }));
+    obj.truncated = false;
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "apply") return;
+    expect(result.digest.outputs).toHaveLength(caps.MAX_OUTPUTS);
+    expect(result.digest.truncated).toBe(true);
+  });
+
+  it("caps appliedBeforeFailure at MAX_RESOURCES", () => {
+    const obj = validApplyDigestObj();
+    obj.outcome = "failed";
+    obj.appliedBeforeFailure = Array.from({ length: caps.MAX_RESOURCES + 6 }, (_, i) => `r.${i}`);
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "apply") return;
+    expect(result.digest.appliedBeforeFailure).toHaveLength(caps.MAX_RESOURCES);
+    expect(result.notes.some((n) => n.includes("appliedBeforeFailure capped"))).toBe(true);
+  });
+
+  it("caps a hostile truncationNotes array at MAX_NOTES", () => {
+    const obj = validPlanDigestObj();
+    obj.truncated = true;
+    obj.truncationNotes = Array.from({ length: caps.MAX_NOTES + 25 }, (_, i) => `note ${i}`);
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.digest.truncationNotes ?? []).length).toBeLessThanOrEqual(caps.MAX_NOTES);
+    expect(result.notes.some((n) => n.includes("truncationNotes capped"))).toBe(true);
+  });
 });
 
 describe("parseDigestText — drift resources (resource_drift)", () => {

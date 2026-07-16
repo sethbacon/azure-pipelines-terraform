@@ -264,6 +264,30 @@ describe('TerraformPlanTab', () => {
     expect(out).not.toContain('resource-diff-table');
   });
 
+  it('refuses an over-ceiling attachment by its Content-Length WITHOUT buffering the body (pre-read guard)', async () => {
+    (getClient as jest.Mock).mockReturnValue({
+      getAttachments: jest.fn((_p: string, _id: number, type: string) => {
+        if (type === PLAN_SUMMARY_TYPE) return Promise.resolve([attachment('huge-plan')]);
+        return Promise.resolve([]);
+      }),
+    });
+    const textSpy = jest.fn(() => Promise.resolve('should-never-be-read'));
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        text: textSpy,
+        // 17 MB declared, over the 16 MB TAB_PARSE_CEILING_BYTES.
+        headers: { get: (h: string) => (h === 'content-length' ? String(17 * 1024 * 1024) : null) },
+      })
+    );
+
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toMatch(/over the .* tab parse ceiling/i);
+    expect(textSpy).not.toHaveBeenCalled(); // body never buffered
+  });
+
   it('skips an attachment whose fetch throws, keeping the others', async () => {
     (getClient as jest.Mock).mockReturnValue({
       getAttachments: jest.fn((_p: string, _id: number, type: string) => {

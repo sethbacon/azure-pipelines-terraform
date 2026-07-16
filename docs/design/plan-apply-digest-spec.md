@@ -170,6 +170,12 @@ redactNode(value, sMask, uMask, ctx):
         # mask, if a container, MUST be an array of the same shape; else FAIL CLOSED
         if (isContainer(sMask) and not isArray(sMask)) or (isContainer(uMask) and not isArray(uMask)):
             note(...); return {t:"sensitive"}
+        # "same shape" INCLUDES the same length: a mask array shorter/longer than
+        # the value cannot be trusted to mark every element, so trailing elements
+        # would leak in cleartext -> FAIL CLOSED on any length disagreement.
+        if (isArray(sMask) and len(sMask) != len(value)) or (isArray(uMask) and len(uMask) != len(value)):
+            note(ctx, "sensitivity mask shape mismatch (array length mismatch) at <path>; masked fail-closed")
+            return {t:"sensitive"}
         out = []
         for i in 0..value.length-1:
             child = redactNode(value[i], elem(sMask,i), elem(uMask,i), ctx)

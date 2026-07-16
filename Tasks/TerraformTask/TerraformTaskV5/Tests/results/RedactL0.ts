@@ -126,6 +126,29 @@ describe('redactValue — redaction core', () => {
       assert.ok(c.notes.length > 0);
     });
 
+    it('sensitivity mask array SHORTER than the value array -> masked, no trailing leak', () => {
+      // The mask marks index 0 sensitive but says nothing about index 1. A short
+      // mask must never let the un-described trailing element leak in cleartext:
+      // fail the WHOLE value closed (§2.8).
+      const c = ctx();
+      const rv = redactValue([1, 'SECRET'], [true], false, c);
+      assert.deepStrictEqual(rv, { kind: 'sensitive' });
+      assert.ok(!JSON.stringify(rv).includes('SECRET'), 'trailing element must not leak');
+      assert.ok(c.notes.some((n) => n.includes('array length mismatch')), 'records an observable note');
+    });
+
+    it('unknown mask array of a different length than the value array -> masked', () => {
+      const c = ctx();
+      const rv = redactValue([1, 2, 3], false, [false, false], c);
+      assert.deepStrictEqual(rv, { kind: 'sensitive' });
+      assert.ok(c.notes.some((n) => n.includes('array length mismatch')));
+    });
+
+    it('a full-length parallel mask array still redacts per element (no false positive)', () => {
+      const rv = redactValue([1, 'SECRET', 3], [false, true, false], false, ctx());
+      assert.deepStrictEqual(rv, { kind: 'value', json: '[1,"(sensitive)",3]' });
+    });
+
     it('mismatch nested inside a collection masks only that leaf, not the sibling', () => {
       // value.a is a scalar but its mask is a container -> that leaf fails closed;
       // value.b is a clean scalar and survives.

@@ -2560,6 +2560,17 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('passes the legacy terraform-plan-results attachment name raw (task-lib escapes it), not through sanitizeAttachmentName (compat regression)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsRawNameCompat.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishResultsRawNameCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
     /* structured plan/apply summary tests (design §7) */
 
     it('azure plan should succeed and publish a redacted structured plan summary attachment', async () => {

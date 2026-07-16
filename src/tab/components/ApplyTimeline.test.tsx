@@ -52,4 +52,20 @@ describe("ApplyTimeline", () => {
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;img");
   });
+
+  it("hard-caps rendered resource rows and shows a truncation banner (§5.5 bounded rendering)", () => {
+    const many = Array.from({ length: 5 }, (_, i) => res({ address: `r.${i}` }));
+    const html = renderToStaticMarkup(<ApplyTimeline resources={many} maxRenderedRows={2} />);
+    expect(html).toContain("r.0");
+    expect(html).toContain("r.1");
+    expect(html).not.toContain("r.4");
+    expect(html).toMatch(/truncated to 2 of 5 resources/i);
+  });
+
+  it("hard-caps the appliedBeforeFailure list and banners it, tolerating duplicate addresses", () => {
+    const html = renderToStaticMarkup(
+      <ApplyTimeline resources={[res({})]} appliedBeforeFailure={["a.dup", "a.dup", "b", "c"]} maxRenderedRows={2} />
+    );
+    expect(html).toMatch(/truncated to 2 of 4 addresses/i);
+  });
 });
