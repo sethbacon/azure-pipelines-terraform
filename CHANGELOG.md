@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.10.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.5...v1.10.0) (2026-07-16)
+
+
+### Features
+
+* structured destroy + state-inventory tab (Phase 5) ([#544](https://github.com/sethbacon/azure-pipelines-terraform/issues/544)) ([6c250e0](https://github.com/sethbacon/azure-pipelines-terraform/commit/6c250e0f209862e8de9ea5fb50d2892f58e56d7d))
+* structured Terraform Plan & Apply build-results tabs ([#537](https://github.com/sethbacon/azure-pipelines-terraform/issues/537)) ([bdc129d](https://github.com/sethbacon/azure-pipelines-terraform/commit/bdc129daac346cb32544efe8ea52809470a09064))
+
 ## [1.9.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.4...v1.9.5) (2026-07-16)
 
 
