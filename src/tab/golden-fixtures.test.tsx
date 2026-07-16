@@ -38,7 +38,7 @@ const FIXTURES_DIR = path.join(
 
 interface TabFixture {
   file: string;
-  kind: "plan" | "apply";
+  kind: "plan" | "apply" | "state";
   /** Fake secret literals that must never appear in the rendered markup. */
   secrets: string[];
   /** Masked/scrubbed markers that MUST appear (proves masking survived render). */
@@ -69,6 +69,49 @@ const FIXTURES: TabFixture[] = [
     markers: ["(redacted)"],
     snapshot: true,
   },
+];
+
+// Phase 5 state + destroy-marked corpus (§12.3). WP-1 adds these real, byte-
+// frozen `.expected.json` goldens (state inventory + a destroy-marked plan) on
+// a parallel branch; they compose in with Phase 5. They are listed here so the
+// SAME shared loop below renders and no-leak-checks them exactly like the
+// plan/apply goldens — including the redaction edge cases WP-1 captured (a
+// sensitive state, and a child-module tree). They are guarded by existence so
+// this suite stays green on the WP-3 branch (where the parallel WP-1 corpus is
+// not yet present) and lights up automatically once composed, with no further
+// wiring. The plan/apply entries above stay mandatory (a missing one is a hard
+// failure); only these Phase-5 entries are conditional.
+const PHASE5_FIXTURES: TabFixture[] = [
+  { file: "state-basic.expected.json", kind: "state", secrets: [] },
+  {
+    file: "state-sensitive.expected.json",
+    kind: "state",
+    secrets: [
+      "DBCONN_SECRET_literal_9f3k",
+      "STATEPW_SUPERSECRET_abc123",
+      "STATETOKEN_xyz789",
+      "REPLICASECRET_0",
+      "REPLICASECRET_1",
+    ],
+    markers: ["(sensitive)"],
+  },
+  {
+    file: "state-child-modules.expected.json",
+    kind: "state",
+    secrets: ["MODULESECRET_pw_child"],
+    markers: ["(sensitive)"],
+  },
+  // A destroy plan is a plan whose resource changes are all deletes; it renders
+  // through renderPlanDetail like any other plan, so its kind stays "plan".
+  { file: "plan-destroy-marked.expected.json", kind: "plan", secrets: [] },
+];
+
+// Plan/apply goldens (always present) plus whichever Phase-5 goldens have
+// composed in. filter() — not a hard read — is what keeps the WP-3 branch green
+// before WP-1's corpus lands.
+const ACTIVE_FIXTURES: TabFixture[] = [
+  ...FIXTURES,
+  ...PHASE5_FIXTURES.filter((fx) => fs.existsSync(path.join(FIXTURES_DIR, fx.file))),
 ];
 
 /** Adapt a DriftResource into the PlanResource shape ResourceDiff renders. */
@@ -178,7 +221,7 @@ function renderDigest(digest: Digest): string {
 }
 
 describe("tab golden-fixture render regression (§12.3)", () => {
-  for (const fx of FIXTURES) {
+  for (const fx of ACTIVE_FIXTURES) {
     describe(fx.file, () => {
       const raw = fs.readFileSync(path.join(FIXTURES_DIR, fx.file), "utf8");
 
@@ -242,21 +285,20 @@ describe("tab golden-fixture render regression (§12.3)", () => {
 
 /**
  * State (inventory) golden-fixture render regression (Phase 5, digest spec
- * §7.2). WP-1's real `.expected.json` state corpus (`Tasks/…/Tests/fixtures/`)
- * lands on a separate, parallel branch and is not yet present here — this WP
- * depends only on the frozen WP-0 schema and runs in parallel with WP-1/WP-2
- * (see the orchestrator's dependency graph). `renderDigest`/`renderStateDetail`
- * above are already wired for `kind: "state"` so that once the real WP-1
- * corpus is merged, entries can be added to `FIXTURES` (with `kind: "state"`)
- * and picked up by the shared loop with no further wiring.
+ * §7.2). WP-1's real, byte-frozen `.expected.json` state corpus is now wired
+ * into the shared golden loop above via `PHASE5_FIXTURES` — guarded by
+ * existence so it activates automatically once WP-1's corpus composes in (see
+ * the note there), rendering + no-leak-checking each state/destroy golden
+ * exactly like the plan/apply goldens.
  *
- * In the meantime this self-contained fixture (built inline, not read from
- * disk) exercises the same two guarantees the plan/apply goldens above prove:
- * a planted secret literal never survives redaction into the rendered DOM
- * text, and an unknown future schemaVersion degrades gracefully instead of
- * throwing or leaking.
+ * This self-contained fixture (built inline, not read from disk) stays as
+ * always-on supplementary coverage: it runs on this branch even before the
+ * real corpus lands, and additionally exercises the unknown-future-
+ * schemaVersion state path — proving a planted secret never survives redaction
+ * into the rendered DOM text and that a degraded parse neither throws nor
+ * leaks.
  */
-describe("tab state-digest render regression (self-contained fixture; WP-1 corpus pending, §12.3)", () => {
+describe("tab state-digest render regression (self-contained supplementary fixture; real corpus wired above, §12.3)", () => {
   const plantedSecret = "STATE_GOLDEN_SECRET_q7z";
 
   function syntheticStateDigest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
