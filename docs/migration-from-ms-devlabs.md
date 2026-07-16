@@ -126,8 +126,9 @@ Most inputs carry over verbatim. Known differences:
 - **`replaceAddress`** on `plan` / `apply` — passes `-replace=ADDRESS`.
 - **`downloadSource`** on the installer — `hashicorp` (default), `registry`
   (private terraform-registry-backend), or `mirror` (custom HTTPS mirror).
-- **`environmentAuthSchemeAWS`** / **`environmentAuthSchemeGCP`** — `ServiceConnection`
-  (default) or `WorkloadIdentityFederation`. WIF avoids static credentials.
+- **`environmentAuthSchemeAWS`** / **`environmentAuthSchemeGCP`** / **`environmentAuthSchemeOCI`** —
+  `ServiceConnection` (default) or `WorkloadIdentityFederation`. WIF avoids static credentials;
+  see the [OCI WIF Setup Guide](setup/oci-wif-setup.md) for the OCI-specific configuration.
 - **Additional commands not in DevLabs:** `workspace`, `state`, `fmt`, `test`,
   `get`, `refresh`, `import`, `forceunlock`.
 

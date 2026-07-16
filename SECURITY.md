@@ -61,6 +61,14 @@ Every task's job in `unit-test.yml` runs `npm audit --omit=dev --audit-level=hig
 `force` (opt-in, **default false**) only downgrades one heuristic in `html-validate.ts`'s `validateHtmlContent()` — a parsing-fidelity check (does the parsed output retain at least 50% of the input's length) that can have legitimate false positives on unusual-but-safe markdown-to-HTML output — from a hard failure to a warning. Every stored-XSS-relevant check in the same function (external/inline `<script>` elements, inline event-handler attributes, `<base>`/meta-refresh redirects, `javascript:`/`vbscript:`/non-image `data:` URIs, including control-character-obfuscated variants) always fails the task regardless of `force`. This was not always the case: prior to this fix, `force` disabled the entire validation gate, including the XSS-relevant checks — see the resolved history in CHANGELOG.md for the original stored-XSS finding.
 
 
+## Maintainer continuity
+
+This project has a single maintainer (`@sethbacon`), who is also the sole GitHub CODEOWNERS reviewer and the VS Marketplace publisher account owner. There is currently no second maintainer or co-owner.
+
+- **Vulnerability response:** private security advisories and reports (see [Reporting a Vulnerability](#reporting-a-vulnerability) above) route to this one account. If the maintainer is unavailable for an extended period, expect delayed acknowledgement/triage beyond the "few business days" target above — there is no secondary contact today.
+- **Marketplace publisher recovery:** the extension is published under the `sethbacon` VS Marketplace publisher, authenticated via the GitHub OIDC → Microsoft Entra federated credential described in [CONTRIBUTING.md](CONTRIBUTING.md#release-process) (no stored long-lived publisher PAT). Recovery of publisher access, in the event the maintainer's GitHub or Microsoft account becomes inaccessible, would go through GitHub's and Microsoft's respective account-recovery/support channels — there is no pre-arranged secondary publisher account.
+- **Mitigations already in place:** every change to `main` still goes through required CI (the full `unit-test.yml` matrix, CodeQL, zizmor) and required PR review, even though the same individual is the only possible reviewer; see the "Accepted Risk Register" and "Remaining Recommendations" sections of `CLAUDE.md` for the related branch-protection tradeoffs and the open recommendation to recruit a second, at least limited-scope, maintainer/codeowner.
+
 ## Preferred Languages
 
 English preferred.

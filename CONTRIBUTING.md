@@ -200,6 +200,18 @@ runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
 
 **L0.ts registration**: add an `it()` block in the main `Tests/L0.ts` file near the other tests for the same command.
 
+### Retry/backoff helper parity
+
+Three tasks each implement their own bounded exponential-backoff HTTP retry helper, independently of one another and outside `scripts/check-shared-modules.js`'s automated byte-identity enforcement:
+
+- `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/http.ts` — `retryHttp()` (the reference implementation the other two mirror)
+- `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/callback.ts` — `postJsonWithRetry()`
+- `Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts` — `withRetry()`
+
+All three share the same `{ retries?, baseDelayMs?, log? }` options shape and `baseDelayMs * 2 ** attempt` backoff. **When hardening the retry/backoff behavior (timeout, backoff formula, retry predicate, etc.) in any one of these, review the other two in the same change** and update them together if the hardening applies equally.
+
+`callback.ts`'s `postJsonWithRetry()` deliberately diverges from the other two: it never retries after a *received* HTTP response, including a 5xx, and only retries transport-level failures. This is intentional, not an oversight — `TerraformDriftReport`'s TSM callback token is one-shot, so retrying after the server has already seen (and possibly consumed) the token risks a spurious duplicate-submission error on the retry rather than a real recovery. Keep this divergence when syncing the other two helpers' behavior into `callback.ts`.
+
 ## Terraform Plan Tab (build-results-tab)
 
 The extension contributes a **Terraform Plan** tab to the Azure DevOps build results page. The tab reads pipeline attachments named `terraform-plan-results` published by the `plan` command (when `publishPlanResults: true`) and renders the captured `terraform plan` output with ANSI color translated to HTML.
@@ -253,7 +265,7 @@ The tab is declared in `azure-devops-extension.json` as a `ms.vss-build-web.buil
 - Run `npm run webpack` for fast iteration (skips re-running task compilation). Errors surface immediately in the webpack output.
 - The bundle uses **React 18** with the `createRoot` API in `tabContent.tsx`.
 - The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. A state-machine rewrite of the converter is the planned hardening here.
-- There is no Jest harness in `src/tab/` yet (planned). Until then, end-to-end verification requires a private publish.
+- `src/tab/` has a Jest harness (`jest.config.js` at the repo root) — run it with `npm run test:tab`. It covers `ansi-to-html.test.ts` and `tabContent.test.tsx` (loading/error/empty states, multi-plan select, oversize-plan download link, `loadPlans` edge cases) and enforces coverage thresholds (statements 80%, branches 78%, functions 60%, lines 80%; see `jest.config.js` for the rationale behind those numbers). Run it alongside `npm run webpack` when changing the tab. It does not cover the module-level SDK bootstrap block (`SDK.ready().then(...)`) — that needs a real DOM/ADO iframe, so end-to-end verification of that wiring still requires a private publish.
 
 ## Release process
 

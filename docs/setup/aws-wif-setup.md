@@ -27,8 +27,43 @@ WIF eliminates the need to store static AWS access keys in Azure DevOps. Instead
 2. Select **Web identity** as the trusted entity type
 3. Select the identity provider you just created
 4. Set audience to `api://AzureADTokenV2`
-5. Click **Next** and attach the policies your Terraform configuration requires (e.g., `AmazonEC2FullAccess`, custom policies for your infrastructure)
+5. Click **Next** and attach a policy scoped to what your Terraform configuration actually manages. For example, a role that only provisions EC2 instances behind a naming convention:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": [
+           "ec2:RunInstances",
+           "ec2:CreateTags"
+         ],
+         "Resource": "*",
+         "Condition": {
+           "StringLike": { "aws:RequestTag/Name": "terraform-*" }
+         }
+       },
+       {
+         "Effect": "Allow",
+         "Action": [
+           "ec2:DescribeInstances",
+           "ec2:DescribeTags",
+           "ec2:TerminateInstances"
+         ],
+         "Resource": "*"
+       }
+     ]
+   }
+   ```
+
+   > **Security note:** `aws:RequestTag` only constrains actions that create or apply tags (here, `RunInstances` and `CreateTags`); it has no effect on read-only `Describe*` calls or on `TerminateInstances`, which act on resources that already exist. Use `aws:ResourceTag` or an explicit resource ARN if you need to scope those to specific instances.
+
+   Adjust the actions/resources/conditions to match your configuration; avoid an AWS managed `*FullAccess` policy unless your Terraform configuration genuinely spans the whole service.
+
 6. Name the role (e.g., `TerraformDeployRole`) and create it
+
+> **Security note:** grant the role only the actions and resources your Terraform configuration touches. A broad managed policy like `AmazonEC2FullAccess` gives the WIF-assumed identity far more reach than a CI pipeline needs, so a leaked plan file, a compromised dependency in the pipeline, or a misconfigured `sub`/`aud` condition (see below) has a correspondingly larger blast radius. Prefer a custom, resource- or tag-scoped policy and widen it only as needed.
 
 ### Restrict to a specific Azure DevOps service connection (recommended)
 
