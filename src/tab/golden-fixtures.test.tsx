@@ -128,7 +128,11 @@ function renderApplyDetail(digest: Extract<Digest, { kind: "apply" }>): string {
 }
 
 function renderDigest(digest: Digest): string {
-  return digest.kind === "plan" ? renderPlanDetail(digest) : renderApplyDetail(digest);
+  if (digest.kind === "plan") return renderPlanDetail(digest);
+  if (digest.kind === "apply") return renderApplyDetail(digest);
+  // No state fixtures render through this helper yet; the Phase 5 state-render WP
+  // adds a state branch + fixtures. Keep exhaustive so the widened union type-checks.
+  throw new Error(`unsupported digest kind for golden render: ${digest.kind}`);
 }
 
 describe("tab golden-fixture render regression (§12.3)", () => {

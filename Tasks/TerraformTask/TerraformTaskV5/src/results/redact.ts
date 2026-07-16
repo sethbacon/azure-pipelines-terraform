@@ -26,7 +26,7 @@
 // (`capDigestBytes`) — so those helpers have exactly one implementation and the
 // producer cannot drift from itself.
 
-import { RedactedValue, Digest, PlanDigest, ApplyDigest } from './digest-schema';
+import { RedactedValue, Digest, PlanDigest, ApplyDigest, StateDigest } from './digest-schema';
 import { MAX_REDACTED_VALUE_BYTES } from './caps';
 
 /**
@@ -313,6 +313,10 @@ function toSummaryOnly(d: Digest): Digest {
   if (d.kind === 'plan') {
     const p: PlanDigest = { ...base, kind: 'plan', summary: d.summary, resources: [], outputChanges: [] };
     return p;
+  }
+  if (d.kind === 'state') {
+    const s: StateDigest = { ...base, kind: 'state', summary: d.summary, resources: [], outputs: [] };
+    return s;
   }
   const a: ApplyDigest = {
     ...base,
