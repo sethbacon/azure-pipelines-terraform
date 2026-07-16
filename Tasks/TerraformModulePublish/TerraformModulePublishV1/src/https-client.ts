@@ -1,5 +1,10 @@
 import * as https from 'https';
+import * as http from 'http';
+import * as tls from 'tls';
+import * as net from 'net';
+import { Duplex } from 'stream';
 import { URL } from 'url';
+import type * as TaskLib from 'azure-pipelines-task-lib/task';
 
 /**
  * Per-request socket timeout (ms). Without it a hung TCP connection makes the
@@ -27,6 +32,159 @@ export type HttpClient = (
     headers: Record<string, string>,
     body?: string,
 ) => Promise<HttpResponse>;
+
+/**
+ * An https.Agent that tunnels every connection through the agent's configured
+ * HTTP(S) proxy via an HTTP CONNECT request, then upgrades the tunneled socket
+ * to TLS, instead of connecting to the target host directly. Mirrors the
+ * proxy-awareness already implemented for the installer family
+ * (tasks.getHttpProxyConfiguration() + undici's ProxyAgent in
+ * TerraformInstallerV1/src/http-client.ts), adapted to this module's raw
+ * https.request transport, which has no fetch-style dispatcher to hand a
+ * ProxyAgent to.
+ */
+class ProxyTunnelAgent extends https.Agent {
+    constructor(
+        private readonly proxyHostname: string,
+        private readonly proxyPort: number,
+        private readonly proxyAuthHeader: string | undefined,
+        private readonly tunnelTimeoutMs: number,
+    ) {
+        super();
+    }
+
+    createConnection(
+        options: https.RequestOptions,
+        callback?: (err: Error | null, stream: Duplex) => void,
+    ): Duplex | null | undefined {
+        const targetHost = String(options.hostname ?? options.host ?? '');
+        const targetPort = options.port ? Number(options.port) : 443;
+        const target = `${targetHost}:${targetPort}`;
+        let settled = false;
+        let tlsSocket: tls.TLSSocket | undefined;
+        // Boxed so settle() (defined before the timer is armed) can clear it.
+        const deadline: { timer?: ReturnType<typeof setTimeout> } = {};
+        const connectReq = http.request({
+            host: this.proxyHostname,
+            port: this.proxyPort,
+            method: 'CONNECT',
+            path: target,
+            headers: {
+                Host: target,
+                ...(this.proxyAuthHeader ? { 'Proxy-Authorization': this.proxyAuthHeader } : {}),
+            },
+        });
+        // Settle this connection attempt exactly once, then stop the deadline timer.
+        // On failure, actively tear down the pending CONNECT request and any
+        // half-open TLS socket so a wedged proxy leaves nothing dangling.
+        const settle = (err: Error | null, stream?: tls.TLSSocket) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            if (deadline.timer) {
+                clearTimeout(deadline.timer);
+            }
+            if (err) {
+                connectReq.destroy();
+                tlsSocket?.destroy();
+            }
+            callback?.(err, (stream ?? undefined) as unknown as Duplex);
+        };
+        // Bound the whole CONNECT round-trip AND the inner TLS handshake below with
+        // the caller's configured timeout. The outer request's req.setTimeout() only
+        // arms once this createConnection callback fires (invoking that callback is
+        // what emits the request's 'socket' event), so a proxy that accepts the TCP
+        // connection but never answers the CONNECT -- a wedged/overloaded corporate
+        // proxy -- would otherwise hang past timeoutMs until the agent job timeout.
+        // This timer is that phase's only deadline; it is cleared the instant the
+        // tunnel is established (or fails), after which req.setTimeout() takes over.
+        deadline.timer = setTimeout(
+            () => settle(new Error(`Proxy CONNECT tunnel to ${target} via ${this.proxyHostname}:${this.proxyPort} timed out after ${this.tunnelTimeoutMs}ms.`)),
+            this.tunnelTimeoutMs,
+        );
+        connectReq.on('connect', (res, socket) => {
+            if (res.statusCode !== 200) {
+                socket.destroy();
+                settle(new Error(`Proxy CONNECT to ${target} failed with status ${res.statusCode}.`));
+                return;
+            }
+            try {
+                // Node's TLS SNI extension (servername) may not carry an IP-address
+                // literal (RFC 6066) -- Node throws synchronously if asked to. Node's
+                // own default (non-proxied) connection path silently omits servername
+                // in that case; mirror that here rather than sending SNI only when the
+                // target host is a literal IP.
+                const sniName = options.servername || targetHost;
+                const tlsOptions: tls.ConnectionOptions = {
+                    socket,
+                    servername: net.isIP(sniName) ? undefined : sniName,
+                };
+                // Only set rejectUnauthorized when the caller passed an explicit value.
+                // Node's own TLS layer treats an explicitly-present `undefined` key
+                // differently from an absent one: an absent key falls back to the
+                // NODE_TLS_REJECT_UNAUTHORIZED env var (matching the non-proxied
+                // https.request default path), while an explicit `undefined` does not.
+                if (options.rejectUnauthorized !== undefined) {
+                    tlsOptions.rejectUnauthorized = options.rejectUnauthorized;
+                }
+                tlsSocket = tls.connect(tlsOptions);
+                tlsSocket.once('secureConnect', () => settle(null, tlsSocket));
+                tlsSocket.once('error', (err) => settle(err));
+            } catch (err) {
+                socket.destroy();
+                settle(err instanceof Error ? err : new Error(String(err)));
+            }
+        });
+        connectReq.on('error', (err) => settle(err));
+        connectReq.end();
+        return undefined;
+    }
+}
+
+/**
+ * Reads the agent's configured HTTP(S) proxy (tasks.getHttpProxyConfiguration())
+ * and, when one is set, returns a ProxyTunnelAgent that routes the connection
+ * through it. Returns undefined when no proxy is configured, so callers fall
+ * back to a direct connection (the previous, unproxied behavior) unchanged.
+ *
+ * azure-pipelines-task-lib is require()'d lazily here (instead of a top-level
+ * import) so merely importing this module never loads it: task-lib snapshots
+ * process.env inputs into a vault the first time it is required in a process
+ * (guarded by a process-global flag, so it never re-reads even under a later
+ * require through the mock-task shim), so an eager top-level require here was
+ * observed to run before a mock-run test harness's tr.setInput() calls when a
+ * test imports this module's siblings (e.g. callback.ts) directly for a pure
+ * helper, permanently poisoning that flag for the rest of the test process.
+ * Requiring lazily, only when an actual request is being dispatched, avoids
+ * that ordering hazard entirely.
+ *
+ * @param tunnelTimeoutMs bounds the proxy CONNECT round-trip and inner TLS
+ *        handshake, which run before the outer request's socket-timeout can
+ *        arm; passed straight through to the returned ProxyTunnelAgent.
+ */
+function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
+    const tasks = require('azure-pipelines-task-lib/task') as typeof TaskLib;
+    const proxy = tasks.getHttpProxyConfiguration();
+    if (!proxy) {
+        return undefined;
+    }
+    let proxyUrl: URL;
+    try {
+        proxyUrl = new URL(proxy.proxyUrl);
+    } catch (err) {
+        throw new Error(`Invalid proxy URL configured on the agent: ${err instanceof Error ? err.message : err}`);
+    }
+    let proxyAuthHeader: string | undefined;
+    if (proxy.proxyUsername) {
+        if (proxy.proxyPassword) {
+            tasks.setSecret(proxy.proxyPassword);
+        }
+        proxyAuthHeader = `Basic ${Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64')}`;
+    }
+    const proxyPort = Number(proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80));
+    return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader, tunnelTimeoutMs);
+}
 
 /**
  * Creates an HTTPS client backed by Node's built-in https module. Both the module
@@ -60,6 +218,7 @@ export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT
                     ? { ...headers, 'Content-Length': Buffer.byteLength(payload).toString() }
                     : headers,
                 rejectUnauthorized,
+                agent: buildProxyAgent(timeoutMs),
             };
             const req = https.request(options, (res) => {
                 const chunks: Buffer[] = [];

@@ -7,7 +7,7 @@ import { resolveRejectUnauthorized, resolveFailOnCallbackError } from '../src/ca
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const dir = path.join(os.tmpdir(), 'tdr-cb-fail');
+const dir = path.join(os.tmpdir(), 'tdr-cb-fail-nonfatal');
 fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const planFile = path.join(dir, 'plan.json');
@@ -26,10 +26,10 @@ tr.setInput('failOnDrift', 'false');
 tr.setInput('callbackUrl', 'https://tsm.example.com/drift');
 tr.setInput('callbackToken', 'super-secret-callback-token');
 tr.setInput('rejectUnauthorized', 'true');
-// failOnCallbackError intentionally left unset -- this exercises the fail-secure
-// default (an absent input still fails the task on a non-2xx callback).
+// failOnCallbackError disabled -> a non-2xx callback response must only warn.
+tr.setInput('failOnCallbackError', 'false');
 
-// Stub the callback transport to return a non-2xx status so the task fails.
+// Stub the callback transport to return a non-2xx status; the task must still succeed.
 tr.registerMock('./callback', {
     postJson: async () => ({ status: 500, body: 'internal error' }),
     postJsonWithRetry: async () => ({ status: 500, body: 'internal error' }),
