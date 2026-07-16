@@ -655,8 +655,9 @@ export abstract class BaseTerraformCommandHandler {
      * CURRENT state) independent of the main `show()` command that triggered it,
      * mirroring publishPlanSummaryAttachment's independent `show -json
      * <planFilePath>` call. Never fails the task on its own: a problem running or
-     * parsing `show -json` is reported as a warning and the attachment is
-     * skipped, exactly like the plan-summary path.
+     * parsing `show -json`, or building/serializing/attaching the digest, is
+     * reported as a warning and the attachment is skipped, exactly like the
+     * plan-summary path.
      */
     private async publishStateSummaryAttachment(
         workingDirectory: string,
@@ -683,10 +684,21 @@ export abstract class BaseTerraformCommandHandler {
             return;
         }
 
-        const digest = buildStateDigest(stateJson, this.buildDigestMeta(publishName, workingDirectory));
-        const digestPath = path.join(tempDir, `terraform-state-summary-${uuidV4()}.json`);
-        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
-        tasks.addAttachment('terraform-state-summary', digest.meta.name, digestPath);
+        // Build + attach is guarded (warn-and-skip) exactly like the show/parse
+        // steps above: the structured state summary must NEVER fail the task on
+        // its own. buildStateDigest is pure but fails closed by throwing on an
+        // unexpected shape, and its size-cap step (capDigestBytes) is the last
+        // line of defense against a multi-megabyte state -- so an unexpected
+        // throw here degrades to a skipped attachment, not a failed `terraform
+        // show` (the caller in show() awaits this with no try/catch of its own).
+        try {
+            const digest = buildStateDigest(stateJson, this.buildDigestMeta(publishName, workingDirectory));
+            const digestPath = path.join(tempDir, `terraform-state-summary-${uuidV4()}.json`);
+            fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+            tasks.addAttachment('terraform-state-summary', digest.meta.name, digestPath);
+        } catch (error) {
+            tasks.warning(`Could not build the structured state summary; skipping the 'terraform-state-summary' attachment: ${String(error)}`);
+        }
     }
 
     /**
