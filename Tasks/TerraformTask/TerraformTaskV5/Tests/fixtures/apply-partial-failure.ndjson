@@ -4,5 +4,5 @@
 {"@level":"info","@message":"aws_db_instance.bad: Creating...","@timestamp":"2026-07-15T11:00:02.100000Z","type":"apply_start","hook":{"resource":{"addr":"aws_db_instance.bad"},"action":"create"}}
 this line is not valid json {{{ and must be tolerated
 {"@level":"error","@message":"Error: creation failed","@timestamp":"2026-07-15T11:00:04.000000Z","type":"apply_errored","hook":{"resource":{"addr":"aws_db_instance.bad"},"action":"create"}}
-{"@level":"error","@message":"Error: invalid password value","@timestamp":"2026-07-15T11:00:04.100000Z","type":"diagnostic","diagnostic":{"severity":"error","summary":"invalid value for password: APPLYSECRET_pw_42","detail":"the supplied password APPLYSECRET_pw_42 was rejected by the provider","address":"aws_db_instance.bad"}}
+{"@level":"error","@message":"Error: invalid password value","@timestamp":"2026-07-15T11:00:04.100000Z","type":"diagnostic","diagnostic":{"severity":"error","summary":"invalid value for password: APPLYSECRET_pw_42_FAKEHIGHENTROPY_0123456789abcdef","detail":"the supplied password APPLYSECRET_pw_42_FAKEHIGHENTROPY_0123456789abcdef was rejected by the provider","address":"aws_db_instance.bad"}}
 {"@level":"info","@message":"Apply complete","@timestamp":"2026-07-15T11:00:04.200000Z","type":"change_summary","changes":{"add":1,"change":0,"remove":0,"operation":"apply"}}

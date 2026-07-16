@@ -108,6 +108,28 @@ describe('buildApplyDigest', () => {
       assert.ok(!d.diagnostics[0].detail!.includes('SEKRET_pw_value'));
     });
 
+    it('does NOT scrub a short low-entropy provider secret from summary with no knownSecrets (documented residual §5.10)', () => {
+      // Production passes knownSecrets:[]; the heuristic only catches long
+      // high-entropy runs / PEM. A short provider-echoed secret in a summary is
+      // therefore NOT redacted -- asserted here so the residual is VISIBLE in the
+      // suite rather than masked by an injected knownSecrets list (the exact gap
+      // recorded in SECURITY.md, mitigated by the includeDiagnostics opt-out).
+      const l = line({ type: 'diagnostic', diagnostic: { severity: 'error', summary: 'invalid value for password: hunter2short' } });
+      const d = buildApplyDigest(l, META);
+      assert.ok(d.diagnostics[0].summary.includes('hunter2short'), 'short low-entropy secret is a documented residual, not scrubbed');
+    });
+
+    it('omits the whole diagnostics array when includeDiagnostics is false, but still detects failure (§5.10 opt-out)', () => {
+      // The operator opt-out for the freeform-diagnostic residual: no summary/
+      // detail text reaches the attachment, yet outcome is still derived from the
+      // error diagnostic so the failure remains visible.
+      const l = line({ type: 'diagnostic', diagnostic: { severity: 'error', summary: 'invalid value for password: hunter2short', detail: 'secret hunter2short rejected', address: 'r.bad' } });
+      const d = buildApplyDigest(l, META, { includeDiagnostics: false });
+      assert.strictEqual(d.diagnostics.length, 0);
+      assert.strictEqual(d.outcome, 'failed');
+      assert.ok(!JSON.stringify(d).includes('hunter2short'), 'no freeform diagnostic text leaks when diagnostics are disabled');
+    });
+
     it('caps diagnostics keeping errors first, and notes the remainder', () => {
       const lines: string[] = [];
       for (let i = 0; i < 10; i++) lines.push(line({ type: 'diagnostic', diagnostic: { severity: 'warning', summary: `w${i}` } }));

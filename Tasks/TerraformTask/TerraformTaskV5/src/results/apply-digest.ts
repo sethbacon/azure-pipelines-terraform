@@ -18,9 +18,27 @@ import { DigestMeta, DigestByteLimits, capNotes } from './plan-digest';
 
 /** Apply-specific build options (diagnostic handling + the byte-cap test seam). */
 export interface ApplyDigestOptions extends DigestByteLimits {
+  /**
+   * Emit diagnostic freeform text at all? Default true (safe-default mode
+   * includes `summary` + `address`). Setting false is the operator opt-OUT for
+   * the provider-echoed-secret residual (§5.4/§5.10): the whole `diagnostics`
+   * array is omitted so no freeform provider text (`summary`/`detail`) reaches
+   * the attachment — the failure is still detectable via `outcome` and the
+   * agent-secret-masked live console log. `includeDiagnosticDetail` is the
+   * narrower opt-in that only adds the longer `detail`; this is the broader
+   * opt-out that removes both.
+   */
+  includeDiagnostics?: boolean;
   /** Include scrubbed diagnostic `detail`? Safe default false (§5.4). */
   includeDiagnosticDetail?: boolean;
-  /** Secrets the task registered via setSecret, for freeform diagnostic scrub. */
+  /**
+   * Secrets to string-replace out of freeform diagnostics. NOTE: the production
+   * call site passes `[]` — the task has no general readback of every value it
+   * registered via setSecret() across the provider handlers, so in production
+   * the freeform scrub relies on secret-scrub.ts's PEM/high-entropy heuristic
+   * alone (documented residual — SECURITY.md / §5.10). This parameter remains a
+   * supported input for callers/tests that DO know specific secrets.
+   */
   knownSecrets?: string[];
 }
 
@@ -44,6 +62,7 @@ interface ResAcc {
  */
 export function buildApplyDigest(ndjson: string, meta: DigestMeta, options?: ApplyDigestOptions): ApplyDigest {
   const ctx = newRedactContext();
+  const includeDiagnostics = options?.includeDiagnostics !== false;
   const includeDetail = options?.includeDiagnosticDetail === true;
   const knownSecrets = options?.knownSecrets ?? [];
 
@@ -106,10 +125,13 @@ export function buildApplyDigest(ndjson: string, meta: DigestMeta, options?: App
         break;
       }
       case 'diagnostic': {
+        // Always build so an error-severity diagnostic still flips the outcome
+        // to 'failed' even when emission is disabled; only push (emit the
+        // freeform text) when diagnostics are included (§5.10 opt-out).
         const diag = buildDiagnostic(e, includeDetail, knownSecrets);
         if (diag) {
           if (diag.severity === 'error') sawErrorDiag = true;
-          diagnostics.push(diag);
+          if (includeDiagnostics) diagnostics.push(diag);
         }
         break;
       }

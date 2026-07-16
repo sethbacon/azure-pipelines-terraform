@@ -469,6 +469,15 @@
             "helpMarkDown": "Include the longer `detail` field of each apply diagnostic (error/warning) in the structured summary published by 'Publish structured apply summary', in addition to the shorter `summary` field that is always included. `detail` is freeform text a provider can construct from user/resource input, so it carries more residual risk of an unrecognized secret slipping through the best-effort scrub than `summary` does; defaults to off so the safer, more conservative summary-only mode is the default. Has no effect unless 'Publish structured apply summary' is also set."
         },
         {
+            "name": "includeDiagnostics",
+            "type": "boolean",
+            "label": "Include diagnostics in structured apply summary",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "command = apply",
+            "helpMarkDown": "Include apply diagnostics (error/warning `summary`/`detail`) in the structured summary published by 'Publish structured apply summary'. Diagnostics are freeform text a provider can construct from user/resource input; the task applies a best-effort scrub (long high-entropy/base64/hex runs, PEM blocks) but a short provider-echoed secret can still slip through, and the attachment is readable by anyone with build-read on the pipeline. Set to **false** to omit the diagnostics entirely — the apply outcome and per-resource status are still published, and the full error text remains in the (agent-secret-masked) live job log. Defaults to on. Has no effect unless 'Publish structured apply summary' is also set."
+        },
+        {
             "name": "environmentServiceNameAzureRM",
             "type": "connectedService:AzureRM",
             "label": "Azure Provider Service Connection",

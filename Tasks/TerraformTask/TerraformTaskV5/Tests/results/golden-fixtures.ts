@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildPlanDigest, DigestMeta } from '../../src/results/plan-digest';
-import { buildApplyDigest, ApplyDigestOptions } from '../../src/results/apply-digest';
+import { buildApplyDigest } from '../../src/results/apply-digest';
 import { serializeDigest } from '../../src/results/redact';
 
 // Shared fixture manifest + build helper for the golden regression suite
@@ -36,8 +36,6 @@ export interface FixtureSpec {
   kind: 'plan' | 'apply';
   /** fake secret literals that MUST NOT appear in the serialized digest */
   secrets: string[];
-  /** secrets the task would have registered via setSecret (apply scrub input) */
-  knownSecrets?: string[];
 }
 
 export const FIXTURES: FixtureSpec[] = [
@@ -55,20 +53,28 @@ export const FIXTURES: FixtureSpec[] = [
   { input: 'plan-drift.json', expected: 'plan-drift.expected.json', kind: 'plan', secrets: [] },
   { input: 'apply-success.ndjson', expected: 'apply-success.expected.json', kind: 'apply', secrets: [] },
   {
+    // Runs with PRODUCTION's empty knownSecrets (the call site passes []), so the
+    // golden reflects what actually ships: the diagnostic summary is redacted by
+    // the PEM/high-entropy heuristic ALONE (the secret here is a long high-entropy
+    // run the heuristic catches), NOT by any setSecret readback. The short-secret
+    // residual the heuristic cannot catch is asserted separately in ApplyDigestL0.
     input: 'apply-partial-failure.ndjson',
     expected: 'apply-partial-failure.expected.json',
     kind: 'apply',
-    secrets: ['APPLYSECRET_pw_42'],
-    knownSecrets: ['APPLYSECRET_pw_42'],
+    secrets: ['APPLYSECRET_pw_42_FAKEHIGHENTROPY_0123456789abcdef'],
   },
 ];
 
-/** Build the digest for a fixture and return the canonical serialized form. */
+/**
+ * Build the digest for a fixture and return the canonical serialized form.
+ * Apply fixtures are built with NO options so the golden mirrors the production
+ * call site exactly (empty knownSecrets, includeDiagnosticDetail off,
+ * includeDiagnostics on) — see base-terraform-command-handler.ts.
+ */
 export function serializeFixture(spec: FixtureSpec): string {
   const raw = fs.readFileSync(path.join(FIXTURES_DIR, spec.input), 'utf8');
   if (spec.kind === 'plan') {
     return serializeDigest(buildPlanDigest(JSON.parse(raw), PLAN_META));
   }
-  const options: ApplyDigestOptions = { knownSecrets: spec.knownSecrets ?? [] };
-  return serializeDigest(buildApplyDigest(raw, APPLY_META, options));
+  return serializeDigest(buildApplyDigest(raw, APPLY_META));
 }
