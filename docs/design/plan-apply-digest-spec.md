@@ -286,7 +286,7 @@ The `caps.ts` constants are the only place these numbers live. On any cap, the p
 | attributes / **state** resource | `MAX_STATE_ATTRS_PER_RESOURCE` | 200 | keep attrs **alphabetically** by name, note remainder | state builder |
 | bytes / `RedactedValue.json` | `MAX_REDACTED_VALUE_BYTES` | 4096 (4 KB) | emit `{kind:"omitted",reason:"too-large"}` | `redactValue` |
 | diagnostics | `MAX_DIAGNOSTICS` | 500 | keep all **errors first**, then warnings, note remainder | apply builder |
-| total digest bytes (soft) | `SOFT_MAX_DIGEST_BYTES` | 5·1024² (5 MB) | drop `attributeChanges` arrays (keep rows + summary), set `truncated` | builder, post-assembly |
+| total digest bytes (soft) | `SOFT_MAX_DIGEST_BYTES` | 5·1024² (5 MB) | drop the heavy per-resource arrays (plan `attributeChanges` / state `attributes`; apply drops diagnostic `detail`), keep rows + summary, set `truncated` | builder, post-assembly |
 | total digest bytes (hard) | `HARD_MAX_DIGEST_BYTES` | 12·1024² (12 MB) | attach a **summary-only** digest | builder, post-assembly |
 | tab parse ceiling | `TAB_PARSE_CEILING_BYTES` | 16·1024² (16 MB) | refuse structured render, offer raw/download | tab (`digest-model`) |
 | tab rendered rows | `TAB_MAX_RENDERED_ROWS` | 2000 | banner "list truncated" | tab (list components) |

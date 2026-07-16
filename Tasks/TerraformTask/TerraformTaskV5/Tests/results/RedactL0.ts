@@ -8,8 +8,8 @@ import {
   serializeDigest,
   capDigestBytes,
 } from '../../src/results/redact';
-import { PlanDigest, ApplyDigest } from '../../src/results/digest-schema';
-import { MAX_REDACTED_VALUE_BYTES } from '../../src/results/caps';
+import { PlanDigest, ApplyDigest, StateDigest, StateResource } from '../../src/results/digest-schema';
+import { MAX_REDACTED_VALUE_BYTES, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from '../../src/results/caps';
 
 // The exhaustive redaction matrix (design §12.2). Redaction is the #1 control:
 // a gap here is a secret disclosure, so every sensitivity source, the
@@ -289,6 +289,60 @@ describe('capDigestBytes — digest-level byte ceilings (§3)', () => {
     const out = capDigestBytes(d, 2000, 20 * 1024 * 1024);
     assert.ok(out.diagnostics.every((x) => x.detail === undefined), 'diagnostic detail dropped');
     assert.strictEqual(out.truncated, true);
+  });
+
+  // Regression (§3): a StateDigest must reduce like plan/apply, not crash. Before
+  // the fix, the soft-ceiling branch routed every non-plan digest (including
+  // kind:"state") into dropApplyDiagnosticDetail, which iterates `d.diagnostics`
+  // — a field a StateDigest does not have — throwing `d.diagnostics is not
+  // iterable` and failing the whole task on any large real-world state.
+  function stateWithAttrs(resourceCount: number, attrsPerResource: number, valueBytes: number): StateDigest {
+    const resources: StateResource[] = [];
+    for (let i = 0; i < resourceCount; i++) {
+      const attributes: StateResource['attributes'] = [];
+      for (let j = 0; j < attrsPerResource; j++) {
+        attributes.push({ name: `attr${j}`, value: { kind: 'value', json: '"' + 'a'.repeat(valueBytes) + '"' } });
+      }
+      resources.push({ address: `res.${i}`, type: 'x', name: `${i}`, providerName: 'p', mode: 'managed', attributes });
+    }
+    return {
+      schemaVersion: 1,
+      kind: 'state',
+      producedBy: { task: 'TerraformTaskV5', taskVersion: 't' },
+      tool: { name: 'terraform', version: '1' },
+      meta: { name: 'n', createdIso: 'i' },
+      truncated: false,
+      resources,
+      outputs: [],
+      summary: { resourceCount, dataSourceCount: 0 },
+    };
+  }
+
+  it('state digest over the REAL soft ceiling: no throw, drops attributes arrays, keeps rows + summary', () => {
+    // ~8 resources x 200 attrs x ~4KB each ≈ 6.5MB > SOFT (5MB), < HARD (12MB):
+    // a realistic large state (IAM policies, base64 user_data, cert bundles).
+    const d = stateWithAttrs(8, 200, 4096);
+    assert.ok(utf8ByteLength(serializeDigest(d)) > SOFT_MAX_DIGEST_BYTES, 'fixture must actually exceed the soft ceiling');
+    assert.ok(utf8ByteLength(serializeDigest(d)) < HARD_MAX_DIGEST_BYTES, 'fixture must stay under the hard ceiling');
+    let out!: StateDigest;
+    assert.doesNotThrow(() => {
+      out = capDigestBytes(d, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES);
+    });
+    assert.strictEqual(out.resources.length, 8, 'resource rows preserved');
+    assert.ok(out.resources.every((r) => r.attributes.length === 0), 'attribute arrays dropped');
+    assert.strictEqual(out.truncated, true);
+    assert.ok((out.truncationNotes ?? []).some((n) => n.includes('soft size ceiling')));
+  });
+
+  it('state digest over hard ceiling: collapses to a state summary-only digest', () => {
+    const d = stateWithAttrs(20, 5, 200);
+    const out = capDigestBytes(d, 500, 800);
+    assert.strictEqual(out.kind, 'state', 'stays a state digest');
+    assert.strictEqual(out.resources.length, 0, 'summary-only drops resource rows');
+    assert.strictEqual(out.outputs.length, 0);
+    assert.strictEqual(out.truncated, true);
+    assert.deepStrictEqual(out.summary, d.summary, 'summary counts preserved');
+    assert.ok((out.truncationNotes ?? []).some((n) => n.includes('hard size ceiling')));
   });
 
   it('serializeDigest is deterministic pretty JSON', () => {

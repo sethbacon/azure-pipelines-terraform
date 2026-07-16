@@ -272,8 +272,14 @@ export function capDigestBytes<T extends Digest>(digest: T, softMax: number, har
 
   if (digest.kind === 'plan') {
     dropPlanAttributeArrays(digest as PlanDigest);
-  } else {
+  } else if (digest.kind === 'apply') {
     dropApplyDiagnosticDetail(digest as ApplyDigest);
+  } else {
+    // A StateDigest has no `diagnostics`; shed its heavy per-resource `attributes`
+    // arrays (keep resource rows + summary), mirroring the plan reduction. Without
+    // this branch a state over the soft ceiling fell into dropApplyDiagnosticDetail
+    // and threw `d.diagnostics is not iterable`, failing the whole task.
+    dropStateAttributeArrays(digest as StateDigest);
   }
   digest.truncated = true;
   addNote(digest, 'digest exceeded soft size ceiling; dropped detailed change arrays');
@@ -291,6 +297,10 @@ function dropPlanAttributeArrays(d: PlanDigest): void {
 
 function dropApplyDiagnosticDetail(d: ApplyDigest): void {
   for (const diag of d.diagnostics) delete diag.detail;
+}
+
+function dropStateAttributeArrays(d: StateDigest): void {
+  for (const r of d.resources) r.attributes = [];
 }
 
 function addNote(d: Digest, msg: string): void {

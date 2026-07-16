@@ -257,7 +257,7 @@ Apply/plan **diagnostics are freeform strings** that Terraform/providers may bui
 | drift resources | 2000 | keep first 2000 in address order, set `truncated`, note remainder |
 | applied-before-failure addresses | 2000 (reuses resources) | keep first 2000, set `truncated`, note remainder |
 | truncationNotes | 1000 | keep first 1000, collapse remainder into one count note |
-| total digest bytes (soft) | 5 MB | drop `attributeChanges` arrays (keep resource rows + summary), set `truncated` |
+| total digest bytes (soft) | 5 MB | drop the heavy per-resource arrays (plan `attributeChanges` / state `attributes`; apply drops diagnostic `detail`), keep resource rows + summary, set `truncated` |
 | total digest bytes (hard) | 12 MB | attach summary-only digest |
 | tab parse ceiling | 16 MB | refuse structured render, offer raw/download |
 | tab rendered rows (before virtualize/cap) | 2000 | banner "list truncated" |
