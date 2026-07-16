@@ -174,6 +174,29 @@ Execute Terraform commands. Most pipelines combine `init` → `plan` → `apply`
     environmentServiceNameAzureRM: 'my-azure-service-connection'
 ```
 
+#### Apply with a structured summary (Terraform tab)
+
+`publishApplyResults` publishes a redacted, structured JSON summary (per-resource
+status/timing, outputs, diagnostics) to the **Terraform** tab's Apply pivot,
+alongside the plain apply. `includeDiagnosticDetail` is opt-in (default `false`)
+because the longer diagnostic `detail` field is freeform provider text with more
+residual leak risk than the always-included `summary` field — see
+[SECURITY.md](../SECURITY.md).
+
+```yaml
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Apply'
+  condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], 'true'))
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+    commandOptions: 'tfplan'
+    environmentServiceNameAzureRM: 'my-azure-service-connection'
+    publishApplyResults: 'MyApply'
+    includeDiagnosticDetail: false   # default; set true only if you accept the residual leak risk
+```
+
 #### Destroy (AzureRM)
 
 ```yaml

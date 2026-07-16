@@ -5,7 +5,7 @@
 
 An Azure DevOps extension for installing and running Terraform in build and release pipelines, supporting Azure, AWS, GCP, and OCI.
 
-This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS and GCP, flexible installer download sources, a Terraform Plan results tab, SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
+This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS and GCP, flexible installer download sources, a structured Terraform results tab (Plan/Apply pivots, redacted), SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
 
 ---
 
@@ -101,7 +101,8 @@ Runs Terraform commands. Supports 16 commands:
 
 | Input                | Applies to                                     | Default     | Description                                                                                                                                                                                                                                    |
 | --------------------- | ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `publishPlanResults`  | `plan`                                          | —           | Name for a plan published to the **Terraform Plan** results tab (e.g. `production`). Leave empty to disable.                                                                                                                                  |
+| `publishPlanResults`  | `plan`                                          | —           | Name for a plan published as a raw (ANSI-colored) attachment to the **Terraform** results tab (e.g. `production`). Leave empty to disable. Independent of `publishPlanSummary` below — either, both, or neither may be enabled.               |
+| `publishPlanSummary`  | `plan`                                          | —           | Name for a **structured, redacted** JSON summary of the plan (resource changes, outputs, drift) published to the **Terraform** results tab's Plan pivot. Leave empty to disable. Adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it to build the summary; every sensitive value renders as `(sensitive)`. Redaction relies on Terraform correctly marking values `sensitive` (`after_sensitive`/`sensitive_values`) — see [SECURITY.md](SECURITY.md). |
 | `secureVarsFile`      | `plan`, `apply`, `destroy`, `import`, `refresh` | —           | A `.tfvars` file from the ADO Secure Files library, downloaded to a temp path and passed as `-var-file`, then deleted after execution.                                                                                                        |
 | `terraformVariables`  | `plan`, `apply`, `destroy`, `import`, `refresh` | —           | Newline-separated `key=value` pairs, each passed as `-var`. Not for secrets — command-line `-var` values can be visible in process listings/logs; use `secureVarsFile` or `TF_VAR_` pipeline secret variables instead.                       |
 | `replaceAddress`      | `plan`, `apply`                                 | —           | Forces replacement of a resource address via `-replace=ADDRESS` (Terraform 1.0+).                                                                                                                                                             |
@@ -128,6 +129,8 @@ Runs Terraform commands. Supports 16 commands:
 | `filename`            | `show`/`custom` when `outputTo = file` (required) | —         | Path (relative to `workingDirectory`) to write the command output to.                                                                                                                                                                          |
 | `cleanupOutputFile`   | `output`                                        | `false`     | Deletes the `output`-command's JSON file (every output's real value, **including any marked `sensitive`**) when the step finishes. **Retained by default** so downstream steps can read it via the `jsonOutputVariablesPath` output variable — enable this if a step only needs the auto-set `TF_OUT_*` pipeline variables (see below) and not the file itself, especially on a self-hosted agent whose working directory persists between jobs. |
 | `failOnSensitiveOutputs` | `output`, `show`                             | `false`     | Fails the task (instead of only warning) when an `output`/`show` JSON output file would retain cleartext `sensitive = true` outputs on disk; the file is deleted at the end of the step on failure. Depends on the module declaring its outputs `sensitive` — same limitation as the `TF_OUT_*` masking described below. |
+| `publishApplyResults` | `apply`                                        | —           | Name for a **structured, redacted** JSON summary of the apply (per-resource status/timing, outputs, diagnostics) published to the **Terraform** results tab's Apply pivot. Leave empty to disable. Runs apply with `-json` instead of Terraform's normal human-readable output; each event's own human-readable message is still echoed to the console so the live log is unaffected. Apply still fails the task on a non-zero exit exactly as when this is disabled. |
+| `includeDiagnosticDetail` | `apply`                                     | `false`     | Include the longer `detail` field of each apply diagnostic (error/warning) in the summary published by `publishApplyResults`, in addition to the always-included `summary` field. `detail` is freeform provider text with more residual leak risk than `summary` (best-effort scrub only); has no effect unless `publishApplyResults` is also set. |
 
 #### Provider authentication inputs
 
@@ -209,6 +212,19 @@ Backend inputs are also required on non-`init` state-accessing commands when the
 | `showFilePath`               | Path to the `show` command's output file. Set only when `command = show` and `outputTo = file`.                                          |
 | `customFilePath`             | Path to the `custom` command's output file. Set only when `command = custom` and `outputTo = file`.                                      |
 | `TF_OUT_<name>`              | On `command = output`, every Terraform output is auto-set as a pipeline variable named `TF_OUT_<output name>`. **The variable is masked as secret only when the module declares that output `sensitive = true`** in its own Terraform configuration — an output a module author forgot to mark `sensitive` is written as an unmasked pipeline variable, even though `terraform output -json` itself always emits every value (including sensitive ones) in cleartext. Values that fail a length/printable-ASCII sanity check are skipped (with a task warning) rather than set. Do not rely on `TF_OUT_*` masking as the sole safeguard for a module whose `sensitive` annotations you don't fully trust. |
+
+#### Structured Terraform results tab
+
+Setting `publishPlanSummary` and/or `publishApplyResults` (in addition to, or instead of, the legacy `publishPlanResults`) publishes a **structured, redacted JSON summary** to the pipeline results **Terraform** tab, which has two pivots:
+
+- **Plan** — an overview list of every published plan for the run (name + add/change/destroy/replace counts and drift badge), a summary header, a grouped/filterable resource list, and a per-resource attribute diff (before → after).
+- **Apply** — an overview list of every published apply for the run, a per-resource status/timing timeline, an outputs panel, and a diagnostics panel (errors/warnings).
+
+Both pivots also show a **raw fallback**: legacy `publishPlanResults` attachments (and any digest the tab cannot parse) still render as ANSI-colored text, unchanged.
+
+**Redaction.** Every value in the structured summary has already been redacted by the task before it is attached — a sensitive value (per Terraform's own `after_sensitive`/`before_sensitive`/`sensitive_values`/`outputs[].sensitive` marks) renders as `(sensitive)`, and a not-yet-known value renders as `(known after apply)`. The tab itself never receives the underlying value. See [SECURITY.md](SECURITY.md) for the residual risks this depends on.
+
+**Same-run only.** The tab only loads attachments from the current pipeline run (build ID) — it does not correlate or display a plan/apply summary from a different run, and there is no cross-run plan↔apply pairing.
 
 ---
 

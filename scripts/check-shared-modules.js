@@ -141,6 +141,14 @@ const FAMILIES = [
             'digest-schema.ts',
             'caps.ts',
         ],
+        // NOTE: redact.ts (the recursive redaction core) is NOT listed here. It
+        // has only one copy — Tasks/TerraformTask/TerraformTaskV5/src/results/
+        // redact.ts — since only the task PRODUCES a digest; the tab CONSUMES an
+        // already-redacted one and never re-implements redaction. There is
+        // nothing to byte-compare it against, so it is deliberately excluded
+        // from this family rather than silently forgotten (design §9/§5.2.6).
+        // If a redact.ts (or equivalent) copy is ever bundled into src/tab/, add
+        // it to `modules` above in the same commit.
     },
 ];
 

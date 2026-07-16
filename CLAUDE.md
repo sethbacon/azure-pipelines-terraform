@@ -146,9 +146,14 @@ azure-pipelines-terraform/
 │   └── PublishKbArticle/
 │       └── PublishKbArticleV1/          # Publish/update ServiceNow KB articles
 ├── src/
-│   └── tab/                           # Terraform Plan tab UI (React + ADO Extension SDK)
-│       ├── tabContent.tsx             # Tab component with ANSI rendering
+│   └── tab/                           # Terraform results tab UI (React + ADO Extension SDK)
+│       ├── tabContent.tsx             # Tab component: Plan/Apply pivots, overview lists, raw ANSI fallback
 │       ├── tabContent.css             # Tab styling
+│       ├── digest-model.ts            # Safe parse/validate of a fetched digest attachment into typed objects
+│       ├── digest-schema.ts           # Digest TypeScript shape — byte-identical copy of the task's src/results/digest-schema.ts
+│       ├── caps.ts                    # Size/DoS caps — byte-identical copy of the task's src/results/caps.ts
+│       ├── ansi-to-html.ts            # SGR-to-HTML converter used only by the raw fallback view
+│       ├── components/                # Presentational components (SummaryHeader, ResourceList, ResourceDiff, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, RawView)
 │       ├── index.html                 # Tab HTML shell
 │       └── tsconfig.json              # Tab TypeScript config
 ├── configs/                           # Extension manifest configs
@@ -183,6 +188,21 @@ azure-pipelines-terraform/
 | `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
 | `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
 
+### Structured plan/apply results (`src/results/`)
+
+Builds the redacted JSON digests published to the **Terraform** tab (see `docs/design/plan-apply-digest-spec.md` for the frozen schema/redaction contract):
+
+| File                | Role                                                                                                     |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `digest-schema.ts`  | The `PlanDigest`/`ApplyDigest` TypeScript shape (schemaVersion 1) — byte-identical copy in `src/tab/`, gated by `scripts/check-shared-modules.js` |
+| `caps.ts`           | Size/DoS caps (max resources, max attribute changes, byte ceilings, etc.) — byte-identical copy in `src/tab/`, same gate |
+| `redact.ts`         | The recursive redaction core: converts a raw value + its `*_sensitive`/`*_unknown` mask maps into a `RedactedValue`, fail-closed on mask/value shape mismatch |
+| `plan-digest.ts`    | Builds a `PlanDigest` from a parsed `terraform show -json <planfile>` object                              |
+| `apply-digest.ts`   | Builds an `ApplyDigest` from the `terraform apply -json` NDJSON event stream                               |
+| `secret-scrub.ts`   | Freeform-text scrub for apply diagnostics (known-secret string replacement + entropy/format heuristic) and attachment-name sanitization |
+
+`redact.ts` has only one copy (task-side); it is not duplicated into `src/tab/`, so it is intentionally not in the `check-shared-modules.js` parity families.
+
 ### Provider dispatch pattern
 
 `ParentCommandHandler.execute(provider, command)` selects the handler via switch/case, then calls `handler[command]()` dynamically. For `init`, the `backendType` input selects the handler (backend/provider are decoupled). For all other commands, the `provider` input selects the handler.
@@ -194,8 +214,8 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 
 - **`init`** - calls `handleBackend()` then runs `terraform init -backend-config=...`
 - **`validate`** - runs `terraform validate` (no auth needed)
-- **`plan`** - calls `handleProvider()`, runs with `-detailed-exitcode`, sets `changesPresent` output variable. When `publishPlanResults` is set, captures stdout and publishes as `terraform-plan-results` pipeline attachment for the Terraform Plan tab.
-- **`apply`** - calls `handleProvider()`, forces `-auto-approve` if not already present
+- **`plan`** - calls `handleProvider()`, runs with `-detailed-exitcode`, sets `changesPresent` output variable. When `publishPlanResults` is set, captures stdout and publishes as `terraform-plan-results` pipeline attachment (raw fallback view). When `publishPlanSummary` is set, adds `-out=<tempfile>`, runs `terraform show -json` on it, builds a redacted `PlanDigest` (`src/results/plan-digest.ts`), and publishes it as `terraform-plan-summary` for the Terraform tab's Plan pivot. The two are independent and can both be enabled.
+- **`apply`** - calls `handleProvider()`, forces `-auto-approve` if not already present. When `publishApplyResults` is set, runs apply with `-json`, echoes each event's `@message` to the console (preserving the live log), builds a redacted `ApplyDigest` (`src/results/apply-digest.ts`, honoring `includeDiagnosticDetail`), and publishes it as `terraform-apply-summary` for the Apply pivot; exit-code/failure semantics are unchanged.
 - **`destroy`** - calls `handleProvider()`, forces `-auto-approve` if not already present
 - **`show`** - calls `handleProvider()`, supports `outputTo=console|file` and `outputFormat=json|default`
 - **`output`** - calls `handleProvider()`, always uses `-json`, writes to file, sets `jsonOutputVariablesPath`
@@ -375,7 +395,7 @@ Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runn
 - `<Name>.ts` - test data/mock setup (mock runner)
 - `<Name>L0.ts` - the actual mocha test using `MockTestRunner`
 
-Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`, `ValidateTests/`, `WorkspaceTests/`, `StateTests/`, `FmtTests/`, `GetTests/`, `TestCommandTests/`, `ShowTests/`, `OutputTests/`, `CustomTests/`, `ImportTests/`, `ForceUnlockTests/`, `RefreshTests/`.
+Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTests/`, `DestroyTests/`, `MultipleProviderTests/`, `ValidateTests/`, `WorkspaceTests/`, `StateTests/`, `FmtTests/`, `GetTests/`, `TestCommandTests/`, `ShowTests/`, `OutputTests/`, `CustomTests/`, `ImportTests/`, `ForceUnlockTests/`, `RefreshTests/`. `Tests/results/` holds pure-logic tests for the `src/results/` digest builders/redaction (`RedactL0.ts`, `PlanDigestL0.ts`, `ApplyDigestL0.ts`, `SecretScrubL0.ts`, `GoldenFixturesL0.ts`); `Tests/fixtures/` holds the scrubbed golden `show -json`/`apply -json` corpus and its `.expected.json` digests.
 
 ### Personal dev publishing
 
@@ -446,7 +466,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 - Installer verifies GPG signature of SHA256SUMS before trusting checksums for HashiCorp downloads
 - Client secret (ServicePrincipal) auth is deprecated in V5 and will be removed in a future version
 - `taint`/`untaint` are NOT supported (removed in Terraform 1.0); use the `-replace` flag on `plan`/`apply` instead
-- The **Terraform Plan tab** is a build-results-tab extension contribution that reads `terraform-plan-results` pipeline attachments. The tab UI is in `src/tab/` and bundled via webpack. The attachment type and naming convention is compatible with jason-johnson/azure-pipelines-tasks-terraform for migration.
+- The **Terraform tab** (`terraform-plan-tab` contribution, displayed as "Terraform") is a build-results-tab extension contribution with Plan/Apply pivots. It reads three attachment types: the legacy `terraform-plan-results` (raw ANSI, compatible with jason-johnson/azure-pipelines-tasks-terraform for migration) plus the new `terraform-plan-summary`/`terraform-apply-summary` (redacted structured JSON digests, schemaVersion 1). The tab UI is in `src/tab/` and bundled via webpack; it only fetches attachments for the current build (same-run only — no cross-run plan↔apply correlation).
 
 ## Repository Security Hardening (applied 2026-04-09)
 
