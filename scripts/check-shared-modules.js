@@ -123,6 +123,25 @@ const FAMILIES = [
             'uri-scheme-guard.ts',
         ],
     },
+    {
+        // Frozen plan/apply digest CONTRACT shared between the task that PRODUCES
+        // the redacted digest (src/results/) and the build-results tab that
+        // CONSUMES it (src/tab/). digest-schema.ts is the versioned TypeScript
+        // shape; caps.ts is the single source of the §6 size/DoS limits. A drift
+        // between producer and consumer here would silently break redaction/size
+        // guarantees or the render contract, so keep byte-identical (design
+        // decision D4). NOTE: unlike the installer families above, the second dir
+        // is the repo-root tab source (not under Tasks/), so the self-test
+        // (scripts/test-check-shared-modules.js) copies src/ as well as Tasks/.
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/src/results',
+            'src/tab',
+        ],
+        modules: [
+            'digest-schema.ts',
+            'caps.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even

@@ -32,6 +32,11 @@ let failed = false;
 
 try {
     fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
+    // The digest-contract family (digest-schema.ts / caps.ts) pairs a task copy
+    // under Tasks/ with the repo-root tab copy under src/tab, so the scratch tree
+    // must include src/ for check-shared-modules.js to find both copies on the
+    // clean run. The divergence case below still targets a Tasks/ file.
+    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
 
     const cleanResult = runCheck(scratchDir);
     if (cleanResult.status !== 0) {
