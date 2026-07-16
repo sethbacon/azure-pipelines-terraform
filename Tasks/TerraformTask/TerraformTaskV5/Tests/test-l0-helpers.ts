@@ -69,3 +69,37 @@ export async function runViaParentHandler(
     }
 }
 
+/**
+ * Runs an async callback while capturing everything written to process.stdout,
+ * restoring the original writer afterward (even if the callback throws). Used
+ * by scenarios that need to inspect the raw ##vso[...] logging commands a
+ * command emits -- e.g. an attachment's type/name, or -- for a backward-compat
+ * regression -- confirming no *additional* attachment command was emitted.
+ */
+export async function captureStdout(fn: () => Promise<void>): Promise<string> {
+    let captured = '';
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    (process.stdout.write as unknown as (chunk: unknown, ...args: unknown[]) => boolean) = (chunk: unknown, ...args: unknown[]): boolean => {
+        captured += chunk!.toString();
+        return (originalWrite as unknown as (...a: unknown[]) => boolean)(chunk, ...args);
+    };
+    try {
+        await fn();
+    } finally {
+        process.stdout.write = originalWrite;
+    }
+    return captured;
+}
+
+/**
+ * Extracts the first `##vso[task.addattachment type=T;name=N;]<path>` match
+ * for the given attachment type, or null. azure-pipelines-task-lib's
+ * TaskCommand.toString() appends a trailing `;` after EVERY property
+ * (`key=value;`), so the name capture must stop at `;` as well as `]`.
+ */
+export function findAttachmentCommand(stdout: string, type: string): { name: string; path: string } | null {
+    const re = new RegExp(`##vso\\[task\\.addattachment type=${type};name=([^;\\]]*)[;]?\\](.+)`);
+    const match = stdout.match(re);
+    if (!match) return null;
+    return { name: match[1], path: match[2].trim() };
+}
