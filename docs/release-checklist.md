@@ -9,7 +9,7 @@ Manual verification steps to run before publishing a release to the VS Marketpla
 - [ ] All CI checks pass on `main` (release-please opens the Release PR from `main`)
 - [ ] Version in `azure-devops-extension.json` matches the intended tag (e.g. `1.0.0` for `v1.0.0`) — release-please sets this in the Release PR
 - [ ] `CHANGELOG.md` has an entry for the release version (release-please generates this)
-- [ ] **Minor bumps (mandatory):** every task whose `src/` changed since the last release tag has its `Minor` incremented in `task.json`. ADO agents cache tasks by `Major.Minor`, so a code (especially security) fix to an un-bumped task would ship to the Marketplace but never reach running agents. The release `guard` job enforces this via `scripts/check-minor-bumps.js`; run it locally too: `node scripts/check-minor-bumps.js` (defaults to comparing `HEAD` against the previous `v*` tag).
+- [ ] **Minor bumps (now automated):** every task whose `src/` changed since the last release tag must have its `Minor` incremented in `task.json`. ADO agents cache tasks by `Major.Minor`, so a code (especially security) fix to an un-bumped task would ship to the Marketplace but never reach running agents. This is applied **automatically** on the Release PR by `.github/workflows/release-pr-minor-bumps.yml` (which runs `scripts/bump-minor-versions.js`), enforced as the required `Release PR Minor Bumps` merge gate in `pr-checks.yml`, and re-checked by the release `guard` job at tag time — so normally there is nothing to do here beyond confirming the gate is green. If the automation is broken, apply the bumps yourself (run `node scripts/bump-minor-versions.js` from the repo root, or edit by hand) and verify with `node scripts/check-minor-bumps.js` (defaults to comparing `HEAD` against the previous `v*` tag).
 - [ ] **Sibling-fork scan (recurring):** skim recent commits/issues in [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) and [jason-johnson/azure-pipelines-tasks-terraform](https://github.com/jason-johnson/azure-pipelines-tasks-terraform) since the last release for auth- or security-relevant fixes or reports worth reviewing or backporting to this fork.
 
 ## 2. Build the `.vsix` locally
@@ -129,7 +129,7 @@ Use a minimal Terraform configuration with an AzureRM backend and provider.
 Releases are automated by release-please — do NOT hand-tag.
 
 - [ ] Conventional-commit PRs are merged to `main`; release-please accumulates them into a **Release PR** ("chore(main): release X.Y.Z") that bumps `azure-devops-extension.json` and updates `CHANGELOG.md`
-- [ ] Before merging the Release PR, confirm the per-task `Minor` bumps (see section 1) — bump any missed task in the same PR
+- [ ] Before merging the Release PR, confirm the `Release PR Minor Bumps` gate is green — the per-task `Minor` bumps are auto-applied on the Release PR (see section 1); only intervene if the gate is red
 - [ ] Merge the Release PR — release-please pushes the `vX.Y.Z` tag automatically (the `guard` job fails the release if the tag version doesn't match `azure-devops-extension.json`)
 - [ ] The `release.yml` workflow triggers on the tag: verifies the tag is on `main`, runs full CI + the Minor-bump check, builds the `.vsix`, generates SBOMs + cosign signature, and creates a draft GitHub release
 - [ ] Approve the `marketplace` environment deployment when prompted

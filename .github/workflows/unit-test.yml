@@ -28,6 +28,8 @@ jobs:
         run: node scripts/test-check-versions.js
       - name: Self-test check-minor-bumps.js
         run: node scripts/test-check-minor-bumps.js
+      - name: Self-test bump-minor-versions.js
+        run: node scripts/test-bump-minor-versions.js
       - name: Self-test check-task-list.js
         run: node scripts/test-check-task-list.js
       - name: Check for mojibake encoding corruption

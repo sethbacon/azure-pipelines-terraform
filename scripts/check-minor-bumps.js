@@ -9,6 +9,11 @@
 //   prevRef defaults to the newest v*.*.* tag that is not the current HEAD commit
 //           (i.e. the previous release); currRef defaults to HEAD.
 // Only changes under <task>/src count — test/doc-only changes do not require a bump.
+//
+// The analysis is also reused by scripts/bump-minor-versions.js, so the pieces
+// below are exported via module.exports and the CLI runs only under the
+// `require.main === module` guard at the bottom. The CLI output strings are
+// asserted verbatim by scripts/test-check-minor-bumps.js and must not change.
 
 const { execSync } = require('child_process');
 
@@ -35,10 +40,11 @@ function minorAt(ref, taskDir) {
   return parseInt(JSON.parse(raw).version.Minor, 10);
 }
 
-let prevRef = process.argv[2];
-const currRef = process.argv[3] || 'HEAD';
-
-if (!prevRef) {
+// Resolve the previous release ref for a given currRef: the newest v*.*.* tag
+// that does not point at currRef's commit. Non-semver tags are filtered out and
+// the remaining tags are sorted by version (newest first). Returns undefined
+// when no such tag exists.
+function resolvePrevRef(currRef) {
   const head = git(`rev-parse ${currRef}`);
   const tags = git('tag --sort=-v:refname')
     .split('\n')
@@ -46,7 +52,7 @@ if (!prevRef) {
     .filter((t) => /^v\d+\.\d+\.\d+$/.test(t));
   // The previous release is the newest v* tag that does not point at the commit
   // being released (which typically already carries this release's own tag).
-  prevRef = tags.find((t) => {
+  return tags.find((t) => {
     try {
       return git(`rev-list -n1 ${t}`) !== head;
     } catch {
@@ -55,52 +61,97 @@ if (!prevRef) {
   });
 }
 
-if (!prevRef) {
-  console.log('check-minor-bumps: no previous release tag found; nothing to compare.');
-  process.exit(0);
+// Classify every task by whether its src/ changed between prevRef and currRef and
+// whether its Minor increased. Returns one result object per task, in TASKS order:
+//   { task, kind: 'unchanged' }                              — src did not change
+//   { task, kind: 'ok',         prevMinor, currMinor }       — src changed, Minor bumped
+//   { task, kind: 'needs-bump', prevMinor, currMinor }       — src changed, Minor NOT bumped
+//   { task, kind: 'diff-error', message }                    — the diff itself failed
+//   { task, kind: 'version-error', message }                 — task.json version unreadable
+// `readCurrMinor(task)` supplies the "current" Minor to compare against prevRef's
+// (default: the Minor committed at currRef). bump-minor-versions.js overrides it
+// to read the working-tree Minor so its bump is idempotent.
+function analyze({ prevRef, currRef, readCurrMinor }) {
+  const readCurr = readCurrMinor || ((task) => minorAt(currRef, task));
+  const results = [];
+  for (const task of TASKS) {
+    let changed;
+    try {
+      changed = git(`diff --name-only ${prevRef} ${currRef} -- ${task}/src`);
+    } catch (e) {
+      results.push({ task, kind: 'diff-error', message: e.message });
+      continue;
+    }
+    if (!changed) {
+      results.push({ task, kind: 'unchanged' }); // src unchanged since the last release; no bump required
+      continue;
+    }
+    let prevMinor;
+    let currMinor;
+    try {
+      prevMinor = minorAt(prevRef, task);
+      currMinor = readCurr(task);
+    } catch (e) {
+      results.push({ task, kind: 'version-error', message: e.message });
+      continue;
+    }
+    if (currMinor > prevMinor) {
+      results.push({ task, kind: 'ok', prevMinor, currMinor });
+    } else {
+      results.push({ task, kind: 'needs-bump', prevMinor, currMinor });
+    }
+  }
+  return results;
 }
 
-console.log(`check-minor-bumps: comparing ${prevRef} -> ${currRef}`);
-let failed = false;
+function main() {
+  let prevRef = process.argv[2];
+  const currRef = process.argv[3] || 'HEAD';
 
-for (const task of TASKS) {
-  let changed;
-  try {
-    changed = git(`diff --name-only ${prevRef} ${currRef} -- ${task}/src`);
-  } catch (e) {
-    console.error(`  ! ${task}: could not diff (${e.message})`);
-    failed = true;
-    continue;
+  if (!prevRef) {
+    prevRef = resolvePrevRef(currRef);
   }
-  if (!changed) {
-    continue; // src unchanged since the last release; no bump required
+
+  if (!prevRef) {
+    console.log('check-minor-bumps: no previous release tag found; nothing to compare.');
+    process.exit(0);
   }
-  let prevMinor;
-  let currMinor;
-  try {
-    prevMinor = minorAt(prevRef, task);
-    currMinor = minorAt(currRef, task);
-  } catch (e) {
-    console.error(`  ! ${task}: could not read task.json version (${e.message})`);
-    failed = true;
-    continue;
+
+  console.log(`check-minor-bumps: comparing ${prevRef} -> ${currRef}`);
+  let failed = false;
+
+  for (const r of analyze({ prevRef, currRef })) {
+    if (r.kind === 'diff-error') {
+      console.error(`  ! ${r.task}: could not diff (${r.message})`);
+      failed = true;
+    } else if (r.kind === 'unchanged') {
+      // no bump required
+    } else if (r.kind === 'version-error') {
+      console.error(`  ! ${r.task}: could not read task.json version (${r.message})`);
+      failed = true;
+    } else if (r.kind === 'ok') {
+      console.log(`  OK   ${r.task}: src changed, Minor ${r.prevMinor} -> ${r.currMinor}`);
+    } else {
+      console.error(
+        `  FAIL ${r.task}: src changed since ${prevRef} but Minor did not increase (still ${r.currMinor}). ` +
+        `Bump Minor in ${r.task}/task.json.`,
+      );
+      failed = true;
+    }
   }
-  if (currMinor > prevMinor) {
-    console.log(`  OK   ${task}: src changed, Minor ${prevMinor} -> ${currMinor}`);
-  } else {
+
+  if (failed) {
     console.error(
-      `  FAIL ${task}: src changed since ${prevRef} but Minor did not increase (still ${currMinor}). ` +
-      `Bump Minor in ${task}/task.json.`,
+      '\ncheck-minor-bumps: FAILED. Every task whose src/ changed since the last release ' +
+      'must have its Minor bumped — ADO agents cache tasks by Major.Minor. See CLAUDE.md > Release Process.',
     );
-    failed = true;
+    process.exit(1);
   }
+  console.log('check-minor-bumps: all changed tasks have a Minor bump.');
 }
 
-if (failed) {
-  console.error(
-    '\ncheck-minor-bumps: FAILED. Every task whose src/ changed since the last release ' +
-    'must have its Minor bumped — ADO agents cache tasks by Major.Minor. See CLAUDE.md > Release Process.',
-  );
-  process.exit(1);
+module.exports = { TASKS, git, minorAt, resolvePrevRef, analyze };
+
+if (require.main === module) {
+  main();
 }
-console.log('check-minor-bumps: all changed tasks have a Minor bump.');

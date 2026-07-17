@@ -61,3 +61,35 @@ jobs:
           # (not just high/critical), matching the root/per-task npm audit gates.
           fail-on-severity: moderate
           comment-summary-in-pr: on-failure
+
+  # Backstop merge gate for the per-task Minor bumps. release-pr-minor-bumps.yml
+  # applies the bumps automatically on the Release PR; this gate fails the PR if
+  # they are somehow still missing (e.g. the auto-bump workflow was broken or
+  # disabled), so a Release PR can never merge without them and reach the too-late
+  # tag-time guard in release.yml. This job ALWAYS runs (no job-level `if:`) so it
+  # reports a definite status and can be a required check without ever getting
+  # stuck "Expected" — the release-vs-normal-PR branching is inside the steps.
+  release-pr-minor-bumps:
+    name: Release PR Minor Bumps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip for non-release PRs
+        if: ${{ ! startsWith(github.event.pull_request.head.ref, 'release-please--') }}
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "Head ref '${HEAD_REF}' is not a release-please branch; the per-task Minor-bump gate only applies to Release PRs. Skipping (this gate always runs so it can be a required check)."
+      # For a release PR, check out the default pull_request context (the merge
+      # ref = main + this PR) with full history and tags, then run the check.
+      # Comparing the newest v*.*.* tag against that merge ref is exactly the
+      # right comparison: it is what main would look like once this PR merges.
+      - name: Checkout (release PRs only)
+        if: ${{ startsWith(github.event.pull_request.head.ref, 'release-please--') }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Verify per-task Minor bumps
+        if: ${{ startsWith(github.event.pull_request.head.ref, 'release-please--') }}
+        run: node scripts/check-minor-bumps.js
