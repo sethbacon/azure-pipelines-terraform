@@ -172,17 +172,45 @@ const FAMILIES = [
 // of working transport code for no behavior change.
 //
 // A THIRD credential-bearing transport exists outside this script's FAMILIES:
-// Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts. It is not
-// listed above because it has only one copy (nothing to byte-compare), but it
+// Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts. Its whole
+// file is not a byte-for-byte copy, so it is not in FAMILIES above, but it
 // intentionally mirrors the same hardening as the family above — an https-only
 // guard, a DEFAULT_REQUEST_TIMEOUT_MS socket timeout, and the same 10MB
 // MAX_RESPONSE_BYTES response cap (see truncate()/truncateBody()). It stays a
 // separate module rather than reusing https-client.ts because its call sites
 // need JSON-body encoding, query-string params, and axios-like non-2xx
-// rejection that the module-publish/drift-report clients don't. This comment
-// is the tracking mechanism for it: a future hardening change to the timeout,
-// response cap, or https-only guard in https-client.ts should be evaluated for
-// servicenow-http.ts too, even though CI cannot enforce byte-identity here.
+// rejection that the module-publish/drift-report clients don't. Its most
+// complex shared piece, the CONNECT-tunneling ProxyTunnelAgent class, IS gated
+// automatically: it is byte-compared against the two https-client.ts copies by
+// the REGION_FAMILIES mechanism below, via the '#region shared:ProxyTunnelAgent'
+// / '#endregion shared:ProxyTunnelAgent' markers bracketing the class in all
+// three files. The remaining hand-tracked parallels (the https-only guard, the
+// request timeout, the response cap) are scalar constants outside any region; a
+// future hardening change to those in https-client.ts should still be mirrored
+// into servicenow-http.ts by hand.
+
+// Region families: unlike FAMILIES (whole-file byte-identity), each entry names a
+// marked region that must stay byte-identical across files that are otherwise NOT
+// whole-file copies. A `// #region shared:<name>` ... `// #endregion shared:<name>`
+// pair brackets the shared block in every listed file, and the text strictly
+// between the markers is compared byte-for-byte (line endings normalized as
+// below). This lets a complex class be duplicated verbatim into a file that has
+// its own surrounding code and still be gated. Fail-closed: a missing, duplicated,
+// or out-of-order marker in ANY listed file is a hard failure, so deleting a
+// marker can never silently skip the check.
+const REGION_FAMILIES = [
+    {
+        // The CONNECT-tunneling ProxyTunnelAgent, duplicated verbatim into the two
+        // https-client.ts copies (already whole-file-gated as a FAMILY above) and
+        // the ServiceNow transport servicenow-http.ts (not a whole-file copy).
+        region: 'ProxyTunnelAgent',
+        files: [
+            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
+        ],
+    },
+];
 
 // Normalize line endings so a CRLF checkout never reads as drift; the bytes that
 // matter (the key material, the verification logic) are still compared exactly.
@@ -192,6 +220,41 @@ function read(relDir, file) {
         return { ok: false, full };
     }
     return { ok: true, full, content: fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n') };
+}
+
+// Extract the text strictly between a region's `#region shared:<name>` and
+// `#endregion shared:<name>` markers, normalizing CRLF exactly like read()
+// above. A missing, duplicated, or out-of-order marker returns { ok: false } so
+// the caller fails closed instead of comparing an empty or partial region.
+function extractRegion(relPath, region) {
+    const full = path.resolve(relPath);
+    if (!fs.existsSync(full)) {
+        return { ok: false, full, reason: `file missing: ${relPath}` };
+    }
+    const lines = fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n').split('\n');
+    // Match the actual `// #region ...` line-comment markers, not prose that
+    // merely mentions the region name (e.g. a backticked reference in a header
+    // comment), so a doc mention can never be miscounted as a marker.
+    const openToken = `// #region shared:${region}`;
+    const closeToken = `// #endregion shared:${region}`;
+    const opens = [];
+    const closes = [];
+    lines.forEach((line, i) => {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith(openToken)) opens.push(i);
+        if (trimmed.startsWith(closeToken)) closes.push(i);
+    });
+    if (opens.length !== 1 || closes.length !== 1) {
+        return {
+            ok: false,
+            full,
+            reason: `expected exactly one '${openToken}' and one '${closeToken}' marker in ${relPath} (found ${opens.length} open, ${closes.length} close)`,
+        };
+    }
+    if (closes[0] <= opens[0]) {
+        return { ok: false, full, reason: `'${closeToken}' precedes its '${openToken}' in ${relPath}` };
+    }
+    return { ok: true, full, content: lines.slice(opens[0] + 1, closes[0]).join('\n') };
 }
 
 let hasError = false;
@@ -219,6 +282,31 @@ for (const { dirs, modules } of FAMILIES) {
             } else {
                 console.log(`OK: ${file} identical (${canonicalDir} == ${dir})`);
             }
+        }
+    }
+}
+
+for (const { region, files } of REGION_FAMILIES) {
+    const [canonicalFile, ...otherFiles] = files;
+    const base = extractRegion(canonicalFile, region);
+    if (!base.ok) {
+        console.error(`FAIL: ${base.reason}`);
+        hasError = true;
+        continue;
+    }
+    for (const file of otherFiles) {
+        const other = extractRegion(file, region);
+        if (!other.ok) {
+            console.error(`FAIL: ${other.reason}`);
+            hasError = true;
+            continue;
+        }
+        if (other.content !== base.content) {
+            console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
+            console.error(`      reconcile both copies (canonical: ${base.full})`);
+            hasError = true;
+        } else {
+            console.log(`OK: region '${region}' identical (${canonicalFile} == ${file})`);
         }
     }
 }
