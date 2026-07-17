@@ -8,24 +8,35 @@ import { tightenFilePermissions, writeSecretFile, replaceSecretFile } from '../s
 /**
  * Direct unit tests for tightenFilePermissions (#355): chmods a file already
  * on disk (e.g. one downloaded by a third-party library) to 0600, matching
- * writeSecretFile's platform-aware fail-closed/Windows-swallow behavior.
+ * writeSecretFile's platform-aware behavior — fail-closed chmod on Unix, an
+ * explicit restrictive DACL via icacls on Windows (#495 sibling: mode 0600 is
+ * a no-op there, so without the DACL the downloaded -var-file would keep the
+ * directory's inherited, possibly broad, ACL).
  */
 describe('tightenFilePermissions — post-hoc chmod for third-party downloads', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared fs module
     const f = fs as any;
+    // monkeypatch the shared child_process module
+    const c = cp as any;
     const origChmodSync = f.chmodSync;
+    const origExecFileSync = c.execFileSync;
     const origPlatform = process.platform;
 
     afterEach(() => {
         f.chmodSync = origChmodSync;
+        c.execFileSync = origExecFileSync;
         Object.defineProperty(process, 'platform', { value: origPlatform });
     });
 
-    it('chmods the file to 0600 when chmod succeeds', () => {
+    it('chmods the file to 0600 when chmod succeeds (no icacls on Unix)', () => {
+        Object.defineProperty(process, 'platform', { value: 'linux' });
         let calledWith: unknown[] | undefined;
+        let icaclsCalled = false;
         f.chmodSync = (...args: unknown[]) => { calledWith = args; };
+        c.execFileSync = () => { icaclsCalled = true; return Buffer.from(''); };
         tightenFilePermissions('/tmp/downloaded-secure-file-does-not-matter.txt');
         assert.deepStrictEqual(calledWith, ['/tmp/downloaded-secure-file-does-not-matter.txt', 0o600]);
+        assert.strictEqual(icaclsCalled, false, 'icacls must not run on Unix -- chmod 0600 already applied');
     });
 
     it('re-throws when chmod fails on a non-Windows platform (fail closed)', () => {
@@ -37,10 +48,37 @@ describe('tightenFilePermissions — post-hoc chmod for third-party downloads', 
         );
     });
 
-    it('swallows a chmod failure on Windows (ACLs apply instead)', () => {
+    it('on win32, swallows the chmod failure but still applies the restrictive DACL (#495)', () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         f.chmodSync = () => { throw new Error('not supported'); };
+        let seen: { file: string, args: string[] } | undefined;
+        c.execFileSync = (file: string, args: string[]) => { seen = { file, args }; return Buffer.from(''); };
         assert.doesNotThrow(() => tightenFilePermissions('/tmp/downloaded-secure-file.txt'));
+        assert.ok(seen, 'icacls must be invoked on win32');
+        assert.strictEqual(seen!.file, 'icacls');
+        assert.strictEqual(seen!.args[0], '/tmp/downloaded-secure-file.txt');
+        assert.ok(seen!.args.includes('/inheritance:r'), 'inherited ACEs must be stripped');
+    });
+
+    it('on win32, applies the restrictive DACL even when chmod itself did not throw (#495)', () => {
+        // Windows chmod silently ignores the 0600 mode rather than failing, so
+        // the DACL must be applied unconditionally, not only in the catch branch.
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        f.chmodSync = () => { /* Windows chmod: succeeds but does nothing */ };
+        let icaclsCalled = false;
+        c.execFileSync = () => { icaclsCalled = true; return Buffer.from(''); };
+        tightenFilePermissions('/tmp/downloaded-secure-file.txt');
+        assert.strictEqual(icaclsCalled, true, 'the DACL restriction must not depend on chmod throwing');
+    });
+
+    it('on win32, fails closed when the icacls restriction cannot be applied (#495)', () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        f.chmodSync = () => { /* no-op */ };
+        c.execFileSync = () => { throw new Error('icacls exploded'); };
+        assert.throws(
+            () => tightenFilePermissions('/tmp/downloaded-secure-file.txt'),
+            /Failed to set restrictive ACL/,
+        );
     });
 });
 

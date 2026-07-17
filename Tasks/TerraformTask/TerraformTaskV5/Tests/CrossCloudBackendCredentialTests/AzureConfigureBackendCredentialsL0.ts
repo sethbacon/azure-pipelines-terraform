@@ -91,7 +91,10 @@ describe('TerraformCommandHandlerAzureRM.configureBackendCredentials (cross-clou
     assert.strictEqual(process.env['ARM_CLIENT_ID'], 'wif-client-id');
     assert.strictEqual(process.env['ARM_TENANT_ID'], 'tenant-wif');
     assert.strictEqual(process.env['ARM_OIDC_REQUEST_TOKEN'], 'fake-ado-access-token');
-    // Cross-cloud injection never uses CLI-flag/backend-config auth.
+    // Cross-cloud injection never uses CLI-flag/backend-config auth. Both the
+    // azurerm-primary and the AzAPI-compat fallback variable names must carry
+    // the service connection ID (#572).
+    assert.strictEqual(process.env['ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID'], 'AzureRM-Backend');
     assert.strictEqual(process.env['ARM_OIDC_AZURE_SERVICE_CONNECTION_ID'], 'AzureRM-Backend');
   });
 

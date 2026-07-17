@@ -20,6 +20,29 @@ const ADO_OIDC_HOSTS = ['dev.azure.com', 'vstoken.dev.azure.com'];
 const ADO_OIDC_HOST_SUFFIXES = ['.dev.azure.com', '.visualstudio.com'];
 
 /**
+ * The org label of the job's own collection URI when it is a legacy
+ * *.visualstudio.com URL (e.g. 'myorg' for https://myorg.visualstudio.com/),
+ * or undefined when neither collection variable exposes a comparable org --
+ * the dev.azure.com form carries its org in the URL path, not the host, so no
+ * host-label comparison is possible for it.
+ */
+function collectionVisualStudioOrgLabel(): string | undefined {
+    for (const envName of ['SYSTEM_COLLECTIONURI', 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI']) {
+        const collectionUri = process.env[envName];
+        if (!collectionUri) continue;
+        try {
+            const collectionHost = new URL(collectionUri).hostname.toLowerCase();
+            if (collectionHost.endsWith('.visualstudio.com') && collectionHost.length > '.visualstudio.com'.length) {
+                return collectionHost.split('.')[0];
+            }
+        } catch {
+            // Unparseable collection URI -- it cannot vouch for any org.
+        }
+    }
+    return undefined;
+}
+
+/**
  * The job's SystemVssConnection AccessToken is sent as a Bearer header to
  * SYSTEM_OIDCREQUESTURI, so in addition to the https assertion the host is
  * pinned to Azure DevOps endpoints (mirroring the OCI identity-domain suffix
@@ -32,7 +55,25 @@ function isAllowedOidcRequestHost(hostname: string): boolean {
     if (ADO_OIDC_HOSTS.includes(host)) {
         return true;
     }
-    if (ADO_OIDC_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix) && host.length > suffix.length)) {
+    for (const suffix of ADO_OIDC_HOST_SUFFIXES) {
+        if (!host.endsWith(suffix) || host.length <= suffix.length) {
+            continue;
+        }
+        // A *.visualstudio.com host carries a tenant org as its first label, so
+        // a bare suffix match would admit ANY tenant's org (#554). When the
+        // job's own collection URI is also a *.visualstudio.com URL, require
+        // the request host's org label to match the collection's; when the
+        // collection URI exposes no comparable org label (the dev.azure.com
+        // form, or the variables are unset/unparseable), the plain suffix
+        // match stands, unchanged. The org-less standard cloud endpoint
+        // (vstoken.dev.azure.com) is exact-matched above and never reaches
+        // this check.
+        if (suffix === '.visualstudio.com') {
+            const collectionOrg = collectionVisualStudioOrgLabel();
+            if (collectionOrg !== undefined && host.split('.')[0] !== collectionOrg) {
+                continue;
+            }
+        }
         return true;
     }
     for (const envName of ['SYSTEM_COLLECTIONURI', 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI']) {

@@ -9,7 +9,6 @@ import { writeSecretFile } from './secure-temp';
 import { normalizePem } from './pem-normalizer';
 import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
-import fs = require('fs');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
 
@@ -53,7 +52,9 @@ export function validateOciRegion(value: string): string {
  * string (config-<uuid>.tf). The PAR URL embeds a bearer token in its /p/<token>/
  * segment, so the caller MUST tasks.setSecret() it BEFORE calling this — the errors
  * thrown here deliberately never include the URL value. Enforces a parseable https://
- * URL and rejects Terraform/shell template syntax (${ %{ $(( `) that could break out
+ * URL, rejects control characters (CR/LF/TAB and the rest of C0, which new URL()
+ * strips for parsing but would otherwise survive into the generated HCL string),
+ * and rejects Terraform/shell template syntax (${ %{ $(( `) that could break out
  * of the interpolation; backslashes and double-quotes are backslash-escaped so the
  * value cannot terminate the surrounding HCL string.
  */
@@ -67,6 +68,14 @@ export function validateAndEscapeOciParUrl(parUrl: string): string {
     }
     if (parsedUrl.protocol !== 'https:') {
         throw new Error("OCI PAR URL must use HTTPS scheme.");
+    }
+    // Reject control characters outright (#548): new URL() silently strips
+    // embedded tabs/newlines for PARSING, but the raw value is what gets
+    // interpolated, so an embedded CR/LF would reach the quoted HCL `address`
+    // string. Mirrors the anchored newline rejection in
+    // validateOciTenancyOcid/validateOciRegion.
+    if (/[\u0000-\u001f\u007f]/.test(parUrl)) {
+        throw new Error('OCI PAR URL contains a control character (e.g. newline or tab), which is not allowed.');
     }
     const forbiddenPatterns = ['${', '%{', '$((', '`'];
     for (const pattern of forbiddenPatterns) {
@@ -145,18 +154,16 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             config = config + " update_method = \"PUT\"\n }\n }\n";
 
             const workingDirectory = tasks.getInput("workingDirectory") || '';
+            // The config file must live INSIDE the working directory — terraform
+            // init only loads *.tf files from there — so it cannot be relocated to
+            // Agent.TempDirectory. Because the embedded PAR URL is a bearer
+            // credential, the write goes through the shared writeSecretFile
+            // primitive (exclusive O_EXCL create + 0600 on Unix, restrictive DACL
+            // on Windows, fail closed) like every other secret file in this task,
+            // instead of a plain symlink-following write plus a separate chmod
+            // (#545); the uuid filename keeps the exclusive create collision-free.
             const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
-            tasks.writeFile(tfConfigFilePath, config, 'utf-8');
-            if (fs.existsSync(tfConfigFilePath)) {
-                try {
-                    fs.chmodSync(tfConfigFilePath, 0o600);
-                } catch (err) {
-                    if (process.platform !== 'win32') {
-                        throw new Error(`Failed to set restrictive permissions on OCI backend config file: ${err instanceof Error ? err.message : err}`);
-                    }
-                    tasks.debug('Skipping chmod on Windows platform (ACLs apply instead).');
-                }
-            }
+            writeSecretFile(tfConfigFilePath, config);
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
         }

@@ -1,12 +1,18 @@
 #!/usr/bin/env node
-// Meta-check: the 11-task list is hardcoded independently in three places --
+// Meta-check: the 11-task list is hardcoded independently in six places --
 // scripts/check-versions.js's `files` array, scripts/check-minor-bumps.js's
-// `TASKS` array, and package.json's deps/deps:prune/compile script families --
-// with none of them derived from a single manifest. A forgotten entry in any
-// one of them currently fails silently (e.g. a 12th task added without
-// updating check-versions.js's `files[]` never gets its version validated,
-// and nothing flags the omission). This script parses all three sources plus
-// the actual Tasks/*/*/ directory listing and asserts they all agree.
+// `TASKS` array, package.json's deps/deps:prune/compile script families,
+// azure-devops-extension.json's `contributions` array (the task contributions
+// the packaged .vsix actually registers), .github/workflows/release.yml's
+// per-task 'Generate SBOM for <Task>' steps, and .github/dependabot.yml's
+// per-task npm `directory:` entries -- with none of them derived from a single
+// manifest. A forgotten entry in any one of them currently fails silently (e.g.
+// a 12th task added without updating check-versions.js's `files[]` never gets
+// its version validated, one added without a contribution simply never appears
+// in the ADO task picker, one missing an SBOM step ships unattested, and one
+// missing a dependabot entry never gets dependency updates). This script parses
+// all six sources plus the actual Tasks/*/*/ directory listing and asserts they
+// all agree.
 
 const fs = require('fs');
 const path = require('path');
@@ -80,6 +86,54 @@ function taskDirsFromPackageJson() {
     return result;
 }
 
+// azure-devops-extension.json: every contribution of type
+// 'ms.vss-distributed-task.task' names a task dir via properties.name.
+// Two contribution ids may legitimately point at the SAME task dir (the
+// legacy 'custom-terraform-release-task' id is a cosmetic carryover targeting
+// the same TerraformTaskV5 folder as any newer id would — see CLAUDE.md's
+// task.json schema notes), so compare the deduplicated set of dirs, not the
+// contribution count.
+function taskDirsFromExtensionManifest() {
+    const manifest = JSON.parse(readText('azure-devops-extension.json'));
+    const dirs = (manifest.contributions || [])
+        .filter((c) => c.type === 'ms.vss-distributed-task.task')
+        .map((c) => c.properties && c.properties.name)
+        .filter(Boolean);
+    return [...new Set(dirs)].sort();
+}
+
+// .github/workflows/release.yml: the sbom-and-sign job has one 'Generate SBOM
+// for <Task>' step per task, each running `cd Tasks/<Family>/<Task>` before its
+// `npm ci`/cyclonedx scan. The 'Generate SBOM for tab' step scans the repo-root
+// bundle and has no `cd Tasks/...` line, so keying off `cd Tasks/...` naturally
+// excludes it (and any future non-task SBOM step).
+function taskDirsFromReleaseSbom() {
+    const text = readText('.github/workflows/release.yml');
+    const re = /cd (Tasks\/\S+)/g;
+    const dirs = [];
+    let m;
+    while ((m = re.exec(text))) {
+        dirs.push(m[1]);
+    }
+    return dirs.sort();
+}
+
+// .github/dependabot.yml: each per-task npm update entry sets
+// `directory: "/Tasks/<Family>/<Task>"`. The github-actions and root-npm entries
+// use `directory: "/"`, so filtering to /Tasks/ paths selects exactly the tasks
+// (and ignores the non-task ecosystems). The leading slash is dropped to match
+// the Tasks/... form every other source uses.
+function taskDirsFromDependabot() {
+    const text = readText('.github/dependabot.yml');
+    const re = /directory:\s*"(\/Tasks\/[^"]+)"/g;
+    const dirs = [];
+    let m;
+    while ((m = re.exec(text))) {
+        dirs.push(m[1].replace(/^\//, ''));
+    }
+    return dirs.sort();
+}
+
 function setsEqual(a, b) {
     if (a.length !== b.length) return false;
     return a.every((v, i) => v === b[i]);
@@ -98,6 +152,9 @@ console.log(`Discovered ${canonical.length} task directories under Tasks/: ${can
 const sources = {
     "scripts/check-versions.js 'files'": taskDirsFromCheckVersions(),
     "scripts/check-minor-bumps.js 'TASKS'": taskDirsFromMinorBumps(),
+    "azure-devops-extension.json 'contributions'": taskDirsFromExtensionManifest(),
+    ".github/workflows/release.yml 'Generate SBOM' steps": taskDirsFromReleaseSbom(),
+    ".github/dependabot.yml 'directory' entries": taskDirsFromDependabot(),
 };
 
 const pkgFamilies = taskDirsFromPackageJson();

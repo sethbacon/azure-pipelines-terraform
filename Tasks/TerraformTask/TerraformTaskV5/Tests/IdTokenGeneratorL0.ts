@@ -132,6 +132,48 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(token, 'onprem-tfs-token');
     });
 
+    it('rejects a cross-org *.visualstudio.com host when the collection URI names a different org (#554)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://attackerorg.visualstudio.com/_apis/oidctoken';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://myorg.visualstudio.com/';
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not send the Bearer access token to another tenant\'s org host');
+    });
+
+    it('accepts the collection\'s own *.visualstudio.com org host (#554)', async () => {
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/oidctoken';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://myorg.visualstudio.com/';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'same-org-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'same-org-token');
+    });
+
+    it('still accepts vstoken.dev.azure.com when the collection URI is a *.visualstudio.com org (#554)', async () => {
+        // The standard cloud OIDC endpoint carries no org label at all -- the
+        // org tightening must never reject it, whatever form the collection
+        // URI takes.
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://vstoken.dev.azure.com/oidc';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://myorg.visualstudio.com/';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'vstoken-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'vstoken-token');
+    });
+
+    it('keeps the plain suffix allow for *.visualstudio.com when the collection URI exposes no comparable org (#554)', async () => {
+        // A dev.azure.com-form collection URI carries its org in the PATH, not
+        // the host, so no org comparison is possible -- the pre-#554 suffix
+        // behavior must be preserved for it.
+        process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/oidctoken';
+        process.env['SYSTEM_COLLECTIONURI'] = 'https://dev.azure.com/myorg/';
+        globalThis.fetch = (async () =>
+            new Response(JSON.stringify({ oidcToken: 'suffix-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'suffix-token');
+    });
+
     it('rejects a foreign host and never sends the Bearer access token to it (#493)', async () => {
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://evil.example.com/oidc';
         let called = false;

@@ -26,6 +26,10 @@ jobs:
         run: node scripts/check-task-list.js
       - name: Self-test check-versions.js
         run: node scripts/test-check-versions.js
+      - name: Self-test check-minor-bumps.js
+        run: node scripts/test-check-minor-bumps.js
+      - name: Self-test check-task-list.js
+        run: node scripts/test-check-task-list.js
       - name: Check for mojibake encoding corruption
         shell: bash
         # Catches recurrence of the UTF-8-decoded-as-Windows-1252 corruption

@@ -43,8 +43,19 @@ export async function listArticleAttachments(
         sysparm_query: `table_name=kb_knowledge^table_sys_id=${articleId}`,
         sysparm_fields: 'sys_id,file_name,content_type,hash,size_bytes',
     };
-    const response = await snRequest('GET', url, { headers, params });
-    return (response.data.result || []) as SnAttachment[];
+    // Idempotent read: retried like every other GET in this task (#561), and the
+    // response shape validated rather than cast -- servicenow-http.ts defaults a
+    // non-JSON 2xx body (e.g. a proxy/WAF intercept) to `{}`, which the previous
+    // `(response.data.result || [])` cast passed through as `{}` and crashed the
+    // caller's `.find()` with a bare TypeError instead of a clear diagnostic.
+    const response = await withRetry(() => snRequest('GET', url, { headers, params }), {
+        log: (message) => console.log(`[WARN] ${message}`),
+    });
+    const result = response.data.result;
+    if (!Array.isArray(result)) {
+        throw new Error(tasks.loc('AttachmentListNotArray', articleId));
+    }
+    return result as SnAttachment[];
 }
 
 /** Upload a file as an attachment on a kb_knowledge record. Returns the new attachment sys_id. */
@@ -73,7 +84,14 @@ export async function uploadAttachment(
     }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
-    return (response.data.result as { sys_id: string }).sys_id;
+    // Same 2xx-non-JSON-body fallback as above (#561): validate the result
+    // carries a string sys_id before the cast rather than returning undefined,
+    // which would silently corrupt the caller's rewritten <img src>.
+    const result = response.data.result;
+    if (!result || typeof result !== 'object' || typeof (result as { sys_id?: unknown }).sys_id !== 'string') {
+        throw new Error(tasks.loc('AttachmentUploadNoSysId', fileName));
+    }
+    return (result as { sys_id: string }).sys_id;
 }
 
 /** Delete an attachment by sys_id. */

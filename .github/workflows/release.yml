@@ -193,6 +193,20 @@ jobs:
           cd Tasks/PublishKbArticle/PublishKbArticleV1
           npm ci --omit=dev --ignore-scripts
           npx --no-install cyclonedx-npm --output-file ../../../sbom-publish-kb-article-v1.cdx.json --omit dev
+      - name: Generate SBOM for tab
+        # The Terraform results tab ships as build/tab/tabContent.js inside the
+        # .vsix — webpack bundles react, react-dom, azure-devops-extension-sdk and
+        # azure-devops-extension-api into it. Those four live in the ROOT
+        # package.json's devDependencies (alongside pure build tooling like
+        # webpack/tfx-cli/jest), because the root manifest has no runtime
+        # "dependencies" of its own. A `--omit dev` scan here would therefore emit
+        # an EMPTY SBOM, so — unlike the 11 per-task steps above — the tab SBOM is
+        # generated over the full (dev-included) root install. This over-captures
+        # the build tooling that never ships in the bundle, but it is the only way
+        # to capture the tab's actual bundled runtime closure without a
+        # hand-maintained allowlist. The root `npm ci --ignore-scripts` above
+        # already installed the full dev tree, so no reinstall is needed here.
+        run: npx --no-install cyclonedx-npm --output-file sbom-tab.cdx.json
       - name: Download vsix artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -264,6 +278,11 @@ jobs:
         with:
           subject-path: "*.vsix"
           sbom-path: "sbom-publish-kb-article-v1.cdx.json"
+      - name: Attest SBOM (tab) for VSIX
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: "*.vsix"
+          sbom-path: "sbom-tab.cdx.json"
       - name: Upload SBOM and signature artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

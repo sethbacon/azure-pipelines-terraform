@@ -22,6 +22,14 @@ import {
 import { generateHtmlDocument } from '../src/document';
 import { parseFileList, processFileList, processFrontMatterDriven } from '../src/converter';
 
+// Per-scenario security suites, split into self-titled files (#565) matching
+// the sibling tasks' Tests/ convention so the abuse-case inventory is visible
+// from a directory listing. mocha only runs Tests/L0.ts, so they are pulled
+// in here.
+import './TocInjectionEscapingL0';
+import './DangerousTagsRemovalL0';
+import './DataImageSvgXmlStrippingL0';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -320,28 +328,8 @@ describe('buildToc', () => {
         assert.ok(modified.includes('id="sub"'));
     });
 
-    it('escapes heading text in TOC entries, closing a decode-then-reinject XSS gap (#12)', () => {
-        // A heading whose rendered HTML already has the tag ENCODED (e.g. because
-        // it came from a markdown code span, which sanitizeRenderedHtml sees only
-        // as inert escaped text) still decodes back to live markup via cheerio's
-        // .text() -- buildToc must re-escape it before building the TOC <li>.
-        const html = '<h1>&lt;img src=x onerror=alert(1)&gt;</h1><p>text</p>';
-        const { toc } = buildToc(html);
-        assert.ok(!/<img[\s>]/i.test(toc), `TOC must not contain a live <img> element (got: ${toc})`);
-        assert.ok(toc.includes('&lt;img'), `TOC should contain the re-escaped heading text (got: ${toc})`);
-    });
-
-    it('escapes an author-supplied raw heading id, closing an href attribute-breakout (#12 follow-up)', () => {
-        // markdown-it runs with html:true, so a heading can carry its own raw `id`
-        // attribute straight from the source markdown/HTML. cheerio's .attr('id')
-        // decodes it the same way .text() decodes heading content -- an id
-        // containing a literal double-quote would otherwise break out of the
-        // TOC's href="#..." attribute and inject live markup.
-        const html = '<h1 id=\'a"><iframe srcdoc="x"></iframe><a href="b\'>Heading</h1>';
-        const { toc } = buildToc(html);
-        assert.ok(!/<iframe[\s>]/i.test(toc), `TOC must not contain a live <iframe> element (got: ${toc})`);
-        assert.ok(toc.includes('&quot;'), `TOC should contain the re-escaped id value (got: ${toc})`);
-    });
+    // The #12 TOC/heading-id escaping abuse cases live in
+    // Tests/TocInjectionEscapingL0.ts (#565).
 });
 
 // ---------------------------------------------------------------------------
@@ -491,57 +479,10 @@ describe('convertMarkdownToHtml', () => {
         assert.ok(!/<meta/i.test(html), 'the dangerous <meta refresh> must be removed');
     });
 
-    it('allows a raster data:image/* URI (e.g. png) in an <img> src', () => {
-        const html = convertMarkdownToHtml('<img src="data:image/png;base64,iVBORw0KGgo=">');
-        assert.ok(/src\s*=/.test(html), `the raster data: URI must be preserved (got: ${html})`);
-    });
-
-    it('strips a data:image/svg+xml URI even on an <img> element (an SVG document can embed active content, unlike a raster format)', () => {
-        const html = convertMarkdownToHtml('<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">');
-        assert.ok(!/src\s*=/.test(html), `svg+xml data: URI must be stripped even on <img> (got: ${html})`);
-    });
-
-    it('strips a data:image/svg+xml URI on non-<img> elements (<a href>, <button formaction>)', () => {
-        const anchorHtml = convertMarkdownToHtml('<a href="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</a>');
-        assert.ok(!/href\s*=/.test(anchorHtml), `<a href> must be stripped (got: ${anchorHtml})`);
-
-        // Not wrapped in <form>: this specifically tests the formaction attribute
-        // check (a standalone <button> is valid HTML), independent of the separate
-        // wholesale <form>-element removal covered below.
-        const formHtml = convertMarkdownToHtml('<button formaction="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+">x</button>');
-        assert.ok(!/formaction\s*=/.test(formHtml), `formaction must be stripped (got: ${formHtml})`);
-    });
-
-    it('removes <form> elements outright, closing the action="javascript:..." bypass (#446 follow-up)', () => {
-        const html = convertMarkdownToHtml('Before\n\n<form action="javascript:alert(1)"><button>Submit</button></form>\n\nAfter');
-        assert.ok(!/<form[\s>]/i.test(html), `<form> must be removed entirely (got: ${html})`);
-        assert.ok(!/action\s*=/.test(html), `no action= attribute should survive (got: ${html})`);
-    });
-
-    it('removes iframe/object/embed/noscript via the shared DANGEROUS_TAGS filter (final-review regression check)', () => {
-        // sanitizeRenderedHtml's removal mechanism for these elements was
-        // refactored from a plain CSS selector to the shared DANGEROUS_TAGS
-        // tagName-filter (so PublishKbArticle's gate could reuse the exact same
-        // set) -- confirm the refactor didn't change render-time behavior.
-        for (const tag of ['iframe', 'object', 'embed', 'noscript']) {
-            const html = convertMarkdownToHtml(`Before\n\n<${tag}>x</${tag}>\n\nAfter`);
-            assert.ok(!new RegExp(`<${tag}[\\s>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
-        }
-    });
-
-    it('removes SVG SMIL animation elements that can dynamically assign a javascript: URI (#446 follow-up)', () => {
-        const html = convertMarkdownToHtml(
-            '<svg><a href="#safe"><animate attributeName="href" to="javascript:alert(1)"/>x</a></svg>',
-        );
-        assert.ok(!/<animate[\s/>]/i.test(html), `<animate> must be removed (got: ${html})`);
-    });
-
-    it('removes animateTransform, animateMotion, animateColor and set elements alongside animate', () => {
-        for (const tag of ['animateTransform', 'animateMotion', 'animateColor', 'set']) {
-            const html = convertMarkdownToHtml(`<svg><${tag} attributeName="href" to="javascript:alert(1)"/></svg>`);
-            assert.ok(!new RegExp(`<${tag}[\\s/>]`, 'i').test(html), `<${tag}> must be removed (got: ${html})`);
-        }
-    });
+    // The DANGEROUS_TAGS removal abuse cases (iframe/object/embed/noscript,
+    // <form>, <link>, SVG SMIL, MathML/foreign-content mXSS carriers) live in
+    // Tests/DangerousTagsRemovalL0.ts, and the data:image/svg+xml stripping
+    // cases in Tests/DataImageSvgXmlStrippingL0.ts (#565).
 
     it('strips an author-supplied <style> block (and its CSS-payload text content) from source markdown (#523)', () => {
         const html = convertMarkdownToHtml(
@@ -551,11 +492,6 @@ describe('convertMarkdownToHtml', () => {
         // asserting the opening tag is gone is sufficient to prove the CSS-payload
         // text between the (now absent) tags is gone too, not merely tags-stripped.
         assert.ok(!/<style[\s>]/i.test(html), `<style> and its CSS payload must both be removed (got: ${html})`);
-    });
-
-    it('removes a <link rel="stylesheet"> via the shared DANGEROUS_TAGS filter (#523)', () => {
-        const html = convertMarkdownToHtml('Before\n\n<link rel="stylesheet" href="https://evil.example.com/exfil.css">\n\nAfter');
-        assert.ok(!/<link[\s>]/i.test(html), `<link> must be removed (got: ${html})`);
     });
 
     it('strips an inline style="" attribute carrying a network-fetching CSS construct, keeping the element (#523)', () => {

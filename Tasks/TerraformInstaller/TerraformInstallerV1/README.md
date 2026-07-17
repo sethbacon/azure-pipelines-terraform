@@ -42,6 +42,10 @@ On persistent (self-hosted) agents the tool cache outlives the job that populate
 
 Note: the marker sits next to the executable it protects; it defends against corruption and mixed verification settings, not against an attacker who already has write access to the agent's tool cache.
 
+### cosign for OpenTofu signature verification
+
+OpenTofu downloads are verified with [cosign](https://github.com/sigstore/cosign) (`requireCosignVerification`, default `true`). The task resolves the `cosign` binary from the agent's `PATH` and logs the resolved path, so a shadowed or unexpected copy is auditable from the build log. Install cosign on the agent from a trusted, pinned source — for example, the official sigstore release channel or the [sigstore/cosign-installer](https://github.com/sigstore/cosign-installer) action pinned to a full commit SHA (as this repository's weekly canary does) — since the task cannot verify the integrity of the verifier itself.
+
 ### Output Variables
 
 * **Terraform location:** This variable can be used to refer to the location of the terraform binary that was installed on the agent in subsequent tasks.

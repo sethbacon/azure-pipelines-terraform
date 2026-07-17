@@ -27,7 +27,12 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
         fs.writeFileSync(manifestPath, JSON.stringify(entries, null, 2), 'utf-8');
         console.log(tasks.loc('ManifestUpdated', manifestPath));
     } catch (e: unknown) {
-        console.warn(tasks.loc('ManifestWriteFailed', manifestPath, e));
+        // Deliberately non-fatal: the ServiceNow write already succeeded, so
+        // failing here would be misleading. Surfaced as a pipeline warning
+        // (visible in the build summary) rather than a console line, because a
+        // lost manifest entry can mean a later run without a sourceKey fails to
+        // resolve this article and creates a duplicate (#564).
+        tasks.warning(tasks.loc('ManifestWriteFailed', manifestPath, e));
     }
 }
 
@@ -47,7 +52,10 @@ export function outputArticleInfoToJson(article: Record<string, unknown>): void 
         fs.writeFileSync(filename, JSON.stringify(info, null, 2), 'utf-8');
         console.log(tasks.loc('ArticleInfoSaved', filename));
     } catch (e: unknown) {
-        console.error(tasks.loc('ArticleInfoSaveFailed', e));
+        // Same deliberate non-fatal tradeoff as appendToManifest above: the
+        // legacy KB<number>.json is the lookup mechanism for later runs, so a
+        // lost write is surfaced as a pipeline warning (#564).
+        tasks.warning(tasks.loc('ArticleInfoSaveFailed', e));
     }
 }
 

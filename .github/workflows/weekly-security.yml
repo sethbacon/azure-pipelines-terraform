@@ -86,9 +86,18 @@ jobs:
       pull-requests: write
     steps:
       - name: Label PRs open > 14 days
+        id: label-stale
+        # continue-on-error keeps a transient labeling hiccup from failing the
+        # whole weekly run, but (unlike the old blanket `|| true`) the failure is
+        # no longer swallowed: `set -o pipefail` propagates a `gh pr list` error
+        # through the pipe, and the follow-up step surfaces any non-zero exit to
+        # the run summary. Mirrors the osv-scan job's continue-on-error + explicit
+        # outcome-check pattern above.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           gh pr list \
             --repo "$GITHUB_REPOSITORY" \
             --author "app/dependabot" \
@@ -97,7 +106,16 @@ jobs:
             --jq '.[] | select((.createdAt | fromdateiso8601) < (now - 1209600)) | .number' \
           | xargs -r -I{} gh pr edit {} \
               --repo "$GITHUB_REPOSITORY" \
-              --add-label "stale-security-patch" || true
+              --add-label "stale-security-patch"
+      - name: Surface stale-PR labeling failures
+        if: steps.label-stale.outcome == 'failure'
+        run: |
+          {
+            echo '## Stale Dependabot PR labeling FAILED'
+            echo ''
+            echo 'The stale-Dependabot labeling step exited non-zero (a gh API/auth/rate-limit error, or a missing stale-security-patch label). Stale security PRs may not have been flagged this run; see the step logs.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Stale Dependabot PR labeling failed; see the run summary and step logs."
 
   # ── Marketplace environment protection verification ───
   # Verifies the `marketplace` GitHub Environment (which gates publish-marketplace
@@ -201,11 +219,115 @@ jobs:
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             SHA256SUMS
 
+  # ── HashiCorp GPG trust-root canary ────────────────────
+  # Exercises the installer's REAL verifyGpgSignature() (gpg-verifier.ts) against
+  # the embedded HashiCorp public key (hashicorp-gpg-key.ts) using a current
+  # Terraform release's real SHA256SUMS/.sig from releases.hashicorp.com -- the
+  # GPG equivalent of the cosign canary above. Catches a HashiCorp key rotation,
+  # an openpgp behavior change, or drift in the embedded key before it breaks
+  # every default Terraform/Sentinel install in a customer pipeline (#574). It
+  # also fails EARLY (60-day lead) if the embedded key is nearing its own expiry,
+  # so rotation is proactive rather than a fail-closed outage (#551; cf.
+  # HCSEC-2026-03, where the prior key's self-signature lapsing hard-failed
+  # ecosystem tooling in April 2026). Non-required: a failure here only opens an
+  # issue via notify-on-failure below, it never blocks a PR.
+  hashicorp-gpg-canary:
+    name: HashiCorp GPG trust-root canary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Install installer-task dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile installer task (emits the JS the canary requires)
+        run: npm run compile
+      - name: Resolve latest Terraform release version
+        id: version
+        run: |
+          version=$(curl -fsSL https://checkpoint-api.hashicorp.com/v1/check/terraform | jq -r '.current_version')
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not resolve the latest Terraform release version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Download SHA256SUMS
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: curl -fsSL -o SHA256SUMS "https://releases.hashicorp.com/terraform/${VERSION}/terraform_${VERSION}_SHA256SUMS"
+      - name: Verify SHA256SUMS with the installer's own GPG verifier + embedded key
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # Reuses gpg-verifier.ts's verifyGpgSignature (required=true, so a missing
+        # or bad signature hard-fails) rather than reimplementing any crypto; it
+        # fetches the .sig from releases.hashicorp.com via the task's own
+        # http-client and verifies it against the embedded HASHICORP_GPG_PUBLIC_KEY.
+        run: |
+          node -e '
+            const fs = require("fs");
+            const { verifyGpgSignature } = require("./src/gpg-verifier");
+            const version = process.env.VERSION;
+            const content = fs.readFileSync("SHA256SUMS", "utf8");
+            const sigUrl = "https://releases.hashicorp.com/terraform/" + version + "/terraform_" + version + "_SHA256SUMS.sig";
+            verifyGpgSignature(content, sigUrl, true)
+              .then(function () { console.log("OK: HashiCorp GPG signature verified against the embedded key for terraform " + version); })
+              .catch(function (err) { console.error("HashiCorp GPG canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+      - name: Fail if the embedded HashiCorp key or its signing subkey is within 60 days of expiry
+        # Loads the embedded key with the task's own openpgp dependency and fails
+        # early so the rotation (which must land in BOTH installer copies, gated by
+        # check-shared-modules.js) is proactive, never a reactive outage.
+        #
+        # HashiCorp signs release SHA256SUMS with a signing SUBKEY that can expire
+        # before the primary key, so checking only the primary would miss a signing
+        # subkey lapse -- the HCSEC-2026-03 class event. We warn on the EARLIEST
+        # expiry across the primary key AND every subkey that is CURRENTLY usable for
+        # signing (openpgp's getSigningKey view of the active trust path). Rotated-out
+        # signing subkeys and encryption-only subkeys are deliberately excluded: the
+        # embedded key today carries a long-expired 2022 signing subkey and a 2030
+        # encryption subkey, neither of which affects whether signature verification
+        # keeps working, and including them would fail this job permanently/spuriously.
+        run: |
+          node -e '
+            const openpgp = require("openpgp");
+            const { HASHICORP_GPG_PUBLIC_KEY } = require("./src/hashicorp-gpg-key");
+            (async function () {
+              const now = new Date();
+              const key = await openpgp.readKey({ armoredKey: HASHICORP_GPG_PUBLIC_KEY });
+              const components = [{ label: "primary key " + key.getKeyID().toHex(), exp: await key.getExpirationTime() }];
+              for (const sub of key.subkeys) {
+                let usable = false;
+                try { await key.getSigningKey(sub.getKeyID(), now); usable = true; } catch (e) { usable = false; }
+                if (!usable) { console.log("Skipping subkey " + sub.getKeyID().toHex() + " (not a currently-usable signing subkey)."); continue; }
+                components.push({ label: "signing subkey " + sub.getKeyID().toHex(), exp: await sub.getExpirationTime() });
+              }
+              let earliest = null;
+              for (const c of components) {
+                if (c.exp === Infinity) { console.log("OK: " + c.label + " has no expiration set."); continue; }
+                if (!c.exp) { console.error("Embedded HashiCorp " + c.label + " expiry could not be determined (getExpirationTime returned " + String(c.exp) + ")."); process.exit(1); }
+                console.log("Embedded HashiCorp " + c.label + " expires " + c.exp.toISOString() + ".");
+                if (!earliest || c.exp.getTime() < earliest.exp.getTime()) { earliest = c; }
+              }
+              if (!earliest) { console.log("OK: no embedded HashiCorp key component has an expiration set."); return; }
+              const days = Math.floor((earliest.exp.getTime() - Date.now()) / 86400000);
+              console.log("Earliest-expiring component: " + earliest.label + " on " + earliest.exp.toISOString() + " (" + days + " days from now).");
+              if (days < 60) { console.error("Embedded HashiCorp GPG " + earliest.label + " expires in " + days + " days (< 60). Rotate hashicorp-gpg-key.ts in BOTH installer copies ahead of expiry -- see HCSEC-2026-03."); process.exit(1); }
+            })().catch(function (err) { console.error("Key-expiry check FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+
   # ── Notify on failure ─────────────────────────────────
   notify-on-failure:
     name: Create issue on failure
     runs-on: ubuntu-latest
-    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection, opentofu-cosign-canary]
+    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection, opentofu-cosign-canary, hashicorp-gpg-canary]
     if: failure() && github.event_name == 'schedule'
     permissions:
       issues: write

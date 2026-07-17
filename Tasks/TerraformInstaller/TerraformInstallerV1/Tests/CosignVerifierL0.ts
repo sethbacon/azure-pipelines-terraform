@@ -121,6 +121,28 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         assert.strictEqual(args[issIdx + 1], 'https://token.actions.githubusercontent.com');
     });
 
+    it('logs the resolved cosign path so a shadowed binary is auditable', async () => {
+        stubLogging();
+        t.which = () => '/usr/bin/cosign';
+        hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+        t.tool = (_path: string) => ({
+            arg() { return this; },
+            exec: async () => 0,
+        });
+        const logs: string[] = [];
+        const origLog = console.log;
+        console.log = (m?: unknown) => { logs.push(String(m)); };
+        try {
+            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', true);
+        } finally {
+            console.log = origLog;
+        }
+        assert.ok(
+            logs.some((l) => l.includes('/usr/bin/cosign')),
+            'expected the resolved cosign path to be logged',
+        );
+    });
+
     it('throws when cosign exits non-zero', async () => {
         stubLogging();
         t.which = () => '/usr/bin/cosign';

@@ -73,6 +73,10 @@ directories and their per-task test commands.
 5. CI runs automatically: version consistency check → build + test (Ubuntu + Windows × Node 24) → type-check tab → actionlint.
 6. Squash-merge when CI passes and the PR is approved; the branch is deleted automatically.
 
+## Error messages
+
+Two throw styles coexist across the tasks: `throw new Error(tasks.loc('Key', ...))` against a string defined in the task's `resources.resjson`, and a raw template-literal `throw new Error(\`...\`)`. Follow the predominant existing usage: use `tasks.loc()` for actionable, user-facing errors — invalid/missing input, a rejected value, a security-validation failure — where the message is fixed wording an operator needs to act on. Use a raw template literal when the error is wrapping a lower-level or technical detail that only makes sense interpolated inline — a caught exception's own `message`, an external tool's exit code or stdout/stderr, a dynamic path or URL under discussion. When in doubt, prefer `tasks.loc()` for anything a pipeline author will read and need to fix.
+
 ## Testing
 
 ### TerraformTaskV5
@@ -212,18 +216,24 @@ All three share the same `{ retries?, baseDelayMs?, log? }` options shape and `b
 
 `callback.ts`'s `postJsonWithRetry()` deliberately diverges from the other two: it never retries after a *received* HTTP response, including a 5xx, and only retries transport-level failures. This is intentional, not an oversight — `TerraformDriftReport`'s TSM callback token is one-shot, so retrying after the server has already seen (and possibly consumed) the token risks a spurious duplicate-submission error on the retry rather than a real recovery. Keep this divergence when syncing the other two helpers' behavior into `callback.ts`.
 
-## Terraform Plan Tab (build-results-tab)
+## Terraform results tab (build-results-tab)
 
-The extension contributes a **Terraform Plan** tab to the Azure DevOps build results page. The tab reads pipeline attachments named `terraform-plan-results` published by the `plan` command (when `publishPlanResults: true`) and renders the captured `terraform plan` output with ANSI color translated to HTML.
+The extension contributes a **Terraform** tab (displayed name; the manifest's contribution id is `terraform-plan-tab`) to the Azure DevOps build results page, with Plan/Apply/State pivots. It reads the structured `terraform-plan-summary`/`terraform-apply-summary`/`terraform-state-summary` attachments plus the legacy `terraform-plan-results` (raw ANSI, `publishPlanResults: true`) as a fallback view.
 
 ### Source layout
 
 ```text
 src/tab/
-├── tabContent.tsx      # React entry point; registers the tab via SDK
-├── tabContent.css      # Tab styling
-├── index.html          # HTML shell loaded by the ADO iframe
-└── tsconfig.json       # TypeScript config used by webpack
+├── tabContent.tsx           # React entry point; registers the tab via SDK; Plan/Apply/State pivots
+├── tabContent.css           # Tab styling
+├── digest-model.ts          # Safe parse/validate of a fetched digest attachment into typed objects
+├── digest-schema.ts         # Digest TypeScript shape — byte-identical copy of the task's src/results/digest-schema.ts
+├── caps.ts                  # Size/DoS caps — byte-identical copy of the task's src/results/caps.ts
+├── ansi-to-html.ts          # SGR-to-HTML converter used only by the raw fallback view
+├── components/              # Presentational components (SummaryHeader, ResourceList, ResourceDiff, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
+├── security-tripwires.test.ts # CI-enforced static guard — see "When editing the tab" below
+├── index.html               # HTML shell loaded by the ADO iframe
+└── tsconfig.json            # TypeScript config used by webpack
 ```
 
 The tab is bundled by `webpack.config.js` (at the repo root) alongside packaging of the manifest, images, and compiled task JS into `build/`.
@@ -254,7 +264,7 @@ Webpack emits to `build/tab/`. You can open `build/tab/tabContent.js` to confirm
 3. Upload the `.vsix` to your publisher page as a **Private** extension and share it with a test Azure DevOps organization.
 4. Install the shared extension into your test project.
 5. Run a pipeline that uses `PipelineTerraformTask@5` with `command: plan` and `publishPlanResults: true`.
-6. Open the build results page — the **Terraform Plan** tab appears alongside **Summary** / **Tests**. Iterate by rebuilding the `.vsix`, bumping the version in `configs/self.json`, and re-uploading.
+6. Open the build results page — the **Terraform** tab appears alongside **Summary** / **Tests**. Iterate by rebuilding the `.vsix`, bumping the version in `configs/self.json`, and re-uploading.
 
 ### Contribution points (manifest)
 
@@ -265,6 +275,7 @@ The tab is declared in `azure-devops-extension.json` as a `ms.vss-build-web.buil
 - Run `npm run webpack` for fast iteration (skips re-running task compilation). Errors surface immediately in the webpack output.
 - The bundle uses **React 18** with the `createRoot` API in `tabContent.tsx`.
 - The tab uses `dangerouslySetInnerHTML` to render ANSI-converted HTML. Any change to `ansiToHtml` must keep opening/closing `<span>` tags balanced. A state-machine rewrite of the converter is the planned hardening here.
+- `security-tripwires.test.ts` is a CI-enforced static guard: it fails the build if `dangerouslySetInnerHTML` JSX usage appears anywhere under `src/tab/` outside its two allowlisted files (`components/RawView.tsx`, `ansi-to-html.ts`), and separately if any file introduces a `fetch`/`XMLHttpRequest`/`WebSocket` call other than `tabContent.tsx`'s known ADO-attachment fetches. Keep both allowlists in sync with any legitimate change to where these sinks live.
 - `src/tab/` has a Jest harness (`jest.config.js` at the repo root) — run it with `npm run test:tab`. It covers `ansi-to-html.test.ts` and `tabContent.test.tsx` (loading/error/empty states, multi-plan select, oversize-plan download link, `loadPlans` edge cases) and enforces coverage thresholds (statements 80%, branches 78%, functions 60%, lines 80%; see `jest.config.js` for the rationale behind those numbers). Run it alongside `npm run webpack` when changing the tab. It does not cover the module-level SDK bootstrap block (`SDK.ready().then(...)`) — that needs a real DOM/ADO iframe, so end-to-end verification of that wiring still requires a private publish.
 
 ## Release process

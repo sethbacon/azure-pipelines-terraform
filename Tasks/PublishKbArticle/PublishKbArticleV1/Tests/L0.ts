@@ -18,7 +18,7 @@ import * as htmlValidate from '../src/html-validate';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 
@@ -146,6 +146,17 @@ describe('auth.getOAuthToken', () => {
             'tasks.setSecret should be called with the clientSecret input, so it is masked even if it leaks ' +
             'before the token exchange completes (e.g. in a request-body log or an unhandled error)',
         );
+    });
+
+    it('retries a transient 5xx on the token endpoint then succeeds (#562)', async () => {
+        nock(BASE_URL)
+            .post('/oauth_token.do')
+            .reply(503, { error: 'busy' })
+            .post('/oauth_token.do')
+            .reply(200, { access_token: 'tok_after_retry' });
+
+        const token = await auth.getOAuthToken(INSTANCE, 'cid', 'csec');
+        assert.strictEqual(token, 'tok_after_retry');
     });
 
     it('throws on HTTP error', async () => {
@@ -948,6 +959,28 @@ describe('htmlValidate.validateHtmlContent', () => {
         }
     });
 
+    it('throws on MathML mXSS carriers (<math>, <annotation-xml encoding="text/html">) (#552)', () => {
+        const html = '<html><body><math><annotation-xml encoding="text/html"><img src="x"></annotation-xml></math></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /MathML|FormOrSvgAnimationNotAllowed/,
+        );
+    });
+
+    it('throws on mglyph/malignmark/foreignObject foreign-content elements (#552)', () => {
+        for (const html of [
+            '<html><body><mglyph>x</mglyph></body></html>',
+            '<html><body><malignmark>x</malignmark></body></html>',
+            '<html><body><svg><foreignObject><div>x</div></foreignObject></svg></body></html>',
+        ]) {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /MathML|FormOrSvgAnimationNotAllowed/,
+                `expected a throw for: ${html}`,
+            );
+        }
+    });
+
     it('throws on a data:image/svg+xml URI even on an <img> element (an SVG document can embed active content, unlike a raster format)', () => {
         const html = '<html><body><img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+"></body></html>';
         assert.throws(
@@ -1285,6 +1318,57 @@ describe('attachments helpers', () => {
 });
 
 // ===========================================================================
+// attachments — response-shape validation + retry hardening (#561)
+// ===========================================================================
+describe('listArticleAttachments / uploadAttachment response hardening (#561)', () => {
+    let tmpFile: string;
+
+    before(() => {
+        const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'att-hard-'));
+        tmpFile = nodePath.join(dir, 'pic.png');
+        fs.writeFileSync(tmpFile, Buffer.from('PNGDATA'));
+    });
+
+    it('listArticleAttachments retries a transient 5xx then returns the listed attachments', async () => {
+        nock(BASE_URL)
+            .get('/api/now/attachment')
+            .query(true)
+            .reply(503, { error: 'busy' })
+            .get('/api/now/attachment')
+            .query(true)
+            .reply(200, { result: [{ sys_id: 'att1', file_name: 'pic.png' }] });
+
+        const result = await listArticleAttachments(INSTANCE, HEADERS, 'art1');
+        assert.strictEqual(result.length, 1);
+        assert.strictEqual(result[0].sys_id, 'att1');
+    });
+
+    it('listArticleAttachments throws a clear diagnostic when "result" is not an array (2xx non-JSON body fallback)', async () => {
+        // servicenow-http.ts defaults a 2xx body that fails JSON.parse to {} --
+        // the previous `(response.data.result || [])` cast let that flow through
+        // as {} and crash the caller's .find() with a bare TypeError.
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, 'not json');
+
+        await assert.rejects(
+            () => listArticleAttachments(INSTANCE, HEADERS, 'art1'),
+            /did not return an array|AttachmentListNotArray/,
+        );
+    });
+
+    it('uploadAttachment throws a clear diagnostic when the response carries no string sys_id', async () => {
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: {} });
+
+        await assert.rejects(
+            () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
+            /did not return a sys_id|AttachmentUploadNoSysId/,
+        );
+    });
+});
+
+// ===========================================================================
 // attachments — syncImageAttachment (nock-mocked)
 // ===========================================================================
 describe('syncImageAttachment', () => {
@@ -1540,6 +1624,17 @@ describe('manifest.appendToManifest', () => {
         manifest.appendToManifest(p, { sys_id: 'a1' });
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(p, 'utf8')), [{ sys_id: 'a1' }]);
     });
+
+    it('#564: surfaces a manifest write failure as a pipeline warning (tasks.warning) without throwing', () => {
+        // A path inside a directory that does not exist makes writeFileSync throw
+        // (ENOENT) on every platform without touching the corrupt-manifest branch.
+        const p = nodePath.join(tmpDir(), 'no-such-subdir', 'kb-manifest.json');
+        assert.doesNotThrow(() => manifest.appendToManifest(p, { sys_id: 'a1' }));
+        assert.ok(
+            capturedWarnings.some(w => /ManifestWriteFailed|Could not write manifest/.test(w)),
+            `expected the manifest-write failure to surface via tasks.warning: ${capturedWarnings}`,
+        );
+    });
 });
 
 describe('manifest.emitArticleOutput / findKbArticleJson', () => {
@@ -1569,6 +1664,22 @@ describe('manifest.emitArticleOutput / findKbArticleJson', () => {
             const found = manifest.findKbArticleJson();
             assert.ok(found);
             assert.strictEqual(found!['article_id'], 'sys-1');
+        } finally {
+            process.chdir(cwd);
+        }
+    });
+
+    it('#564: surfaces a legacy KB-json write failure as a pipeline warning (tasks.warning) without throwing', () => {
+        const cwd = process.cwd();
+        process.chdir(tmpDir());
+        try {
+            // A number containing a path separator into a directory that does not
+            // exist makes writeFileSync throw (ENOENT) on every platform.
+            assert.doesNotThrow(() => manifest.outputArticleInfoToJson({ ...article, number: 'no-such-dir/KB0001' }));
+            assert.ok(
+                capturedWarnings.some(w => /ArticleInfoSaveFailed|Error saving article information/.test(w)),
+                `expected the KB-json save failure to surface via tasks.warning: ${capturedWarnings}`,
+            );
         } finally {
             process.chdir(cwd);
         }

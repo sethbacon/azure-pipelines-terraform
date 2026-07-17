@@ -36,7 +36,7 @@ export async function runSentinel(
     if (byoConfig) {
         workingDir = path.dirname(path.resolve(byoConfig));
     } else {
-        level = tasks.getInput('defaultEnforcementLevel') || 'soft-mandatory';
+        level = validateEnforcementLevel(tasks.getInput('defaultEnforcementLevel') || 'soft-mandatory');
         workingDir = generateConfig(policyDir, path.resolve(inputFile), level, tempFiles);
     }
 
@@ -130,8 +130,27 @@ export function validateSentinelImportName(name: string): string {
     return name;
 }
 
+const SENTINEL_ENFORCEMENT_LEVELS = new Set(['advisory', 'soft-mandatory', 'hard-mandatory']);
+
+/**
+ * The enforcement level is embedded verbatim into the generated sentinel.hcl as a
+ * quoted HCL string — `enforcement_level = "<level>"`. ADO does not enforce
+ * picklist values at runtime, and unlike the source paths this field is not routed
+ * through `hcl()`. Constrain it to the exact set of levels Sentinel itself accepts
+ * in that position (the only thing that belongs there anyway).
+ */
+export function validateEnforcementLevel(level: string): string {
+    if (!SENTINEL_ENFORCEMENT_LEVELS.has(level)) {
+        throw new Error(
+            `Invalid defaultEnforcementLevel '${level}': must be one of ` +
+            `advisory, soft-mandatory, hard-mandatory.`
+        );
+    }
+    return level;
+}
+
 /** Generates a sentinel.hcl in a temp dir; returns that dir. */
-function generateConfig(policyDir: string, inputFile: string, level: string, tempFiles: string[]): string {
+export function generateConfig(policyDir: string, inputFile: string, level: string, tempFiles: string[]): string {
     const importName = validateSentinelImportName(tasks.getInput('sentinelImportName') || 'tfplan');
     const policies = findSentinelPolicies(policyDir);
     if (policies.length === 0) {
@@ -168,16 +187,31 @@ function generateConfig(policyDir: string, inputFile: string, level: string, tem
     // finally/cleanup() can run — bare os.tmpdir() has no such guarantee
     // (matches policy-source.ts's cloneDir convention; issues #503/#505).
     const configDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `sentinel-config-${uuidV4()}`);
+    tempFiles.push(configDir);
     fs.mkdirSync(configDir, { recursive: true });
     const configPath = path.join(configDir, 'sentinel.hcl');
     fs.writeFileSync(configPath, lines.join('\n'), 'utf-8');
-    tempFiles.push(configDir);
     return configDir;
 }
 
-/** Escapes a value (path or policy name) for embedding in an HCL double-quoted string. */
+/**
+ * Escapes a value (path or policy name) for embedding in an HCL double-quoted
+ * string. Backslash and double-quote are escaped so the value cannot break out
+ * of the quoted string; `${` and `%{` are escaped to their literal HCL forms
+ * (`$${` / `%%{`) so a policy filename carrying template-interpolation syntax
+ * (reachable when policySource=gitUrl points at a third-party policy repo) is
+ * reproduced literally instead of being evaluated by the HCL parser — matching
+ * TerraformProviderMirror's escapeHclString. The `$`/`%` escapes use replacer
+ * functions because a plain `'$${'` replacement string would itself be mangled
+ * by JS's `$$` substitution rules; they only touch `$`/`%`/`{` and never a
+ * backslash, so they cannot interfere with the backslash pass.
+ */
 export function hcl(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return value
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\$\{/g, () => '$${')
+        .replace(/%\{/g, () => '%%{');
 }
 
 function findSentinelPolicies(dir: string): string[] {

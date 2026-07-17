@@ -2,10 +2,11 @@ import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveTool
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
-import { replaceSecretFile } from './secure-temp';
+import { replaceSecretFile, writeSecretFile } from './secure-temp';
 import { buildPlanDigest, DigestMeta } from './results/plan-digest';
 import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
+import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
@@ -575,8 +576,11 @@ export abstract class BaseTerraformCommandHandler {
             // runs in the finally of the parent handler milliseconds later and would
             // unlink the file before the agent has uploaded it, causing the upload to
             // fail with "attachment file does not exist on disk".
+            // Written via the 0600/DACL secret-file primitive (#547): the raw plan
+            // stdout can carry non-sensitive-but-secret attribute values, and the
+            // uuid filename keeps the exclusive create collision-free.
             const attachmentPath = path.join(tempDir, `terraform-plan-${uuidV4()}.txt`);
-            fs.writeFileSync(attachmentPath, planStdout, "utf-8");
+            writeSecretFile(attachmentPath, planStdout);
             // COMPAT (§ non-negotiable): the legacy terraform-plan-results attachment
             // name is passed RAW, exactly as before the structured-summary feature.
             // azure-pipelines-task-lib's addAttachment already escapes the value into
@@ -643,9 +647,7 @@ export abstract class BaseTerraformCommandHandler {
         }
 
         const digest = buildPlanDigest(planJson, this.buildDigestMeta(publishName, workingDirectory), mode ? { mode } : undefined);
-        const digestPath = path.join(tempDir, `terraform-plan-summary-${uuidV4()}.json`);
-        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
-        tasks.addAttachment('terraform-plan-summary', digest.meta.name, digestPath);
+        this.writeAndAttachDigest('plan', digest, tempDir);
     }
 
     /**
@@ -693,9 +695,7 @@ export abstract class BaseTerraformCommandHandler {
         // show` (the caller in show() awaits this with no try/catch of its own).
         try {
             const digest = buildStateDigest(stateJson, this.buildDigestMeta(publishName, workingDirectory));
-            const digestPath = path.join(tempDir, `terraform-state-summary-${uuidV4()}.json`);
-            fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
-            tasks.addAttachment('terraform-state-summary', digest.meta.name, digestPath);
+            this.writeAndAttachDigest('state', digest, tempDir);
         } catch (error) {
             tasks.warning(`Could not build the structured state summary; skipping the 'terraform-state-summary' attachment: ${String(error)}`);
         }
@@ -715,6 +715,21 @@ export abstract class BaseTerraformCommandHandler {
             job: tasks.getVariable('System.JobDisplayName') || undefined,
             createdIso: tasks.getVariable('System.PipelineStartTime') || new Date().toISOString(),
         };
+    }
+
+    /**
+     * Shared tail of the three structured-summary publishers (plan/state/apply):
+     * writes the serialized digest to a uuid-named file under tempDir and
+     * attaches it as `terraform-<kind>-summary`. Deliberately NOT pushed onto
+     * `tempFiles`: the agent uploads attachment files asynchronously after
+     * reading the ##vso[task.addattachment] line from stdout, so
+     * cleanupTempFiles() would unlink the file before the upload (see the
+     * publishPlanResults comment in plan()).
+     */
+    private writeAndAttachDigest(kind: 'plan' | 'state' | 'apply', digest: Digest, tempDir: string): void {
+        const digestPath = path.join(tempDir, `terraform-${kind}-summary-${uuidV4()}.json`);
+        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+        tasks.addAttachment(`terraform-${kind}-summary`, digest.meta.name, digestPath);
     }
 
     public async custom(): Promise<number> {
@@ -852,9 +867,7 @@ export abstract class BaseTerraformCommandHandler {
         };
 
         const digest = buildApplyDigest(ndjson, this.buildDigestMeta(publishName, workingDirectory), options);
-        const digestPath = path.join(tempDir, `terraform-apply-summary-${uuidV4()}.json`);
-        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
-        tasks.addAttachment('terraform-apply-summary', digest.meta.name, digestPath);
+        this.writeAndAttachDigest('apply', digest, tempDir);
     }
 
     public async destroy(): Promise<number> {

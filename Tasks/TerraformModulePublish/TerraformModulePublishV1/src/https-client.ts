@@ -43,6 +43,7 @@ export type HttpClient = (
  * https.request transport, which has no fetch-style dispatcher to hand a
  * ProxyAgent to.
  */
+// #region shared:ProxyTunnelAgent -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
 class ProxyTunnelAgent extends https.Agent {
     constructor(
         private readonly proxyHostname: string,
@@ -141,6 +142,7 @@ class ProxyTunnelAgent extends https.Agent {
         return undefined;
     }
 }
+// #endregion shared:ProxyTunnelAgent
 
 /**
  * Reads the agent's configured HTTP(S) proxy (tasks.getHttpProxyConfiguration())
@@ -180,7 +182,13 @@ function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
         if (proxy.proxyPassword) {
             tasks.setSecret(proxy.proxyPassword);
         }
-        proxyAuthHeader = `Basic ${Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64')}`;
+        // ADO's log masking matches literal registered strings only, so the
+        // derived base64 form needs its own setSecret registration even though
+        // the plain password above is already masked (mirrors the encoded-form
+        // registration in PublishKbArticle's auth.ts basicAuthHeader()).
+        const proxyCredentials = Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64');
+        tasks.setSecret(proxyCredentials);
+        proxyAuthHeader = `Basic ${proxyCredentials}`;
     }
     const proxyPort = Number(proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80));
     return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader, tunnelTimeoutMs);

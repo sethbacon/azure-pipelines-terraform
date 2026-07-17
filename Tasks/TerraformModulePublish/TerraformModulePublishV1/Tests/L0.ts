@@ -531,6 +531,21 @@ describe('hcp-publisher', () => {
             assert.strictEqual(calls[1].url, hcp.vcsUrl(base.address, base.namespace));
         });
 
+        it('retries a transient 5xx on the VCS module create and then succeeds (#427)', async () => {
+            const { client, calls } = fakeClient([
+                { status: 404, body: '{}' },  // GET module check
+                { status: 503, body: '' },    // POST VCS create — transient failure
+                { status: 201, body: '{}' },  // POST VCS create — retried, succeeds
+                { status: 201, body: '{}' },  // POST version create
+            ]);
+            const opts = { ...base, vcsRepoIdentifier: 'acme/proj/_git/terraform-aws-vpc', vcsOauthTokenId: 'ot-abc' };
+            const result = await new hcp.HcpPublisher(client, opts, noop).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls.length, 4);
+            assert.strictEqual(calls[1].url, hcp.vcsUrl(base.address, base.namespace));
+            assert.strictEqual(calls[2].url, hcp.vcsUrl(base.address, base.namespace), 'the VCS create should have been retried after the 503');
+        });
+
         it('throws on 404 when VCS details are missing', async () => {
             const { client } = fakeClient([{ status: 404, body: '{}' }]);
             await assert.rejects(() => new hcp.HcpPublisher(client, base, noop).publish(), /vcsRepoIdentifier|HcpModuleNotFoundNoVcsInputs/);

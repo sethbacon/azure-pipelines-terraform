@@ -30,12 +30,22 @@ export function validateMirrorUrl(url: string): void {
  * HTTPS URL via `new URL()` before reaching here, but that validation checks
  * the parsed representation, not the raw string that's actually interpolated
  * -- escaping it too is cheap defense-in-depth against a URL string crafted to
- * carry a literal quote/newline through validation.
+ * carry a literal quote/newline through validation. `${` and `%{` are also
+ * escaped to their literal HCL forms (`$${` / `%%{`) so a value containing
+ * template-interpolation or template-directive syntax is reproduced literally
+ * instead of being evaluated by Terraform's HCL parser. The backslash escape
+ * runs first so a raw `\` is doubled before any `$`/`%` escaping is applied;
+ * since the `${`/`%{` replacements only ever touch `$`/`%`/`{` characters and
+ * never introduce or consume a backslash, the two escaping passes can't
+ * interfere with each other regardless of order (e.g. `\${` becomes `\\$${`,
+ * which HCL decodes back to `\${`).
  */
 function escapeHclString(value: string): string {
     return value
         .replace(/\\/g, '\\\\')
         .replace(/"/g, '\\"')
+        .replace(/\$\{/g, () => '$${')
+        .replace(/%\{/g, () => '%%{')
         .replace(/\r\n/g, '\\n')
         .replace(/\n/g, '\\n')
         .replace(/\r/g, '\\n');

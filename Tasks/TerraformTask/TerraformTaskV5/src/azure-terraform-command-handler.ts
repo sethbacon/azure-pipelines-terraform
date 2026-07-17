@@ -264,6 +264,13 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                         // By persisting the service connection ID in the backend config, we can support multiple service connections for backend and provider auth.
                         this.backendConfig.set("ado_pipeline_service_connection_id", serviceConnectionID);
                     } else {
+                        // ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID is azurerm's documented
+                        // primary variable for the ADO service connection ID (matching the
+                        // ado_pipeline_service_connection_id backend-config key above);
+                        // ARM_OIDC_AZURE_SERVICE_CONNECTION_ID is kept as the
+                        // AzAPI-compatibility fallback name azurerm also honors, so AzAPI
+                        // users are unaffected (#572).
+                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID", serviceConnectionID);
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID);
                     }
                     const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false);

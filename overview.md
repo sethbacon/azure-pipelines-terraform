@@ -22,9 +22,9 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 ## Key Features
 
 - **Providers**: Azure (AzureRM), AWS, GCP, OCI
-- **Commands**: init, validate, plan, apply, destroy, show, output, workspace, state, fmt, test, get, and custom (any Terraform CLI command)
+- **Commands**: init, validate, plan, apply, destroy, show, output, workspace, state, fmt, test, get, import, forceunlock, refresh, and custom (any Terraform CLI command)
 - **Backend types**: azurerm, s3, gcs, oci, HCP Terraform Cloud, generic (any backend via config file), local
-- **Workload Identity Federation (OIDC)** for Azure, AWS, and GCP
+- **Workload Identity Federation (OIDC)** for Azure, AWS, GCP, and OCI
 - **Flexible installer**: Download Terraform from HashiCorp releases, a private registry, or a custom mirror with SHA256 verification
 - **Provider network mirroring**: Route provider downloads through a private mirror for air-gapped environments, caching, or compliance
 - **Module publishing**: Publish module versions to HCP Terraform or a private registry (terraform-registry-backend) from a release pipeline
@@ -32,7 +32,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **Documentation publishing**: Convert Markdown docs to HTML and publish them as ServiceNow knowledge base articles (idempotent create/update, image attachments) directly from a pipeline
 - **`-replace` flag** support on plan and apply (modern replacement for the deprecated `taint` command)
 - **Detailed exit code** on plan with `changesPresent` output variable for conditional apply
-- **Terraform Plan tab**: a build-results tab renders `terraform plan` output as a readable summary (build-attachment content is HTML-escaped before display)
+- **Terraform results tab**: a build-results tab with Plan/Apply/State pivots renders structured, redacted plan/apply/state summaries — sensitive values render as `(sensitive)` — alongside the legacy raw ANSI plan view
 - **SARIF output**: PolicyCheck and DriftReport can emit a SARIF report for code-scanning / security dashboards
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
 
@@ -107,6 +107,7 @@ To pin a specific version:
 | GCP             | Service Connection           | Service account JSON key via GCP service connection.                                        |
 | GCP             | Workload Identity Federation | OIDC token exchange via external account credentials. Requires Workload Identity Pool.      |
 | OCI             | Service Connection           | Private key + user/tenancy OCIDs via OCI service connection.                                |
+| OCI             | Workload Identity Federation | OIDC token exchanged for a temporary User Principal Session Token (UPST) via OCI Identity Domains. Requires an Identity Propagation Trust. |
 
 ## Backend Types
 

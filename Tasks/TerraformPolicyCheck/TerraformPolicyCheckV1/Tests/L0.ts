@@ -8,7 +8,11 @@ import * as os from 'os';
 import './ResultsL0';
 // Direct unit tests for sentinel import-name validation (HCL injection guard).
 import './SentinelImportNameL0';
+// Direct unit tests for sentinel enforcement-level validation (HCL injection guard).
+import './SentinelEnforcementLevelL0';
 import './HclEscapeL0';
+// Direct unit test for the #560 config-dir cleanup-registration reorder.
+import './SentinelConfigDirRegistrationL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
@@ -156,6 +160,16 @@ describe('TerraformPolicyCheck Test Suite', function () {
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(tr.errorIssues.length > 0, 'should have an error issue');
+            // The clone dir must be registered for cleanup as soon as its path is
+            // computed, before the clone that can throw -- not only after a
+            // successful clone -- so a failed clone doesn't leak the temp dir
+            // (issue #560). The fixed-uuid clone dir path is reused here so this
+            // stays in sync with GitCloneFailure.ts's computation.
+            const cloneDir = path.join(os.tmpdir(), 'policy-repo-fixed-clonefail-uuid');
+            assert(
+                tr.stdout.includes(`Cleaned up temp dir: ${cloneDir}`),
+                `clone dir should be registered for cleanup even when the clone itself fails; stdout: ${tr.stdout}`,
+            );
         }, tr);
     });
 

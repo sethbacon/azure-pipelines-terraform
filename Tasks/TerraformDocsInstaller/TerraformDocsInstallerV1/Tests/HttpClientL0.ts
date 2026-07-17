@@ -78,6 +78,110 @@ describe('http-client: fetchWithTimeout', () => {
         }
     });
 
+    // GitHub release-asset URLs 302 onto GitHub's *.githubusercontent.com asset
+    // CDN, so the OpenTofu SHA256SUMS / OPA .sha256 / terraform-docs .sha256sum
+    // fetches all depend on this one narrowly-allowed off-host hop. Everything
+    // outside that exact boundary must stay refused.
+    it('follows a github.com release-asset redirect onto *.githubusercontent.com', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async (url: string) => {
+            if (new URL(url).host === 'github.com') {
+                return new Response(null, { status: 302, headers: { Location: 'https://objects.githubusercontent.com/asset?sig=x' } });
+            }
+            return new Response('sums', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        try {
+            const result = await fetchWithTimeout(
+                'https://github.com/opentofu/opentofu/releases/download/v1.11.6/tofu_1.11.6_SHA256SUMS',
+                1000,
+                async (r) => r.text(),
+            );
+            assert.strictEqual(result, 'sums');
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('follows a github.com redirect to release-assets.githubusercontent.com (rotated CDN label)', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async (url: string) => {
+            if (new URL(url).host === 'github.com') {
+                return new Response(null, { status: 302, headers: { Location: 'https://release-assets.githubusercontent.com/asset?sig=x' } });
+            }
+            return new Response('sums', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        try {
+            const result = await fetchWithTimeout(
+                'https://github.com/open-policy-agent/opa/releases/download/v1.0.0/opa_linux_amd64.sha256',
+                1000,
+                async (r) => r.text(),
+            );
+            assert.strictEqual(result, 'sums');
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('refuses a github.com redirect to a non-GitHub host', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async () =>
+            new Response(null, { status: 302, headers: { Location: 'https://evil.example.net/payload' } })
+        ) as unknown as typeof globalThis.fetch;
+        try {
+            await assert.rejects(
+                () => fetchWithTimeout('https://github.com/o/r/releases/download/v1/x', 1000, async (r) => r.text()),
+                /off-host redirect/
+            );
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('refuses a github.com redirect to *.githubusercontent.com that downgrades to http://', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async () =>
+            new Response(null, { status: 302, headers: { Location: 'http://objects.githubusercontent.com/asset' } })
+        ) as unknown as typeof globalThis.fetch;
+        try {
+            await assert.rejects(
+                () => fetchWithTimeout('https://github.com/o/r/releases/download/v1/x', 1000, async (r) => r.text()),
+                /InsecureUrlRejected/
+            );
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('refuses a *.githubusercontent.com redirect from a non-github.com origin', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async () =>
+            new Response(null, { status: 302, headers: { Location: 'https://objects.githubusercontent.com/asset' } })
+        ) as unknown as typeof globalThis.fetch;
+        try {
+            await assert.rejects(
+                () => fetchWithTimeout('https://downloads.example.com/x', 1000, async (r) => r.text()),
+                /off-host redirect/
+            );
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('refuses a github.com redirect to the bare githubusercontent.com apex', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async () =>
+            new Response(null, { status: 302, headers: { Location: 'https://githubusercontent.com/asset' } })
+        ) as unknown as typeof globalThis.fetch;
+        try {
+            await assert.rejects(
+                () => fetchWithTimeout('https://github.com/o/r/releases/download/v1/x', 1000, async (r) => r.text()),
+                /off-host redirect/
+            );
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
     it('aborts a redirect loop after the hop limit', async () => {
         const originalFetch = globalThis.fetch;
         // Always redirect to a same-host URL -> exceeds MAX_REDIRECTS.

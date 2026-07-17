@@ -27,7 +27,8 @@ tr.registerMock('./http-client', {
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
     fetchText: async (url: string) => {
-        // Falls back to FALLBACK_TERRAFORM_VERSION = 1.14.8.
+        // Intentionally unreached (see the header comment): version resolution
+        // throws before any download or checksum fetch happens.
         if (url.includes('SHA256SUMS')) {
             return `${EXPECTED_SHA256}  terraform_1.14.8_windows_amd64.zip\n`;
         }

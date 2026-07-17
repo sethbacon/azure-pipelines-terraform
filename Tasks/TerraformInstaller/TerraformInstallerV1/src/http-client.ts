@@ -75,6 +75,25 @@ function buildFetchOptions(): RequestInit {
 }
 
 /**
+ * GitHub release-asset URLs (https://github.com/<org>/<repo>/releases/download/...)
+ * answer with a 302 onto GitHub's asset CDN at a *.githubusercontent.com host
+ * (e.g. objects.githubusercontent.com, release-assets.githubusercontent.com), so
+ * a strict same-host rule would fail every GitHub-sourced verification-material
+ * fetch closed (OpenTofu SHA256SUMS, OPA .sha256, terraform-docs .sha256sum).
+ * This narrowly allows that one boundary: the redirect must have been issued by
+ * the TLS-authenticated github.com origin itself, the target must stay https://
+ * (no protocol downgrade), and the target host must sit under GitHub's own
+ * githubusercontent.com asset domain. The suffix match keeps working when GitHub
+ * rotates the CDN label; every other origin and every non-GitHub target host
+ * stays refused.
+ */
+function isGithubAssetRedirect(originHost: string, next: URL): boolean {
+    return (originHost === 'github.com' || originHost === 'www.github.com')
+        && next.protocol === 'https:'
+        && next.host.endsWith('.githubusercontent.com');
+}
+
+/**
  * Fetches an https:// URL under a wall-clock timeout that covers the connection,
  * every redirect hop, the response headers, AND body consumption — the consume
  * callback runs inside the timeout guard, so a stalled body stream is bounded
@@ -83,10 +102,12 @@ function buildFetchOptions(): RequestInit {
  *
  * Redirects are followed manually (not via fetch's automatic redirect:'follow')
  * so each hop's Location can be re-validated before following it: it must stay
- * https:// AND stay on the original host. These callers (checkpoint API,
- * registry version/info endpoints, SHA256SUMS, .sig) have no legitimate reason
- * to redirect to a different host, so an off-host redirect is refused rather
- * than followed.
+ * https:// AND stay on the original host, with one narrow exception for
+ * github.com release-asset redirects onto GitHub's own *.githubusercontent.com
+ * CDN (see isGithubAssetRedirect). The remaining callers (checkpoint API,
+ * registry version/info endpoints, releases.hashicorp.com SHA256SUMS/.sig) have
+ * no legitimate reason to redirect to a different host, so any other off-host
+ * redirect is refused rather than followed.
  */
 export async function fetchWithTimeout<T>(
     url: string,
@@ -115,7 +136,7 @@ export async function fetchWithTimeout<T>(
             if (next.protocol !== 'https:') {
                 throw new HttpError(tasks.loc("InsecureUrlRejected", next.toString()), false);
             }
-            if (next.host !== originHost) {
+            if (next.host !== originHost && !isGithubAssetRedirect(originHost, next)) {
                 throw new HttpError(`Refusing to follow an off-host redirect (${originHost} -> ${next.host}) while fetching ${url}.`, false);
             }
             currentUrl = next.toString();
