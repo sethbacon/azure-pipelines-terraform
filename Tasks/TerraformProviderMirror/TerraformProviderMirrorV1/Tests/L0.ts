@@ -239,6 +239,117 @@ describe('config-generator', () => {
             const urlLineMatch = result.match(/^\s*url = ".*"$/m);
             assert.ok(urlLineMatch, 'url assignment must remain a single well-formed line');
         });
+
+        it('should escape ${ template interpolation syntax in include patterns', () => {
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com',
+                allowDirectFallback: true,
+                directExcludePatterns: [],
+                directIncludePatterns: ['registry.terraform.io/${evil}/*'],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            // The raw single-$ form must not appear as the interpolated pattern --
+            // only the doubled-$ escaped form (checked below) is acceptable.
+            assert.ok(
+                !result.includes('"registry.terraform.io/${evil}/*"'),
+                'raw ${ must not reach the generated HCL as an unescaped interpolation'
+            );
+            assert.ok(
+                result.includes('include = ["registry.terraform.io/$${evil}/*"]'),
+                `expected $\{-escaped interpolation, got: ${result}`
+            );
+        });
+
+        it('should escape %{ template directive syntax in exclude patterns', () => {
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com',
+                allowDirectFallback: true,
+                directExcludePatterns: ['registry.terraform.io/%{if true}evil%{endif}/*'],
+                directIncludePatterns: [],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            // The raw single-% form must not appear as the interpolated pattern --
+            // only the doubled-% escaped form (checked below) is acceptable.
+            assert.ok(
+                !result.includes('"registry.terraform.io/%{if true}evil%{endif}/*"'),
+                'raw %{ must not reach the generated HCL as an unescaped directive'
+            );
+            assert.ok(
+                result.includes('exclude = ["registry.terraform.io/%%{if true}evil%%{endif}/*"]'),
+                `expected %%{-escaped directive, got: ${result}`
+            );
+        });
+
+        it('should escape ${ and %{ in mirrorUrl mixed with quotes and backslashes', () => {
+            const malicious = 'https://registry.example.com/${a}\\%{b}"c';
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: malicious,
+                allowDirectFallback: false,
+                directExcludePatterns: [],
+                directIncludePatterns: [],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            // The raw single-$/% forms must not appear as the interpolated URL --
+            // only the fully-escaped form (checked below) is acceptable.
+            assert.ok(
+                !result.includes('"https://registry.example.com/${a}'),
+                'raw ${ must not reach the generated HCL as an unescaped interpolation'
+            );
+            assert.ok(
+                result.includes('url = "https://registry.example.com/$${a}\\\\%%{b}\\"c/"'),
+                `expected combined escaping of backslash/quote/\${/%{, got: ${result}`
+            );
+
+            // The url assignment must remain a single well-formed HCL line.
+            const urlLineMatch = result.match(/^\s*url = ".*"$/m);
+            assert.ok(urlLineMatch, 'url assignment must remain a single well-formed line');
+        });
+
+        it('should correctly escape a backslash immediately followed by ${ (order-sensitive case)', () => {
+            // A literal backslash directly followed by "${" is the case where a naive
+            // implementation could apply the two escaping passes in a way that
+            // double-processes or drops characters. The backslash must double to "\\\\"
+            // and the "${" must independently become "$${", regardless of pass order.
+            const malicious = 'registry.terraform.io/\\${evil}/*';
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com',
+                allowDirectFallback: true,
+                directExcludePatterns: [],
+                directIncludePatterns: [malicious],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            assert.ok(
+                result.includes('include = ["registry.terraform.io/\\\\$${evil}/*"]'),
+                `expected "\\${'${'}" to escape to "\\\\$${'$'}{", got: ${result}`
+            );
+        });
+
+        it('should leave a benign mirror URL unchanged in the generated HCL', () => {
+            const config: ProviderMirrorConfig = {
+                mirrorUrl: 'https://registry.example.com/terraform/providers',
+                allowDirectFallback: false,
+                directExcludePatterns: [],
+                directIncludePatterns: [],
+            };
+
+            const result = generateProviderInstallationConfig(config);
+
+            assert.strictEqual(result,
+                'provider_installation {\n' +
+                '  network_mirror {\n' +
+                '    url = "https://registry.example.com/terraform/providers/"\n' +
+                '  }\n' +
+                '}\n'
+            );
+        });
     });
 });
 

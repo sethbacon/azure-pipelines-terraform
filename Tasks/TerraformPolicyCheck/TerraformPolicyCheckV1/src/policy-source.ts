@@ -23,7 +23,11 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
  * - `gitUrl`: clones an HTTPS git repo at a ref into a temp dir (tracked in
  *   `tempDirs` for cleanup). A branch/tag is shallow-cloned; a full 40-char SHA
  *   is cloned then checked out. An optional token authenticates private repos
- *   via `http.extraheader` so it never appears in the clone URL.
+ *   via an `http.extraheader` Authorization header, delivered as per-invocation
+ *   `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` environment variables (git >= 2.31)
+ *   rather than a `-c http.extraheader=...` argv item, so the token never
+ *   appears in the clone URL or in the child process's command line (readable
+ *   via ps / /proc/<pid>/cmdline by other processes on a shared agent).
  */
 export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     const source = tasks.getInput('policySource') || 'path';
@@ -54,8 +58,8 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     // no such guarantee and would otherwise need its own SIGTERM/SIGINT
     // handler to avoid leaking a clone on cancellation.
     const cloneDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `policy-repo-${uuidV4()}`);
-    await cloneRepo(url, ref, token, cloneDir);
     tempDirs.push(cloneDir);
+    await cloneRepo(url, ref, token, cloneDir);
 
     // Resolve the subdir against the clone root and assert containment, so a
     // `../../x` (or absolute) subdir cannot point the policy bundle at an
