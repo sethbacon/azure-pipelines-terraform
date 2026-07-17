@@ -92,6 +92,41 @@ function applyWindowsRestrictiveAcl(filePath: string): void {
 }
 
 /**
+ * Overwrites a secret temp file's on-disk content with zeros before it is
+ * unlinked. Terraform WIF token/credential files (OIDC JWTs, GCP/OCI
+ * credential JSON, PEM keys, the OCI PAR backend config-<uuid>.tf, cleartext
+ * `terraform output -json` dumps, ...) are all restrictively-permissioned and
+ * tracked for end-of-step deletion, but a bare unlink only removes the
+ * directory entry -- the bytes can remain recoverable on disk (a raw-device
+ * read, a filesystem that doesn't zero freed blocks, a crash-consistent
+ * snapshot taken between write and delete) until overwritten. Scrubbing first
+ * shrinks that residual-secret window down to only a crash between the
+ * overwrite and the unlink itself (#595). Best-effort and silent on a
+ * already-missing file (nothing to scrub); the caller decides how to react to
+ * any other failure (e.g. a permissions error), matching every other
+ * fail-aware primitive in this module. Not meaningful defense against a
+ * copy-on-write or log-structured filesystem/SSD wear-leveling remap, which
+ * can retain the pre-overwrite blocks regardless -- this narrows the ordinary
+ * case, not every storage layer.
+ */
+export function scrubFile(filePath: string): void {
+    let size: number;
+    try {
+        size = fs.statSync(filePath).size;
+    } catch {
+        return; // Nothing at this path to scrub.
+    }
+    if (size === 0) return;
+    const fd = fs.openSync(filePath, 'r+');
+    try {
+        fs.writeSync(fd, Buffer.alloc(size, 0), 0, size, 0);
+        fs.fsyncSync(fd);
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
+/**
  * Chmods an existing file to 0600 after the fact. Unlike writeSecretFile
  * (which controls the initial write), this is for files this task did not
  * write itself -- e.g. a secure file downloaded by the third-party
