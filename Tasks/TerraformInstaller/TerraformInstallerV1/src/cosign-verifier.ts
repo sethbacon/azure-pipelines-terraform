@@ -48,6 +48,11 @@ export async function verifyCosignSignature(
         return;
     }
 
+    // cosign is discovered via a PATH lookup and is itself never integrity-verified,
+    // so log where it resolved from — a shadowed/unexpected binary is then auditable
+    // from the build log.
+    console.log(`Using cosign at ${cosignPath} for OpenTofu signature verification.`);
+
     // Fetch the signature + certificate, distinguishing a genuine 404 (the files
     // are not published) from a transient 5xx / network / TLS failure. Only a real
     // absence downgrades to skip-when-not-required; any other fetch failure is
