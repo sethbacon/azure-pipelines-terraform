@@ -1,13 +1,17 @@
 # Third-Party Notices
 
-This project bundles the third-party npm packages listed below into the published task
-handlers (via webpack), and is additionally inspired by the projects credited further down.
+This project ships the third-party npm packages listed below inside the published extension,
+and is additionally inspired by the projects credited further down. Two different mechanisms
+are used: task-level dependencies are installed as ordinary `node_modules` packages copied
+into the `.vsix` alongside each task's `tsc`-compiled JavaScript (unmodified, not run through a
+bundler); the Terraform results tab's UI dependencies are the exception — they are webpack-
+bundled into a single `build/tab/tabContent.js` (see CONTRIBUTING.md's build-flow section).
 
-## Bundled runtime dependencies
+## Task dependencies (shipped via each task's `node_modules`)
 
-These packages are compiled into one or more shipped task bundles. Each is distributed under
-a permissive OSI license; full license texts ship in each package's distribution and are
-available at the linked repositories.
+Each package below is distributed under a permissive OSI license; full license texts ship
+unmodified in each package's own `node_modules` directory and are available at the linked
+repositories.
 
 | Package                                  | Bundled into                                                                                           | License           |
 | ----------------------------------------- | ------------------------------------------------------------------------------------- | ----------------- |
@@ -24,8 +28,29 @@ available at the linked repositories.
 | azure-pipelines-tasks-artifacts-common   | TerraformTaskV5 (shared artifact utilities)                                                            | MIT               |
 | azure-pipelines-tasks-securefiles-common | TerraformTaskV5 (secure file download)                                                                 | MIT               |
 
+> **openpgp (LGPL-3.0-or-later) relinking note:** openpgp ships as the unmodified files
+> published to npm — copied into `TerraformInstallerV1`'s and `PolicyAgentInstallerV1`'s
+> `node_modules/openpgp` as-is, not minified or otherwise transformed into a single bundle.
+> The corresponding source for relinking/modification purposes is therefore simply the
+> package's public upstream source, https://github.com/openpgpjs/openpgpjs (also retrievable
+> from the npm registry tarball for the exact version pinned in each task's `package.json`).
+
+## Terraform results tab dependencies (webpack-bundled)
+
+`src/tab/tabContent.tsx` and its component tree are webpack-bundled into a single
+`build/tab/tabContent.js` inside the `.vsix` (see CONTRIBUTING.md). These four packages are
+root `devDependencies` (not task-level runtime `dependencies`) but their compiled code is
+embedded in that bundle, so they are listed here for completeness:
+
+| Package                    | Bundled into                                       | License |
+| --------------------------- | ----------------------------------------------------- | ------- |
+| react                      | Terraform results tab (`build/tab/tabContent.js`) | MIT     |
+| react-dom                  | Terraform results tab (`build/tab/tabContent.js`) | MIT     |
+| azure-devops-extension-sdk | Terraform results tab (`build/tab/tabContent.js`) | MIT     |
+| azure-devops-extension-api | Terraform results tab (`build/tab/tabContent.js`) | MIT     |
+
 > Maintained manually: when adding or removing a bundled runtime dependency, update this
-> table. (A generated SPDX/license report is a tracked future improvement.)
+> file. (A generated SPDX/license report is a tracked future improvement.)
 
 ---
 
