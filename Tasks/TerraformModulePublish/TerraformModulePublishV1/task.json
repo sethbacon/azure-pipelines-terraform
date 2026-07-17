@@ -108,7 +108,7 @@
             "groupName": "private",
             "defaultValue": "false",
             "required": false,
-            "helpMarkDown": "Disable TLS certificate verification. Use only for internal registries fronted by a private CA the agent does not trust; prefer installing the CA via NODE_EXTRA_CA_CERTS."
+            "helpMarkDown": "Disable TLS certificate verification. The apiKey is then sent over a connection whose server certificate is not authenticated, so it could be captured by an on-path attacker impersonating the registry. Use only for internal registries fronted by a private CA the agent does not trust; installing that CA via NODE_EXTRA_CA_CERTS is the first-class alternative and should be preferred."
         },
         {
             "name": "scmProviderId",
@@ -247,7 +247,7 @@
     },
     "messages": {
         "InputRequired": "Input '%s' is required.",
-        "SkipTlsVerifyEnabled": "skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, so the API key is sent over an unverified TLS channel. Use only for an internal registry fronted by a private CA the agent does not trust.",
+        "SkipTlsVerifyEnabled": "skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, so the API key can be captured by an on-path attacker impersonating the registry. Use only for an internal registry fronted by a private CA the agent does not trust; prefer installing that CA via NODE_EXTRA_CA_CERTS instead.",
         "UnsupportedRegistryType": "Unsupported registryType '%s'. Expected 'hcp' or 'private'.",
         "RegistryNonJsonResponse": "Registry returned a non-JSON response body: %s",
         "TransientHttpRetry": "Transient HTTP %s from registry; retrying (%s/%s).",
