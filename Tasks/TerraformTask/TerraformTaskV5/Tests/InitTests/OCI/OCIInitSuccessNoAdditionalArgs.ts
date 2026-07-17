@@ -1,9 +1,15 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import fs = require('fs');
 
 let tp = path.join(__dirname, './OCIInitSuccessNoAdditionalArgsL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
+
+// setupBackend writes the real config-<uuid>.tf into the working directory
+// (writeSecretFile, #545), so the directory must exist for the exclusive
+// create. L0.ts's after() hook removes it again.
+fs.mkdirSync('DummyWorkingDirectory', { recursive: true });
 
 tr.setInput('provider', 'oci');
 tr.setInput('command', 'init');

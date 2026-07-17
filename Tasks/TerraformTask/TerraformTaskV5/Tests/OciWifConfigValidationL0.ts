@@ -81,6 +81,18 @@ describe('OCI WIF synthetic-config field validation', function () {
             assert.throws(() => validateAndEscapeOciParUrl('https://h.example.com/p/`id`/o/s'), /forbidden template syntax/);
         });
 
+        it('rejects an embedded newline (HCL multi-line string breakout, #548)', () => {
+            assert.throws(() => validateAndEscapeOciParUrl('https://h.example.com/p/a\nb/o/s'), /control character/);
+        });
+
+        it('rejects an embedded carriage return (#548)', () => {
+            assert.throws(() => validateAndEscapeOciParUrl('https://h.example.com/p/a\rb/o/s'), /control character/);
+        });
+
+        it('rejects an embedded tab (#548)', () => {
+            assert.throws(() => validateAndEscapeOciParUrl('https://h.example.com/p/a\tb/o/s'), /control character/);
+        });
+
         it('backslash-escapes an embedded double-quote (HCL string breakout)', () => {
             assert.strictEqual(
                 validateAndEscapeOciParUrl('https://h.example.com/p/a"b/o/s'),

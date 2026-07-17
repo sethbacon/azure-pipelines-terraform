@@ -22,6 +22,8 @@ import './EmergencyCleanupNoHandlerL0';
 import './ResolveToolPathL0';
 // Direct unit tests for OCI WIF synthetic-config field validation.
 import './OciWifConfigValidationL0';
+// Direct unit tests for the generated OCI backend config file's secret-file write.
+import './OciBackendConfigFileL0';
 // Direct unit tests for the optional MSI user-assigned client ID.
 import './ManagedIdentityClientIdL0';
 // Direct unit tests for cross-cloud state backend detection.
@@ -2550,6 +2552,17 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanPublishResultsAttachmentSurvivesCleanupL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure plan publish results attachment is written with restrictive permissions (#547)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsAttachmentPermissions.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanPublishResultsAttachmentPermissionsL0 should have succeeded.'));
         }, tr);
     });
 

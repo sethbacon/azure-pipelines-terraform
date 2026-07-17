@@ -96,7 +96,10 @@ function applyWindowsRestrictiveAcl(filePath: string): void {
  * (which controls the initial write), this is for files this task did not
  * write itself -- e.g. a secure file downloaded by the third-party
  * azure-pipelines-tasks-securefiles-common helper, which applies its own
- * (often less restrictive) default permissions.
+ * (often less restrictive) default permissions. On Windows, where the 0600
+ * mode is a no-op, the same explicit restrictive DACL writeSecretFile uses is
+ * applied instead (fail closed) -- otherwise the downloaded file would keep
+ * whatever ACL its directory hands out.
  */
 export function tightenFilePermissions(filePath: string): void {
     try {
@@ -105,6 +108,9 @@ export function tightenFilePermissions(filePath: string): void {
         if (process.platform !== 'win32') {
             throw new Error(`Failed to set restrictive permissions on ${filePath}: ${err instanceof Error ? err.message : err}`);
         }
-        tasks.debug('Skipping chmod on Windows platform (ACLs apply instead).');
+        tasks.debug('Skipping chmod on Windows platform (a restrictive DACL is applied instead).');
+    }
+    if (process.platform === 'win32') {
+        applyWindowsRestrictiveAcl(filePath);
     }
 }
