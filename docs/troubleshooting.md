@@ -365,6 +365,6 @@ warning — use only for trusted content.
 **Cause:** An earlier run failed during the image-upload phase. (Current versions
 persist the article's `sys_id` before uploading images, so this no longer happens.)
 
-**Fix:** Update to the latest `PipelinePublishKbArticle@1`, and provide a stable
+**Fix:** Update to the latest `PublishKbArticle@1`, and provide a stable
 `sourceKey` (front-matter `wiki-source`) so re-runs update the same article instead of
 creating a new one.

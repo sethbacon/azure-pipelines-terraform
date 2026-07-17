@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a fork of the Microsoft DevLabs Azure DevOps extension that provides Terraform integration for Azure Pipelines. It enables running Terraform commands (init, validate, plan, apply, destroy, show, output, custom, workspace, state, fmt, test, get) against cloud providers (Azure, AWS, GCP, OCI) within Azure Pipelines build/release pipelines.
+This is a fork of the Microsoft DevLabs Azure DevOps extension that provides Terraform integration for Azure Pipelines. It enables running Terraform commands (init, validate, plan, apply, destroy, show, output, workspace, state, fmt, test, get, import, forceunlock, refresh, custom) against cloud providers (Azure, AWS, GCP, OCI) within Azure Pipelines build/release pipelines.
 
 **Fork:** `https://github.com/sethbacon/azure-pipelines-terraform`
 Local path: `C:\dev\gh\azure-pipelines-terraform`
@@ -234,7 +234,7 @@ To add a new provider: create a handler class implementing `handleBackend()` and
 
 Three modes via service connection `authorizationScheme`:
 
-1. `WorkloadIdentityFederation` (preferred) - OIDC token; sets `ARM_CLIENT_ID`, `ARM_USE_OIDC`, and either `ARM_OIDC_TOKEN` (id token generation) or `ARM_OIDC_AZURE_SERVICE_CONNECTION_ID` (token refresh)
+1. `WorkloadIdentityFederation` (preferred) - OIDC token; sets `ARM_CLIENT_ID`, `ARM_USE_OIDC`, and either `ARM_OIDC_TOKEN` (id token generation) or, for token refresh, both `ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID` (azurerm's primary variable) and `ARM_OIDC_AZURE_SERVICE_CONNECTION_ID` (AzAPI-compatibility fallback)
 2. `ManagedServiceIdentity` - sets `ARM_USE_MSI=true`
 3. `ServicePrincipal` - sets `ARM_CLIENT_ID` + `ARM_CLIENT_SECRET` (deprecated)
 
@@ -243,7 +243,7 @@ Three modes via service connection `authorizationScheme`:
 Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts`
 
 - Downloads Terraform from `https://releases.hashicorp.com/terraform/` for the requested version
-- Supports `latest` (queries HashiCorp checkpoint API, falls back to `1.14.8`)
+- Supports `latest` (queries HashiCorp checkpoint API; fails closed with an actionable error — pin an explicit `version` instead — rather than falling back to a stale version if the checkpoint API is unreachable)
 - Supports Windows, macOS, Linux on amd64, arm64, arm, 386
 - Verifies GPG signature of SHA256SUMS using HashiCorp's embedded public key (`gpg-verifier.ts`)
 - Sets `terraformLocation` pipeline variable after install
@@ -285,7 +285,7 @@ Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates poli
 | `index.ts`           | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs                                                                   |
 | `opa-engine.ts`      | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined)                                                   |
 | `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override) |
-| `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token via `http.extraheader`)                                                                 |
+| `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token delivered as an `http.extraheader` Authorization header via per-invocation `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` env vars, not argv, so it never appears in the child process's command line) |
 | `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                   |
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
