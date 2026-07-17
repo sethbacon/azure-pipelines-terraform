@@ -57,11 +57,16 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 1. Merge conventional-commit PRs to `main` — release-please accumulates them.
 2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
-3. Before merging the Release PR, manually bump the `Minor` field in `task.json` for every task whose code changed since the last release. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments.
+3. The per-task `Minor` bumps happen **automatically** on the Release PR — this used to be a manual step and was repeatedly missed. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments, so every task whose `src/` changed since the last release must have its `task.json` `Minor` incremented before the release is tagged. Three layers enforce this, so in the normal case there is nothing to do by hand:
 
-   **Security rule (mandatory):** for any release, every task whose code was touched by a **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in that release — never ship a security fix while agents keep serving the cached old code. When unsure whether a change qualifies, bump it.
+   - **Auto-bump (primary):** `.github/workflows/release-pr-minor-bumps.yml` triggers on the Release PR (head branch `release-please--…`), runs `scripts/bump-minor-versions.js`, and commits + pushes the bumps back to the PR branch using the release App token — pushing with the App token (not `GITHUB_TOKEN`) is what re-triggers the PR's checks. It is idempotent and self-healing: release-please force-pushes its branch on every new `main` commit, wiping the bump commit, and this workflow re-runs on the resulting `synchronize` and re-applies it (its own push also fires `synchronize`, but that second run is a clean no-op).
+   - **Merge gate (backstop):** the `Release PR Minor Bumps` required check in `.github/workflows/pr-checks.yml` runs `scripts/check-minor-bumps.js` against the Release PR and fails it if any bump is still missing, so a Release PR can never merge un-bumped (e.g. if the auto-bump workflow was broken).
+   - **Tag-time guard (final defense, unchanged):** `release.yml`'s `Verify per-task Minor bumps` step re-runs the same check after the tag is pushed and fails the release if anything slipped through.
 
-   Files to update:
+   **Security rule (mandatory):** for any release, every task whose code was touched by a **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in that release — never ship a security fix while agents keep serving the cached old code. The automation bumps any task whose `src/` changed, which already covers this; when unsure whether a change qualifies, bump it.
+
+   **Manual fallback (only if the automation is broken):** if the auto-bump workflow is disabled/failing and the merge gate is red, apply the bumps yourself — the simplest way is `node scripts/bump-minor-versions.js` from the repo root, which does exactly what the workflow does. To edit by hand instead, bump `Minor` by 1 (leave `Patch` at 0) in the `task.json` of every task whose `src/` changed since the last release:
+
    - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
    - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
    - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
@@ -74,9 +79,7 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/Markdown2Html/Markdown2HtmlV1/task.json` — if Markdown2HtmlV1 changed
    - `Tasks/PublishKbArticle/PublishKbArticleV1/task.json` — if PublishKbArticleV1 changed
 
-   Increment `Minor` by 1, leave `Patch` at 0.
-
-   **Verify before bumping:** when a change must reach agents immediately (e.g. dropping a Node execution handler), the `Minor` may be bumped in the feature PR instead. If a task's `Minor` was already incremented in a merged feature PR since the last release, do **not** bump it again here — compare against the last release tag first to avoid a double-increment.
+   **Avoid a double-increment:** when a change must reach agents immediately (e.g. dropping a Node execution handler), `Minor` may have been bumped in the feature PR instead. A task already incremented in a merged feature PR since the last release must **not** be bumped again — both the bump script and the check compare against the last release tag and already skip such tasks, so prefer the script over hand-editing.
 
 4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
 5. The `release.yml` workflow fires on the tag:
@@ -475,7 +478,7 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (27 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test Tab`, `Lint GitHub Actions`, and `Scan Workflows (zizmor)`. Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
+- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (27 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test Tab`, `Lint GitHub Actions`, `Scan Workflows (zizmor)`, and `Release PR Minor Bumps` (the pr-checks.yml merge gate — a fast no-op pass on non-release PRs, and the layer-2 backstop that keeps an un-bumped Release PR from merging if the auto-bump workflow is ever broken). Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)

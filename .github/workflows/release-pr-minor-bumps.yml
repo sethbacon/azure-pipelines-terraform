@@ -1,0 +1,86 @@
+---
+name: Auto-bump Release PR Minor Versions
+
+# Auto-applies the mandatory per-task Minor bumps on the release-please Release
+# PR, so the manual step in CLAUDE.md's Release Process happens automatically.
+# ADO agents cache tasks by Major.Minor, so a task whose src/ changed since the
+# last release must have its task.json Minor incremented, or the fix reaches the
+# Marketplace but never running agents. The "Release PR Minor Bumps" merge gate
+# in pr-checks.yml is the backstop, and release.yml's tag-time "Verify per-task
+# Minor bumps" guard is the final defense.
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Serialize runs per Release PR branch: if a new synchronize (e.g. a
+# release-please force-push) arrives while an auto-bump is mid-flight, cancel the
+# in-flight run rather than letting two runs race to push the bump commit. The
+# bump is idempotent, so the surviving run applies (or re-applies) it cleanly.
+concurrency:
+  group: release-pr-minor-bumps-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-bump:
+    name: Auto-bump task Minor versions
+    runs-on: ubuntu-latest
+    # Only the release-please Release PR, and only when it lives in this repo
+    # (never a fork — a fork PR has no access to the App key, and we must not
+    # push back to a fork's branch). release-please names its branch
+    # 'release-please--branches--main' etc.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
+      startsWith(github.event.pull_request.head.ref, 'release-please--')
+    steps:
+      - name: Get GitHub App token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
+          # Minted from the same App as release-please.yml. Pushing the bump
+          # commit with an App token (rather than the workflow's GITHUB_TOKEN)
+          # is what makes the push RE-TRIGGER the PR's required checks — a push
+          # authenticated by GITHUB_TOKEN would not, leaving the checks stale.
+          permission-contents: write
+
+      # Check out the PR HEAD branch itself (NOT the pull_request merge ref) with
+      # persist-credentials: false — this workflow commits back to that branch, so
+      # it must be on it, and the push below supplies the App token explicitly
+      # rather than persisting it into .git/config. fetch-depth: 0 + fetch-tags so
+      # the bump analysis can find the newest v*.*.* tag (the previous release).
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Bump task Minor versions and push
+        env:
+          BUMP_TOKEN: ${{ steps.token.outputs.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        # No ${{ }} interpolation inside this run block — every input arrives via
+        # env: indirection (actionlint + zizmor both scan this file). The bump
+        # script is idempotent: if the branch already carries the bumps (e.g. this
+        # workflow ran on a previous synchronize), `git diff --quiet` is clean and
+        # nothing is committed or pushed, so there is no push -> synchronize loop.
+        # Our own push does re-trigger `synchronize`, but that second run is a
+        # no-op for exactly this reason. release-please force-pushes its branch
+        # whenever a new commit lands on main, wiping this bump commit; this
+        # workflow re-runs on that synchronize and re-applies it — self-healing.
+        run: |
+          node scripts/bump-minor-versions.js
+          if git diff --quiet; then
+            echo "No Minor bumps needed; working tree clean. Nothing to commit or push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: bump task Minor versions for release (automated)"
+          git push "https://x-access-token:${BUMP_TOKEN}@github.com/${REPO}.git" "HEAD:${PR_HEAD_REF}"
