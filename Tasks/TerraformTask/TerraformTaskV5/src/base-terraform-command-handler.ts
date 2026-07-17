@@ -165,6 +165,21 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Helper methods to reduce duplication ---
 
+    /** Authorization schemes accepted for every provider's backend/environment auth-scheme inputs. */
+    protected static readonly VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
+
+    /**
+     * Validates a provider's `*AuthScheme*` input against {@link VALID_AUTH_SCHEMES}.
+     * Shared by the AWS/GCP/OCI handlers (previously copy-pasted verbatim in each) so
+     * a future scheme addition/typo can't diverge silently between otherwise-parallel
+     * providers.
+     */
+    protected validateAuthScheme(scheme: string, inputName: string): void {
+        if (!(BaseTerraformCommandHandler.VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
+            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${BaseTerraformCommandHandler.VALID_AUTH_SCHEMES.join(", ")}`);
+        }
+    }
+
     protected getWorkingDirectory(): string {
         return tasks.getInput("workingDirectory") || '';
     }

@@ -10,8 +10,6 @@ import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
 
-const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
-
 /**
  * The static-key path writes the service connection's "Audience" field
  * straight into the credentials file as `token_uri` -- the URL the Google SDK
@@ -39,12 +37,6 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "gcp";
-    }
-
-    private validateAuthScheme(scheme: string, inputName: string): void {
-        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
-            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
-        }
     }
 
     private getJsonKeyFilePath(serviceName: string) {
