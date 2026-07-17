@@ -1,19 +1,23 @@
 #!/usr/bin/env node
-// Self-test for check-task-list.js: proves the meta-gate that keeps the six
-// hardcoded task lists (check-versions.js `files`, check-minor-bumps.js `TASKS`,
-// package.json deps/prune/compile scripts, azure-devops-extension.json
+// Self-test for check-task-list.js: proves the meta-gate that keeps the three
+// still-hand-maintained task-list surfaces (azure-devops-extension.json
 // `contributions`, release.yml `Generate SBOM` steps, dependabot.yml
 // `directory` entries) in agreement with the Tasks/ directory listing actually
 // fails when a source drifts, and does NOT false-positive on the one legitimate
 // duplication (two contributions pointing at the same task folder — the real
 // `custom-terraform-release-task` carryover). A silent bug here would let a task
-// silently drop out of a source (e.g. never get its version validated) while CI
-// stays green.
+// silently drop out of a source (e.g. never appear in the ADO task picker) while
+// CI stays green.
+//
+// (check-versions.js, check-minor-bumps.js, and package.json's build scripts are
+// no longer cross-checked here — they now DERIVE the task list at runtime from
+// the same Tasks/*/*/task.json scan, so they cannot drift. See issue #502.)
 //
 // check-task-list.js resolves every source relative to its OWN directory
 // (path.resolve(__dirname, '..')), NOT the cwd, so each case builds a small
-// synthetic repo — a copy of the real script plus hand-written minimal sources —
-// and runs THAT copy. The scratch dir is removed afterwards either way.
+// synthetic repo — a copy of the real script (plus the shared task-dirs lib it
+// requires) and hand-written minimal sources — and runs THAT copy. The scratch
+// dir is removed afterwards either way.
 
 const fs = require('fs');
 const os = require('os');
@@ -22,6 +26,7 @@ const { spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const realScript = path.join(repoRoot, 'scripts', 'check-task-list.js');
+const realLib = path.join(repoRoot, 'scripts', 'lib', 'task-dirs.js');
 
 const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-task-list-selftest-'));
 let failed = false;
@@ -29,21 +34,21 @@ let failed = false;
 // The canonical task set every source agrees on in the passing case.
 const CANONICAL = ['Tasks/Alpha/AlphaV1', 'Tasks/Beta/BetaV1', 'Tasks/Gamma/GammaV1'];
 
-// Build a self-contained mini-repo under `caseDir`. Each source's task list can
-// be overridden independently to model drift; anything omitted defaults to the
-// canonical set. `taskDirs` is the Tasks/ ground truth discoverTaskDirs() reads.
+// Build a self-contained mini-repo under `caseDir`. Each hand-maintained
+// source's task list can be overridden independently to model drift; anything
+// omitted defaults to the canonical set. `taskDirs` is the Tasks/ ground truth
+// discoverTaskDirs() reads.
 function buildRepo(caseDir, opts = {}) {
     const taskDirs = opts.taskDirs || CANONICAL;
-    const versionsTasks = opts.versionsTasks || CANONICAL;
-    const minorTasks = opts.minorTasks || CANONICAL;
-    const pkgTasks = opts.pkgTasks || CANONICAL;
     const contribDirs = opts.contribDirs || CANONICAL;
     const sbomTasks = opts.sbomTasks || CANONICAL;
     const dependabotTasks = opts.dependabotTasks || CANONICAL;
 
-    fs.mkdirSync(path.join(caseDir, 'scripts'), { recursive: true });
-    // The script under test, run from inside this synthetic repo.
+    fs.mkdirSync(path.join(caseDir, 'scripts', 'lib'), { recursive: true });
+    // The script under test plus the shared task-dirs lib it requires, run from
+    // inside this synthetic repo.
     fs.copyFileSync(realScript, path.join(caseDir, 'scripts', 'check-task-list.js'));
+    fs.copyFileSync(realLib, path.join(caseDir, 'scripts', 'lib', 'task-dirs.js'));
 
     // Ground truth: Tasks/<Family>/<Version>/task.json for each task dir.
     for (const t of taskDirs) {
@@ -54,29 +59,6 @@ function buildRepo(caseDir, opts = {}) {
             JSON.stringify({ id: t, version: { Major: 1, Minor: 0, Patch: 0 } }, null, 2),
         );
     }
-
-    // scripts/check-versions.js — only the `files` entries matter to the parser.
-    const versionsLines = versionsTasks.map((t) => `    { path: '${t}/task.json', type: 'task' },`).join('\n');
-    fs.writeFileSync(
-        path.join(caseDir, 'scripts', 'check-versions.js'),
-        `const files = [\n    { path: 'azure-devops-extension.json', type: 'extension' },\n${versionsLines}\n];\n`,
-    );
-
-    // scripts/check-minor-bumps.js — only the TASKS array matters to the parser.
-    const minorLines = minorTasks.map((t) => `  '${t}',`).join('\n');
-    fs.writeFileSync(
-        path.join(caseDir, 'scripts', 'check-minor-bumps.js'),
-        `const TASKS = [\n${minorLines}\n];\n`,
-    );
-
-    // package.json — the deps:npm:* / deps:prune:* / compile:* script families.
-    const scripts = {};
-    pkgTasks.forEach((t, i) => {
-        scripts[`deps:npm:t${i}`] = `npm --prefix ${t} ci --ignore-scripts`;
-        scripts[`deps:prune:t${i}`] = `npm --prefix ${t} prune --omit=dev`;
-        scripts[`compile:t${i}`] = `tsc -b ${t}/tsconfig.json`;
-    });
-    fs.writeFileSync(path.join(caseDir, 'package.json'), JSON.stringify({ scripts }, null, 2));
 
     // azure-devops-extension.json — task contributions naming each dir.
     const contributions = contribDirs.map((t, i) => ({
@@ -134,30 +116,16 @@ try {
         const dir = buildRepo(makeCaseDir());
         const res = runCheck(dir);
         const out = `${res.stdout}${res.stderr}`;
-        if (res.status !== 0 || !out.includes('all task lists agree')) {
+        if (res.status !== 0 || !out.includes('all hand-maintained task lists agree')) {
             console.error('FAIL: check-task-list.js did not pass when every source agrees.');
             console.error(`status=${res.status}`, out);
             failed = true;
         } else {
-            console.log('OK: exits 0 when all task-list sources agree.');
+            console.log('OK: exits 0 when all hand-maintained task-list sources agree.');
         }
     }
 
-    // --- Case 2: a source (check-versions.js `files`) is missing a task -> fail. ---
-    {
-        const dir = buildRepo(makeCaseDir(), { versionsTasks: CANONICAL.slice(1) });
-        const res = runCheck(dir);
-        const out = `${res.stdout}${res.stderr}`;
-        if (res.status === 0 || !out.includes("check-versions.js 'files'")) {
-            console.error('FAIL: check-task-list.js did not flag a source missing a task.');
-            console.error(`status=${res.status}`, out);
-            failed = true;
-        } else {
-            console.log('OK: exits non-zero when a source (check-versions files) is missing a task.');
-        }
-    }
-
-    // --- Case 3: the contributions source is missing an entry -> fail. ---
+    // --- Case 2: the contributions source is missing an entry -> fail. ---
     {
         const dir = buildRepo(makeCaseDir(), { contribDirs: CANONICAL.slice(1) });
         const res = runCheck(dir);
@@ -171,14 +139,14 @@ try {
         }
     }
 
-    // --- Case 4: a legitimate DUPLICATE contribution (two contributions pointing
+    // --- Case 3: a legitimate DUPLICATE contribution (two contributions pointing
     // at the same task folder, like the real custom-terraform-release-task
     // carryover) must NOT false-positive: the check dedupes contribution dirs. ---
     {
         const dir = buildRepo(makeCaseDir(), { contribDirs: [...CANONICAL, CANONICAL[0]] });
         const res = runCheck(dir);
         const out = `${res.stdout}${res.stderr}`;
-        if (res.status !== 0 || !out.includes('all task lists agree') || out.includes('FAIL')) {
+        if (res.status !== 0 || !out.includes('all hand-maintained task lists agree') || out.includes('FAIL')) {
             console.error('FAIL: check-task-list.js false-positived on a legitimate duplicate contribution.');
             console.error(`status=${res.status}`, out);
             failed = true;
@@ -187,7 +155,7 @@ try {
         }
     }
 
-    // --- Case 5: release.yml is missing a task's SBOM step -> fail. ---
+    // --- Case 4: release.yml is missing a task's SBOM step -> fail. ---
     {
         const dir = buildRepo(makeCaseDir(), { sbomTasks: CANONICAL.slice(1) });
         const res = runCheck(dir);
@@ -201,7 +169,7 @@ try {
         }
     }
 
-    // --- Case 6: dependabot.yml is missing a task directory -> fail. ---
+    // --- Case 5: dependabot.yml is missing a task directory -> fail. ---
     {
         const dir = buildRepo(makeCaseDir(), { dependabotTasks: CANONICAL.slice(1) });
         const res = runCheck(dir);
