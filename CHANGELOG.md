@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.10.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.0...v1.10.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* remediate 2026-07-16 security-audit findings across tasks, CI, and docs ([#577](https://github.com/sethbacon/azure-pipelines-terraform/issues/577)) ([21685ed](https://github.com/sethbacon/azure-pipelines-terraform/commit/21685edec2b657adb285f495491b13dd94a21beb))
+
 ## [1.10.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.9.5...v1.10.0) (2026-07-16)
 
 
