@@ -124,6 +124,30 @@ const FAMILIES = [
         ],
     },
     {
+        // Bounded exponential-backoff retry helper (retryAsync + the 429
+        // Retry-After parser). One shared loop replaces the four that used to be
+        // independently open-coded in TokenGenerator (id-token-generator.ts),
+        // retryHttp (http.ts), postJsonWithRetry (callback.ts) and withRetry
+        // (servicenow-http.ts). Each call site preserves its own semantics via
+        // predicates rather than a hardcoded policy, so a hardening change (jitter,
+        // a max-total-time cap, ...) lands here once instead of drifting across
+        // 4-5 copies. Tasks can't cross-import, so it lives as byte-identical
+        // copies gated here. NOTE: the three installer http-client.ts copies keep
+        // their OWN internal withRetry (a separate family above) on purpose — they
+        // sit on a different transport (fetch+AbortController) and trust model
+        // (public artifacts, no credential) — so they are deliberately NOT folded
+        // into this module.
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/src',
+            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'retry.ts',
+        ],
+    },
+    {
         // Frozen plan/apply digest CONTRACT shared between the task that PRODUCES
         // the redacted digest (src/results/) and the build-results tab that
         // CONSUMES it (src/tab/). digest-schema.ts is the versioned TypeScript

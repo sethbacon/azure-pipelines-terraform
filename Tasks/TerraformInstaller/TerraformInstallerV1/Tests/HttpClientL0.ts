@@ -2,7 +2,7 @@ import { describe, it } from 'mocha';
 import assert = require('assert');
 import * as net from 'net';
 import tasks = require('azure-pipelines-task-lib/task');
-import { fetchWithTimeout, fetchJson, fetchText, fetchTextAllow404, fetchBuffer, fetchBufferAllow404 } from '../src/http-client';
+import { fetchWithTimeout, fetchJson, fetchText, fetchTextAllow404, fetchBuffer, fetchBufferAllow404, parseRetryAfterMs } from '../src/http-client';
 
 // Direct (non-MockTestRunner) unit tests for the http-client timeout guard.
 // These run in the mocha parent process; the MockTestRunner integration tests in
@@ -376,5 +376,80 @@ describe('http-client: fetchJson / fetchText / fetchBuffer', () => {
             new Response(new Uint8Array(exactly10Mb), { status: 200 })) as unknown as typeof globalThis.fetch;
         const buf = await fetchBuffer('https://files.example.com/at-limit');
         assert.strictEqual(buf.byteLength, exactly10Mb);
+    });
+
+    // --- #584: 429 Too Many Requests is retryable (GitHub/checkpoint/registry
+    // rate-limits must back off, not fail the install outright), and a 429
+    // Retry-After is honored (capped). ---
+
+    it('fetchText retries a 429 Too Many Requests then succeeds (#584)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            return calls === 1
+                ? new Response('slow down', { status: 429 })
+                : new Response('payload', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        const text = await fetchText('https://api.example.com/repos/x/releases/latest');
+        assert.strictEqual(text, 'payload');
+        assert.strictEqual(calls, 2, 'a 429 should trigger exactly one retry here');
+    });
+
+    it('fetchJson retries a 429 and then gives up after the attempt limit (#584)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => { calls++; return new Response('rate limited', { status: 429 }); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(fetchJson('https://api.example.com/v'), /RegistryRequestFailed|429/);
+        assert.strictEqual(calls, 3, 'a persistent 429 should be retried up to the attempt limit');
+    });
+
+    it('fetchText honors a 429 Retry-After header instead of the exponential backoff (#584)', async () => {
+        // Retry-After: 0 (retry immediately) is honored, so the retry sleep is ~0ms
+        // rather than the ~200ms first-attempt exponential backoff. A generous
+        // upper bound distinguishes "honored" from "fell back to backoff" without a
+        // brittle exact-timing assertion.
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            return calls === 1
+                ? new Response('slow down', { status: 429, headers: { 'Retry-After': '0' } })
+                : new Response('payload', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        const start = Date.now();
+        const text = await fetchText('https://files.example.com/SHA256SUMS');
+        const elapsed = Date.now() - start;
+        assert.strictEqual(text, 'payload');
+        assert.strictEqual(calls, 2);
+        assert.ok(elapsed < 150, `expected the honored 0s Retry-After (~0ms), not the ~200ms backoff; elapsed ${elapsed}ms`);
+    });
+});
+
+describe('http-client: parseRetryAfterMs (#584)', () => {
+    it('parses the delta-seconds form to milliseconds', () => {
+        assert.strictEqual(parseRetryAfterMs('0'), 0);
+        assert.strictEqual(parseRetryAfterMs('5'), 5000);
+        assert.strictEqual(parseRetryAfterMs('  12  '), 12000);
+    });
+
+    it('caps a hostile/large value at 30s', () => {
+        assert.strictEqual(parseRetryAfterMs('30'), 30000);
+        assert.strictEqual(parseRetryAfterMs('99999'), 30000);
+    });
+
+    it('returns undefined for an absent, blank, or unparseable value (falls back to backoff)', () => {
+        assert.strictEqual(parseRetryAfterMs(null), undefined);
+        assert.strictEqual(parseRetryAfterMs(undefined), undefined);
+        assert.strictEqual(parseRetryAfterMs(''), undefined);
+        assert.strictEqual(parseRetryAfterMs('   '), undefined);
+        assert.strictEqual(parseRetryAfterMs('soon'), undefined);
+    });
+
+    it('honors a future HTTP-date (capped) and rejects a past one', () => {
+        const nearFuture = new Date(Date.now() + 5000).toUTCString();
+        const ms = parseRetryAfterMs(nearFuture);
+        assert.ok(ms !== undefined && ms > 0 && ms <= 30000, `near-future date should give a bounded positive delay, got ${ms}`);
+        const farFuture = new Date(Date.now() + 3_600_000).toUTCString();
+        assert.strictEqual(parseRetryAfterMs(farFuture), 30000, 'a far-future date must be capped at 30s');
+        const past = new Date(Date.now() - 5000).toUTCString();
+        assert.strictEqual(parseRetryAfterMs(past), undefined, 'a past date must fall back to backoff');
     });
 });

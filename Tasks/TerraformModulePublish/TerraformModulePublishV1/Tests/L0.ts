@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import tasks = require('azure-pipelines-task-lib/task');
 import { HttpClient, HttpResponse, createHttpsClient, parseJson, retryHttp, truncateBody } from '../src/http';
+import { retryAsync, parseRetryAfterMs } from '../src/retry';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
@@ -268,6 +269,96 @@ describe('retryHttp', () => {
             /ETIMEDOUT/,
         );
         assert.strictEqual(calls, 3);
+    });
+
+    it('retries a 429 Too Many Requests response and returns the eventual success (#584)', async () => {
+        const responses: HttpResponse[] = [{ status: 429, body: '' }, { status: 200, body: 'ok' }];
+        let i = 0;
+        const res = await retryHttp(() => Promise.resolve(responses[i++]), { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(i, 2, 'a 429 should be retried once here');
+    });
+
+    it('returns the last 429 after exhausting retries (#584)', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 429, body: '' }); }, { retries: 2, baseDelayMs: 0 });
+        assert.strictEqual(res.status, 429);
+        assert.strictEqual(calls, 3); // initial attempt + 2 retries
+    });
+});
+
+describe('retryAsync (shared bounded-backoff helper)', () => {
+    it('returns immediately and does not retry a resolved value by default', async () => {
+        let calls = 0;
+        const r = await retryAsync(() => { calls += 1; return Promise.resolve('ok'); }, { retries: 3, baseDelayMs: 0 });
+        assert.strictEqual(r, 'ok');
+        assert.strictEqual(calls, 1, 'a resolved value is not retried unless retryResult opts in');
+    });
+
+    it('retries a resolved value while retryResult says so, up to the budget', async () => {
+        let calls = 0;
+        const r = await retryAsync(() => { calls += 1; return Promise.resolve(calls); }, {
+            retries: 5, baseDelayMs: 0, retryResult: (n) => n < 3,
+        });
+        assert.strictEqual(r, 3);
+        assert.strictEqual(calls, 3);
+    });
+
+    it('retries a thrown error by default and rethrows the last after the budget', async () => {
+        let calls = 0;
+        await assert.rejects(
+            retryAsync(() => { calls += 1; return Promise.reject(new Error(`boom${calls}`)); }, { retries: 2, baseDelayMs: 0 }),
+            /boom3/,
+        );
+        assert.strictEqual(calls, 3);
+    });
+
+    it('does not retry a thrown error when retryError returns false', async () => {
+        let calls = 0;
+        await assert.rejects(
+            retryAsync(() => { calls += 1; return Promise.reject(new Error('nope')); }, { retries: 3, baseDelayMs: 0, retryError: () => false }),
+            /nope/,
+        );
+        assert.strictEqual(calls, 1);
+    });
+
+    it('applies the delayMs override and surfaces the actual wait to onRetry', async () => {
+        const seen: number[] = [];
+        let calls = 0;
+        await retryAsync(
+            () => { calls += 1; return calls < 3 ? Promise.reject(new Error('e')) : Promise.resolve('done'); },
+            {
+                retries: 3,
+                baseDelayMs: 10,
+                delayMs: (attempt, backoffMs) => (attempt === 0 ? 1 : backoffMs),
+                onRetry: (_attempt, wait) => seen.push(wait),
+            },
+        );
+        // attempt 0 uses the override (1ms); attempt 1 uses the backoff (10 * 2**1 = 20ms).
+        assert.deepStrictEqual(seen, [1, 20]);
+    });
+});
+
+describe('parseRetryAfterMs (#584)', () => {
+    it('parses the delta-seconds form to milliseconds', () => {
+        assert.strictEqual(parseRetryAfterMs('0'), 0);
+        assert.strictEqual(parseRetryAfterMs('5'), 5000);
+    });
+
+    it('caps a hostile/large value at 30s', () => {
+        assert.strictEqual(parseRetryAfterMs('99999'), 30000);
+    });
+
+    it('returns undefined for an absent, blank, or unparseable value', () => {
+        assert.strictEqual(parseRetryAfterMs(null), undefined);
+        assert.strictEqual(parseRetryAfterMs(undefined), undefined);
+        assert.strictEqual(parseRetryAfterMs('   '), undefined);
+        assert.strictEqual(parseRetryAfterMs('later'), undefined);
+    });
+
+    it('respects a caller-supplied cap', () => {
+        assert.strictEqual(parseRetryAfterMs('50', 10_000), 10_000);
+        assert.strictEqual(parseRetryAfterMs('5', 10_000), 5000);
     });
 });
 
