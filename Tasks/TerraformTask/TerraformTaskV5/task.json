@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "279",
+        "Minor": "280",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
