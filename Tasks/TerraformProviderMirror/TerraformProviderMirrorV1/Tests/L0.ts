@@ -387,6 +387,49 @@ describe('index entrypoint (mock run)', function () {
         );
     });
 
+    // #586: a mirror URL that embeds basic-auth userinfo. The generated .terraformrc
+    // must keep the credential (terraform needs it to reach the mirror), but the
+    // console echo of the config must be userinfo-stripped and the credential must be
+    // registered as a secret.
+    it('redacts embedded userinfo from the console echo but keeps it in the config file', async () => {
+        const tp = path.join(__dirname, 'MirrorConfigUserInfoRedacted.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        assert.ok(tr.succeeded, 'task should have succeeded. stderr: ' + tr.stderr);
+        assert.strictEqual(tr.errorIssues.length, 0, 'should have no error issues: ' + tr.errorIssues);
+
+        // The embedded password is registered as a secret so the agent masks it.
+        assert.ok(
+            tr.stdout.includes('##vso[task.setsecret]s3cr3t'),
+            'the embedded password should be registered as a secret. stdout: ' + tr.stdout
+        );
+
+        // The FILE on disk keeps the real credential — terraform needs it to auth.
+        const configPath = path.join(os.tmpdir(), 'tpm-userinfo', '.terraformrc');
+        assert.ok(fs.existsSync(configPath), 'expected .terraformrc at ' + configPath);
+        const written = fs.readFileSync(configPath, 'utf8');
+        assert.ok(
+            written.includes('user:s3cr3t@mirror.example.com'),
+            'the written config must retain the mirror credential. got: ' + written
+        );
+
+        // The echoed "Generated configuration" block must show the userinfo-stripped
+        // URL. If it echoed the raw HCL, this exact stripped url line would be absent.
+        const marker = '--- Generated configuration ---';
+        const idx = tr.stdout.indexOf(marker);
+        assert.ok(idx >= 0, 'expected the generated-config echo. stdout: ' + tr.stdout);
+        const echoed = tr.stdout.slice(idx);
+        assert.ok(
+            echoed.includes('url = "https://mirror.example.com/terraform/providers/"'),
+            'echoed config should show the userinfo-stripped mirror URL. echoed: ' + echoed
+        );
+        assert.ok(
+            !echoed.includes('user:s3cr3t'),
+            'echoed config must not contain the raw credential. echoed: ' + echoed
+        );
+    });
+
     it('fails with an error issue for an invalid mirror URL', async () => {
         const tp = path.join(__dirname, 'MirrorConfigInvalidUrlFail.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
