@@ -38,6 +38,22 @@ const FAMILIES = [
         ],
     },
     {
+        // Windows-DACL-aware secure-temp-file writer (owner-only 0600 + O_EXCL on
+        // Unix, an explicit restrictive icacls DACL on Windows, both fail closed).
+        // Canonical source: TerraformTaskV5, where it guards WIF/OCI secret files.
+        // TerraformDriftReport writes plan-derived data (the TSM-callback summary
+        // and the SARIF report) that deserves the same cross-platform guarantee, so
+        // it carries a byte-identical copy rather than a re-implementation that
+        // could silently drop the Windows DACL half (#607).
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/src',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
+        ],
+        modules: [
+            'secure-temp.ts',
+        ],
+    },
+    {
         // The terraform-docs installer downloads sha256-verified archives from
         // GitHub releases (no GPG/cosign signature), so it shares only the
         // HTTPS-pinned fetch client with the other installers — not the GPG key or
