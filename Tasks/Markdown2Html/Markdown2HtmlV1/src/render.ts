@@ -8,7 +8,7 @@ import path = require('path');
 import MarkdownIt = require('markdown-it');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN, normalizeCssForDangerCheck } from './uri-scheme-guard';
 
 // ---------------------------------------------------------------------------
 // preprocessMarkdown
@@ -161,7 +161,9 @@ export function sanitizeRenderedHtml(html: string): string {
     // ATTRIBUTE (e.g. <div style="background:url(...)">) is the simplest carrier
     // of the same #523 CSS-exfiltration primitive and was previously left
     // intact -- match it against the same shared DANGEROUS_CSS_PATTERN, on the
-    // RAW (cheerio-decoded) value for parity with PublishKbArticle's gate.
+    // cheerio-decoded value normalized by normalizeCssForDangerCheck (CSS-escape
+    // decode + comment strip) for parity with PublishKbArticle's gate and to
+    // close the browser-tokenizer bypass a raw-text match misses (#587).
     $('*').each((_, el) => {
         const attribs = $(el).attr() ?? {};
         for (const name of Object.keys(attribs)) {
@@ -169,7 +171,7 @@ export function sanitizeRenderedHtml(html: string): string {
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 $(el).removeAttr(name);
-            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(normalizeCssForDangerCheck(String(attribs[name])))) {
                 $(el).removeAttr(name);
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&

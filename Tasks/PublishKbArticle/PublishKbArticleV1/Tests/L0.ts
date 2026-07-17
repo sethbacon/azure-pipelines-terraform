@@ -15,6 +15,7 @@ import * as os from 'os';
 import * as nodePath from 'path';
 import * as auth from '../src/auth';
 import * as htmlValidate from '../src/html-validate';
+import { normalizeCssForDangerCheck } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
@@ -1142,6 +1143,105 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><div class="page-break" style="page-break-after: always;"></div></body></html>';
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
     });
+
+    // -----------------------------------------------------------------------
+    // #587: CSS-escape / comment-split bypass of DANGEROUS_CSS_PATTERN
+    // -----------------------------------------------------------------------
+    // The browser's CSS tokenizer decodes escapes and discards comments before a
+    // url()/@import token exists, so a raw-text match on the author's bytes is
+    // trivially dodged: `\75rl(` tokenizes to url(, `@\69mport` to @import. The
+    // gate now normalizes (decode escapes + strip comments) before matching. `BS`
+    // is a single literal backslash, built without JS-string-escape ambiguity.
+
+    const BS = '\\';
+
+    const styleContentBypassCases: Array<[string, string]> = [
+        ['a hex-escaped url (\\75rl)', `<style>b{background:${BS}75rl(https://evil.example.com/x)}</style>`],
+        ['a hex-escaped @import (@\\69mport)', `<style>@${BS}69mport "https://evil.example.com/x.css";</style>`],
+        ['an uppercase/mixed-case hex escape (\\55RL)', `<style>b{background:${BS}55RL(https://evil.example.com/x)}</style>`],
+        ['a whitespace-terminated hex escape (\\75 rl)', `<style>b{background:${BS}75 rl(https://evil.example.com/x)}</style>`],
+        ['literal-char escapes (\\u\\r\\l)', `<style>b{background:${BS}u${BS}r${BS}l(https://evil.example.com/x)}</style>`],
+        ['a comment splitting url from its ( (url/* */()', '<style>b{background:url/* x */(https://evil.example.com/x)}</style>'],
+        ['a comment splitting @import (@im/* */port)', '<style>@im/* */port "https://evil.example.com/x.css";</style>'],
+    ];
+    for (const [label, html] of styleContentBypassCases) {
+        it(`throws on <style> content using ${label} (#587)`, () => {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+                `expected a throw for <style>: ${label}`,
+            );
+        });
+    }
+
+    const styleAttrBypassCases: Array<[string, string]> = [
+        ['a hex-escaped url (\\75rl)', `<div style="background:${BS}75rl(https://evil.example.com/x)">x</div>`],
+        ['an uppercase/mixed-case hex escape (\\55RL)', `<div style="background:${BS}55RL(https://evil.example.com/x)">x</div>`],
+        ['a whitespace-terminated hex escape (\\75 rl)', `<div style="background:${BS}75 rl(https://evil.example.com/x)">x</div>`],
+        ['literal-char escapes (\\u\\r\\l)', `<div style="background:${BS}u${BS}r${BS}l(https://evil.example.com/x)">x</div>`],
+        ['a comment splitting url from its ( (url/* */()', '<div style="background:url/* x */(https://evil.example.com/x)">x</div>'],
+    ];
+    for (const [label, html] of styleAttrBypassCases) {
+        it(`throws on an inline style attribute using ${label} (#587)`, () => {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /inline style attribute containing url\(\.\.\.\)|DangerousStyleAttributeNotAllowed/,
+                `expected a throw for inline style: ${label}`,
+            );
+        });
+    }
+
+    it('still throws on an escaped-url <style> bypass when force=true (#587: not a force-bypassable heuristic)', () => {
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(`<style>b{background:${BS}75rl(https://evil.example.com/x)}</style>`, true),
+            /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+        );
+    });
+
+    it('does NOT false-positive on legitimate escaped CSS that forms no fetch, e.g. content:"\\201C" (#587: why decode, not reject-all-backslashes)', () => {
+        // Rationale for choosing decode-escapes over reject-any-backslash: a
+        // hand-authored htmlFile may legitimately carry escaped CSS (typographic
+        // content:"\201C", an icon-font content:"\f001"). Those decode to ordinary
+        // characters that match nothing in the blocklist, so the gate must pass
+        // them; a blanket backslash rejection would break such valid articles.
+        const html = `<html><head><style>p::before{content:"${BS}201C"}</style></head><body><p>hi</p></body></html>`;
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does NOT false-positive on a benign CSS comment in <style> after comment-stripping (#587)', () => {
+        const html = '<html><head><style>/* theme */ body{color:#333;padding:20px}</style></head><body><p>hi</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+});
+
+// ===========================================================================
+// #587: normalizeCssForDangerCheck decoding contract (PublishKbArticle copy)
+// ===========================================================================
+describe('normalizeCssForDangerCheck (#587)', () => {
+    const BS = '\\';
+    it('decodes a hex escape so \\75rl( reads as url(', () => {
+        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75rl(`), 'url(');
+    });
+    it('decodes @\\69mport to @import', () => {
+        assert.strictEqual(normalizeCssForDangerCheck(`@${BS}69mport`), '@import');
+    });
+    it('consumes the single whitespace terminator after a hex escape (\\75 rl -> url)', () => {
+        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75 rl(`), 'url(');
+    });
+    it('decodes uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
+        assert.strictEqual(normalizeCssForDangerCheck(`${BS}55RL(`), 'URL(');
+        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75${BS}72${BS}6C(`), 'url(');
+    });
+    it('decodes the literal-char escape form (\\u\\r\\l -> url)', () => {
+        assert.strictEqual(normalizeCssForDangerCheck(`${BS}u${BS}r${BS}l(`), 'url(');
+    });
+    it('strips a comment splitting the token (url/* */( -> url(, @im/* */port -> @import)', () => {
+        assert.strictEqual(normalizeCssForDangerCheck('url/* x */('), 'url(');
+        assert.strictEqual(normalizeCssForDangerCheck('@im/* */port'), '@import');
+    });
+    it('does not synthesize a blocked token from benign escaped content (content:"\\201C")', () => {
+        assert.doesNotMatch(normalizeCssForDangerCheck(`content:"${BS}201C"`), /url\(|@import/);
+    });
 });
 
 // ===========================================================================
@@ -1257,10 +1357,11 @@ describe('image-rewrite', () => {
 
     it('rewrites mapped srcs to sys_attachment.do and leaves unmapped ones', () => {
         const html = '<img src="a.png"><img src="b.png">';
-        const map = new Map<string, string>([['a.png', 'att123']]);
+        // sys_ids must be 32-char hex GUIDs (validated at the sink, #606).
+        const map = new Map<string, string>([['a.png', 'deadbeefdeadbeefdeadbeefdeadbeef']]);
         const out = rewriteImageSrcs(html, map);
         // Root-relative (leading slash) — the form ServiceNow's own KB articles use.
-        assert.ok(out.includes('src="/sys_attachment.do?sys_id=att123"'));
+        assert.ok(out.includes('src="/sys_attachment.do?sys_id=deadbeefdeadbeefdeadbeefdeadbeef"'));
         assert.ok(out.includes('src="b.png"'), 'unmapped src left unchanged');
     });
 
@@ -1291,6 +1392,68 @@ describe('image-rewrite', () => {
         assert.strictEqual(refs.length, 1);
         assert.strictEqual(refs[0].fileName, 'img.png');
         assert.strictEqual(refs[0].absPath, nodePath.resolve(baseDir, 'sub/img.png'));
+    });
+
+    // -----------------------------------------------------------------------
+    // #605: malformed percent-encoding must not abort the whole publish
+    // -----------------------------------------------------------------------
+
+    it('#605: skips an <img src> with a malformed percent-encoding instead of throwing', () => {
+        const warnings: string[] = [];
+        const refs = extractLocalImageRefs('<img src="bad%">', baseDir, (m) => warnings.push(m));
+        assert.deepStrictEqual(refs, [], 'the undecodable src is skipped');
+        assert.ok(
+            warnings.some((w) => w.includes('malformed percent-encoding') || w.includes('ImageSrcMalformedEncoding')),
+            `expected a decode-failure warning; got: ${warnings}`,
+        );
+    });
+
+    it('#605: does not throw on a bare "%" src (regression for the unguarded decodeURIComponent)', () => {
+        assert.doesNotThrow(() => extractLocalImageRefs('<img src="bad%">', baseDir, () => { }));
+    });
+
+    it('#605: skips an invalid %ZZ escape but keeps a valid sibling src', () => {
+        const warnings: string[] = [];
+        const refs = extractLocalImageRefs('<img src="%ZZ.png"><img src="ok.png">', baseDir, (m) => warnings.push(m));
+        assert.strictEqual(refs.length, 1, `only the valid src should survive; got: ${JSON.stringify(refs)}`);
+        assert.strictEqual(refs[0].fileName, 'ok.png');
+        assert.ok(warnings.length >= 1, 'expected a warning for the undecodable src');
+    });
+
+    // -----------------------------------------------------------------------
+    // #606: attachment sys_id charset validation at the interpolation sink
+    // -----------------------------------------------------------------------
+
+    it('#606: throws when a mapped sys_id is not a 32-char hex GUID (attribute-breakout guard)', () => {
+        const hostile = new Map<string, string>([['a.png', '"><img src=x onerror=alert(1)>']]);
+        assert.throws(
+            () => rewriteImageSrcs('<img src="a.png">', hostile),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('#606: throws on short, long, and non-hex sys_ids', () => {
+        const bad = [
+            'att123',
+            'deadbeef',
+            'g'.repeat(32),
+            'deadbeefdeadbeefdeadbeefdeadbee',    // 31 chars
+            'deadbeefdeadbeefdeadbeefdeadbeeff',  // 33 chars
+        ];
+        for (const id of bad) {
+            assert.throws(
+                () => rewriteImageSrcs('<img src="a.png">', new Map([['a.png', id]])),
+                /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+                `expected a throw for sys_id '${id}' (len ${id.length})`,
+            );
+        }
+    });
+
+    it('#606: accepts a valid 32-char hex sys_id in either case', () => {
+        const lower = rewriteImageSrcs('<img src="a.png">', new Map([['a.png', 'abcdef0123456789abcdef0123456789']]));
+        assert.ok(lower.includes('sys_id=abcdef0123456789abcdef0123456789'));
+        const upper = rewriteImageSrcs('<img src="a.png">', new Map([['a.png', 'ABCDEF0123456789ABCDEF0123456789']]));
+        assert.ok(upper.includes('sys_id=ABCDEF0123456789ABCDEF0123456789'));
     });
 });
 
@@ -1457,14 +1620,14 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_d' } });
+            .reply(201, { result: { sys_id: 'd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0' } });
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(
             INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { },
         );
         assert.strictEqual(result.uploaded, 1);
-        assert.ok(result.html.includes('src="/sys_attachment.do?sys_id=att_d"'));
+        assert.ok(result.html.includes('src="/sys_attachment.do?sys_id=d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"'));
         assert.deepStrictEqual(result.missing, []);
     });
 
@@ -1530,7 +1693,7 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_ok' } });
+            .reply(201, { result: { sys_id: '0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a' } });
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
@@ -1551,7 +1714,7 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_replaced' } });
+            .reply(201, { result: { sys_id: 'feedfacefeedfacefeedfacefeedface' } });
         nock(BASE_URL)
             .delete('/api/now/attachment/old_att')
             .reply(503, { error: 'busy' });
@@ -1562,7 +1725,21 @@ describe('processArticleImages', () => {
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
         assert.strictEqual(result.uploaded, 1);
-        assert.ok(result.html.includes('att_replaced'));
+        assert.ok(result.html.includes('feedfacefeedfacefeedfacefeedface'));
+    });
+
+    it('#606: aborts the publish when ServiceNow returns a hostile (non-hex) sys_id for an uploaded image', async () => {
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, { result: [] });
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
+
+        const html = '<p><img src="./images/d.png"></p>';
+        await assert.rejects(
+            () => processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { }),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
     });
 });
 

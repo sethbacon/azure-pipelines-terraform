@@ -106,8 +106,62 @@ export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'n
  * pattern lives in this byte-identity-gated module rather than being hand-copied
  * into each. The `i` flag makes it case-insensitive; it carries no `g` flag, so
  * `.test()` is stateless and safe to call across many elements/attributes.
+ *
+ * IMPORTANT: this is a RAW-TEXT blocklist and MUST be applied to the output of
+ * normalizeCssForDangerCheck(), never to the author's bytes directly — the CSS
+ * tokenizer decodes escapes and discards comments before it ever forms a
+ * `url()`/`@import` token, so `\75rl(...)` and `@\69mport` slip past a raw match
+ * (#587). See that function for the decode/strip contract.
  */
 export const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
+
+/**
+ * Decode CSS escape sequences and strip CSS comments the way a browser's CSS
+ * tokenizer does, BEFORE testing DANGEROUS_CSS_PATTERN against the result.
+ * DANGEROUS_CSS_PATTERN matches raw bytes, but the tokenizer decodes escapes and
+ * throws away comments before a `url()`/`@import` token exists, so a raw-text
+ * match on the author's bytes is trivially bypassed (#587):
+ *   - `\75rl(x)` tokenizes to a url() token           (`\75` = 'u')
+ *   - `@\69mport` tokenizes to `@import`               (`\69` = 'i')
+ *   - `u\72l(x)` and `\u\r\l(x)` reassemble to `url(`  (literal-char escape form)
+ *   - a CSS comment placed between the `url` ident and its `(` (or splitting
+ *     `@import`) — harmless invalid CSS in a real browser, but normalized here so
+ *     the blocklist can never be dodged by one.
+ *
+ * We DECODE rather than reject any backslash outright so that legitimate escaped
+ * CSS a hand-authored `htmlFile` may carry — `content:"\201C"` smart quotes, an
+ * icon-font `content:"\f001"` — is not false-flagged: those decode to ordinary
+ * characters that match nothing in the blocklist. The blocklist is then applied
+ * to what the browser effectively evaluates.
+ *
+ * Escape handling follows CSS Syntax Level 3 §4.3.7 "consume an escaped code
+ * point": a backslash plus 1–6 hex digits is that code point, with a single
+ * trailing whitespace consumed as the digit-run delimiter (NUL / surrogate /
+ * out-of-range maps to U+FFFD); a backslash plus any other non-newline code
+ * point is that literal character; a backslash before a newline or at
+ * end-of-input is not a valid escape and contributes nothing that can complete a
+ * blocked token. Escapes are decoded FIRST and comments stripped SECOND, so a
+ * comment that merely interrupts a hex-digit run is not miscombined into a
+ * single escape the browser would never form.
+ */
+export function normalizeCssForDangerCheck(css: string): string {
+  const decoded = css.replace(
+    /\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\([^\n\r\f])/g,
+    (_m, hex: string | undefined, literal: string | undefined): string => {
+      if (hex !== undefined) {
+        let cp = parseInt(hex, 16);
+        if (cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+          cp = 0xfffd;
+        }
+        return String.fromCodePoint(cp);
+      }
+      return literal ?? '';
+    },
+  );
+  // Strip CSS comments last: the tokenizer discards them and they act only as
+  // token separators, so a comment between `url` and `(` collapses away here.
+  return decoded.replace(/\/\*[\s\S]*?\*\//g, '');
+}
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the

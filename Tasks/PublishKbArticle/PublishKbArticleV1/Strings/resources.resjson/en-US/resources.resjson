@@ -37,6 +37,8 @@
   "loc.messages.ImagesUploadedBeforeAbort": "%s image attachment(s) were already uploaded to ServiceNow before this run aborted: %s. They are attached but not yet linked from the article body; the next run will re-sync and link them automatically.",
   "loc.messages.CategoryNotObject": "Unexpected ServiceNow response: no category object in \"result\" for category '%s'.",
   "loc.messages.ImageSrcOutsideBaseDir": "Skipping image src '%s': resolves outside the image base directory ('%s' is not under '%s').",
+  "loc.messages.ImageSrcMalformedEncoding": "Skipping image src '%s': it contains a malformed percent-encoding that could not be decoded.",
+  "loc.messages.AttachmentSysIdInvalid": "Unexpected ServiceNow response: attachment sys_id '%s' is not a 32-character hex GUID; refusing to interpolate it into the article body.",
   "loc.messages.InstanceRequired": "ServiceNow instance is required (set \"instance\" input or provide a service connection).",
   "loc.messages.InvalidInstance": "Invalid ServiceNow instance '%s'. Expected the instance name only (letters, digits, hyphens), e.g. 'mycompany' for mycompany.service-now.com.",
   "loc.messages.AuthTypeRequired": "authType is required.",

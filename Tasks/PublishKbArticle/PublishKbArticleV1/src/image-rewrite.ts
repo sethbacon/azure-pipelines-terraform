@@ -42,7 +42,20 @@ export function extractLocalImageRefs(
 
         // Strip any query/fragment from the local path (e.g. ./a.png?x=1).
         const cleanPath = src.replace(/[?#].*$/, '');
-        const absPath = path.resolve(imageBaseDir, decodeURIComponent(cleanPath));
+        // decodeURIComponent throws a URIError on a malformed percent-escape
+        // (e.g. src="bad%" or "%ZZ"). The article body is author/upstream
+        // controlled, so an unguarded call would abort the entire publish on one
+        // bad reference. Skip the ref (leaving its src untouched in the body),
+        // mirroring the missing-file skip below, instead of failing the run
+        // (#605).
+        let decodedPath: string;
+        try {
+            decodedPath = decodeURIComponent(cleanPath);
+        } catch {
+            log(tasks.loc('ImageSrcMalformedEncoding', src));
+            continue;
+        }
+        const absPath = path.resolve(imageBaseDir, decodedPath);
 
         // Containment guard: reject any src (e.g. `../secret.png` or its
         // URL-encoded form) that resolves outside imageBaseDir. Without this, a
@@ -80,6 +93,19 @@ export function rewriteImageSrcs(
         (full, prefix, quote, src) => {
             const id = srcToAttachmentId.get((src as string).trim());
             if (!id) return full;
+            // The id is a ServiceNow-returned attachment sys_id interpolated
+            // straight into a quoted src attribute of the re-published article
+            // body. Its upstream producers (uploadAttachment / the reuse path's
+            // match.sys_id from listArticleAttachments) assert only that it is a
+            // string, not its charset — a hostile or corrupted backend response
+            // such as `"><img src=x onerror=...>` would otherwise break out of
+            // the attribute and inject markup into the stored article. This is
+            // the single choke point every sys_id (upload AND reuse path) passes
+            // through before interpolation, so validate the expected 32-char hex
+            // GUID here and fail closed on anything else (#606).
+            if (!/^[0-9a-f]{32}$/i.test(id)) {
+                throw new Error(tasks.loc('AttachmentSysIdInvalid', id));
+            }
             // Root-relative URL (leading slash) — this is the form ServiceNow's own
             // KB articles use to embed attachment images, and it resolves correctly
             // regardless of the page path the article renders under.

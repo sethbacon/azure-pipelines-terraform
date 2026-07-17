@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
-import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN } from './uri-scheme-guard';
+import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, DANGEROUS_CSS_PATTERN, normalizeCssForDangerCheck } from './uri-scheme-guard';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
@@ -125,10 +125,13 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     // based, not content-based) -- see uri-scheme-guard.ts for why. The CSS
     // construct pattern itself is DANGEROUS_CSS_PATTERN, shared from that same
     // byte-identity-gated module (the inline `style` attribute check below uses
-    // it too).
+    // it too). The CSS text is run through normalizeCssForDangerCheck first so a
+    // browser-decoded escape (`\75rl(...)`, `@\69mport`) or a comment-split
+    // (`url` `(` separated by a CSS comment) can't slip a fetch past this
+    // raw-text pattern (#587).
     let dangerousStyleContentFound = false;
     $('style').each((_, el) => {
-        if (DANGEROUS_CSS_PATTERN.test($(el).text())) {
+        if (DANGEROUS_CSS_PATTERN.test(normalizeCssForDangerCheck($(el).text()))) {
             dangerousStyleContentFound = true;
         }
     });
@@ -143,8 +146,10 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
     // cover. The inline `style` attribute is the simplest delivery mechanism
     // for the exact #523 exfiltration primitive (background: url(...)) and,
     // unlike the <style>-element check above, was previously unguarded here --
-    // it is checked against the same shared DANGEROUS_CSS_PATTERN, on the RAW
-    // (cheerio-decoded) value for parity with that element-content check.
+    // it is checked against the same shared DANGEROUS_CSS_PATTERN, on the
+    // cheerio-decoded value normalized by normalizeCssForDangerCheck (CSS-escape
+    // decode + comment strip) for parity with that element-content check and to
+    // close the same browser-tokenizer bypass (#587).
     let eventHandlerFound = false;
     let dangerousUriFound = false;
     let dangerousStyleAttrFound = false;
@@ -155,7 +160,7 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
             const value = normalizeUriForSchemeCheck(String(attribs[name]));
             if (lname.startsWith('on')) {
                 eventHandlerFound = true;
-            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(String(attribs[name]))) {
+            } else if (lname === 'style' && DANGEROUS_CSS_PATTERN.test(normalizeCssForDangerCheck(String(attribs[name])))) {
                 dangerousStyleAttrFound = true;
             } else if (
                 URI_BEARING_ATTRIBUTES.has(lname) &&
