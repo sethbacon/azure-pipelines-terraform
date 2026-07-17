@@ -120,6 +120,12 @@ describe('servicenow-http: agent proxy support', function () {
             assert.strictEqual(seen.length, 1);
             assert.strictEqual(seen[0].proxyAuthorization, expectedAuth);
             assert.ok(maskedSecrets.includes('p@ss'), 'the proxy password should be registered as a secret');
+            // ADO's masker matches literal registered strings only, so the derived
+            // base64 credential must be registered separately from the raw password (#546).
+            assert.ok(
+                maskedSecrets.includes(Buffer.from('proxyuser:p@ss').toString('base64')),
+                'the derived base64 Basic credential should be registered as a secret too',
+            );
         } finally {
             target.close();
             proxy.close();

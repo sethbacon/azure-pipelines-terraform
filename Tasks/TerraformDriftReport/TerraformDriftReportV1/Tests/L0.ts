@@ -234,6 +234,12 @@ describe('https-client: agent proxy support', function () {
             assert.strictEqual(seen.length, 1);
             assert.strictEqual(seen[0].proxyAuthorization, expectedAuth);
             assert.ok(maskedSecrets.includes('p@ss'), 'the proxy password should be registered as a secret');
+            // ADO's masker matches literal registered strings only, so the derived
+            // base64 credential must be registered separately from the raw password (#546).
+            assert.ok(
+                maskedSecrets.includes(Buffer.from('proxyuser:p@ss').toString('base64')),
+                'the derived base64 Basic credential should be registered as a secret too',
+            );
         } finally {
             target.close();
             proxy.close();
@@ -364,6 +370,20 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('DriftReportInvalidJson — malformed plan JSON fails with an error naming the plan file (#563)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportInvalidJson.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e =>
+                    /PlanFileInvalidJson|Failed to parse planJsonFile/.test(e) && e.includes('tdr-invalid-plan.json'),
+                ),
+                `error should name the plan file: ${tr.errorIssues}`,
+            );
         }, tr);
     });
 

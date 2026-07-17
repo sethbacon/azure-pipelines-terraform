@@ -44,6 +44,21 @@ export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'for
  * URI_BEARING_ATTRIBUTES scheme check does not cover it, since it only flags
  * javascript:/vbscript:/data: schemes, not an ordinary-looking https:// URL.
  *
+ * The MathML elements (`math`, `annotation-xml`, `mglyph`, `malignmark`) and
+ * SVG's `foreignObject` join the set for the mutation-XSS (mXSS) class of
+ * bypass (#552): they switch the parser between the HTML/SVG/MathML
+ * namespaces mid-document, and content that round-trips through a
+ * parse-serialize-reparse cycle (this pipeline sanitizes and serializes; the
+ * ServiceNow KB reader's browser later re-parses) can mutate across those
+ * namespace boundaries into live markup neither layer saw in its own parsed
+ * form -- `<annotation-xml encoding="text/html">` is the canonical carrier.
+ * None of these elements has any legitimate use in a KB article (`svg` itself
+ * stays allowed for inline diagrams; its per-attribute checks and the SMIL
+ * removals above still apply), so they are dropped/rejected outright rather
+ * than content-inspected. Like the SMIL elements, `foreignObject` keeps the
+ * SVG spec's camelCase spelling in the parsed tree; the lower-cased-tagName
+ * comparison both layers use matches it regardless.
+ *
  * `style` is deliberately NOT in this shared set, unlike every other #523
  * candidate: Markdown2Html's generateHtmlDocument() unconditionally injects
  * its own `<head><style>...</style></head>` into every document it produces,
@@ -67,7 +82,7 @@ export const URI_BEARING_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'for
  * sits -- Markdown2Html's own generated CSS is a fixed string with neither,
  * verified).
  */
-export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'link', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set']);
+export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'form', 'link', 'animate', 'animatecolor', 'animatetransform', 'animatemotion', 'set', 'math', 'annotation-xml', 'mglyph', 'malignmark', 'foreignobject']);
 
 /**
  * CSS constructs that can fetch a network resource or execute script from within

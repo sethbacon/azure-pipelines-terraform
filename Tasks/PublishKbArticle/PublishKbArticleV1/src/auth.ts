@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { snRequest } from './servicenow-http';
+import { snRequest, withRetry } from './servicenow-http';
 
 /**
  * Obtain an OAuth token from ServiceNow using client credentials grant.
@@ -15,9 +15,14 @@ export async function getOAuthToken(instance: string, clientId: string, clientSe
         client_secret: clientSecret,
     });
     try {
-        const response = await snRequest('POST', url, {
+        // The client_credentials grant is idempotent (a repeat just issues a
+        // fresh token), so it is retried on a transient failure like every
+        // other network call in this task (#562).
+        const response = await withRetry(() => snRequest('POST', url, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString(),
+        }), {
+            log: (message) => console.log(`[WARN] ${message}`),
         });
         const token = response.data.access_token as string;
         tasks.setSecret(token);

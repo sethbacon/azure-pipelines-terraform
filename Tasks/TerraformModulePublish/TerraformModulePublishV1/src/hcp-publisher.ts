@@ -105,7 +105,13 @@ export class HcpPublisher implements RegistryPublisher {
                 throw new Error(tasks.loc('HcpModuleNotFoundNoVcsInputs'));
             }
             this.log(tasks.loc('HcpCreatingVcsModule', o.namespace, o.name, o.provider));
-            const created = await this.http('POST', vcsUrl(o.address, o.namespace), headers, vcsModuleBody(o));
+            // The VCS module create is keyed by namespace/name/provider, so a retried
+            // POST after a transient 5xx cannot create a duplicate module — safe to
+            // wrap in retryHttp like the sibling module-check GET and version create.
+            const created = await retryHttp(
+                () => this.http('POST', vcsUrl(o.address, o.namespace), headers, vcsModuleBody(o)),
+                { log: this.log },
+            );
             if (created.status < 200 || created.status >= 300) {
                 throw new Error(tasks.loc('HcpCreateModuleFailed', created.status, truncateBody(created.body)));
             }

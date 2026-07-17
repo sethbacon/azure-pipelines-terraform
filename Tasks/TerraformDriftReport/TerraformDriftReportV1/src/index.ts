@@ -31,7 +31,14 @@ async function run(): Promise<void> {
             throw new Error(tasks.loc('PlanFileNotFound', planFile));
         }
 
-        const plan = JSON.parse(fs.readFileSync(planFile, 'utf8')) as Plan;
+        // Surface a malformed/truncated plan file as a clear diagnostic naming the
+        // file rather than a raw SyntaxError from the top-level catch.
+        let plan: Plan;
+        try {
+            plan = JSON.parse(fs.readFileSync(planFile, 'utf8')) as Plan;
+        } catch (err) {
+            throw new Error(tasks.loc('PlanFileInvalidJson', planFile, err instanceof Error ? err.message : err));
+        }
         const result = summarize(plan);
 
         const detail = tasks.getInput('detail', false) || '';

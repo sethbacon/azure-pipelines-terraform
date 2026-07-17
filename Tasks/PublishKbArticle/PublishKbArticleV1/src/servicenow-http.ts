@@ -19,8 +19,11 @@
  * scripts/check-shared-modules.js). It is not merged into that shared client
  * because this API needs JSON-body encoding, query-string params, and
  * axios-like non-2xx rejection that the other client's callers don't — see the
- * tracking note in check-shared-modules.js for what must stay in sync by hand
- * (https-only guard, request timeout, response size cap).
+ * tracking note in check-shared-modules.js for the split: the ProxyTunnelAgent
+ * class below is byte-identity-gated automatically via that script's
+ * REGION_FAMILIES (the `#region shared:ProxyTunnelAgent` markers bracketing it
+ * here and in both https-client.ts copies), while the remaining parallels
+ * (https-only guard, request timeout, response size cap) stay in sync by hand.
  */
 
 import * as https from 'https';
@@ -48,6 +51,7 @@ const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
  * this module's own raw https.request transport (see the file header for why
  * this is an independent copy rather than a shared module).
  */
+// #region shared:ProxyTunnelAgent -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
 class ProxyTunnelAgent extends https.Agent {
     constructor(
         private readonly proxyHostname: string,
@@ -146,6 +150,7 @@ class ProxyTunnelAgent extends https.Agent {
         return undefined;
     }
 }
+// #endregion shared:ProxyTunnelAgent
 
 /**
  * Reads the agent's configured HTTP(S) proxy (tasks.getHttpProxyConfiguration())
@@ -179,7 +184,13 @@ function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
         if (proxy.proxyPassword) {
             tasks.setSecret(proxy.proxyPassword);
         }
-        proxyAuthHeader = `Basic ${Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64')}`;
+        // ADO's log masking matches literal registered strings only, so the
+        // derived base64 form needs its own setSecret registration even though
+        // the plain password above is already masked (mirrors the encoded-form
+        // registration in auth.ts basicAuthHeader()).
+        const proxyCredentials = Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64');
+        tasks.setSecret(proxyCredentials);
+        proxyAuthHeader = `Basic ${proxyCredentials}`;
     }
     const proxyPort = Number(proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80));
     return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader, tunnelTimeoutMs);
