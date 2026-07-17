@@ -8,33 +8,56 @@ import { fetchBufferAllow404 } from './http-client';
 import { VerificationFailure } from './verification-failure';
 
 /**
- * Anchored, escaped regular expression for the Fulcio certificate identity (SAN)
- * that OpenTofu's keyless release signing produces. OpenTofu signs each release's
- * SHA256SUMS from its `release.yml` workflow on a tag ref, yielding a SAN of the
- * form `https://github.com/opentofu/opentofu/.github/workflows/<wf>@refs/tags/v<n>`.
- *
- * cosign matches `--certificate-identity-regexp` unanchored (Go `regexp.MatchString`),
- * so the pattern is anchored with `^`/`$` and its dots are escaped. This prevents a
- * look-alike certificate whose SAN merely *contains* the OpenTofu identity (or sits
- * on a different host/org/repo, a branch ref, or http) from satisfying the match.
+ * Escapes every regular-expression metacharacter in `value` so it matches
+ * literally when embedded in a larger pattern. Used to interpolate the exact
+ * requested version into the OpenTofu certificate-identity regexp without the
+ * version's own `.` (or any other metacharacter) widening the match.
  */
-export const OPENTOFU_CERT_IDENTITY_REGEXP =
-    '^https://github\\.com/opentofu/opentofu/\\.github/workflows/.+@refs/tags/v[0-9].*$';
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Builds the anchored, escaped regular expression for the Fulcio certificate
+ * identity (SAN) that OpenTofu's keyless release signing produces for the
+ * SPECIFIC requested version. OpenTofu signs each release's SHA256SUMS from its
+ * `release.yml` workflow on that release's tag ref, yielding a SAN of the form
+ * `https://github.com/opentofu/opentofu/.github/workflows/<wf>@refs/tags/v<version>`.
+ *
+ * cosign matches `--certificate-identity-regexp` unanchored (Go
+ * `regexp.MatchString`), so the pattern is anchored with `^`/`$` and its dots are
+ * escaped. Anchoring alone prevents a look-alike certificate whose SAN merely
+ * *contains* the OpenTofu identity (or sits on a different host/org/repo, a branch
+ * ref, or http) from satisfying the match. Interpolating the exact version
+ * (regex-escaped) additionally binds the signed SHA256SUMS to the version being
+ * installed, so a validly-signed SHA256SUMS from a DIFFERENT OpenTofu release can
+ * no longer satisfy the identity — closing the cross-version replay gap that the
+ * previous `@refs/tags/v[0-9].*` (any tag) pattern left to URL-path binding alone.
+ */
+export function buildOpenTofuCertIdentityRegexp(version: string): string {
+    return `^https://github\\.com/opentofu/opentofu/\\.github/workflows/.+@refs/tags/v${escapeRegExp(version)}$`;
+}
 
 /**
  * Verifies the cosign signature of a SHA256SUMS file against OpenTofu's Sigstore identity.
  *
  * - Downloads the `.sig` (signature) and `.pem` (certificate) files.
  * - Shells out to the `cosign` binary to run `verify-blob`, pinning both the OIDC
- *   issuer (exact) and the certificate identity (anchored regexp, see above).
+ *   issuer (exact) and the certificate identity (anchored, version-bound regexp,
+ *   built from `version` — see buildOpenTofuCertIdentityRegexp above).
  * - If cosign is not installed and `required` is false, warns and returns (unverified).
  * - If cosign is not installed and `required` is true, throws (hard fail).
+ * - If the signature/certificate material is genuinely absent (404) and `required`
+ *   is true, throws a typed VerificationFailure so the cache-hit re-verification
+ *   path fails closed (a reachable release withholding required signing material is
+ *   a policy failure, not a transient outage).
  * - If signature verification fails, throws (hard fail).
  */
 export async function verifyCosignSignature(
     sha256SumsContent: string,
     signatureUrl: string,
     certificateUrl: string,
+    version: string,
     required: boolean = false
 ): Promise<void> {
     let cosignPath: string;
@@ -70,7 +93,10 @@ export async function verifyCosignSignature(
 
     if (signatureBytes === null || certificateBytes === null) {
         if (required) {
-            throw new Error(`Cosign signature or certificate file unavailable and verification is required. Signature: ${signatureUrl}, Certificate: ${certificateUrl}`);
+            // Genuine 404 of REQUIRED signing material from a reachable release:
+            // deterministic policy failure, typed so the cache-hit re-verification
+            // path fails closed instead of degrading to the cached binary.
+            throw new VerificationFailure(`Cosign signature or certificate file unavailable and verification is required. Signature: ${signatureUrl}, Certificate: ${certificateUrl}`);
         }
         tasks.warning('Cosign signature/certificate files unavailable (404). Skipping verification.');
         return;
@@ -91,7 +117,7 @@ export async function verifyCosignSignature(
         toolRunner.arg('verify-blob');
         toolRunner.arg(['--certificate', certificatePath]);
         toolRunner.arg(['--signature', signaturePath]);
-        toolRunner.arg(['--certificate-identity-regexp', OPENTOFU_CERT_IDENTITY_REGEXP]);
+        toolRunner.arg(['--certificate-identity-regexp', buildOpenTofuCertIdentityRegexp(version)]);
         toolRunner.arg(['--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com']);
         toolRunner.arg(sha256SumsPath);
 
