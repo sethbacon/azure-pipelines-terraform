@@ -2,13 +2,18 @@ import * as assert from 'assert';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import * as path from 'path';
 
-// Direct unit tests for the cosign verifier (certificate-identity anchoring +
+// Direct unit tests for the cosign verifier (version-bound certificate-identity +
 // fail-closed behavior). Registered alongside the integration suite below.
 import './CosignVerifierL0';
+// Direct unit tests for the GPG signature gate exercising the REAL gpg-verifier
+// (real openpgp signatures, wrong-key rejection, HashiCorp trust-root canary) — #497.
+import './GpgVerifierL0';
 // Direct unit tests for the http-client timeout guard.
 import './HttpClientL0';
 // Direct unit tests for the optional registry download_url host allowlist.
 import './RegistryAllowedHostsL0';
+// Direct unit tests for the operator-URL userinfo redaction helpers (#586).
+import './UrlSecretRedactionL0';
 
 describe('TerraformInstaller Test Suite', function () {
 
@@ -236,6 +241,71 @@ describe('TerraformInstaller Test Suite', function () {
             assert(
                 tr.stdout.includes('skipping remote re-verification'),
                 'should log a debug note that re-verification was skipped. stdout: ' + tr.stdout
+            );
+        }, tr);
+    });
+
+    // --- Cache-hit re-verification fails closed when required material is WITHHELD
+    // by a REACHABLE source (#589), distinct from an unreachable source (which still
+    // degrades — see CacheHitHashUnavailable above). Both exercise the real reverify
+    // classification (the subject module is not mocked). ---
+
+    it('cache hit, no marker: reachable registry withholds required sha256, fails closed (not degraded)', async () => {
+        const tp = path.join(__dirname, 'CacheHitReverifyRegistryWithheld.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed closed');
+            assert(
+                tr.errorIssues.some((e) => /Checksum verification is required/i.test(e)),
+                'failure should stem from the withheld required checksum. errors: ' + tr.errorIssues
+            );
+            assert(
+                tr.warningIssues.every((w) => !w.includes('CachedToolReverificationUnavailable')),
+                'a withheld-material policy failure must NOT be degraded to the availability warning. warnings: ' + tr.warningIssues
+            );
+        }, tr);
+    });
+
+    it('cache hit, no marker: reachable mirror withholds required SHA256SUMS, fails closed (not degraded)', async () => {
+        const tp = path.join(__dirname, 'CacheHitReverifyMirrorWithheld.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed closed');
+            assert(
+                tr.errorIssues.some((e) => /Checksum verification is required|SHA256SUMS/i.test(e)),
+                'failure should stem from the withheld required SHA256SUMS. errors: ' + tr.errorIssues
+            );
+            assert(
+                tr.warningIssues.every((w) => !w.includes('CachedToolReverificationUnavailable')),
+                'a withheld-material policy failure must NOT be degraded to the availability warning. warnings: ' + tr.warningIssues
+            );
+        }, tr);
+    });
+
+    // --- Operator mirror/registry URL userinfo redaction (#586) ---
+    it('mirror URL with userinfo: strips credentials from the output variable and masks them', async () => {
+        const tp = path.join(__dirname, 'MirrorUserInfoRedacted.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            // The credential is registered as a secret so the agent masks it everywhere.
+            assert(
+                tr.stdout.includes('##vso[task.setsecret]s3cr3t'),
+                'the embedded password should be registered as a secret. stdout: ' + tr.stdout
+            );
+            // The persisted variable must carry the userinfo-stripped URL (a downstream
+            // task reads this value directly). If it were NOT stripped, the setvariable
+            // value would be mirror:https://user:s3cr3t@... (or masked mirror:https://***@...)
+            // and this exact substring would be absent.
+            assert(
+                tr.stdout.includes('mirror:https://artifacts.example.com/hashicorp/terraform'),
+                'terraformDownloadedFrom should store the userinfo-stripped mirror URL. stdout: ' + tr.stdout
             );
         }, tr);
     });

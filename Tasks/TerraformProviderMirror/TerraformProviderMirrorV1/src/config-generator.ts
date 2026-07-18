@@ -1,3 +1,5 @@
+import { redactUrlUserInfo } from './url-secret-redaction';
+
 export interface ProviderMirrorConfig {
     mirrorUrl: string;
     allowDirectFallback: boolean;
@@ -14,11 +16,13 @@ export function validateMirrorUrl(url: string): void {
     try {
         parsed = new URL(url);
     } catch {
-        throw new Error(`Invalid mirror URL: ${url}`);
+        // Strip any embedded basic-auth userinfo from the echoed URL so a malformed
+        // credential-bearing mirror URL cannot leak into the build log (#586).
+        throw new Error(`Invalid mirror URL: ${redactUrlUserInfo(url)}`);
     }
 
     if (parsed.protocol !== 'https:') {
-        throw new Error(`Insecure URL rejected: ${url}. Only HTTPS URLs are allowed.`);
+        throw new Error(`Insecure URL rejected: ${redactUrlUserInfo(url)}. Only HTTPS URLs are allowed.`);
     }
 }
 

@@ -2,6 +2,8 @@
 
 Install Terraform and run Terraform commands in Azure Pipelines. Supports Azure (AzureRM), AWS, GCP, and OCI providers with Workload Identity Federation (OIDC) authentication.
 
+This is a fork of Microsoft's `ms-devlabs.custom-terraform-tasks` extension, published under a distinct extension ID and service connection types so it can be installed **side by side** with the original — no need to remove the Microsoft DevLabs extension to try this one. Beyond the original's feature set, it adds new commands, backend/provider decoupling, Workload Identity Federation for AWS, GCP, and OCI, flexible installer download sources, a structured Terraform results tab (Plan/Apply/State pivots, redacted), SARIF output for policy-check and drift-report, and security hardening. Teams migrating fully from the Microsoft DevLabs extension can follow the [step-by-step migration guide](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/docs/migration-from-ms-devlabs.md).
+
 This extension provides:
 
 - **PipelineTerraformInstaller** -- Install a specific version of Terraform on the pipeline agent

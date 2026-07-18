@@ -6,17 +6,30 @@
 // bundles independently) — not drift to be flagged.
 
 /**
- * Error thrown when release verification material (a SHA256SUMS/.sha256 file, a
- * GPG/cosign signature, or a registry-provided sha256) was successfully OBTAINED
- * but the artifact FAILED verification against it: a bad or wrong-key signature,
- * a checksum mismatch, or a checksum file that does not list the requested asset.
+ * Error thrown when a REACHABLE source fails a REQUIRED verification policy. Two
+ * cases fall under this:
  *
- * Deliberately NOT used when material is merely unavailable (network/DNS/TLS
- * failure, non-2xx response, genuine 404, cosign binary absent). The cache-hit
- * re-verification path keys on this distinction: "the source is serving material
- * that does not verify" fails closed, while "the material cannot be fetched"
- * degrades gracefully to the cached tool (preserving offline/air-gapped cache
- * reuse) with a warning.
+ *  1. Material (a SHA256SUMS/.sha256 file, a GPG/cosign signature, or a
+ *     registry-provided sha256) was successfully OBTAINED but the artifact FAILED
+ *     verification against it: a bad or wrong-key signature, a checksum mismatch,
+ *     or a checksum file that does not list the requested asset.
+ *  2. Material that a require-flag makes MANDATORY was deterministically WITHHELD by
+ *     a reachable source: a registry that returns an empty sha256 under
+ *     requireChecksum, or a reachable mirror/release that 404s the SHA256SUMS/.sha256
+ *     (requireChecksum) or the GPG/cosign signature (requireGpgSignature /
+ *     requireCosignVerification) it is required to serve.
+ *
+ * Both are deterministic, reproducible policy failures — retrying or falling back
+ * to a never-verified cached copy is never the right response.
+ *
+ * Deliberately NOT used when material is unavailable for a NON-deterministic or
+ * non-source reason: a transport outage (network/DNS/TLS failure, timeout, 5xx), a
+ * 404 for material that is NOT required (the caller just warns and continues
+ * unverified), or the local verifier tool being absent (cosign binary not
+ * installed). The cache-hit re-verification path keys on this distinction: a
+ * VerificationFailure fails closed, while "the material cannot be fetched because
+ * the source is unreachable" degrades gracefully to the cached tool (preserving
+ * offline/air-gapped cache reuse) with a warning.
  */
 export class VerificationFailure extends Error {
     constructor(message: string) {

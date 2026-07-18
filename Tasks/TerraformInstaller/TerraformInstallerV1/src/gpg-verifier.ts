@@ -19,14 +19,18 @@ import { VerificationFailure } from './verification-failure';
  *   and returns unverified. Any OTHER fetch error (5xx / network / timeout) is
  *   transient and propagates fatally even when `required` is false -- only a
  *   confirmed absence should downgrade to a warning.
- * - If the `.sig` file is unavailable and `required` is true, throws (hard fail).
- * - If the signature is invalid, throws (hard fail).
+ * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is true, throws
+ *   a typed VerificationFailure (hard fail): a reachable source withholding the
+ *   required signature is a deterministic policy failure, so the cache-hit
+ *   re-verification path re-throws it (fail closed) instead of degrading to the
+ *   cached tool the way it does for a genuine transport outage.
+ * - If the signature is invalid, throws a VerificationFailure (hard fail).
  */
 export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean = false): Promise<void> {
     const signatureBytes = await fetchBufferAllow404(signatureUrl);
     if (signatureBytes === null) {
         if (required) {
-            throw new Error(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
+            throw new VerificationFailure(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
         }
         tasks.warning(`GPG signature file unavailable (${signatureUrl}). SHA256SUMS will be trusted without signature verification.`);
         return;
