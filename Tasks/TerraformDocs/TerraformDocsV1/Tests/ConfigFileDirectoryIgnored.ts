@@ -19,7 +19,7 @@ const a: ma.TaskLibAnswers = {
   which: { 'terraform-docs': 'terraform-docs' },
   checkPath: { 'terraform-docs': true },
   exec: {
-    'terraform-docs markdown table .': {
+    'terraform-docs markdown table -- .': {
       code: 0,
       stdout: 'generated'
     }

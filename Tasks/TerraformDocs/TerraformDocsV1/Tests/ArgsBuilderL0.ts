@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
-import { resolveFormatter, buildTerraformDocsArgs, sanitizeConfigFile, StatLike, StatSyncFn, TerraformDocsConfig } from '../src/args-builder';
+import { resolveFormatter, buildTerraformDocsArgs, buildModulePathArgs, sanitizeConfigFile, StatLike, StatSyncFn, TerraformDocsConfig } from '../src/args-builder';
 
 // Direct (parent-process) unit tests for the pure argument-building logic. These
 // cover every formatter mapping and flag branch that the MockTestRunner integration
@@ -34,67 +34,63 @@ describe('args-builder: resolveFormatter', () => {
 describe('args-builder: buildTerraformDocsArgs', () => {
   const base: TerraformDocsConfig = { formatter: 'markdown-table', modulePath: '.' };
 
-  it('emits the formatter tokens and the positional module path', () => {
-    assert.deepStrictEqual(buildTerraformDocsArgs(base), ['markdown', 'table', '.']);
-  });
-
-  it('defaults the module path to "." when empty', () => {
-    assert.deepStrictEqual(buildTerraformDocsArgs({ formatter: 'json', modulePath: '' }), ['json', '.']);
+  it('emits only the formatter tokens (module path is built separately)', () => {
+    assert.deepStrictEqual(buildTerraformDocsArgs(base), ['markdown', 'table']);
   });
 
   it('includes the config file when set', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, configFile: '.terraform-docs.yml' }),
-      ['markdown', 'table', '--config', '.terraform-docs.yml', '.']
+      ['markdown', 'table', '--config', '.terraform-docs.yml']
     );
   });
 
   it('includes output-file and output-mode', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, outputFile: 'README.md', outputMode: 'inject' }),
-      ['markdown', 'table', '--output-file', 'README.md', '--output-mode', 'inject', '.']
+      ['markdown', 'table', '--output-file', 'README.md', '--output-mode', 'inject']
     );
   });
 
   it('omits output-mode when there is no output file', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, outputMode: 'replace' }),
-      ['markdown', 'table', '.']
+      ['markdown', 'table']
     );
   });
 
   it('adds --output-check', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, outputFile: 'README.md', outputCheck: true }),
-      ['markdown', 'table', '--output-file', 'README.md', '--output-check', '.']
+      ['markdown', 'table', '--output-file', 'README.md', '--output-check']
     );
   });
 
   it('adds --sort-by when not the default ordering', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, sortBy: 'required' }),
-      ['markdown', 'table', '--sort-by', 'required', '.']
+      ['markdown', 'table', '--sort-by', 'required']
     );
   });
 
   it('omits --sort-by for the default ordering', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, sortBy: 'default' }),
-      ['markdown', 'table', '.']
+      ['markdown', 'table']
     );
   });
 
   it('adds --recursive and --recursive-path', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, recursive: true, recursivePath: 'modules' }),
-      ['markdown', 'table', '--recursive', '--recursive-path', 'modules', '.']
+      ['markdown', 'table', '--recursive', '--recursive-path', 'modules']
     );
   });
 
   it('adds --recursive without a submodule path', () => {
     assert.deepStrictEqual(
       buildTerraformDocsArgs({ ...base, recursive: true }),
-      ['markdown', 'table', '--recursive', '.']
+      ['markdown', 'table', '--recursive']
     );
   });
 
@@ -111,8 +107,29 @@ describe('args-builder: buildTerraformDocsArgs', () => {
         recursive: true,
         recursivePath: 'submodules',
       }),
-      ['asciidoc', 'document', '--config', 'cfg.yml', '--output-file', 'README.adoc', '--output-mode', 'replace', '--output-check', '--sort-by', 'type', '--recursive', '--recursive-path', 'submodules', './modules/vpc']
+      ['asciidoc', 'document', '--config', 'cfg.yml', '--output-file', 'README.adoc', '--output-mode', 'replace', '--output-check', '--sort-by', 'type', '--recursive', '--recursive-path', 'submodules']
     );
+  });
+});
+
+describe('args-builder: buildModulePathArgs', () => {
+  it('emits a `--` terminator before the module path', () => {
+    assert.deepStrictEqual(buildModulePathArgs('.'), ['--', '.']);
+  });
+
+  it('defaults the module path to "." when empty', () => {
+    assert.deepStrictEqual(buildModulePathArgs(''), ['--', '.']);
+  });
+
+  it('defaults the module path to "." when undefined', () => {
+    assert.deepStrictEqual(buildModulePathArgs(undefined), ['--', '.']);
+  });
+
+  it('rejects a modulePath being misparsed as a flag by preceding it with -- (regression for #661)', () => {
+    // Empirically verified against terraform-docs v0.24.0: `markdown table
+    // -weird` fails with "unknown shorthand flag: 'w' in -weird", while
+    // `markdown table -- -weird` succeeds.
+    assert.deepStrictEqual(buildModulePathArgs('-weird'), ['--', '-weird']);
   });
 });
 
@@ -182,6 +199,6 @@ describe('args-builder: sanitizeConfigFile', () => {
     const configFile = sanitizeConfigFile('/agent/_work/1/s', statAs(asDir));
     const args = buildTerraformDocsArgs({ formatter: 'markdown-table', modulePath: '/agent/_work/1/s', configFile });
     assert.ok(!args.includes('--config'), 'no --config should be emitted for the directory artifact');
-    assert.deepStrictEqual(args, ['markdown', 'table', '/agent/_work/1/s']);
+    assert.deepStrictEqual(args, ['markdown', 'table']);
   });
 });

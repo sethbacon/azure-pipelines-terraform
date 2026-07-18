@@ -14,7 +14,7 @@ const a: ma.TaskLibAnswers = {
   which: { 'terraform-docs': 'terraform-docs' },
   checkPath: { 'terraform-docs': true },
   exec: {
-    'terraform-docs markdown table --output-file README.md --output-mode inject .': {
+    'terraform-docs markdown table --output-file README.md --output-mode inject -- .': {
       code: 0,
       stdout: 'generated'
     }
