@@ -4,6 +4,24 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.10.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.2...v1.10.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* apply Windows DACLs to sensitive temp files and clarify TLS-skip risk ([#621](https://github.com/sethbacon/azure-pipelines-terraform/issues/621)) ([d43efb9](https://github.com/sethbacon/azure-pipelines-terraform/commit/d43efb955addf6a069fb871e8032178e75670860))
+* clear npm audit gate via task-lib refresh and adm-zip override ([#614](https://github.com/sethbacon/azure-pipelines-terraform/issues/614)) ([0189918](https://github.com/sethbacon/azure-pipelines-terraform/commit/0189918cb876e2dd9100138f027044c349699712))
+* fail closed on withheld verification material and mask URL secrets ([#618](https://github.com/sethbacon/azure-pipelines-terraform/issues/618)) ([5b62229](https://github.com/sethbacon/azure-pipelines-terraform/commit/5b62229c3007b4a1e886e634cf2bbb73bc5ff488)), closes [#497](https://github.com/sethbacon/azure-pipelines-terraform/issues/497)
+* harden ServiceNow KB pipeline against CSS-escape and sys_id injection ([#620](https://github.com/sethbacon/azure-pipelines-terraform/issues/620)) ([0f5371e](https://github.com/sethbacon/azure-pipelines-terraform/commit/0f5371ecee477d3f313188f135d8954c70e9d5b4))
+* harden V5 auth-scheme validation and OCI PAR config handling ([#617](https://github.com/sethbacon/azure-pipelines-terraform/issues/617)) ([0c771bd](https://github.com/sethbacon/azure-pipelines-terraform/commit/0c771bd1b12c569df899462d7cbe3c5dfe68c3de))
+* override adm-zip at the repo root to clear the full-tree audit ([#624](https://github.com/sethbacon/azure-pipelines-terraform/issues/624)) ([3b12420](https://github.com/sethbacon/azure-pipelines-terraform/commit/3b12420f08b64aee01975cd8059ff883633936c0))
+* unify retry backoff and treat HTTP 429 as retryable ([#619](https://github.com/sethbacon/azure-pipelines-terraform/issues/619)) ([ca0873a](https://github.com/sethbacon/azure-pipelines-terraform/commit/ca0873ab4bbcbda1534bf53f877ea2262d262bc7))
+
+
+### Documentation
+
+* reconcile README, CLAUDE.md, notices, and marketplace listing ([#616](https://github.com/sethbacon/azure-pipelines-terraform/issues/616)) ([89b1c24](https://github.com/sethbacon/azure-pipelines-terraform/commit/89b1c24468940c18ce70853b0c176e4a6d792d7f)), closes [#601](https://github.com/sethbacon/azure-pipelines-terraform/issues/601) [#602](https://github.com/sethbacon/azure-pipelines-terraform/issues/602) [#603](https://github.com/sethbacon/azure-pipelines-terraform/issues/603) [#608](https://github.com/sethbacon/azure-pipelines-terraform/issues/608)
+
 ## [1.10.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.1...v1.10.2) (2026-07-17)
 
 
