@@ -24,6 +24,13 @@ const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 export interface HttpResponse {
     status: number;
     body: string;
+    /**
+     * Raw response headers (Node's http.IncomingHttpHeaders), so a caller can
+     * inspect e.g. Retry-After (#633). Optional so a hand-built { status, body }
+     * fixture (no real HTTP round-trip) in tests remains valid; the real
+     * transport below (createHttpsClient) always populates it.
+     */
+    headers?: http.IncomingHttpHeaders;
 }
 
 export type HttpClient = (
@@ -245,7 +252,7 @@ export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT
                     if (overflowed) {
                         return;
                     }
-                    resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
+                    resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'), headers: res.headers });
                 });
             });
             req.setTimeout(timeoutMs, () => {
