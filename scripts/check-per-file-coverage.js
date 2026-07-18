@@ -94,23 +94,10 @@ const EXCEPTIONS = {
         floor: 0,
         note: 'types-only shared contract; nothing meaningful to unit-test',
     },
-    // SECURITY_TIER, below its 80% floor (real: 79.16% on 2026-07-18) — per
-    // issue #655's own guidance ("below-tier gets a commented exception, not a
-    // silently lowered floor"). secure-temp.ts's tightenFilePermissions() is a
-    // post-hoc chmod for THIRD-PARTY-downloaded files; only TerraformTaskV5
-    // calls it (via secure-file-loader.ts for securefiles-common downloads),
-    // so this copy carries the function only for shared-module byte-identity
-    // and never exercises it. Floor is set just under today's real number so
-    // it still guards against further regression rather than exempting the
-    // file outright; not silently lowered to DEFAULT_FLOOR.
-    'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/secure-temp.js': {
-        floor: 75,
-        note: 'shared-copy-only tightenFilePermissions() (no caller in this task) keeps it below the 80% SECURITY_FLOOR tier — see issue #655',
-    },
-    'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/secure-temp.js': {
-        floor: 75,
-        note: 'shared-copy-only tightenFilePermissions() (no caller in this task) keeps it below the 80% SECURITY_FLOOR tier — see issue #655',
-    },
+    // (The DriftReport/PolicyCheck secure-temp.js exceptions added with the
+    // tiered floors were removed once the #634 direct suites lifted both
+    // copies above the 80% SECURITY_FLOOR — the gate itself fails on a stale
+    // exception, by design.)
 };
 
 // Pure classifier. Inputs:
