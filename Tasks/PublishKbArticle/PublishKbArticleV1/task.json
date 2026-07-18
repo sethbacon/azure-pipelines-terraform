@@ -290,7 +290,7 @@
         "CategoryNotObject": "Unexpected ServiceNow response: no category object in \"result\" for category '%s'.",
         "ImageSrcOutsideBaseDir": "Skipping image src '%s': resolves outside the image base directory ('%s' is not under '%s').",
         "ImageSrcMalformedEncoding": "Skipping image src '%s': it contains a malformed percent-encoding that could not be decoded.",
-        "AttachmentSysIdInvalid": "Unexpected ServiceNow response: attachment sys_id '%s' is not a 32-character hex GUID; refusing to interpolate it into the article body.",
+        "AttachmentSysIdInvalid": "Unexpected ServiceNow response: attachment sys_id '%s' is not a 32-character hex GUID; refusing to use it in a request URL or the article body.",
         "InstanceRequired": "ServiceNow instance is required (set \"instance\" input or provide a service connection).",
         "InvalidInstance": "Invalid ServiceNow instance '%s'. Expected the instance name only (letters, digits, hyphens), e.g. 'mycompany' for mycompany.service-now.com.",
         "AuthTypeRequired": "authType is required.",

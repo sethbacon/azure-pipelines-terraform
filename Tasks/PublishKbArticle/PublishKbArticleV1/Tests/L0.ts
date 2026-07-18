@@ -19,7 +19,7 @@ import { normalizeCssForDangerCheck } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 
@@ -1499,11 +1499,11 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             .reply(503, { error: 'busy' })
             .get('/api/now/attachment')
             .query(true)
-            .reply(200, { result: [{ sys_id: 'att1', file_name: 'pic.png' }] });
+            .reply(200, { result: [{ sys_id: 'a11a11a11a11a11a11a11a11a11a11a1', file_name: 'pic.png' }] });
 
         const result = await listArticleAttachments(INSTANCE, HEADERS, 'art1');
         assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0].sys_id, 'att1');
+        assert.strictEqual(result[0].sys_id, 'a11a11a11a11a11a11a11a11a11a11a1');
     });
 
     it('listArticleAttachments throws a clear diagnostic when "result" is not an array (2xx non-JSON body fallback)', async () => {
@@ -1528,6 +1528,59 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
             /did not return a sys_id|AttachmentUploadNoSysId/,
         );
+    });
+
+    // -----------------------------------------------------------------------
+    // security: trust-boundary validation at the parse point (#606 follow-up)
+    // -----------------------------------------------------------------------
+
+    it('security: listArticleAttachments rejects a hostile (path-traversal) sys_id in the response', async () => {
+        nock(BASE_URL)
+            .get('/api/now/attachment')
+            .query(true)
+            .reply(200, { result: [{ sys_id: 'x/../table/kb_knowledge/deadbeefdeadbeefdeadbeefdeadbeef', file_name: 'pic.png' }] });
+
+        await assert.rejects(
+            () => listArticleAttachments(INSTANCE, HEADERS, 'art1'),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('security: uploadAttachment rejects a hostile (non-hex) sys_id in the response', async () => {
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
+
+        await assert.rejects(
+            () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+});
+
+// ===========================================================================
+// deleteAttachment — URL construction (real implementation, nock-mocked HTTP)
+// ===========================================================================
+describe('deleteAttachment', () => {
+    it('sends a DELETE to the attachment id path segment', async () => {
+        const scope = nock(BASE_URL).delete('/api/now/attachment/abcdef0123456789abcdef0123456789').reply(204);
+        await deleteAttachment(INSTANCE, HEADERS, 'abcdef0123456789abcdef0123456789');
+        assert.strictEqual(scope.isDone(), true);
+    });
+
+    it('security: encodeURIComponent-encodes the attachment id in the DELETE URL path (defense-in-depth, #606 follow-up)', async () => {
+        // deleteAttachment does not itself re-validate sys_id shape (its callers
+        // -- listArticleAttachments and uploadAttachment -- already validate at
+        // the parse boundary before a value can ever reach here); encodeURIComponent
+        // here is a second, independent layer -- even if an invalid value somehow
+        // reached this call, it could not path-traverse the DELETE onto a
+        // different table/record via an unencoded '/'.
+        const scope = nock(BASE_URL)
+            .delete('/api/now/attachment/x%2F..%2Ftable%2Fkb_knowledge%2Fvictim')
+            .reply(204);
+        await deleteAttachment(INSTANCE, HEADERS, 'x/../table/kb_knowledge/victim');
+        assert.strictEqual(scope.isDone(), true, 'expected the id to be percent-encoded in the request path, not path-traversed');
     });
 });
 
@@ -1559,25 +1612,25 @@ describe('syncImageAttachment', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'new_att' } });
+            .reply(201, { result: { sys_id: 'ea70ea70ea70ea70ea70ea70ea70ea70' } });
 
         const id = await syncImageAttachment(
             INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png',
             [{ sys_id: 'old_att', file_name: 'pic.png', hash: 'DIFFERENT' }],
         );
-        assert.strictEqual(id, 'new_att');
+        assert.strictEqual(id, 'ea70ea70ea70ea70ea70ea70ea70ea70');
     });
 
     it('uploads fresh when no existing attachment matches', async () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'fresh_att' } });
+            .reply(201, { result: { sys_id: 'fee5fee5fee5fee5fee5fee5fee5fee5' } });
 
         const id = await syncImageAttachment(
             INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', [],
         );
-        assert.strictEqual(id, 'fresh_att');
+        assert.strictEqual(id, 'fee5fee5fee5fee5fee5fee5fee5fee5');
     });
 
     it('does not delete the old attachment when the replacement upload fails (non-atomic swap, upload-first)', async () => {
@@ -1673,7 +1726,7 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_first' } });
+            .reply(201, { result: { sys_id: 'a1f1a1f1a1f1a1f1a1f1a1f1a1f1a1f1' } });
 
         const html = '<p><img src="./images/first.png"><img src="./images/missing.png"></p>';
         await assert.rejects(
@@ -1709,17 +1762,17 @@ describe('processArticleImages', () => {
         // resilience as the upload step, without re-running the (already
         // succeeded) upload on a delete retry.
         nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, {
-            result: [{ sys_id: 'old_att', file_name: 'd.png', hash: 'DIFFERENT-HASH' }],
+            result: [{ sys_id: '01d01d01d01d01d01d01d01d01d01d01', file_name: 'd.png', hash: 'DIFFERENT-HASH' }],
         });
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
             .reply(201, { result: { sys_id: 'feedfacefeedfacefeedfacefeedface' } });
         nock(BASE_URL)
-            .delete('/api/now/attachment/old_att')
+            .delete('/api/now/attachment/01d01d01d01d01d01d01d01d01d01d01')
             .reply(503, { error: 'busy' });
         nock(BASE_URL)
-            .delete('/api/now/attachment/old_att')
+            .delete('/api/now/attachment/01d01d01d01d01d01d01d01d01d01d01')
             .reply(204);
 
         const html = '<p><img src="./images/d.png"></p>';
@@ -1734,6 +1787,33 @@ describe('processArticleImages', () => {
             .post('/api/now/attachment/file')
             .query(true)
             .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
+
+        const html = '<p><img src="./images/d.png"></p>';
+        await assert.rejects(
+            () => processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { }),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('security: a hostile (path-traversal) sys_id in a list-attachments response never reaches the DELETE call', async () => {
+        // The existing attachment's sys_id is a path-traversal payload aimed at
+        // attachments.ts's deleteAttachment URL sink
+        // (.../api/now/attachment/<sys_id>): if it were used unvalidated, the
+        // DELETE would hit an attacker-chosen table/record instead of the
+        // intended attachment. Deliberately no upload or delete interceptor is
+        // registered below -- if listArticleAttachments's own trust-boundary
+        // validation didn't fail closed first, syncImageAttachment would go on
+        // to call the (unmocked) upload and delete endpoints and nock would
+        // reject the request for a DIFFERENT reason (no matching interceptor,
+        // net connect disabled) instead of the expected validation error,
+        // which would fail this assertion.
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, {
+            result: [{
+                sys_id: 'x/../table/kb_knowledge/deadbeefdeadbeefdeadbeefdeadbeef',
+                file_name: 'd.png',
+                hash: 'DIFFERENT-HASH',
+            }],
+        });
 
         const html = '<p><img src="./images/d.png"></p>';
         await assert.rejects(

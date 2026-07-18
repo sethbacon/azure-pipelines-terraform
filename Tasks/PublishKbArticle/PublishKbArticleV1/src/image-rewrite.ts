@@ -78,6 +78,24 @@ export function extractLocalImageRefs(
 }
 
 /**
+ * ServiceNow sys_ids are 32-character hex GUIDs. Every attachment sys_id this
+ * task ever interpolates into a URL or HTML attribute — whether returned by a
+ * fresh upload (attachments.ts's uploadAttachment) or reused from a
+ * list-attachments response (attachments.ts's listArticleAttachments) — is
+ * validated against this shape at the point its producer parses the
+ * ServiceNow response, before the value can reach ANY downstream sink. This
+ * is the single implementation both attachments.ts (the URL sink:
+ * deleteAttachment's path segment) and rewriteImageSrcs below (the HTML sink:
+ * the rewritten `<img src>`) call — a hostile or corrupted backend response
+ * (e.g. `"><img src=x onerror=...>`, or a path-traversal value like
+ * `x/../table/kb_knowledge/<victimId>`) fails closed here rather than at
+ * whichever sink happens to consume it later (#606 follow-up).
+ */
+export function isValidSysId(id: string): boolean {
+    return /^[0-9a-f]{32}$/i.test(id);
+}
+
+/**
  * Rewrite every occurrence of each original src to its attachment URL.
  * `srcToAttachmentId` maps the ORIGINAL src string -> attachment sys_id.
  * Unmapped srcs (e.g. a missing file that was skipped) are left as-is.
@@ -93,17 +111,13 @@ export function rewriteImageSrcs(
         (full, prefix, quote, src) => {
             const id = srcToAttachmentId.get((src as string).trim());
             if (!id) return full;
-            // The id is a ServiceNow-returned attachment sys_id interpolated
-            // straight into a quoted src attribute of the re-published article
-            // body. Its upstream producers (uploadAttachment / the reuse path's
-            // match.sys_id from listArticleAttachments) assert only that it is a
-            // string, not its charset — a hostile or corrupted backend response
-            // such as `"><img src=x onerror=...>` would otherwise break out of
-            // the attribute and inject markup into the stored article. This is
-            // the single choke point every sys_id (upload AND reuse path) passes
-            // through before interpolation, so validate the expected 32-char hex
-            // GUID here and fail closed on anything else (#606).
-            if (!/^[0-9a-f]{32}$/i.test(id)) {
+            // Belt-and-suspenders: attachments.ts's producers (uploadAttachment,
+            // listArticleAttachments) already validate every sys_id with
+            // isValidSysId at the point their ServiceNow response is parsed, so
+            // this should never trip in practice — but this is the actual
+            // interpolation site, so it stays a hard fail-closed check rather
+            // than relying solely on an upstream caller having done it (#606).
+            if (!isValidSysId(id)) {
                 throw new Error(tasks.loc('AttachmentSysIdInvalid', id));
             }
             // Root-relative URL (leading slash) — this is the form ServiceNow's own
