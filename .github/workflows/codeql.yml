@@ -25,6 +25,11 @@ jobs:
         uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           languages: javascript-typescript
+          # Default query pack is narrower than this credential-handling
+          # codebase warrants (env-var/argv secret hygiene, URL/host
+          # allowlisting, HCL/HTML injection guards) -- security-extended adds
+          # materially more taint-flow/injection-class queries (issue #629).
+          queries: security-extended
       - name: Autobuild
         uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
       - name: Perform CodeQL Analysis

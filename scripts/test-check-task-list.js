@@ -38,13 +38,16 @@ const CANONICAL = ['Tasks/Alpha/AlphaV1', 'Tasks/Beta/BetaV1', 'Tasks/Gamma/Gamm
 // Build a self-contained mini-repo under `caseDir`. Each hand-maintained
 // source's task list can be overridden independently to model drift; anything
 // omitted defaults to the canonical set. `taskDirs` is the Tasks/ ground truth
-// discoverTaskDirs() reads.
+// discoverTaskDirs() reads. `attestNames` defaults to mirroring `sbomTasks`
+// (T0, T1, ... plus 'tab') so the new Attest/Generate parity check passes by
+// default; override it independently to model that check drifting.
 function buildRepo(caseDir, opts = {}) {
     const taskDirs = opts.taskDirs || CANONICAL;
     const contribDirs = opts.contribDirs || CANONICAL;
     const sbomTasks = opts.sbomTasks || CANONICAL;
     const dependabotTasks = opts.dependabotTasks || CANONICAL;
     const unitTestTasks = opts.unitTestTasks || CANONICAL;
+    const attestNames = opts.attestNames || [...sbomTasks.map((_, i) => `T${i}`), 'tab'];
 
     fs.mkdirSync(path.join(caseDir, 'scripts', 'lib'), { recursive: true });
     // The script under test plus the shared task-dirs lib it requires, run from
@@ -72,16 +75,21 @@ function buildRepo(caseDir, opts = {}) {
 
     // .github/workflows/release.yml — one 'Generate SBOM for <Task>' step per
     // task (keyed off its `cd Tasks/...` line) plus a non-task 'Generate SBOM
-    // for tab' step that must be ignored (no `cd Tasks/...`).
+    // for tab' step that must be ignored (no `cd Tasks/...`), then a matching
+    // 'Attest SBOM (<Name>) for VSIX' step per Generate step (named per
+    // `attestNames`, independently overridable to model that check drifting).
     fs.mkdirSync(path.join(caseDir, '.github', 'workflows'), { recursive: true });
     const sbomSteps = sbomTasks
         .map(
             (t, i) => `      - name: Generate SBOM for T${i}\n        run: |\n          cd ${t}\n          npm ci --omit=dev --ignore-scripts\n`,
         )
         .join('');
+    const attestSteps = attestNames
+        .map((name) => `      - name: Attest SBOM (${name}) for VSIX\n        uses: actions/attest@0000000000000000000000000000000000000000 # v4\n        with:\n          sbom-path: "sbom-${name}.cdx.json"\n`)
+        .join('');
     fs.writeFileSync(
         path.join(caseDir, '.github', 'workflows', 'release.yml'),
-        `jobs:\n  sbom-and-sign:\n    steps:\n${sbomSteps}      - name: Generate SBOM for tab\n        run: npx --no-install cyclonedx-npm --output-file sbom-tab.cdx.json\n`,
+        `jobs:\n  sbom-and-sign:\n    steps:\n${sbomSteps}      - name: Generate SBOM for tab\n        run: npx --no-install cyclonedx-npm --output-file sbom-tab.cdx.json\n${attestSteps}`,
     );
 
     // .github/dependabot.yml — one npm update entry per task
@@ -210,6 +218,40 @@ try {
             failed = true;
         } else {
             console.log("OK: exits non-zero when unit-test.yml is missing a task's Build-and-Test job.");
+        }
+    }
+
+    // --- Case 7: release.yml is missing a task's 'Attest SBOM' step (issue
+    // #630) -> fail, even though its 'Generate SBOM' step (and every other
+    // source) is untouched. ---
+    {
+        const allNames = [...CANONICAL.map((_, i) => `T${i}`), 'tab'];
+        const dir = buildRepo(makeCaseDir(), { attestNames: allNames.slice(1) });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes("'Attest SBOM'")) {
+            console.error("FAIL: check-task-list.js did not flag release.yml missing a task's Attest SBOM step.");
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log("OK: exits non-zero when release.yml is missing a task's Attest SBOM step.");
+        }
+    }
+
+    // --- Case 8: release.yml has an EXTRA 'Attest SBOM' step with no matching
+    // 'Generate SBOM' step (an orphaned attestation, e.g. after a rename) ->
+    // fail. ---
+    {
+        const allNames = [...CANONICAL.map((_, i) => `T${i}`), 'tab'];
+        const dir = buildRepo(makeCaseDir(), { attestNames: [...allNames, 'Orphan'] });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes("'Attest SBOM'")) {
+            console.error('FAIL: check-task-list.js did not flag an orphaned Attest SBOM step.');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: exits non-zero when release.yml has an orphaned Attest SBOM step.');
         }
     }
 } finally {
