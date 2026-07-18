@@ -65,17 +65,18 @@ function isAllowedOidcRequestHost(hostname: string): boolean {
             continue;
         }
         // A *.visualstudio.com host carries a tenant org as its first label, so
-        // a bare suffix match would admit ANY tenant's org (#554). When the
-        // job's own collection URI is also a *.visualstudio.com URL, require
-        // the request host's org label to match the collection's; when the
-        // collection URI exposes no comparable org label (the dev.azure.com
-        // form, or the variables are unset/unparseable), the plain suffix
-        // match stands, unchanged. The org-less standard cloud endpoint
-        // (vstoken.dev.azure.com) is exact-matched above and never reaches
-        // this check.
+        // a bare suffix match would admit ANY tenant's org (#554). Fail closed:
+        // trust the host ONLY when the job's own collection URI is also a
+        // *.visualstudio.com URL for the SAME org. When no comparable org label
+        // is available -- the dev.azure.com collection form (org in the path,
+        // not the host), or the collection variables are unset/unparseable -- a
+        // dev.azure.com-era org never legitimately mints tokens at
+        // *.visualstudio.com, so reject rather than fall through to the broad
+        // suffix. The org-less standard cloud endpoint (vstoken.dev.azure.com)
+        // is exact-matched above and never reaches this check.
         if (suffix === '.visualstudio.com') {
             const collectionOrg = collectionVisualStudioOrgLabel();
-            if (collectionOrg !== undefined && host.split('.')[0] !== collectionOrg) {
+            if (collectionOrg === undefined || host.split('.')[0] !== collectionOrg) {
                 continue;
             }
         }
