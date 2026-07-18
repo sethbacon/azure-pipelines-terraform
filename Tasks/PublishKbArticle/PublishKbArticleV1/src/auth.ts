@@ -21,6 +21,11 @@ export async function getOAuthToken(instance: string, clientId: string, clientSe
         const response = await withRetry(() => snRequest('POST', url, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString(),
+            // #647: a reflected-parameter error body from oauth_token.do must not
+            // echo the client secret into the unmasked task-failure message —
+            // scrub it (in raw and URL-encoded forms) before the transport
+            // truncates and interpolates the body.
+            scrubValues: [clientSecret, encodeURIComponent(clientSecret)],
         }), {
             log: (message) => console.log(`[WARN] ${message}`),
         });

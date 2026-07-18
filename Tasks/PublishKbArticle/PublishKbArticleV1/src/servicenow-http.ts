@@ -202,6 +202,17 @@ export interface SnRequestOptions {
     params?: Record<string, string>;
     body?: string | Buffer | Record<string, unknown>;
     timeoutMs?: number;
+    /**
+     * Request secrets (e.g. an OAuth client_secret POSTed in the body) to scrub
+     * from a non-2xx response body before it is interpolated into the thrown
+     * error message (#647) — a validation-error body that reflects request
+     * parameters back must not leak the credential into the unmasked
+     * task-failure text. Scrubbing runs BEFORE truncation so a full secret
+     * occurrence straddling the truncation boundary cannot survive as a
+     * partial prefix. Mirrors TerraformTaskV5's oci-token-exchange convention
+     * (literal split/join, no regex; only non-trivial values scrubbed).
+     */
+    scrubValues?: string[];
 }
 
 export interface SnResponse {
@@ -240,6 +251,17 @@ function encodeBody(body: SnRequestOptions['body']): Buffer | undefined {
 
 function truncate(s: string, max = 500): string {
     return s.length > max ? `${s.slice(0, max)}… (truncated)` : s;
+}
+
+/** Remove known request secrets from a response body (see SnRequestOptions.scrubValues). */
+function scrubSecrets(body: string, secrets: string[] | undefined): string {
+    let scrubbed = body;
+    for (const secret of secrets ?? []) {
+        if (secret && secret.length >= 8) {
+            scrubbed = scrubbed.split(secret).join('***');
+        }
+    }
+    return scrubbed;
 }
 
 /**
@@ -325,7 +347,7 @@ export function snRequest(
                         // withRetry can honor it (#584); other statuses carry none.
                         const retryAfterMs = status === 429 ? parseRetryAfterMs(res.headers['retry-after']) : undefined;
                         reject(new ServiceNowHttpError(
-                            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncate(raw)}`,
+                            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncate(scrubSecrets(raw, options.scrubValues))}`,
                             status,
                             retryAfterMs,
                         ));
