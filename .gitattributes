@@ -6,3 +6,7 @@
 # exact on-disk bytes regardless of platform/core.autocrlf.
 Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS -text
 Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS.sig -text
+# The same canary fixtures ported into TerraformInstallerV1's own suite (#497) so
+# its CI job independently exercises its byte-identical copy of the crypto path.
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS.sig -text

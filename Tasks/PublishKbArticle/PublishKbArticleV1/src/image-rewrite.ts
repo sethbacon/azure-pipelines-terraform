@@ -42,7 +42,20 @@ export function extractLocalImageRefs(
 
         // Strip any query/fragment from the local path (e.g. ./a.png?x=1).
         const cleanPath = src.replace(/[?#].*$/, '');
-        const absPath = path.resolve(imageBaseDir, decodeURIComponent(cleanPath));
+        // decodeURIComponent throws a URIError on a malformed percent-escape
+        // (e.g. src="bad%" or "%ZZ"). The article body is author/upstream
+        // controlled, so an unguarded call would abort the entire publish on one
+        // bad reference. Skip the ref (leaving its src untouched in the body),
+        // mirroring the missing-file skip below, instead of failing the run
+        // (#605).
+        let decodedPath: string;
+        try {
+            decodedPath = decodeURIComponent(cleanPath);
+        } catch {
+            log(tasks.loc('ImageSrcMalformedEncoding', src));
+            continue;
+        }
+        const absPath = path.resolve(imageBaseDir, decodedPath);
 
         // Containment guard: reject any src (e.g. `../secret.png` or its
         // URL-encoded form) that resolves outside imageBaseDir. Without this, a
@@ -65,6 +78,24 @@ export function extractLocalImageRefs(
 }
 
 /**
+ * ServiceNow sys_ids are 32-character hex GUIDs. Every attachment sys_id this
+ * task ever interpolates into a URL or HTML attribute — whether returned by a
+ * fresh upload (attachments.ts's uploadAttachment) or reused from a
+ * list-attachments response (attachments.ts's listArticleAttachments) — is
+ * validated against this shape at the point its producer parses the
+ * ServiceNow response, before the value can reach ANY downstream sink. This
+ * is the single implementation both attachments.ts (the URL sink:
+ * deleteAttachment's path segment) and rewriteImageSrcs below (the HTML sink:
+ * the rewritten `<img src>`) call — a hostile or corrupted backend response
+ * (e.g. `"><img src=x onerror=...>`, or a path-traversal value like
+ * `x/../table/kb_knowledge/<victimId>`) fails closed here rather than at
+ * whichever sink happens to consume it later (#606 follow-up).
+ */
+export function isValidSysId(id: string): boolean {
+    return /^[0-9a-f]{32}$/i.test(id);
+}
+
+/**
  * Rewrite every occurrence of each original src to its attachment URL.
  * `srcToAttachmentId` maps the ORIGINAL src string -> attachment sys_id.
  * Unmapped srcs (e.g. a missing file that was skipped) are left as-is.
@@ -80,6 +111,15 @@ export function rewriteImageSrcs(
         (full, prefix, quote, src) => {
             const id = srcToAttachmentId.get((src as string).trim());
             if (!id) return full;
+            // Belt-and-suspenders: attachments.ts's producers (uploadAttachment,
+            // listArticleAttachments) already validate every sys_id with
+            // isValidSysId at the point their ServiceNow response is parsed, so
+            // this should never trip in practice — but this is the actual
+            // interpolation site, so it stays a hard fail-closed check rather
+            // than relying solely on an upstream caller having done it (#606).
+            if (!isValidSysId(id)) {
+                throw new Error(tasks.loc('AttachmentSysIdInvalid', id));
+            }
             // Root-relative URL (leading slash) — this is the form ServiceNow's own
             // KB articles use to embed attachment images, and it resolves correctly
             // regardless of the page path the article renders under.

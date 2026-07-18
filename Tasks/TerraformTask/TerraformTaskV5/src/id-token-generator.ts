@@ -1,14 +1,19 @@
 import tasks = require("azure-pipelines-task-lib/task");
 import { buildProxyFetchOptions } from './proxy-config';
+import { retryAsync, parseRetryAfterMs } from './retry';
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {
     const tokenGenerator = new TokenGenerator();
     return tokenGenerator.generate(serviceConnectionID);
 }
 
-/** Carries whether a federated-token fetch failure is worth retrying (transient) vs deterministic (4xx). */
+/**
+ * Carries whether a federated-token fetch failure is worth retrying (transient
+ * 5xx / 429) vs deterministic (other 4xx), plus the capped Retry-After delay
+ * when a retryable response supplied one.
+ */
 class FederatedTokenError extends Error {
-    constructor(message: string, readonly retryable: boolean) {
+    constructor(message: string, readonly retryable: boolean, readonly retryAfterMs?: number) {
         super(message);
         this.name = 'FederatedTokenError';
     }
@@ -123,24 +128,32 @@ export class TokenGenerator {
         // setup guides under docs/setup/.
         const url = oidcRequestUri + "?api-version=7.1&serviceConnectionId=" + encodeURIComponent(serviceConnectionID);
 
-        let lastError: Error | undefined;
-        for (let attempt = 1; attempt <= TokenGenerator.MAX_RETRIES; attempt++) {
-            try {
-                return await this.fetchToken(url, oidcRequestUri);
-            } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-                // A non-FederatedTokenError is a network/DNS/abort failure -- treat as
-                // transient. A deterministic 4xx (bad/expired access token,
-                // misconfigured service connection) is non-retryable and skips the
-                // remaining attempts and their backoff delay.
-                const retryable = !(error instanceof FederatedTokenError) || error.retryable;
-                if (!retryable || attempt === TokenGenerator.MAX_RETRIES) break;
-                const delayMs = TokenGenerator.INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-                tasks.debug(`OIDC token request attempt ${attempt} failed: ${lastError.message}. Retrying in ${delayMs}ms...`);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
-        }
-        throw lastError!;
+        // Bounded exponential-backoff retry via the shared retry helper (retry.ts).
+        // MAX_RETRIES is the TOTAL attempt count, so retries = MAX_RETRIES - 1.
+        return retryAsync(() => this.fetchToken(url, oidcRequestUri), {
+            retries: TokenGenerator.MAX_RETRIES - 1,
+            baseDelayMs: TokenGenerator.INITIAL_BACKOFF_MS,
+            // A non-FederatedTokenError is a network/DNS/abort failure -- treat as
+            // transient. A deterministic 4xx (bad/expired access token,
+            // misconfigured service connection) is non-retryable and skips the
+            // remaining attempts and their backoff delay; only a transient 5xx
+            // or rate-limiting 429 FederatedTokenError is retried.
+            retryError: (error) => !(error instanceof FederatedTokenError) || error.retryable,
+            // Honor a capped Retry-After from a retryable response (429/5xx)
+            // over the default exponential backoff.
+            delayMs: (attempt, backoffMs, outcome) =>
+                outcome.kind === 'error'
+                    && outcome.error instanceof FederatedTokenError
+                    && outcome.error.retryAfterMs !== undefined
+                    ? outcome.error.retryAfterMs
+                    : backoffMs,
+            onRetry: (attempt, delayMs, outcome) => {
+                const message = outcome.kind === 'error'
+                    ? (outcome.error instanceof Error ? outcome.error.message : String(outcome.error))
+                    : '';
+                tasks.debug(`OIDC token request attempt ${attempt + 1} failed: ${message}. Retrying in ${delayMs}ms...`);
+            },
+        });
     }
 
     private async fetchToken(url: string, oidcRequestUri: string): Promise<string> {
@@ -181,10 +194,17 @@ export class TokenGenerator {
             }
 
             if (!response.ok) {
-                // Retry only on transient failures (5xx); a deterministic 4xx
-                // (bad/expired token, misconfigured service connection) will not
-                // change on retry.
-                throw new FederatedTokenError(`Failed to acquire federated token: HTTP ${response.status} ${response.statusText}`, response.status >= 500);
+                // Retry only on transient failures -- 5xx, or a 429 from the
+                // ADO OIDC endpoint's rate limiting; a deterministic other 4xx
+                // (bad/expired token, misconfigured service connection) will
+                // not change on retry. A Retry-After header on a retryable
+                // response is honored (capped) over the default backoff.
+                const retryable = response.status >= 500 || response.status === 429;
+                throw new FederatedTokenError(
+                    `Failed to acquire federated token: HTTP ${response.status} ${response.statusText}`,
+                    retryable,
+                    retryable ? parseRetryAfterMs(response.headers.get('retry-after')) : undefined,
+                );
             }
 
             // Read the body while the abort signal is still armed, so a stalled

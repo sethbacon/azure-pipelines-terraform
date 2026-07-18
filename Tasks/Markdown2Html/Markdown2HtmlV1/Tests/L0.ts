@@ -8,6 +8,7 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import * as cheerio from 'cheerio';
+import taskLib = require('azure-pipelines-task-lib/task');
 
 // Pure-logic modules (no task harness required)
 import { parseFrontMatter } from '../src/frontmatter';
@@ -29,6 +30,7 @@ import { parseFileList, processFileList, processFrontMatterDriven } from '../src
 import './TocInjectionEscapingL0';
 import './DangerousTagsRemovalL0';
 import './DataImageSvgXmlStrippingL0';
+import './CssEscapeBypassL0';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -99,6 +101,66 @@ describe('parseFrontMatter', () => {
         const opts = data['include-options'] as Record<string, unknown>;
         assert.strictEqual(opts['toc'], true);
         assert.strictEqual(opts['heading-shift'], 1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// parseFrontMatter malformed-block diagnostics (#604)
+// ---------------------------------------------------------------------------
+
+describe('parseFrontMatter malformed-block diagnostics (#604)', () => {
+    let capturedWarnings: string[];
+    let origWarning: typeof taskLib.warning;
+
+    beforeEach(() => {
+        capturedWarnings = [];
+        origWarning = taskLib.warning;
+        // Monkey-patch the shared CommonJS module object -- frontmatter.ts imports
+        // the same cached instance, so this captures its tasks.warning() calls.
+        (taskLib as Record<string, unknown>)['warning'] = (message: string) => {
+            capturedWarnings.push(message);
+        };
+    });
+
+    afterEach(() => {
+        (taskLib as Record<string, unknown>)['warning'] = origWarning;
+    });
+
+    it('warns (with the file path) when the front-matter YAML throws on a syntax error', () => {
+        // An unclosed flow collection is a hard js-yaml parse error.
+        const p = writeTmp('bad-syntax.md', '---\nfoo: [1, 2\n---\n# Body\n');
+        const { data } = parseFrontMatter(p);
+        assert.deepStrictEqual(data, {}, 'malformed front matter falls back to {}');
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one warning: ${capturedWarnings}`);
+        assert.ok(capturedWarnings[0].includes(p), `warning should name the file path (got: ${capturedWarnings[0]})`);
+    });
+
+    it('warns (with the file path) when the front-matter parses to a non-mapping scalar', () => {
+        const p = writeTmp('scalar.md', '---\njust a scalar string\n---\n# Body\n');
+        const { data } = parseFrontMatter(p);
+        assert.deepStrictEqual(data, {}, 'a scalar front matter is not usable as metadata -> {}');
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one warning: ${capturedWarnings}`);
+        assert.ok(capturedWarnings[0].includes(p), `warning should name the file path (got: ${capturedWarnings[0]})`);
+    });
+
+    it('does NOT warn on a valid mapping', () => {
+        const p = writeTmp('ok.md', '---\ntitle: Hello\n---\n# Body\n');
+        const { data } = parseFrontMatter(p);
+        assert.strictEqual(data['title'], 'Hello');
+        assert.strictEqual(capturedWarnings.length, 0, `expected no warning: ${capturedWarnings}`);
+    });
+
+    it('does NOT warn when there is no front-matter block at all', () => {
+        const p = writeTmp('none.md', '# No front matter\n\nJust content.\n');
+        parseFrontMatter(p);
+        assert.strictEqual(capturedWarnings.length, 0, `expected no warning: ${capturedWarnings}`);
+    });
+
+    it('does NOT warn on an empty front-matter block (legitimately no metadata, not malformed)', () => {
+        const p = writeTmp('empty.md', '---\n\n---\n# Body\n');
+        const { data } = parseFrontMatter(p);
+        assert.deepStrictEqual(data, {});
+        assert.strictEqual(capturedWarnings.length, 0, `an empty block must not warn: ${capturedWarnings}`);
     });
 });
 

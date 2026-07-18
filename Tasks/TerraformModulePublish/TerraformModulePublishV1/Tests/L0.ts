@@ -10,6 +10,8 @@ import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
 import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 
 const noop = (): void => {
     /* suppress log output during tests */
@@ -269,7 +271,27 @@ describe('retryHttp', () => {
         );
         assert.strictEqual(calls, 3);
     });
+
+    it('retries a 429 Too Many Requests response and returns the eventual success (#584)', async () => {
+        const responses: HttpResponse[] = [{ status: 429, body: '' }, { status: 200, body: 'ok' }];
+        let i = 0;
+        const res = await retryHttp(() => Promise.resolve(responses[i++]), { baseDelayMs: 0 });
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(i, 2, 'a 429 should be retried once here');
+    });
+
+    it('returns the last 429 after exhausting retries (#584)', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 429, body: '' }); }, { retries: 2, baseDelayMs: 0 });
+        assert.strictEqual(res.status, 429);
+        assert.strictEqual(calls, 3); // initial attempt + 2 retries
+    });
 });
+
+// Direct unit tests for the shared retry.ts module itself (retryAsync +
+// parseRetryAfterMs) now live in ./RetryL0, byte-identical across all four
+// tasks that carry a copy of retry.ts -- see the import at the top of this
+// file.
 
 describe('private-publisher', () => {
     describe('url builders', () => {

@@ -3,6 +3,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { Result, SummaryEntry } from 'terraform-drift-contract';
+import { replaceSecretFile } from './secure-temp';
 
 interface SarifMessage { text: string; }
 interface SarifRule { id: string; name: string; shortDescription: SarifMessage; }
@@ -82,12 +83,23 @@ export function buildDriftSarif(result: Result): SarifLog {
     };
 }
 
-/** Writes a SARIF 2.1.0 report and returns its path. */
+/**
+ * Writes a SARIF 2.1.0 report and returns its path. The report names drifted
+ * resource addresses and changed-attribute names, so -- like the drift-summary
+ * file in index.ts -- it is written via the shared writeSecretFile/
+ * replaceSecretFile primitives (owner-only 0600 + O_EXCL on Unix, a restrictive
+ * DACL on Windows; see secure-temp.ts) instead of a permission-less
+ * fs.writeFileSync. replaceSecretFile is used rather than writeSecretFile
+ * because sarifPath may be a user-named, predictable path (e.g. a fixed
+ * staging-directory location) that a re-run legitimately overwrites; when no
+ * sarifPath is given the auto-generated UUID path has nothing pre-existing to
+ * overwrite, so it behaves identically to an exclusive create.
+ */
 export function writeSarif(result: Result, sarifPath?: string): string {
     const outPath = sarifPath && sarifPath.trim().length > 0
         ? path.resolve(sarifPath)
         : path.join(os.tmpdir(), `tsm-drift-report-${uuidV4()}.sarif`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, JSON.stringify(buildDriftSarif(result), null, 2), 'utf8');
+    replaceSecretFile(outPath, JSON.stringify(buildDriftSarif(result), null, 2));
     return outPath;
 }

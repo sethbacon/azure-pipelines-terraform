@@ -164,7 +164,16 @@ azure-pipelines-terraform/
 │   ├── release.json                   # Release publisher override (sethbacon)
 │   └── self.json                      # Personal dev override (gitignored)
 ├── docs/
-│   └── setup/                        # Setup guides (WIF, etc.)
+│   ├── design/
+│   │   └── plan-apply-digest-spec.md # Frozen digest schema/caps contract (Phase 5)
+│   ├── initiatives/
+│   │   └── structured-plan-apply-tabs.md # Retained design/redaction narrative for the shipped tab (see Completed Initiatives below)
+│   ├── setup/                        # WIF setup guides (aws/gcp/oci) + private-testing.md
+│   ├── migration-from-ms-devlabs.md  # Step-by-step migration from the MS DevLabs extension
+│   ├── release-checklist.md          # Manual release verification steps
+│   ├── structured-results.md         # Walkthrough: enabling/reading the Terraform results tab
+│   ├── troubleshooting.md            # Common issues: auth, backend config, installer, agents
+│   └── yaml-examples.md              # YAML examples for every task/command, incl. cross-cloud
 └── .github/workflows/                 # GitHub Actions CI/CD
     ├── unit-test.yml                  # CI: build + test on PR/push
     └── release.yml                    # Release: tag-triggered marketplace publish
@@ -190,6 +199,8 @@ azure-pipelines-terraform/
 | `environment-variables.ts`           | Helper for setting environment variables with tracking and cleanup                             |
 | `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
 | `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
+| `secure-temp.ts`                     | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 
 ### Structured plan/apply results (`src/results/`)
 
@@ -301,6 +312,7 @@ Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terra
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `index.ts`        | Entry point — computes drift counts, orchestrates the callback and SARIF report                                                    |
 | `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot) |
+| `retry.ts`        | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                          |
 | `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                               |
 
@@ -316,6 +328,7 @@ Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes 
 | `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
 | `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
 | `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
+| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                      |
 | `types.ts`             | Shared type definitions for both publishers                                                             |
 
@@ -346,6 +359,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                     |
 | `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                    |
 | `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                         |
+| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `attachments.ts`       | Image-attachment upload/list/sync                                                                                          |
 | `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                          |
 | `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks |
@@ -539,4 +553,4 @@ All six roadmap initiatives are complete and shipped:
 - Initiative 5: Policy Evaluation (OPA / Sentinel)
 - Initiative 6: Drift Report Task
 
-The detailed planning documents (formerly under `docs/initiatives/`) were removed once every initiative shipped; see [CHANGELOG.md](CHANGELOG.md) for the release history.
+Most detailed planning documents were removed once their initiative shipped; see [CHANGELOG.md](CHANGELOG.md) for the release history. `docs/initiatives/structured-plan-apply-tabs.md` is retained for reference (it is the authoritative design source cited by `docs/design/plan-apply-digest-spec.md`, which normatively fixes only the frozen digest schema/caps and points back to the initiatives doc for the fuller design/redaction-algorithm narrative) — it is not dead/stale despite the shipped feature.

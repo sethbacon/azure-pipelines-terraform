@@ -15,6 +15,10 @@ import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy 
 import './RejectUnauthorizedDefaultL0';
 // Direct unit tests for the fail-secure failOnCallbackError default.
 import './FailOnCallbackErrorDefaultL0';
+// Direct unit tests for the secure-temp writeSecretFile/replaceSecretFile copy (#607).
+import './SecureTempL0';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {

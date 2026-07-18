@@ -253,6 +253,45 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(calls, 3, 'a transient 5xx should be retried up to the attempt limit');
     });
 
+    it('retries a 429 and then succeeds (#584)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            if (calls === 1) {
+                return new Response('slow down', { status: 429, statusText: 'Too Many Requests' });
+            }
+            return new Response(JSON.stringify({ oidcToken: 'after-429' }), { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+
+        const token = await new TokenGenerator().generate('sc-123');
+        assert.strictEqual(token, 'after-429', 'a 429 must be treated as transient and retried');
+        assert.strictEqual(calls, 2, 'should have retried exactly once after the 429');
+    });
+
+    it('honors a capped Retry-After from a 429 over the default backoff (#584)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            if (calls === 1) {
+                return new Response('slow down', {
+                    status: 429,
+                    statusText: 'Too Many Requests',
+                    headers: { 'Retry-After': '1' },
+                });
+            }
+            return new Response(JSON.stringify({ oidcToken: 'after-retry-after' }), { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+
+        const started = Date.now();
+        const token = await new TokenGenerator().generate('sc-123');
+        const elapsed = Date.now() - started;
+        assert.strictEqual(token, 'after-retry-after');
+        assert.strictEqual(calls, 2);
+        // The default first-retry backoff is 200ms; Retry-After: 1 must stretch
+        // the wait to ~1000ms. A generous lower bound keeps this robust on CI.
+        assert.ok(elapsed >= 900, `expected the 1s Retry-After to be honored, waited only ${elapsed}ms`);
+    });
+
     it('throws the localized error when the response omits oidcToken', async () => {
         globalThis.fetch = (async () =>
             new Response(JSON.stringify({ somethingElse: true }), { status: 200 })) as unknown as typeof globalThis.fetch;

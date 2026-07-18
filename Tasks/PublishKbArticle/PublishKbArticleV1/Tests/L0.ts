@@ -15,12 +15,15 @@ import * as os from 'os';
 import * as nodePath from 'path';
 import * as auth from '../src/auth';
 import * as htmlValidate from '../src/html-validate';
+import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;
@@ -257,6 +260,43 @@ describe('servicenow-http.withRetry', () => {
         );
         assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_transport_retry');
         assert.strictEqual(logs.length, 1);
+    });
+
+    it('retries a 429 Too Many Requests then succeeds (#584)', async () => {
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(429, { error: 'rate limited' })
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'ok_after_429', number: 'KB0101', workflow_state: 'draft' } });
+
+        const logs: string[] = [];
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 1, log: (m) => logs.push(m) },
+        );
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_429');
+        assert.strictEqual(logs.length, 1, 'a 429 should trigger exactly one retry here');
+    });
+
+    it('honors a 429 Retry-After header instead of the exponential backoff (#584)', async () => {
+        // Retry-After: 0 (retry immediately) is honored, so the retry sleep is ~0ms
+        // rather than the 5000ms baseDelayMs backoff. A generous upper bound proves
+        // the header was honored without a brittle exact-timing assertion (and a
+        // regression that ignored it would blow the 5s wait, not silently pass).
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(429, { error: 'rate limited' }, { 'Retry-After': '0' })
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'ok_after_retry_after', number: 'KB0102', workflow_state: 'draft' } });
+
+        const start = Date.now();
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 5000 },
+        );
+        const elapsed = Date.now() - start;
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_retry_after');
+        assert.ok(elapsed < 1000, `expected the honored 0s Retry-After, not the 5s backoff; elapsed ${elapsed}ms`);
     });
 });
 
@@ -1142,6 +1182,123 @@ describe('htmlValidate.validateHtmlContent', () => {
         const html = '<html><body><div class="page-break" style="page-break-after: always;"></div></body></html>';
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
     });
+
+    // -----------------------------------------------------------------------
+    // #587: CSS-escape / comment-split bypass of DANGEROUS_CSS_PATTERN
+    // -----------------------------------------------------------------------
+    // The browser's CSS tokenizer decodes escapes and discards comments before a
+    // url()/@import token exists, so a raw-text match on the author's bytes is
+    // trivially dodged: `\75rl(` tokenizes to url(, `@\69mport` to @import. The
+    // gate now checks via cssHasDangerousConstruct, which runs the blocklist the
+    // way a browser lexes CSS — real comments stripped from the raw bytes FIRST,
+    // then that same text escape-decoded — and blocks if either form matches.
+    // That comment-first order also blocks a literal url(evil) wrapped in ESCAPED
+    // comment delimiters (\2f\2a ... \2a\2f): decoding those into real comment
+    // delimiters and then deleting the span would erase a fetch a browser (which
+    // sees no comment there) performs — the #587 follow-up bypass. `BS` is a
+    // single literal backslash, built without JS-string-escape ambiguity.
+
+    const BS = '\\';
+
+    const styleContentBypassCases: Array<[string, string]> = [
+        ['a hex-escaped url (\\75rl)', `<style>b{background:${BS}75rl(https://evil.example.com/x)}</style>`],
+        ['a hex-escaped @import (@\\69mport)', `<style>@${BS}69mport "https://evil.example.com/x.css";</style>`],
+        ['an uppercase/mixed-case hex escape (\\55RL)', `<style>b{background:${BS}55RL(https://evil.example.com/x)}</style>`],
+        ['a whitespace-terminated hex escape (\\75 rl)', `<style>b{background:${BS}75 rl(https://evil.example.com/x)}</style>`],
+        ['literal-char escapes (\\u\\r\\l)', `<style>b{background:${BS}u${BS}r${BS}l(https://evil.example.com/x)}</style>`],
+        ['a comment splitting url from its ( (url/* */()', '<style>b{background:url/* x */(https://evil.example.com/x)}</style>'],
+        ['a comment splitting @import (@im/* */port)', '<style>@im/* */port "https://evil.example.com/x.css";</style>'],
+        ['a literal url wrapped in escaped comment delimiters (\\2f\\2a...\\2a\\2f)', `<style>b{background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f}</style>`],
+    ];
+    for (const [label, html] of styleContentBypassCases) {
+        it(`throws on <style> content using ${label} (#587)`, () => {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+                `expected a throw for <style>: ${label}`,
+            );
+        });
+    }
+
+    const styleAttrBypassCases: Array<[string, string]> = [
+        ['a hex-escaped url (\\75rl)', `<div style="background:${BS}75rl(https://evil.example.com/x)">x</div>`],
+        ['an uppercase/mixed-case hex escape (\\55RL)', `<div style="background:${BS}55RL(https://evil.example.com/x)">x</div>`],
+        ['a whitespace-terminated hex escape (\\75 rl)', `<div style="background:${BS}75 rl(https://evil.example.com/x)">x</div>`],
+        ['literal-char escapes (\\u\\r\\l)', `<div style="background:${BS}u${BS}r${BS}l(https://evil.example.com/x)">x</div>`],
+        ['a comment splitting url from its ( (url/* */()', '<div style="background:url/* x */(https://evil.example.com/x)">x</div>'],
+        ['a literal url wrapped in escaped comment delimiters (\\2f\\2a...\\2a\\2f)', `<div style="background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f">x</div>`],
+    ];
+    for (const [label, html] of styleAttrBypassCases) {
+        it(`throws on an inline style attribute using ${label} (#587)`, () => {
+            assert.throws(
+                () => htmlValidate.validateHtmlContent(html, false),
+                /inline style attribute containing url\(\.\.\.\)|DangerousStyleAttributeNotAllowed/,
+                `expected a throw for inline style: ${label}`,
+            );
+        });
+    }
+
+    it('still throws on an escaped-url <style> bypass when force=true (#587: not a force-bypassable heuristic)', () => {
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(`<style>b{background:${BS}75rl(https://evil.example.com/x)}</style>`, true),
+            /url\(\.\.\.\).*not allowed|DangerousStyleContentNotAllowed/,
+        );
+    });
+
+    it('does NOT false-positive on legitimate escaped CSS that forms no fetch, e.g. content:"\\201C" (#587: why decode, not reject-all-backslashes)', () => {
+        // Rationale for choosing decode-escapes over reject-any-backslash: a
+        // hand-authored htmlFile may legitimately carry escaped CSS (typographic
+        // content:"\201C", an icon-font content:"\f001"). Those decode to ordinary
+        // characters that match nothing in the blocklist, so the gate must pass
+        // them; a blanket backslash rejection would break such valid articles.
+        const html = `<html><head><style>p::before{content:"${BS}201C"}</style></head><body><p>hi</p></body></html>`;
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does NOT false-positive on a benign CSS comment in <style> after comment-stripping (#587)', () => {
+        const html = '<html><head><style>/* theme */ body{color:#333;padding:20px}</style></head><body><p>hi</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+});
+
+// ===========================================================================
+// #587: cssHasDangerousConstruct two-pass contract (PublishKbArticle copy)
+// ===========================================================================
+describe('cssHasDangerousConstruct (#587)', () => {
+    const BS = '\\';
+    // The #587 follow-up bypass: decode-then-strip would decode \2f\2a ... \2a\2f
+    // into CSS comment delimiters and DELETE the live url(evil) between them,
+    // passing the gate; a real browser sees no comment there and fetches evil.
+    // The comment-first two-pass order catches the literal url( in the raw text.
+    it('blocks a literal url() wrapped in escaped comment delimiters (\\2f\\2a ... \\2a\\2f)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f`), true);
+    });
+    it('blocks a hex escape so \\75rl( reads as url(', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75rl(`), true);
+    });
+    it('blocks @\\69mport (decodes to @import)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`@${BS}69mport`), true);
+    });
+    it('blocks the whitespace-terminated hex escape (\\75 rl -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75 rl(`), true);
+    });
+    it('blocks uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}55RL(`), true);
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75${BS}72${BS}6C(`), true);
+    });
+    it('blocks the literal-char escape form (\\u\\r\\l -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}u${BS}r${BS}l(`), true);
+    });
+    it('blocks a real comment splitting the token (url/* */( , @im/* */port)', () => {
+        assert.strictEqual(cssHasDangerousConstruct('url/* x */(https://evil.example.com/x)'), true);
+        assert.strictEqual(cssHasDangerousConstruct('@im/* */port "x"'), true);
+    });
+    it('allows benign escaped content that forms no fetch (content:"\\201C")', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`content:"${BS}201C"`), false);
+    });
+    it('allows benign CSS with a real comment and no fetch construct', () => {
+        assert.strictEqual(cssHasDangerousConstruct('/* theme */ body{color:#333;padding:20px}'), false);
+    });
 });
 
 // ===========================================================================
@@ -1257,10 +1414,11 @@ describe('image-rewrite', () => {
 
     it('rewrites mapped srcs to sys_attachment.do and leaves unmapped ones', () => {
         const html = '<img src="a.png"><img src="b.png">';
-        const map = new Map<string, string>([['a.png', 'att123']]);
+        // sys_ids must be 32-char hex GUIDs (validated at the sink, #606).
+        const map = new Map<string, string>([['a.png', 'deadbeefdeadbeefdeadbeefdeadbeef']]);
         const out = rewriteImageSrcs(html, map);
         // Root-relative (leading slash) — the form ServiceNow's own KB articles use.
-        assert.ok(out.includes('src="/sys_attachment.do?sys_id=att123"'));
+        assert.ok(out.includes('src="/sys_attachment.do?sys_id=deadbeefdeadbeefdeadbeefdeadbeef"'));
         assert.ok(out.includes('src="b.png"'), 'unmapped src left unchanged');
     });
 
@@ -1291,6 +1449,68 @@ describe('image-rewrite', () => {
         assert.strictEqual(refs.length, 1);
         assert.strictEqual(refs[0].fileName, 'img.png');
         assert.strictEqual(refs[0].absPath, nodePath.resolve(baseDir, 'sub/img.png'));
+    });
+
+    // -----------------------------------------------------------------------
+    // #605: malformed percent-encoding must not abort the whole publish
+    // -----------------------------------------------------------------------
+
+    it('#605: skips an <img src> with a malformed percent-encoding instead of throwing', () => {
+        const warnings: string[] = [];
+        const refs = extractLocalImageRefs('<img src="bad%">', baseDir, (m) => warnings.push(m));
+        assert.deepStrictEqual(refs, [], 'the undecodable src is skipped');
+        assert.ok(
+            warnings.some((w) => w.includes('malformed percent-encoding') || w.includes('ImageSrcMalformedEncoding')),
+            `expected a decode-failure warning; got: ${warnings}`,
+        );
+    });
+
+    it('#605: does not throw on a bare "%" src (regression for the unguarded decodeURIComponent)', () => {
+        assert.doesNotThrow(() => extractLocalImageRefs('<img src="bad%">', baseDir, () => { }));
+    });
+
+    it('#605: skips an invalid %ZZ escape but keeps a valid sibling src', () => {
+        const warnings: string[] = [];
+        const refs = extractLocalImageRefs('<img src="%ZZ.png"><img src="ok.png">', baseDir, (m) => warnings.push(m));
+        assert.strictEqual(refs.length, 1, `only the valid src should survive; got: ${JSON.stringify(refs)}`);
+        assert.strictEqual(refs[0].fileName, 'ok.png');
+        assert.ok(warnings.length >= 1, 'expected a warning for the undecodable src');
+    });
+
+    // -----------------------------------------------------------------------
+    // #606: attachment sys_id charset validation at the interpolation sink
+    // -----------------------------------------------------------------------
+
+    it('#606: throws when a mapped sys_id is not a 32-char hex GUID (attribute-breakout guard)', () => {
+        const hostile = new Map<string, string>([['a.png', '"><img src=x onerror=alert(1)>']]);
+        assert.throws(
+            () => rewriteImageSrcs('<img src="a.png">', hostile),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('#606: throws on short, long, and non-hex sys_ids', () => {
+        const bad = [
+            'att123',
+            'deadbeef',
+            'g'.repeat(32),
+            'deadbeefdeadbeefdeadbeefdeadbee',    // 31 chars
+            'deadbeefdeadbeefdeadbeefdeadbeeff',  // 33 chars
+        ];
+        for (const id of bad) {
+            assert.throws(
+                () => rewriteImageSrcs('<img src="a.png">', new Map([['a.png', id]])),
+                /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+                `expected a throw for sys_id '${id}' (len ${id.length})`,
+            );
+        }
+    });
+
+    it('#606: accepts a valid 32-char hex sys_id in either case', () => {
+        const lower = rewriteImageSrcs('<img src="a.png">', new Map([['a.png', 'abcdef0123456789abcdef0123456789']]));
+        assert.ok(lower.includes('sys_id=abcdef0123456789abcdef0123456789'));
+        const upper = rewriteImageSrcs('<img src="a.png">', new Map([['a.png', 'ABCDEF0123456789ABCDEF0123456789']]));
+        assert.ok(upper.includes('sys_id=ABCDEF0123456789ABCDEF0123456789'));
     });
 });
 
@@ -1336,11 +1556,11 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             .reply(503, { error: 'busy' })
             .get('/api/now/attachment')
             .query(true)
-            .reply(200, { result: [{ sys_id: 'att1', file_name: 'pic.png' }] });
+            .reply(200, { result: [{ sys_id: 'a11a11a11a11a11a11a11a11a11a11a1', file_name: 'pic.png' }] });
 
         const result = await listArticleAttachments(INSTANCE, HEADERS, 'art1');
         assert.strictEqual(result.length, 1);
-        assert.strictEqual(result[0].sys_id, 'att1');
+        assert.strictEqual(result[0].sys_id, 'a11a11a11a11a11a11a11a11a11a11a1');
     });
 
     it('listArticleAttachments throws a clear diagnostic when "result" is not an array (2xx non-JSON body fallback)', async () => {
@@ -1365,6 +1585,59 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
             /did not return a sys_id|AttachmentUploadNoSysId/,
         );
+    });
+
+    // -----------------------------------------------------------------------
+    // security: trust-boundary validation at the parse point (#606 follow-up)
+    // -----------------------------------------------------------------------
+
+    it('security: listArticleAttachments rejects a hostile (path-traversal) sys_id in the response', async () => {
+        nock(BASE_URL)
+            .get('/api/now/attachment')
+            .query(true)
+            .reply(200, { result: [{ sys_id: 'x/../table/kb_knowledge/deadbeefdeadbeefdeadbeefdeadbeef', file_name: 'pic.png' }] });
+
+        await assert.rejects(
+            () => listArticleAttachments(INSTANCE, HEADERS, 'art1'),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('security: uploadAttachment rejects a hostile (non-hex) sys_id in the response', async () => {
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
+
+        await assert.rejects(
+            () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+});
+
+// ===========================================================================
+// deleteAttachment — URL construction (real implementation, nock-mocked HTTP)
+// ===========================================================================
+describe('deleteAttachment', () => {
+    it('sends a DELETE to the attachment id path segment', async () => {
+        const scope = nock(BASE_URL).delete('/api/now/attachment/abcdef0123456789abcdef0123456789').reply(204);
+        await deleteAttachment(INSTANCE, HEADERS, 'abcdef0123456789abcdef0123456789');
+        assert.strictEqual(scope.isDone(), true);
+    });
+
+    it('security: encodeURIComponent-encodes the attachment id in the DELETE URL path (defense-in-depth, #606 follow-up)', async () => {
+        // deleteAttachment does not itself re-validate sys_id shape (its callers
+        // -- listArticleAttachments and uploadAttachment -- already validate at
+        // the parse boundary before a value can ever reach here); encodeURIComponent
+        // here is a second, independent layer -- even if an invalid value somehow
+        // reached this call, it could not path-traverse the DELETE onto a
+        // different table/record via an unencoded '/'.
+        const scope = nock(BASE_URL)
+            .delete('/api/now/attachment/x%2F..%2Ftable%2Fkb_knowledge%2Fvictim')
+            .reply(204);
+        await deleteAttachment(INSTANCE, HEADERS, 'x/../table/kb_knowledge/victim');
+        assert.strictEqual(scope.isDone(), true, 'expected the id to be percent-encoded in the request path, not path-traversed');
     });
 });
 
@@ -1396,25 +1669,25 @@ describe('syncImageAttachment', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'new_att' } });
+            .reply(201, { result: { sys_id: 'ea70ea70ea70ea70ea70ea70ea70ea70' } });
 
         const id = await syncImageAttachment(
             INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png',
             [{ sys_id: 'old_att', file_name: 'pic.png', hash: 'DIFFERENT' }],
         );
-        assert.strictEqual(id, 'new_att');
+        assert.strictEqual(id, 'ea70ea70ea70ea70ea70ea70ea70ea70');
     });
 
     it('uploads fresh when no existing attachment matches', async () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'fresh_att' } });
+            .reply(201, { result: { sys_id: 'fee5fee5fee5fee5fee5fee5fee5fee5' } });
 
         const id = await syncImageAttachment(
             INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', [],
         );
-        assert.strictEqual(id, 'fresh_att');
+        assert.strictEqual(id, 'fee5fee5fee5fee5fee5fee5fee5fee5');
     });
 
     it('does not delete the old attachment when the replacement upload fails (non-atomic swap, upload-first)', async () => {
@@ -1457,14 +1730,14 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_d' } });
+            .reply(201, { result: { sys_id: 'd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0' } });
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(
             INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { },
         );
         assert.strictEqual(result.uploaded, 1);
-        assert.ok(result.html.includes('src="/sys_attachment.do?sys_id=att_d"'));
+        assert.ok(result.html.includes('src="/sys_attachment.do?sys_id=d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"'));
         assert.deepStrictEqual(result.missing, []);
     });
 
@@ -1510,7 +1783,7 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_first' } });
+            .reply(201, { result: { sys_id: 'a1f1a1f1a1f1a1f1a1f1a1f1a1f1a1f1' } });
 
         const html = '<p><img src="./images/first.png"><img src="./images/missing.png"></p>';
         await assert.rejects(
@@ -1530,7 +1803,7 @@ describe('processArticleImages', () => {
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_ok' } });
+            .reply(201, { result: { sys_id: '0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a' } });
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
@@ -1546,23 +1819,64 @@ describe('processArticleImages', () => {
         // resilience as the upload step, without re-running the (already
         // succeeded) upload on a delete retry.
         nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, {
-            result: [{ sys_id: 'old_att', file_name: 'd.png', hash: 'DIFFERENT-HASH' }],
+            result: [{ sys_id: '01d01d01d01d01d01d01d01d01d01d01', file_name: 'd.png', hash: 'DIFFERENT-HASH' }],
         });
         nock(BASE_URL)
             .post('/api/now/attachment/file')
             .query(true)
-            .reply(201, { result: { sys_id: 'att_replaced' } });
+            .reply(201, { result: { sys_id: 'feedfacefeedfacefeedfacefeedface' } });
         nock(BASE_URL)
-            .delete('/api/now/attachment/old_att')
+            .delete('/api/now/attachment/01d01d01d01d01d01d01d01d01d01d01')
             .reply(503, { error: 'busy' });
         nock(BASE_URL)
-            .delete('/api/now/attachment/old_att')
+            .delete('/api/now/attachment/01d01d01d01d01d01d01d01d01d01d01')
             .reply(204);
 
         const html = '<p><img src="./images/d.png"></p>';
         const result = await processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { });
         assert.strictEqual(result.uploaded, 1);
-        assert.ok(result.html.includes('att_replaced'));
+        assert.ok(result.html.includes('feedfacefeedfacefeedfacefeedface'));
+    });
+
+    it('#606: aborts the publish when ServiceNow returns a hostile (non-hex) sys_id for an uploaded image', async () => {
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, { result: [] });
+        nock(BASE_URL)
+            .post('/api/now/attachment/file')
+            .query(true)
+            .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
+
+        const html = '<p><img src="./images/d.png"></p>';
+        await assert.rejects(
+            () => processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { }),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
+    });
+
+    it('security: a hostile (path-traversal) sys_id in a list-attachments response never reaches the DELETE call', async () => {
+        // The existing attachment's sys_id is a path-traversal payload aimed at
+        // attachments.ts's deleteAttachment URL sink
+        // (.../api/now/attachment/<sys_id>): if it were used unvalidated, the
+        // DELETE would hit an attacker-chosen table/record instead of the
+        // intended attachment. Deliberately no upload or delete interceptor is
+        // registered below -- if listArticleAttachments's own trust-boundary
+        // validation didn't fail closed first, syncImageAttachment would go on
+        // to call the (unmocked) upload and delete endpoints and nock would
+        // reject the request for a DIFFERENT reason (no matching interceptor,
+        // net connect disabled) instead of the expected validation error,
+        // which would fail this assertion.
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, {
+            result: [{
+                sys_id: 'x/../table/kb_knowledge/deadbeefdeadbeefdeadbeefdeadbeef',
+                file_name: 'd.png',
+                hash: 'DIFFERENT-HASH',
+            }],
+        });
+
+        const html = '<p><img src="./images/d.png"></p>';
+        await assert.rejects(
+            () => processArticleImages(INSTANCE, HEADERS, 'art1', html, baseDir, false, () => { }),
+            /not a 32-character hex GUID|AttachmentSysIdInvalid/,
+        );
     });
 });
 

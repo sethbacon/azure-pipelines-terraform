@@ -6,7 +6,7 @@
   "loc.messages.PlanFileNotFound": "planJsonFile does not exist: %s. Provide the JSON output of 'terraform show -json <plan>' (or 'tofu show -json <plan>').",
   "loc.messages.PlanFileInvalidJson": "Failed to parse planJsonFile '%s' as JSON: %s. Provide the JSON output of 'terraform show -json <plan>' (or 'tofu show -json <plan>').",
   "loc.messages.DriftSummary": "Drift: drifted=%s added=%s changed=%s destroyed=%s (%s changed resources)",
-  "loc.messages.RejectUnauthorizedDisabled": "rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, so the callback token is sent over an unverified TLS channel. Use only for an internal TSM endpoint fronted by a private CA the agent does not trust.",
+  "loc.messages.RejectUnauthorizedDisabled": "rejectUnauthorized is disabled: TLS certificate validation is OFF for the drift callback, so the callback token can be captured by an on-path attacker impersonating the TSM endpoint. Use only for an internal TSM endpoint fronted by a private CA the agent does not trust; prefer installing that CA via NODE_EXTRA_CA_CERTS instead.",
   "loc.messages.DriftCallbackFailed": "Drift callback failed (HTTP %s): %s",
   "loc.messages.DriftCallbackNonFatal": "Drift callback failed (HTTP %s): %s. Continuing because failOnCallbackError is disabled.",
   "loc.messages.DriftPostedToTsm": "Drift result posted to TSM (HTTP %s).",

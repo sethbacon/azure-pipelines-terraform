@@ -122,6 +122,7 @@
         "IncludeCycleDetected": "Cycle detected: '%s' is already in the include chain.",
         "IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
         "NoInputFilesProvided": "No input files provided.",
-        "HtmlWrittenTo": "HTML written to '%s'"
+        "HtmlWrittenTo": "HTML written to '%s'",
+        "FrontMatterParseFailed": "Front-matter in '%s' could not be parsed as a YAML mapping and was ignored (defaults used): %s"
     }
 }

@@ -14,5 +14,6 @@
   "loc.messages.IncludeCycleDetected": "Cycle detected: '%s' is already in the include chain.",
   "loc.messages.IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
   "loc.messages.NoInputFilesProvided": "No input files provided.",
-  "loc.messages.HtmlWrittenTo": "HTML written to '%s'"
+  "loc.messages.HtmlWrittenTo": "HTML written to '%s'",
+  "loc.messages.FrontMatterParseFailed": "Front-matter in '%s' could not be parsed as a YAML mapping and was ignored (defaults used): %s"
 }

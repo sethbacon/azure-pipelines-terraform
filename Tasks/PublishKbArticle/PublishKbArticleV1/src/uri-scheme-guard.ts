@@ -106,8 +106,94 @@ export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'n
  * pattern lives in this byte-identity-gated module rather than being hand-copied
  * into each. The `i` flag makes it case-insensitive; it carries no `g` flag, so
  * `.test()` is stateless and safe to call across many elements/attributes.
+ *
+ * IMPORTANT: this raw-text blocklist must NOT be matched against the author's
+ * bytes directly, nor against a single "normalized" string — it is wrapped by
+ * cssHasDangerousConstruct(), which mirrors the CSS tokenizer's ordering
+ * (comments are lexed BEFORE escapes are processed) and tests the blocklist
+ * against BOTH the comment-stripped raw text AND its escape-decoded form,
+ * blocking if either matches. A single normalized string cannot express that,
+ * and collapsing to one forced a decode/strip order — decode-then-strip was
+ * itself a bypass (#587 follow-up). See cssHasDangerousConstruct().
  */
 export const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
+
+/**
+ * Strip CSS comments the way a browser's CSS tokenizer does, as the FIRST step —
+ * before any escape decoding. A real CSS comment is discarded by the lexer and
+ * acts only as a token separator, so `url` and its `(` split by a comment
+ * collapse back to `url(` here and cannot be used to break up a blocked token.
+ * Comments are stripped from the RAW author bytes, NEVER after escape decoding:
+ * the lexer forms a comment only from literal delimiter characters, so an
+ * ESCAPED `\2f\2a` is two decoded code points inside a token, not a comment, and
+ * must never be allowed to masquerade as one. (Stripping after decoding was
+ * itself the bypass this fix closes: it let `\2f\2a url(evil) \2a\2f` decode into
+ * comment delimiters wrapping a live `url(evil)`, then deleted that whole span —
+ * erasing a fetch a real browser, which sees no comment there, performs.)
+ */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+/**
+ * Decode CSS escape sequences per CSS Syntax Level 3 §4.3.7 "consume an escaped
+ * code point": a backslash plus 1–6 hex digits is that code point, with a single
+ * trailing whitespace consumed as the digit-run delimiter (NUL / surrogate /
+ * out-of-range maps to U+FFFD); a backslash plus any other non-newline code
+ * point is that literal character; a backslash before a newline or at
+ * end-of-input is not a valid escape and contributes nothing that can complete a
+ * blocked token. This decodes `\75rl(...)` to `url(...)`, `@\69mport` to
+ * `@import`, and the literal-char escape form `\u\r\l(...)` to `url(...)`. It
+ * does NOT touch comments — comment stripping already ran on the raw bytes (see
+ * cssHasDangerousConstruct); decoding must never itself produce a comment that is
+ * then deleted, or an escaped delimiter pair could erase a live token.
+ */
+function decodeCssEscapes(css: string): string {
+  return css.replace(
+    /\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\([^\n\r\f])/g,
+    (_m, hex: string | undefined, literal: string | undefined): string => {
+      if (hex !== undefined) {
+        let cp = parseInt(hex, 16);
+        if (cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+          cp = 0xfffd;
+        }
+        return String.fromCodePoint(cp);
+      }
+      return literal ?? '';
+    },
+  );
+}
+
+/**
+ * True if author-supplied CSS (a `<style>` element's text or an inline `style`
+ * attribute) contains a network-fetching / script-executing construct
+ * (DANGEROUS_CSS_PATTERN) a browser would act on. The check mirrors the CSS
+ * tokenizer's ordering — comments lexed BEFORE escapes are processed — and tests
+ * the blocklist against BOTH forms, blocking if EITHER matches:
+ *   (a) the raw text with real CSS comments stripped — catches a literal
+ *       `url(...)`/`@import`, and a token split by a real comment (`url` + `(`);
+ *   (b) the escape-decoded form of that SAME comment-stripped text, with NO
+ *       further comment stripping — catches `\75rl(...)`, `@\69mport`,
+ *       `u\72l(...)`, while ensuring an escaped `\2f\2a ... \2a\2f` cannot decode
+ *       into a comment that deletes the live token between the delimiters.
+ *
+ * Decoding in (b) rather than rejecting every backslash keeps legitimate escaped
+ * CSS a hand-authored `htmlFile` may carry — `content:"\201C"` smart quotes, an
+ * icon-font `content:"\f001"` — from being false-flagged: those decode to
+ * ordinary characters that match nothing in the blocklist.
+ *
+ * This two-pass predicate replaces a single decode-then-strip "normalize" helper:
+ * collapsing to one normalized string had to choose a decode/strip order, and
+ * decode-then-strip let the escaped-comment span above erase its own payload
+ * before the blocklist ever saw it (#587 follow-up).
+ */
+export function cssHasDangerousConstruct(css: string): boolean {
+  const commentStripped = stripCssComments(css);
+  if (DANGEROUS_CSS_PATTERN.test(commentStripped)) {
+    return true;
+  }
+  return DANGEROUS_CSS_PATTERN.test(decodeCssEscapes(commentStripped));
+}
 
 /**
  * Normalizes an attribute value before a URI-scheme check. Browsers (per the
