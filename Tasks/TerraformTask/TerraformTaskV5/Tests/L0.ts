@@ -28,6 +28,8 @@ import './OciWifConfigValidationL0';
 import './OciBackendConfigFileL0';
 // Direct unit tests for the optional MSI user-assigned client ID.
 import './ManagedIdentityClientIdL0';
+// Direct unit tests for the opt-in runAzLogin path (gate, argv, secret masking).
+import './RunAzLoginL0';
 // Direct unit tests for cross-cloud state backend detection.
 import './BackendDetectionTests/BackendDetectionL0';
 // Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.
