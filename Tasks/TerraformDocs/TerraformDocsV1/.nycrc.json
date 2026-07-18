@@ -2,7 +2,8 @@
   "reporter": [
     "text",
     "html",
-    "lcov"
+    "lcov",
+    "json-summary"
   ],
   "all": true,
   "include": [

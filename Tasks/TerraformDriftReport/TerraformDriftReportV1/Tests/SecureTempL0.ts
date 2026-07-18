@@ -3,7 +3,7 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import cp = require('child_process');
-import { writeSecretFile, replaceSecretFile } from '../src/secure-temp';
+import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
 
 /**
  * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile
@@ -160,5 +160,62 @@ describe('replaceSecretFile (TerraformDriftReport copy) — user-named SARIF out
         assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
         assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the output');
         assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink must be left in place as evidence, not silently deleted');
+    });
+});
+
+/**
+ * Direct unit tests for this task's copy of scrubFile (#595): overwrites a
+ * secret temp file's content with zeros before cleanupTempFiles() unlinks it.
+ * DriftReport's own runtime never calls scrubFile today, but the module is a
+ * byte-identical copy of TerraformTaskV5's secure-temp.ts (gated by
+ * scripts/check-shared-modules.js), so it is exercised here from this task's
+ * own compiled output to give the parity copy real coverage.
+ */
+describe('scrubFile (TerraformDriftReport copy) — overwrite-before-unlink content scrub (#595)', function () {
+    let scratchDir: string;
+
+    beforeEach(() => {
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdr-scrub-file-test-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(scratchDir, { recursive: true, force: true });
+    });
+
+    it('overwrites the file content with zeros of the same length, preserving the file', () => {
+        const target = path.join(scratchDir, 'secret.txt');
+        const original = 'top-secret-bearer-token-value';
+        fs.writeFileSync(target, original);
+        scrubFile(target);
+        const scrubbed = fs.readFileSync(target);
+        assert.strictEqual(scrubbed.length, Buffer.byteLength(original), 'scrub must not change the file length');
+        assert.ok(scrubbed.every((b) => b === 0), 'every byte must be overwritten with zero');
+    });
+
+    it('is a no-op for a file that no longer exists', () => {
+        const missing = path.join(scratchDir, 'does-not-exist.txt');
+        assert.doesNotThrow(() => scrubFile(missing));
+    });
+
+    it('is a no-op for an already-empty file', () => {
+        const target = path.join(scratchDir, 'empty.txt');
+        fs.writeFileSync(target, '');
+        assert.doesNotThrow(() => scrubFile(target));
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), '');
+    });
+
+    it('does not follow a symlink onto a victim file (CWE-59)', function () {
+        const victim = path.join(scratchDir, 'victim.txt');
+        const original = 'victim-secret-content';
+        fs.writeFileSync(victim, original);
+        const link = path.join(scratchDir, 'tracked-temp-file.tf');
+        try {
+            fs.symlinkSync(victim, link, 'file');
+        } catch {
+            this.skip();
+        }
+        assert.doesNotThrow(() => scrubFile(link));
+        assert.strictEqual(fs.readFileSync(victim, 'utf8'), original, 'the symlink target must not be zeroed');
+        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink entry itself is left for cleanupTempFiles() to unlink');
     });
 });

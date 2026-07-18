@@ -20,9 +20,10 @@ const { execSync, spawnSync } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'check-minor-bumps.js');
 
-// A task that IS in check-minor-bumps.js's hardcoded TASKS list, so a change to
-// its src/ is actually examined. A second, unchanged task confirms untouched
-// tasks never require a bump.
+// A task present under the throwaway repo's Tasks/ tree, so check-minor-bumps.js
+// (which derives its task list from that directory scan) actually examines a
+// change to its src/. A second, unchanged task confirms untouched tasks never
+// require a bump.
 const CHANGED_TASK = 'Tasks/TerraformTask/TerraformTaskV5';
 const UNCHANGED_TASK = 'Tasks/TerraformInstaller/TerraformInstallerV1';
 

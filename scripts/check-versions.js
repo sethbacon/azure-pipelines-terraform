@@ -1,22 +1,18 @@
 #!/usr/bin/env node
 // Validates that version fields exist and are well-formed in all task manifests.
+//
+// The task list is DERIVED from the Tasks/*/*/task.json directory scan (see
+// scripts/lib/task-dirs.js), not hand-maintained here, so a newly added task is
+// validated automatically and can never be silently omitted (issue #502). The
+// extension manifest is the one fixed, non-task entry.
 
 const fs = require('fs');
 const path = require('path');
+const { discoverTaskDirs } = require('./lib/task-dirs.js');
 
 const files = [
     { path: 'azure-devops-extension.json', type: 'extension' },
-    { path: 'Tasks/TerraformTask/TerraformTaskV5/task.json', type: 'task' },
-    { path: 'Tasks/TerraformInstaller/TerraformInstallerV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json', type: 'task' },
-    { path: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json', type: 'task' },
-    { path: 'Tasks/TerraformDocs/TerraformDocsV1/task.json', type: 'task' },
-    { path: 'Tasks/Markdown2Html/Markdown2HtmlV1/task.json', type: 'task' },
-    { path: 'Tasks/PublishKbArticle/PublishKbArticleV1/task.json', type: 'task' },
+    ...discoverTaskDirs(process.cwd()).map((dir) => ({ path: `${dir}/task.json`, type: 'task' })),
 ];
 
 let hasError = false;

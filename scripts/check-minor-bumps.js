@@ -16,20 +16,15 @@
 // asserted verbatim by scripts/test-check-minor-bumps.js and must not change.
 
 const { execSync } = require('child_process');
+const { discoverTaskDirs } = require('./lib/task-dirs.js');
 
-const TASKS = [
-  'Tasks/TerraformTask/TerraformTaskV5',
-  'Tasks/TerraformInstaller/TerraformInstallerV1',
-  'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1',
-  'Tasks/TerraformModulePublish/TerraformModulePublishV1',
-  'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1',
-  'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1',
-  'Tasks/TerraformDriftReport/TerraformDriftReportV1',
-  'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1',
-  'Tasks/TerraformDocs/TerraformDocsV1',
-  'Tasks/Markdown2Html/Markdown2HtmlV1',
-  'Tasks/PublishKbArticle/PublishKbArticleV1',
-];
+// The task list is DERIVED from the Tasks/*/*/task.json directory scan (see
+// scripts/lib/task-dirs.js) relative to the current working directory — mirroring
+// how the git calls below operate on the cwd, so the self-tests can point both at
+// a throwaway repo — rather than hand-maintained here (issue #502).
+function getTaskDirs() {
+  return discoverTaskDirs(process.cwd());
+}
 
 function git(args) {
   return execSync(`git ${args}`, { encoding: 'utf8' }).trim();
@@ -74,7 +69,7 @@ function resolvePrevRef(currRef) {
 function analyze({ prevRef, currRef, readCurrMinor }) {
   const readCurr = readCurrMinor || ((task) => minorAt(currRef, task));
   const results = [];
-  for (const task of TASKS) {
+  for (const task of getTaskDirs()) {
     let changed;
     try {
       changed = git(`diff --name-only ${prevRef} ${currRef} -- ${task}/src`);
@@ -150,7 +145,7 @@ function main() {
   console.log('check-minor-bumps: all changed tasks have a Minor bump.');
 }
 
-module.exports = { TASKS, git, minorAt, resolvePrevRef, analyze };
+module.exports = { getTaskDirs, git, minorAt, resolvePrevRef, analyze };
 
 if (require.main === module) {
   main();
