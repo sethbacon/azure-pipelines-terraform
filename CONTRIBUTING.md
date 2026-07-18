@@ -284,9 +284,19 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 1. Merge conventional-commit PRs to `main` — release-please accumulates them.
 2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
-3. Before merging the Release PR, manually bump the `Minor` field in `task.json` for every task whose code changed since the last release. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments.
+3. The per-task `Minor` bumps happen **automatically** on the Release PR. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments, so every task whose `src/` changed since the last release must have its `task.json` `Minor` incremented before the release is tagged. Three layers enforce this, so in the normal case there is nothing to do by hand:
 
-   Files to update:
+   - **Auto-bump (primary):** `.github/workflows/release-pr-minor-bumps.yml` triggers on the Release PR, runs `scripts/bump-minor-versions.js`, and commits + pushes the bumps back to the PR branch.
+   - **Merge gate (backstop):** the `Release PR Minor Bumps` required check in `.github/workflows/pr-checks.yml` runs `scripts/check-minor-bumps.js` against the Release PR and fails it if any bump is still missing.
+   - **Tag-time guard (final defense):** `release.yml`'s `Verify per-task Minor bumps` step re-runs the same check after the tag is pushed and fails the release if anything slipped through.
+
+   **Security rule (mandatory):** for any release, every task whose code was touched by a
+   **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in
+   that release — never ship a security fix while agents keep serving the cached old code. The
+   automation bumps any task whose `src/` changed, which already covers this; when unsure whether
+   a change qualifies, bump it.
+
+   **Manual fallback (only if the automation is broken):** if the auto-bump workflow is disabled/failing and the merge gate is red, run `node scripts/bump-minor-versions.js` from the repo root — or bump `Minor` by 1 (leave `Patch` at 0) by hand in the `task.json` of every task whose `src/` changed since the last release:
    - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
    - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
    - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
@@ -298,13 +308,6 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
    - `Tasks/TerraformDocs/TerraformDocsV1/task.json` — if TerraformDocsV1 changed
    - `Tasks/Markdown2Html/Markdown2HtmlV1/task.json` — if Markdown2HtmlV1 changed
    - `Tasks/PublishKbArticle/PublishKbArticleV1/task.json` — if PublishKbArticleV1 changed
-
-   Increment `Minor` by 1, leave `Patch` at 0.
-
-   **Security rule (mandatory):** for any release, every task whose code was touched by a
-   **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in
-   that release — never ship a security fix while agents keep serving the cached old code. When
-   unsure whether a change qualifies, bump it.
 
 4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
 5. The `release.yml` workflow fires on the tag:
