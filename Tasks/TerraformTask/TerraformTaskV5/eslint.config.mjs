@@ -1,5 +1,10 @@
 import tseslint from 'typescript-eslint';
+import { sharedRules } from '../../eslint.base.mjs';
 
+// TerraformTaskV5 is the one task that also lints its Tests/ tree (with relaxed
+// rules), so it composes its own flat config rather than calling srcOnlyConfig().
+// The src/ rule set is still the shared single source of truth — sharedRules is
+// spread in below, so a rule added in Tasks/eslint.base.mjs reaches this task too.
 export default tseslint.config(
     ...tseslint.configs.recommended,
     {
@@ -9,14 +14,7 @@ export default tseslint.config(
             },
         },
         rules: {
-            'no-unused-vars': 'off',
-            '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-            '@typescript-eslint/no-explicit-any': 'error',
-            '@typescript-eslint/no-require-imports': 'off',
-            '@typescript-eslint/no-floating-promises': 'error',
-            '@typescript-eslint/return-await': 'error',
-            'prefer-const': 'error',
-            'no-var': 'error',
+            ...sharedRules,
             'no-extra-semi': 'error',
         },
     },

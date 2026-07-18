@@ -21,8 +21,9 @@ const { execSync, spawnSync } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'bump-minor-versions.js');
 
-// All three are real entries in bump-minor-versions.js's (shared) TASKS list, so
-// their src/ changes are actually examined.
+// All three live under the throwaway repo's Tasks/ tree, so bump-minor-versions.js
+// (via check-minor-bumps.js's directory-derived task list) actually examines
+// their src/ changes.
 const CHANGED_TASK = 'Tasks/TerraformTask/TerraformTaskV5';
 const UNCHANGED_TASK = 'Tasks/TerraformInstaller/TerraformInstallerV1';
 const BARE_TASK = 'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1';
