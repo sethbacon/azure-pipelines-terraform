@@ -43,14 +43,6 @@ const DEFAULT_FLOOR = 60;
 //          / nothing-meaningful-to-cover; a positive value still guards against
 //          regression below the level reached today).
 const EXCEPTIONS = {
-    // TEMPORARY — gpg-verifier is currently reached only indirectly (~24% lines).
-    // Direct unit tests are being added under issue #497; remove this entry when
-    // they land and the file clears DEFAULT_FLOOR (this gate will then FAIL on
-    // the now-stale exception to force the cleanup).
-    'Tasks/TerraformInstaller/TerraformInstallerV1/src/gpg-verifier.js': {
-        floor: 20,
-        note: 'remove when #497 direct tests land',
-    },
     // STRUCTURAL — digest-schema.ts is the shared plan/apply digest CONTRACT
     // (byte-identical copy in src/tab/, gated by check-shared-modules.js). It is
     // almost entirely TypeScript type declarations that compile away; the single
