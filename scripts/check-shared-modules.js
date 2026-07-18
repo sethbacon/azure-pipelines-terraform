@@ -42,12 +42,15 @@ const FAMILIES = [
         // Unix, an explicit restrictive icacls DACL on Windows, both fail closed).
         // Canonical source: TerraformTaskV5, where it guards WIF/OCI secret files.
         // TerraformDriftReport writes plan-derived data (the TSM-callback summary
-        // and the SARIF report) that deserves the same cross-platform guarantee, so
-        // it carries a byte-identical copy rather than a re-implementation that
-        // could silently drop the Windows DACL half (#607).
+        // and the SARIF report), and TerraformPolicyCheck writes plan-derived data
+        // too (raw engine output, JUnit failure detail, and the SARIF report) —
+        // both deserve the same cross-platform guarantee, so each carries a
+        // byte-identical copy rather than a re-implementation that could silently
+        // drop the Windows DACL half (#607).
         dirs: [
             'Tasks/TerraformTask/TerraformTaskV5/src',
             'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
+            'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src',
         ],
         modules: [
             'secure-temp.ts',

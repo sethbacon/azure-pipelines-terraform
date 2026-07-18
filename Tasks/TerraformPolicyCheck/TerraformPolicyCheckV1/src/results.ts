@@ -4,6 +4,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyCase, PolicyResult } from './types';
+import { writeSecretFile, replaceSecretFile } from './secure-temp';
 
 /**
  * The agent's private temp directory, purged automatically at job end. Raw engine
@@ -18,19 +19,18 @@ function tempDir(): string {
 }
 
 /**
- * Writes a new owner-only (0600) file. O_EXCL ('wx') fails on a pre-existing
- * path, defeating a pre-created-symlink hazard; chmod backstops the umask
- * masking of the writeFileSync mode (mirrors TerraformDriftReport's pattern).
+ * Persists raw engine output and returns its path (exposed as resultsFilePath).
+ * The raw output can embed unmasked Terraform plan resource values, so it is
+ * written via the shared writeSecretFile primitive: owner-only (0600) + O_EXCL
+ * on Unix (defeating a pre-existing-symlink hazard) and an explicit restrictive
+ * DACL on Windows (where 0600 is a no-op), both fail closed -- see
+ * secure-temp.ts, a byte-identical copy of TerraformTaskV5's module gated by
+ * scripts/check-shared-modules.js (#607) -- rather than a bare fs.writeFileSync
+ * with a swallowed Windows chmod failure.
  */
-function writePrivateFile(filePath: string, content: string): void {
-    fs.writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
-    try { fs.chmodSync(filePath, 0o600); } catch { /* platforms without POSIX perms */ }
-}
-
-/** Persists raw engine output and returns its path (exposed as resultsFilePath). */
 export function writeResultsFile(rawOutput: string): string {
     const resultsPath = path.join(tempDir(), `policy-results-${uuidV4()}.txt`);
-    writePrivateFile(resultsPath, rawOutput);
+    writeSecretFile(resultsPath, rawOutput);
     return resultsPath;
 }
 
@@ -43,7 +43,12 @@ function xmlEscape(value: string): string {
         .replace(/'/g, '&apos;');
 }
 
-/** Writes a JUnit XML report (one test case per policy/rule) and returns its path. */
+/**
+ * Writes a JUnit XML report (one test case per policy/rule) and returns its
+ * path. Failure messages can echo policy-violation detail derived from plan
+ * resource values, so this is written via the same writeSecretFile primitive
+ * as writeResultsFile above.
+ */
 export function writeJUnit(cases: PolicyCase[], engine: string): string {
     const failures = cases.filter(c => !c.passed).length;
     const suiteName = `Terraform Policy Check (${engine})`;
@@ -66,7 +71,7 @@ ${body}
 `;
 
     const xmlPath = path.join(tempDir(), `policy-junit-${uuidV4()}.xml`);
-    writePrivateFile(xmlPath, xml);
+    writeSecretFile(xmlPath, xml);
     return xmlPath;
 }
 
@@ -161,7 +166,19 @@ export function buildPolicySarif(result: PolicyResult, engine: string): SarifLog
     };
 }
 
-/** Writes a SARIF 2.1.0 report and returns its path. */
+/**
+ * Writes a SARIF 2.1.0 report and returns its path. The report names failed
+ * policy/rule identifiers and violation messages, so -- like writeResultsFile
+ * and writeJUnit above -- it is written via the shared writeSecretFile/
+ * replaceSecretFile primitives (owner-only 0600 + O_EXCL on Unix, a
+ * restrictive DACL on Windows; see secure-temp.ts) instead of a
+ * permission-less fs.writeFileSync. replaceSecretFile is used rather than
+ * writeSecretFile because sarifPath may be a user-named, predictable path
+ * (e.g. a fixed staging-directory location) that a re-run legitimately
+ * overwrites; when no sarifPath is given the auto-generated UUID path has
+ * nothing pre-existing to overwrite, so it behaves identically to an
+ * exclusive create.
+ */
 export function writeSarif(result: PolicyResult, engine: string, sarifPath?: string): string {
     const explicitPath = sarifPath && sarifPath.trim().length > 0;
     const outPath = explicitPath
@@ -169,12 +186,6 @@ export function writeSarif(result: PolicyResult, engine: string, sarifPath?: str
         : path.join(tempDir(), `policy-results-${uuidV4()}.sarif`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     const json = JSON.stringify(buildPolicySarif(result, engine), null, 2);
-    if (explicitPath) {
-        // User-chosen destination (e.g. a staging dir published as an artifact):
-        // keep overwrite semantics so re-runs against the same path succeed.
-        fs.writeFileSync(outPath, json, 'utf-8');
-    } else {
-        writePrivateFile(outPath, json);
-    }
+    replaceSecretFile(outPath, json);
     return outPath;
 }
