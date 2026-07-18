@@ -5,11 +5,15 @@
 //     contributions the packaged .vsix actually registers)
 //   - .github/workflows/release.yml's per-task 'Generate SBOM for <Task>' steps
 //   - .github/dependabot.yml's per-task npm `directory:` entries
+//   - .github/workflows/unit-test.yml's per-task 'Build and Test <Task>'
+//     jobs (each sets `working-directory: Tasks/<Family>/<Task>` under its
+//     `defaults: run:`)
 // A forgotten entry in any one of them fails silently (a task added without a
 // contribution never appears in the ADO task picker, one missing an SBOM step
 // ships unattested, one missing a dependabot entry never gets dependency
-// updates). This script parses all three plus the actual Tasks/*/*/ directory
-// listing and asserts they agree.
+// updates, one missing a unit-test job never runs its tests in CI). This
+// script parses all four plus the actual Tasks/*/*/ directory listing and
+// asserts they agree.
 //
 // The other consumers of the task list — scripts/check-versions.js,
 // scripts/check-minor-bumps.js, and package.json's deps/deps:prune/compile
@@ -76,6 +80,25 @@ function taskDirsFromDependabot() {
     return dirs.sort();
 }
 
+// .github/workflows/unit-test.yml: each per-task 'Build and Test <Task>' job
+// sets `working-directory: Tasks/<Family>/<Task>` under its `defaults: run:`
+// block so its steps (npm ci, compile, test:coverage, ...) run inside that
+// task's directory. The tab job (`build-and-test-tab`) and its required-check
+// gate (`build-and-test-tab-gate`) have no `working-directory` override (they
+// run at repo root), so keying off `working-directory: Tasks/...` naturally
+// excludes them (and any future non-task job) exactly like the `cd Tasks/...`
+// key excludes release.yml's non-task 'Generate SBOM for tab' step above.
+function taskDirsFromUnitTestJobs() {
+    const text = readText('.github/workflows/unit-test.yml');
+    const re = /working-directory:\s*(Tasks\/\S+)/g;
+    const dirs = [];
+    let m;
+    while ((m = re.exec(text))) {
+        dirs.push(m[1]);
+    }
+    return dirs.sort();
+}
+
 function setsEqual(a, b) {
     if (a.length !== b.length) return false;
     return a.every((v, i) => v === b[i]);
@@ -95,6 +118,7 @@ const sources = {
     "azure-devops-extension.json 'contributions'": taskDirsFromExtensionManifest(),
     ".github/workflows/release.yml 'Generate SBOM' steps": taskDirsFromReleaseSbom(),
     ".github/dependabot.yml 'directory' entries": taskDirsFromDependabot(),
+    ".github/workflows/unit-test.yml 'working-directory' entries": taskDirsFromUnitTestJobs(),
 };
 
 let hasError = false;

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Self-test for check-task-list.js: proves the meta-gate that keeps the three
+// Self-test for check-task-list.js: proves the meta-gate that keeps the four
 // still-hand-maintained task-list surfaces (azure-devops-extension.json
 // `contributions`, release.yml `Generate SBOM` steps, dependabot.yml
-// `directory` entries) in agreement with the Tasks/ directory listing actually
-// fails when a source drifts, and does NOT false-positive on the one legitimate
-// duplication (two contributions pointing at the same task folder — the real
+// `directory` entries, unit-test.yml per-task `working-directory` entries) in
+// agreement with the Tasks/ directory listing actually fails when a source
+// drifts, and does NOT false-positive on the one legitimate duplication (two
+// contributions pointing at the same task folder — the real
 // `custom-terraform-release-task` carryover). A silent bug here would let a task
-// silently drop out of a source (e.g. never appear in the ADO task picker) while
-// CI stays green.
+// silently drop out of a source (e.g. never appear in the ADO task picker, or
+// never run its unit tests in CI) while CI stays green.
 //
 // (check-versions.js, check-minor-bumps.js, and package.json's build scripts are
 // no longer cross-checked here — they now DERIVE the task list at runtime from
@@ -43,6 +44,7 @@ function buildRepo(caseDir, opts = {}) {
     const contribDirs = opts.contribDirs || CANONICAL;
     const sbomTasks = opts.sbomTasks || CANONICAL;
     const dependabotTasks = opts.dependabotTasks || CANONICAL;
+    const unitTestTasks = opts.unitTestTasks || CANONICAL;
 
     fs.mkdirSync(path.join(caseDir, 'scripts', 'lib'), { recursive: true });
     // The script under test plus the shared task-dirs lib it requires, run from
@@ -93,6 +95,20 @@ function buildRepo(caseDir, opts = {}) {
     fs.writeFileSync(
         path.join(caseDir, '.github', 'dependabot.yml'),
         `version: 2\nupdates:\n  - package-ecosystem: "github-actions"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n${dependabotEntries}  - package-ecosystem: "npm"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n`,
+    );
+
+    // .github/workflows/unit-test.yml — one 'Build and Test <Task>' job per
+    // task, each with a `defaults: run: working-directory: Tasks/...` (keyed
+    // off `working-directory: Tasks/...`), plus a non-task 'Build and Test
+    // Tab' job that must be ignored (no `working-directory` override).
+    const unitTestJobs = unitTestTasks
+        .map(
+            (t, i) => `  task-${i}:\n    name: Build and Test T${i}\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        working-directory: ${t}\n    steps:\n      - run: npm test\n`,
+        )
+        .join('');
+    fs.writeFileSync(
+        path.join(caseDir, '.github', 'workflows', 'unit-test.yml'),
+        `jobs:\n${unitTestJobs}  build-and-test-tab:\n    name: Build and Test Tab\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm run test:tab\n`,
     );
 
     return caseDir;
@@ -180,6 +196,20 @@ try {
             failed = true;
         } else {
             console.log('OK: exits non-zero when dependabot.yml is missing a task directory.');
+        }
+    }
+
+    // --- Case 6: unit-test.yml is missing a task's Build-and-Test job -> fail. ---
+    {
+        const dir = buildRepo(makeCaseDir(), { unitTestTasks: CANONICAL.slice(1) });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes('unit-test.yml')) {
+            console.error("FAIL: check-task-list.js did not flag unit-test.yml missing a task's job.");
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log("OK: exits non-zero when unit-test.yml is missing a task's Build-and-Test job.");
         }
     }
 } finally {
