@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
+import { writeSecretFile } from './secure-temp';
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
 // module_locks field; null when absent/unreadable (the backend then records
@@ -60,13 +61,16 @@ async function run(): Promise<void> {
         }
 
         // The summary can include plan resource values (sensitive), so write it to
-        // the agent's private temp dir with a unique name and owner-only (0600)
-        // permissions, using O_EXCL to defeat a pre-existing-symlink hazard, rather
-        // than a fixed, world-readable path in the shared OS temp directory.
+        // the agent's private temp dir with a unique name via the shared
+        // writeSecretFile primitive: owner-only (0600) + O_EXCL on Unix (defeating a
+        // pre-existing-symlink hazard) and an explicit restrictive DACL on Windows
+        // (where 0600 is a no-op), both fail closed -- see secure-temp.ts, a
+        // byte-identical copy of TerraformTaskV5's module gated by
+        // scripts/check-shared-modules.js (#607) -- rather than a fixed,
+        // world-readable path in the shared OS temp directory.
         const tempDir = tasks.getVariable('Agent.TempDirectory') || os.tmpdir();
         summaryFile = path.join(tempDir, `tsm-drift-report-${randomUUID()}.json`);
-        fs.writeFileSync(summaryFile, JSON.stringify(body, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-        try { fs.chmodSync(summaryFile, 0o600); } catch { /* platforms without POSIX perms */ }
+        writeSecretFile(summaryFile, JSON.stringify(body, null, 2));
 
         tasks.setVariable('driftDetected', String(result.drifted), false, true);
         tasks.setVariable('addedCount', String(result.added), false, true);

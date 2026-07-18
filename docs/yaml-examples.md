@@ -980,7 +980,11 @@ The result is POSTed **only when both `callbackUrl` and `callbackToken` are
 set**. `callbackToken` is a per-run one-shot token sent as the
 `X-TSM-Callback-Token` header — pass it as a secret variable. `rejectUnauthorized`
 (default `true`) verifies the callback's TLS certificate; set it `false` only for
-a private-CA endpoint the agent does not trust.
+a private-CA endpoint the agent does not trust. For a TSM endpoint fronted by a
+private CA, prefer installing that CA via `NODE_EXTRA_CA_CERTS` on the agent —
+`rejectUnauthorized: false` is a last resort, since it then sends the callback
+token over a connection whose certificate is not authenticated, so it could be
+captured by an on-path attacker.
 
 ### Emit a SARIF report
 
@@ -1042,7 +1046,9 @@ pipeline.
 `apiKey` must be a **secret** pipeline variable with the `modules:write` scope —
 never inline the literal. For an internal registry fronted by a private CA the
 agent does not trust, prefer installing the CA via `NODE_EXTRA_CA_CERTS`;
-`skipTlsVerify: true` is a last resort.
+`skipTlsVerify: true` is a last resort, since it then sends the API key over a
+connection whose certificate is not authenticated, so it could be captured by
+an on-path attacker.
 
 ### Publish to HCP Terraform
 

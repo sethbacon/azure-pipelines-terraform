@@ -13,6 +13,8 @@ import './SentinelEnforcementLevelL0';
 import './HclEscapeL0';
 // Direct unit test for the #560 config-dir cleanup-registration reorder.
 import './SentinelConfigDirRegistrationL0';
+// Direct unit tests for the secure-temp writeSecretFile/replaceSecretFile copy (#607).
+import './SecureTempL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 

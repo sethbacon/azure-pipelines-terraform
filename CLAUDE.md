@@ -199,6 +199,7 @@ azure-pipelines-terraform/
 | `environment-variables.ts`           | Helper for setting environment variables with tracking and cleanup                             |
 | `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
 | `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
+| `secure-temp.ts`                     | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
 | `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 
 ### Structured plan/apply results (`src/results/`)
