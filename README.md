@@ -5,7 +5,7 @@
 
 An Azure DevOps extension for installing and running Terraform in build and release pipelines, supporting Azure, AWS, GCP, and OCI.
 
-This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS and GCP, flexible installer download sources, a structured Terraform results tab (Plan/Apply/State pivots, redacted), SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
+This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS, GCP, and OCI, flexible installer download sources, a structured Terraform results tab (Plan/Apply/State pivots, redacted), SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
 
 ---
 
@@ -17,7 +17,8 @@ Installs a specific version of Terraform on the build agent.
 
 | Input                       | Default     | Description                                                                                                                                                                                 |
 | --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `terraformVersion`          | `latest`    | Version to install, e.g. `1.9.0`. `latest` resolves to the current latest release.                                                                                                          |
+| `binary`                    | `terraform` | Which IaC binary to install: `terraform` (HashiCorp) or `tofu` (OpenTofu).                                                                                                                   |
+| `terraformVersion`          | `latest`    | Version to install, e.g. `1.9.0`. `latest` resolves to the current latest release. **Supply-chain note:** the downloaded release is still GPG/cosign/checksum-verified either way, but `latest`'s version *number* is only as trustworthy as the version oracle it's resolved from (HashiCorp's checkpoint API, or the GitHub releases API for OpenTofu) — a compromised or on-path-manipulated oracle could steer an install to an older, validly-signed-but-vulnerable release. Pinning an explicit version is the supply-chain-hardened choice. Resolution fails closed (throws) rather than falling back to a stale cached version if the oracle is unreachable.                                                                                                          |
 | `downloadSource`            | `hashicorp` | Where to download Terraform from. See [Download Sources](#download-sources) below.                                                                                                          |
 | `registryUrl`               | —           | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                                                                                           |
 | `registryMirrorName`        | `terraform` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                                                                                                |
@@ -246,7 +247,7 @@ Publishes a module version to HCP Terraform / Terraform Enterprise or a private 
 | `version`         | —                          | Semantic version to publish.                                                                                                                                                                                                                                                   |
 | `registryUrl`     | —                          | Base HTTPS URL of the private registry. Required when `registryType=private`.                                                                                                                                                                                                  |
 | `apiKey`          | —                          | Private-registry API key. Treat as a secret variable.                                                                                                                                                                                                                          |
-| `skipTlsVerify`   | `false`                    | **Security-sensitive.** Disables TLS certificate validation for the private-registry connection while the `apiKey` bearer is transmitted. Use only for an internal registry behind a private CA the agent does not trust; prefer installing that CA via `NODE_EXTRA_CA_CERTS`. |
+| `skipTlsVerify`   | `false`                    | **Security-sensitive.** Disables TLS certificate validation for the private-registry connection while the `apiKey` bearer is transmitted — with verification off, `apiKey` is a bearer credential capturable by anyone on-path between the agent and the registry. Prefer installing the private CA into the agent's trust store via `NODE_EXTRA_CA_CERTS` instead of disabling verification; use `skipTlsVerify` only when that isn't possible for an internal registry behind a private CA the agent does not trust. |
 | `scmProviderId`   | —                          | Optional (private). UUID of a configured SCM provider connection in the registry. Set together with `repositoryOwner` and `repositoryName` to auto-create and SCM-link a module that does not yet exist, instead of failing.                                                   |
 | `repositoryOwner` | —                          | Optional (private, auto-create). SCM-link repository owner. For Azure DevOps this is the **project name**; for GitHub/GitLab the org or user.                                                                                                                                  |
 | `repositoryName`  | —                          | Optional (private, auto-create). SCM-link source repository name.                                                                                                                                                                                                              |
@@ -270,10 +271,13 @@ Installs a policy engine — **OPA** (sha256-verified binary from the `open-poli
 | Input                  | Default    | Description                                                                                                 |
 | ---------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
 | `policyAgent`          | `opa`      | `opa` or `sentinel`.                                                                                        |
-| `version`              | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API.           |
+| `version`              | `latest`   | Version to install. `latest` resolves via the GitHub releases (OPA) or checkpoint (Sentinel) API. **Supply-chain note:** the download is still verified (GPG for Sentinel, checksum for OPA) either way, but `latest`'s version *number* is only as trustworthy as that oracle; pinning an explicit version is the supply-chain-hardened choice. Fails closed rather than falling back to a stale version if the oracle is unreachable. |
 | `downloadSource`       | `official` | `official`, `registry` (terraform-registry-backend), or `mirror` (custom HTTPS mirror).                     |
+| `registryUrl`          | —          | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.           |
+| `registryMirrorName`   | `opa`      | Mirror name configured in the registry (e.g. `opa` or `sentinel`). Used when `downloadSource=registry`.     |
 | `registryAllowedHosts` | —          | Optional allowlist of hostnames the registry's `download_url` may use. Used when `downloadSource=registry`. |
-| `requireGpgSignature`  | `true`     | Fail if a Sentinel GPG signature is unavailable.                                                            |
+| `mirrorBaseUrl`        | —          | Base HTTPS URL of a custom mirror that replicates the official release path structure. Required when `downloadSource=mirror`. |
+| `requireGpgSignature`  | `true`     | Sentinel only. Fail if a Sentinel GPG signature is unavailable.                                             |
 | `requireChecksum`      | `true`     | Fail if a SHA256 checksum is unavailable.                                                                   |
 
 **Output variables:** `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA ships `amd64`/`arm64` only.
@@ -288,13 +292,19 @@ Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terrafo
 | ------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
 | `engine`                  | `opa`            | `opa` or `sentinel`.                                                                                      |
 | `inputFile`               | —                | Path to the plan JSON to evaluate.                                                                        |
-| `policySource`            | `path`           | `path` (local directory) or `git` (HTTPS shallow clone / ref checkout).                                   |
+| `policyAgentPath`         | —                | Optional explicit path to the `opa`/`sentinel` binary. Defaults to the binary on `PATH`.                  |
+| `policySource`            | `path`           | `path` (local directory) or `gitUrl` (HTTPS shallow clone / ref checkout).                                 |
 | `policyPath`              | —                | Policy directory when `policySource=path`.                                                                |
-| `policyRepoUrl`           | —                | Policy repo URL when `policySource=git`. Pairs with `policyRepoRef`/`policyRepoSubdir`/`policyRepoToken`. |
+| `policyRepoUrl`           | —                | Policy repo URL when `policySource=gitUrl`. Pairs with `policyRepoRef`/`policyRepoSubdir`/`policyRepoToken`. |
 | `decisionPath`            | `terraform/deny` | OPA decision path to query.                                                                               |
 | `failMode`                | `nonEmpty`       | OPA gate: fail when the decision is `nonEmpty` or `defined`.                                              |
 | `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                                |
-| `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                               |
+| `overrideSoftMandatory`   | `false`          | Sentinel only. When enabled, a `soft-mandatory` policy failure warns instead of failing the task.          |
+| `sentinelImportName`      | `tfplan`         | Sentinel only. Name of the static import that exposes the plan JSON to policies (`import "<name>"`).      |
+| `sentinelConfigPath`      | —                | Sentinel only. Use an existing `sentinel.hcl` instead of generating one; the task then gates purely on the exit code. |
+| `traceOutput`             | `false`          | Sentinel only. Run `sentinel apply -trace` for verbose debugging output.                                  |
+| `publishTestResults`      | `true`           | Publish a JUnit results file to the pipeline **Tests** tab.                                                |
+| `sarifPath`               | —                | Optional explicit path for the SARIF report, used when `sarifOutput=true`. When empty, a file is written to the agent temp directory. |
 
 **Output variables:** `policyResult`, `violationCount`, `resultsFilePath`, and `sarifFilePath` (when `sarifOutput` is enabled).
 
@@ -312,11 +322,26 @@ Parses a Terraform/OpenTofu plan JSON into drift counts plus a changed-resource 
 | `includeModuleProvenance` | `true`                            | Include module source provenance from the module manifest.                    |
 | `moduleManifest`          | `.terraform/modules/modules.json` | Module manifest path used for provenance.                                     |
 | `failOnDrift`             | `false`                           | Fail the task when drift is detected.                                         |
+| `detail`                  | —                                 | Free-text run label forwarded as the callback `detail` field (e.g. `$(Build.BuildId)`). |
 | `callbackUrl`             | —                                 | TSM drift-callback URL. Must be HTTPS.                                        |
 | `callbackToken`           | —                                 | TSM callback bearer token. Treat as a secret variable.                        |
-| `rejectUnauthorized`      | `true`                            | Verify the callback endpoint's TLS certificate (leave enabled in production). |
+| `rejectUnauthorized`      | `true`                            | Verify the callback endpoint's TLS certificate (leave enabled in production). If the endpoint uses a private CA, prefer installing that CA into the agent's trust store via `NODE_EXTRA_CA_CERTS` over disabling verification — with verification off, `callbackToken` is a bearer credential capturable by anyone on-path between the agent and TSM. |
+| `failOnCallbackError`     | `true`                            | Fail the task when the TSM callback returns a non-2xx response. Disable to log a warning and continue instead — e.g. so a flaky/overloaded TSM backend doesn't fail the pipeline when the local drift analysis (already written to the summary file) succeeded. |
+| `sarifPath`               | —                                 | Optional explicit path for the SARIF report, used when `sarifOutput=true`. When empty, a file is written to the agent temp directory. |
+| `cleanupSummaryFile`      | `false`                           | Delete the JSON summary file (written to the agent temp directory) when the task finishes. Retained by default so downstream steps can read it via `summaryFilePath`; enable to remove it immediately after the callback, e.g. on a self-hosted agent whose temp directory isn't wiped between jobs and where the summary may contain sensitive plan values. |
 
 Set `sarifOutput: true` to also emit a SARIF 2.1.0 drift report (path via the `sarifFilePath` output) for SARIF-aware tooling — see the [SARIF example](docs/yaml-examples.md#emit-a-sarif-report-1).
+
+**Output variables:**
+
+| Variable          | Description                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `driftDetected`   | `true` when any non-no-op, non-read change was planned.                                             |
+| `addedCount`      | Count of resources whose plan contains a create.                                                    |
+| `changedCount`    | Count of resources whose plan contains an update.                                                   |
+| `destroyedCount`  | Count of resources whose plan contains a delete.                                                    |
+| `summaryFilePath` | Path to the JSON report written to the agent temp directory (the exact callback body). Removed at task end when `cleanupSummaryFile` is enabled. |
+| `sarifFilePath`   | Path to the SARIF 2.1.0 report. Set only when `sarifOutput` is enabled.                              |
 
 ---
 
@@ -326,7 +351,7 @@ Installs a specific version of [terraform-docs](https://terraform-docs.io) on th
 
 | Input                  | Default          | Description                                                                                                          |
 | ---------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `version`              | `latest`         | Version to install, e.g. `0.20.0`. `latest` resolves to the current latest release.                                  |
+| `version`              | `latest`         | Version to install, e.g. `0.20.0`. `latest` resolves to the current latest release. **Supply-chain note:** the download is still checksum-verified either way, but `latest`'s version *number* is only as trustworthy as the GitHub releases API it's resolved from; pinning an explicit version is the supply-chain-hardened choice. Fails closed rather than falling back to a stale version if the API is unreachable. |
 | `downloadSource`       | `official`       | Where to download terraform-docs from: `official` (GitHub releases), `registry`, or `mirror`.                        |
 | `registryUrl`          | —                | Base HTTPS URL of a terraform-registry-backend instance. Required when `downloadSource=registry`.                    |
 | `registryMirrorName`   | `terraform-docs` | Mirror name configured in the registry. Used when `downloadSource=registry`.                                         |
@@ -379,6 +404,7 @@ Converts Markdown files to a single styled HTML document (via markdown-it with h
 | `title`       | `Combined Markdown Files` | Title for the generated HTML document.                                                                                      |
 | `sections`    | `false`                   | Add each file's name as a section heading.                                                                                  |
 | `dividers`    | `false`                   | Add horizontal rules between files.                                                                                         |
+| `debug`       | `false`                   | Print additional debug information during conversion.                                                                      |
 
 **Output variables:**
 
@@ -395,6 +421,10 @@ Creates or updates a ServiceNow knowledge base article from an HTML file. Idempo
 | `serviceConnection` | —       | A `ServiceNowKb` service connection. If unset, provide `instance` + credentials inline.                          |
 | `instance`          | —       | ServiceNow instance name (e.g. `mycompany` for `mycompany.service-now.com`). Required when no connection is set. |
 | `authType`          | `oauth` | `oauth` (client credentials) or `basic`, when using inline credentials.                                          |
+| `clientId`          | —       | OAuth client application ID. Used when `authType=oauth` and no service connection is set.                        |
+| `clientSecret`      | —       | OAuth client application secret. Used when `authType=oauth` and no service connection is set. Treat as a secret variable. |
+| `username`          | —       | ServiceNow username for basic authentication. Used when `authType=basic` and no service connection is set.       |
+| `password`          | —       | ServiceNow password for basic authentication. Used when `authType=basic` and no service connection is set. Treat as a secret variable. |
 | `kbId`              | —       | Knowledge base `sys_id`. Use `list` to print available knowledge bases.                                          |
 | `title`             | —       | Article title (`short_description`). Required when creating a new article.                                       |
 | `htmlFile`          | —       | Path to the HTML file whose contents become the article body.                                                    |
