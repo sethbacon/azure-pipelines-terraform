@@ -198,6 +198,36 @@ describe('auth.getOAuthToken', () => {
         );
     });
 
+    it('scrubs the form-urlencoded WIRE form of a secret with divergent encodings (#647)', async () => {
+        // A secret containing space, quote, and tilde makes all four
+        // serializations differ: raw, URLSearchParams wire form (space -> '+'),
+        // encodeURIComponent (space -> '%20'), and JSON-escaped ("\""). The
+        // wire form is what a reflecting server most plausibly echoes — the
+        // original fix scrubbed only encodeURIComponent and would leak it.
+        const secret = 'my secret "pass" ~end';
+        const wireForm = new URLSearchParams({ s: secret }).toString().slice(2);
+        assert.notStrictEqual(wireForm, encodeURIComponent(secret), 'test premise: encodings must diverge');
+        // Reflect the wire form verbatim AND the raw secret inside a JSON body —
+        // the JSON serializer turns the raw quote into \" in the raw response
+        // bytes, exercising the JSON-escaped scrub variant too.
+        nock(BASE_URL)
+            .post('/oauth_token.do')
+            .reply(400, {
+                error: 'invalid_request',
+                error_description: `bad client_secret=${wireForm} raw=${secret}`,
+            });
+
+        await assert.rejects(
+            () => auth.getOAuthToken(INSTANCE, 'cid', secret),
+            (err: Error) => {
+                assert.ok(!err.message.includes(wireForm), `wire-encoded secret must be scrubbed (got: ${err.message})`);
+                assert.ok(!err.message.includes('my+secret'), 'no wire-form fragment may survive');
+                assert.ok(!err.message.includes('my secret'), 'no raw fragment may survive');
+                return true;
+            },
+        );
+    });
+
     it('scrubs a secret that would straddle the 500-char truncation boundary (#647)', async () => {
         // Scrubbing runs BEFORE truncation in servicenow-http, so a secret
         // positioned across the boundary can never survive as a partial prefix.
