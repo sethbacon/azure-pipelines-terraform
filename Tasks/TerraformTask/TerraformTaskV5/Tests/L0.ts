@@ -8,6 +8,8 @@ import * as os from 'os';
 import './OciTokenExchangeL0';
 // Direct unit tests for the OIDC ID-token generator (WIF fallback).
 import './IdTokenGeneratorL0';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 // Direct unit tests for the agent HTTP proxy configuration helper.
 import './ProxyConfigL0';
 // Direct unit tests for the secure var-file loader.
@@ -39,6 +41,8 @@ import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredenti
 import './BinaryNameAllowlistL0';
 // Direct unit tests for the GCP static-key token_uri (Audience) validation.
 import './GcpTokenUriValidationL0';
+// Direct unit tests for the hoisted auth-scheme validator shared by AWS/GCP/OCI.
+import './AuthSchemeValidatorL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.

@@ -33,6 +33,7 @@ import * as net from 'net';
 import { Duplex } from 'stream';
 import { URL } from 'url';
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
+import { retryAsync, parseRetryAfterMs } from './retry';
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
 
@@ -213,9 +214,12 @@ export interface SnResponse {
  * failure -- connection error, timeout, or the response-size guard, which
  * throw a plain Error with no `status`). Lets withRetry() distinguish "the
  * server responded with an error" from "no response was ever received".
+ * `retryAfterMs` carries the capped 429 Retry-After delay when the server sent
+ * one (#584); it is undefined otherwise, and withRetry() then falls back to its
+ * exponential backoff.
  */
 export class ServiceNowHttpError extends Error {
-    constructor(message: string, public readonly status: number) {
+    constructor(message: string, public readonly status: number, public readonly retryAfterMs?: number) {
         super(message);
         this.name = 'ServiceNowHttpError';
     }
@@ -317,9 +321,13 @@ export function snRequest(
                         }
                     }
                     if (status < 200 || status >= 300) {
+                        // On a 429 Too Many Requests, capture a capped Retry-After so
+                        // withRetry can honor it (#584); other statuses carry none.
+                        const retryAfterMs = status === 429 ? parseRetryAfterMs(res.headers['retry-after']) : undefined;
                         reject(new ServiceNowHttpError(
                             `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncate(raw)}`,
                             status,
+                            retryAfterMs,
                         ));
                         return;
                     }
@@ -344,10 +352,12 @@ export function snRequest(
  * Wraps a mutating ServiceNow call (create/update/publish/upload) with bounded
  * exponential-backoff retry on TRANSIENT failures only: a thrown transport
  * error (no response ever received -- connection reset, timeout, response-size
- * guard) or a captured 5xx status. A captured 4xx (bad request, auth failure,
- * not-found, validation error, etc.) is never retried -- retrying an unchanged
- * request wouldn't produce a different 4xx. Mirrors this repo's established
- * mutating-call retry convention (TerraformModulePublish's retryHttp).
+ * guard) or a captured 5xx or 429 status. A captured 4xx other than 429 (bad
+ * request, auth failure, not-found, validation error, etc.) is never retried --
+ * retrying an unchanged request wouldn't produce a different result. A 429 Too
+ * Many Requests IS retried, honoring a capped Retry-After when present (#584).
+ * Delegates to the shared bounded-backoff helper (retry.ts) so a future
+ * hardening change lands in one place across every task.
  */
 export async function withRetry<T>(
     call: () => Promise<T>,
@@ -355,18 +365,31 @@ export async function withRetry<T>(
 ): Promise<T> {
     const retries = opts.retries ?? 3;
     const baseDelayMs = opts.baseDelayMs ?? 500;
-    for (let attempt = 0; ; attempt++) {
-        try {
-            return await call();
-        } catch (err) {
+    return retryAsync(call, {
+        retries,
+        baseDelayMs,
+        retryError: (err) => {
             const status = err instanceof ServiceNowHttpError ? err.status : undefined;
-            const retryable = status === undefined || status >= 500;
-            if (!retryable || attempt >= retries) {
-                throw err;
+            return status === undefined || status >= 500 || status === 429;
+        },
+        // Honor a capped 429 Retry-After when the server sent one; otherwise the
+        // exponential backoff.
+        delayMs: (_attempt, backoffMs, outcome) => {
+            if (
+                outcome.kind === 'error'
+                && outcome.error instanceof ServiceNowHttpError
+                && outcome.error.status === 429
+                && outcome.error.retryAfterMs !== undefined
+            ) {
+                return outcome.error.retryAfterMs;
             }
-            const reason = err instanceof Error ? err.message : String(err);
-            opts.log?.(`Transient ServiceNow request failure (${reason}); retrying (${attempt + 1}/${retries}).`);
-            await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
-        }
-    }
+            return backoffMs;
+        },
+        onRetry: (attempt, _delayMs, outcome) => {
+            if (outcome.kind === 'error') {
+                const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+                opts.log?.(`Transient ServiceNow request failure (${reason}); retrying (${attempt + 1}/${retries}).`);
+            }
+        },
+    });
 }

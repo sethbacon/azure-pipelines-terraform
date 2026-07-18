@@ -10,10 +10,24 @@ import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
-import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './url-secret-redaction';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
 
 const isWindows = os.type().match(/^Win/);
+
+/**
+ * setSecret() any basic-auth userinfo embedded in an operator-supplied
+ * registry/mirror URL so the agent masks it everywhere the URL (or a URL derived
+ * from it) might be echoed — pipeline variables, console output, error messages
+ * (#586). Idempotent; call at the earliest use of each operator URL. Pair with
+ * redactUrlUserInfo() to structurally strip the credential from any value stored
+ * or displayed (setSecret only masks logs, not a persisted variable's value).
+ */
+function maskOperatorUrlCredentials(url: string): void {
+    for (const secret of extractUrlUserInfoSecrets(url)) {
+        tasks.setSecret(secret);
+    }
+}
 
 // File name of the local, per-cached-tool-directory integrity marker written after
 // a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
@@ -140,7 +154,8 @@ async function resolveLatestOpa(): Promise<string> {
 }
 
 async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string): Promise<string> {
-    console.log(tasks.loc("ResolvingLatestFromRegistry", registryUrl));
+    maskOperatorUrlCredentials(registryUrl);
+    console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
     const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
     const data = await fetchJson<{ version: string }>(latestUrl);
     if (!data.version) {
@@ -159,13 +174,17 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
             const registryUrl = tasks.getInput("registryUrl", true)!;
             const mirrorName = tasks.getInput("registryMirrorName", true)! || agent;
             const result = await downloadFromRegistry(agent, version, registryUrl, mirrorName);
-            tasks.setVariable('policyAgentDownloadedFrom', `registry:${registryUrl}`);
+            // Strip any embedded basic-auth userinfo before persisting the source
+            // into a downstream-readable pipeline variable (#586).
+            tasks.setVariable('policyAgentDownloadedFrom', `registry:${redactUrlUserInfo(registryUrl)}`);
             return result;
         }
         case "mirror": {
             const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
             const result = await downloadFromMirror(agent, version, mirrorBaseUrl);
-            tasks.setVariable('policyAgentDownloadedFrom', `mirror:${mirrorBaseUrl}`);
+            // Strip any embedded basic-auth userinfo before persisting the source
+            // into a downstream-readable pipeline variable (#586).
+            tasks.setVariable('policyAgentDownloadedFrom', `mirror:${redactUrlUserInfo(mirrorBaseUrl)}`);
             return result;
         }
         default: { // "official"
@@ -216,7 +235,10 @@ async function downloadOpaOfficial(version: string): Promise<{ path: string; ver
     const sha256Body = await fetchTextAllow404(sha256Url);
     if (sha256Body === null) {
         if (requireChecksum) {
-            throw new Error(`Checksum verification is required but no .sha256 is published for the OPA download (${sha256Url}).`);
+            // Reachable release (genuine 404) withholding a required checksum is a
+            // deterministic policy failure — typed so the cache-hit re-verification
+            // path fails closed instead of degrading to the cached binary (#589).
+            throw new VerificationFailure(`Checksum verification is required but no .sha256 is published for the OPA download (${sha256Url}).`);
         }
         tasks.warning(`SHA256 verification skipped for OPA download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
@@ -226,6 +248,9 @@ async function downloadOpaOfficial(version: string): Promise<{ path: string; ver
 }
 
 async function downloadFromRegistry(agent: string, version: string, registryUrl: string, mirrorName: string): Promise<{ path: string; verified: boolean }> {
+    // registryUrl may embed basic-auth userinfo; mask it before it can reach a log
+    // via infoUrl in any error/warning below (#586).
+    maskOperatorUrlCredentials(registryUrl);
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
@@ -287,7 +312,9 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
-        throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
+        // Typed as VerificationFailure so the cache-hit re-verification path re-throws
+        // (fail closed) instead of degrading to the cached binary (#589).
+        throw new VerificationFailure(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
@@ -295,8 +322,11 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
 }
 
 async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl: string): Promise<{ path: string; verified: boolean }> {
+    // mirrorBaseUrl may embed basic-auth userinfo; mask it before it can reach a log
+    // via the rejection message or any derived download URL below (#586).
+    maskOperatorUrlCredentials(mirrorBaseUrl);
     if (!mirrorBaseUrl.startsWith('https://')) {
-        throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
+        throw new Error(tasks.loc("InsecureUrlRejected", redactUrlUserInfo(mirrorBaseUrl)));
     }
     const osPlatform = getPlatformString();
     const arch = getArchString();
@@ -320,7 +350,10 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     const sha256Body = await fetchTextAllow404(sha256Url);
     if (sha256Body === null) {
         if (requireChecksum) {
-            throw new Error(`Checksum verification is required but no .sha256 is published for the mirror download (${sha256Url}).`);
+            // Reachable mirror (genuine 404) withholding a required checksum is a
+            // deterministic policy failure — typed so the cache-hit re-verification
+            // path fails closed instead of degrading to the cached binary (#589).
+            throw new VerificationFailure(`Checksum verification is required but no .sha256 is published for the mirror download (${sha256Url}).`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
@@ -339,11 +372,15 @@ async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fil
     const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     const body = await fetchTextAllow404(sha256SumsUrl);
     if (body === null) {
+        // A reachable mirror (genuine 404, not a transport error) withholding a
+        // SHA256SUMS it is required to serve is a deterministic policy failure —
+        // typed as VerificationFailure so the cache-hit re-verification path fails
+        // closed rather than degrading to the cached binary (#589).
         if (requireChecksum) {
-            throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
+            throw new VerificationFailure(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
         if (requireGpg) {
-            throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
+            throw new VerificationFailure(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
         return false;
@@ -362,7 +399,9 @@ async function downloadTo(url: string, fileName: string): Promise<string> {
     try {
         return await tools.downloadTool(url, fileName);
     } catch (exception) {
-        throw new Error(tasks.loc("PolicyAgentDownloadFailed", url, exception));
+        // A mirror download URL can embed operator basic-auth userinfo; strip it from
+        // the interpolated message (no-op for the official releases/GitHub URLs) (#586).
+        throw new Error(tasks.loc("PolicyAgentDownloadFailed", redactUrlUserInfo(url), exception));
     }
 }
 
@@ -477,13 +516,15 @@ function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): 
  * a fresh install would use and require the cached executable to byte-match the
  * freshly verified one:
  *
- * - Release material unavailable (network/DNS failure, offline or air-gapped
- *   agent, version no longer published): degrade gracefully — warn and fall back
- *   to the pre-existing trust-the-cache behavior. Offline cache reuse keeps
- *   working; requireChecksum=false skips the attempt (and the warning) entirely.
- * - Material obtained but FAILS verification (bad GPG signature, checksum
- *   mismatch — see VerificationFailure): fail closed. The source is actively
- *   serving material that does not verify; never fall back to the cached copy.
+ * - Source UNREACHABLE (network/DNS/TLS failure, timeout, 5xx, offline or
+ *   air-gapped agent, version no longer published): degrade gracefully — warn and
+ *   fall back to the pre-existing trust-the-cache behavior. Offline cache reuse
+ *   keeps working; requireChecksum=false skips the attempt (and warning) entirely.
+ * - Source REACHABLE but the material FAILS verification (bad GPG signature,
+ *   checksum mismatch) OR the reachable source WITHHOLDS material a require-flag
+ *   makes mandatory (empty registry sha256, a 404'd-but-required .sha256/SHA256SUMS
+ *   or .sig) — both surface as a typed VerificationFailure: fail closed. Never fall
+ *   back to the cached copy.
  * - Cached executable differs from the freshly verified release: fail closed.
  * - Match: write the integrity marker so future cache hits verify locally
  *   (offline, one-time healing of pre-existing cache entries).

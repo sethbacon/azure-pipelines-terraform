@@ -79,6 +79,7 @@
         "@babel/core": "^7.29.7",
         "underscore": "^1.13.8",
         "semver": "^7.8.5",
-        "js-yaml": "^4.2.0"
+        "js-yaml": "^4.2.0",
+        "adm-zip": "^0.6.0"
     }
 }

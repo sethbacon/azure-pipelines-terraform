@@ -11,12 +11,26 @@ import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
-import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage } from './url-secret-redaction';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
 
 const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
+
+/**
+ * setSecret() any basic-auth userinfo embedded in an operator-supplied
+ * registry/mirror URL so the agent masks it everywhere the URL (or a URL derived
+ * from it) might be echoed — pipeline variables, console output, error messages
+ * (#586). Idempotent; call at the earliest use of each operator URL. Pair with
+ * redactUrlUserInfo() to structurally strip the credential from any value stored
+ * or displayed (setSecret only masks logs, not a persisted variable's value).
+ */
+function maskOperatorUrlCredentials(url: string): void {
+    for (const secret of extractUrlUserInfoSecrets(url)) {
+        tasks.setSecret(secret);
+    }
+}
 
 // File name of the local, per-cached-tool-directory integrity marker written after
 // a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
@@ -64,7 +78,9 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
                 const result = await downloadZipFromRegistry(version, registryUrl, mirrorName);
                 zipPath = result.zipPath;
                 verified = result.verified;
-                tasks.setVariable('terraformDownloadedFrom', `registry:${registryUrl}`);
+                // Strip any embedded basic-auth userinfo before persisting the source
+                // into a downstream-readable pipeline variable (#586).
+                tasks.setVariable('terraformDownloadedFrom', `registry:${redactUrlUserInfo(registryUrl)}`);
                 break;
             }
             case "mirror": {
@@ -72,7 +88,9 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
                 const result = await downloadZipFromMirror(version, mirrorBaseUrl);
                 zipPath = result.zipPath;
                 verified = result.verified;
-                tasks.setVariable('terraformDownloadedFrom', `mirror:${mirrorBaseUrl}`);
+                // Strip any embedded basic-auth userinfo before persisting the source
+                // into a downstream-readable pipeline variable (#586).
+                tasks.setVariable('terraformDownloadedFrom', `mirror:${redactUrlUserInfo(mirrorBaseUrl)}`);
                 break;
             }
             default: { // "hashicorp"
@@ -155,7 +173,8 @@ async function resolveVersionFromRegistry(inputVersion: string, registryUrl: str
     if (inputVersion.toLowerCase() !== 'latest') {
         return inputVersion;
     }
-    console.log(tasks.loc("ResolvingLatestFromRegistry", registryUrl));
+    maskOperatorUrlCredentials(registryUrl);
+    console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
     const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
     const data = await fetchJson<{ version: string }>(latestUrl);
     if (!data.version) {
@@ -194,6 +213,9 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
 }
 
 async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<{ zipPath: string; verified: boolean }> {
+    // registryUrl may embed basic-auth userinfo; mask it before it can reach a log
+    // via infoUrl in any error/warning below (#586).
+    maskOperatorUrlCredentials(registryUrl);
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
@@ -257,7 +279,10 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
         // the operator requires checksum verification rather than trusting the binary.
-        throw new Error(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
+        // Typed as a VerificationFailure: the reachable registry deterministically
+        // withheld required material, so the cache-hit re-verification path re-throws
+        // (fail closed) instead of degrading to the cached binary (#589).
+        throw new VerificationFailure(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
@@ -265,8 +290,11 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
 }
 
 async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<{ zipPath: string; verified: boolean }> {
+    // mirrorBaseUrl may embed basic-auth userinfo; mask it before it can reach a log
+    // via the rejection message or any derived download URL below (#586).
+    maskOperatorUrlCredentials(mirrorBaseUrl);
     if (!mirrorBaseUrl.startsWith('https://')) {
-        throw new Error(tasks.loc("InsecureUrlRejected", mirrorBaseUrl));
+        throw new Error(tasks.loc("InsecureUrlRejected", redactUrlUserInfo(mirrorBaseUrl)));
     }
     const osPlatform = getPlatformString();
     const arch = getArchString();
@@ -278,7 +306,9 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     try {
         zipPath = await tools.downloadTool(downloadUrl, fileName);
     } catch (exception) {
-        throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
+        // downloadUrl embeds mirrorBaseUrl (possibly with userinfo); strip it from the
+        // interpolated message (the userinfo is also setSecret-masked above) (#586).
+        throw new Error(tasks.loc("TerraformDownloadFailed", redactUrlUserInfo(downloadUrl), exception));
     }
 
     // Verify the mirror download. requireGpgSignature (default true) governs whether
@@ -297,11 +327,15 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // requireChecksum, rather than being classified by matching an error string.
     const sumsBody = await fetchTextAllow404(sha256SumsUrl);
     if (sumsBody === null) {
+        // A reachable mirror (genuine 404, not a transport error) withholding a
+        // SHA256SUMS it is required to serve is a deterministic policy failure —
+        // typed as VerificationFailure so the cache-hit re-verification path fails
+        // closed rather than degrading to the cached binary (#589).
         if (requireChecksum) {
-            throw new Error(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
+            throw new VerificationFailure(`Checksum verification is required but the mirror did not publish a SHA256SUMS file (${sha256SumsUrl}).`);
         }
         if (requireGpg) {
-            throw new Error(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
+            throw new VerificationFailure(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
         }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
         return { zipPath, verified: false };
@@ -412,13 +446,16 @@ function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): 
  * a fresh install would use and require the cached executable to byte-match the
  * freshly verified one:
  *
- * - Release material unavailable (network/DNS failure, offline or air-gapped
- *   agent, version no longer published): degrade gracefully — warn and fall back
- *   to the pre-existing trust-the-cache behavior. Offline cache reuse keeps
- *   working; requireChecksum=false skips the attempt (and the warning) entirely.
- * - Material obtained but FAILS verification (bad GPG/cosign signature, checksum
- *   mismatch — see VerificationFailure): fail closed. The source is actively
- *   serving material that does not verify; never fall back to the cached copy.
+ * - Source UNREACHABLE (network/DNS/TLS failure, timeout, 5xx, offline or
+ *   air-gapped agent, version no longer published): degrade gracefully — warn and
+ *   fall back to the pre-existing trust-the-cache behavior. Offline cache reuse
+ *   keeps working; requireChecksum=false skips the attempt (and warning) entirely.
+ * - Source REACHABLE but the material FAILS verification (bad GPG/cosign signature,
+ *   checksum mismatch) OR the reachable source WITHHOLDS material a require-flag
+ *   makes mandatory (empty registry sha256, a 404'd-but-required SHA256SUMS/.sig)
+ *   — both surface as a typed VerificationFailure: fail closed. The source is
+ *   serving/withholding in a way that violates the required policy; never fall
+ *   back to the cached copy.
  * - Cached executable differs from the freshly verified release: fail closed.
  * - Match: write the integrity marker so future cache hits verify locally
  *   (offline, one-time healing of pre-existing cache entries).
@@ -623,7 +660,7 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     const requireCosign = getBoolInputDefaultTrue("requireCosignVerification");
     const signatureUrl = `${sha256SumsUrl}.sig`;
     const certificateUrl = `${sha256SumsUrl}.pem`;
-    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, requireCosign);
+    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
     await verifySha256(zipPath, expectedHash);

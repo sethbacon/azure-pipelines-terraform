@@ -189,7 +189,7 @@ Since this fix, a step missing the required backend inputs fails immediately wit
 - You did not expect to see a second provider — look for transitive module dependencies with stray provider blocks.
 - The warning names a provider whose binary has not been resolved — `terraform init` will fail.
 
-**Known false positive:** the current detection uses a substring match. Modules with names like `my-aws-helpers` or `terraform-azurerm-utils` can trip the warning even when no second cloud provider is actually configured. A stricter regex-anchored check is planned (roadmap item P3.7). Suppress by renaming the offending module or ignoring the warning.
+**False positives:** detection uses an anchored regex (`provider[.*/<name>]`) against the `terraform providers` output, not a substring match, so a module named like `my-aws-helpers` or `terraform-azurerm-utils` does not trip the warning by name alone (fixed by P3.7, shipped in v0.8.0 — see CHANGELOG.md). A genuine second provider block instantiated anywhere in the configuration (including transitively, via a module) still triggers it as intended.
 
 ---
 
