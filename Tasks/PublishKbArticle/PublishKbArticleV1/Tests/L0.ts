@@ -15,7 +15,7 @@ import * as os from 'os';
 import * as nodePath from 'path';
 import * as auth from '../src/auth';
 import * as htmlValidate from '../src/html-validate';
-import { normalizeCssForDangerCheck } from '../src/uri-scheme-guard';
+import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
@@ -1150,8 +1150,14 @@ describe('htmlValidate.validateHtmlContent', () => {
     // The browser's CSS tokenizer decodes escapes and discards comments before a
     // url()/@import token exists, so a raw-text match on the author's bytes is
     // trivially dodged: `\75rl(` tokenizes to url(, `@\69mport` to @import. The
-    // gate now normalizes (decode escapes + strip comments) before matching. `BS`
-    // is a single literal backslash, built without JS-string-escape ambiguity.
+    // gate now checks via cssHasDangerousConstruct, which runs the blocklist the
+    // way a browser lexes CSS — real comments stripped from the raw bytes FIRST,
+    // then that same text escape-decoded — and blocks if either form matches.
+    // That comment-first order also blocks a literal url(evil) wrapped in ESCAPED
+    // comment delimiters (\2f\2a ... \2a\2f): decoding those into real comment
+    // delimiters and then deleting the span would erase a fetch a browser (which
+    // sees no comment there) performs — the #587 follow-up bypass. `BS` is a
+    // single literal backslash, built without JS-string-escape ambiguity.
 
     const BS = '\\';
 
@@ -1163,6 +1169,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         ['literal-char escapes (\\u\\r\\l)', `<style>b{background:${BS}u${BS}r${BS}l(https://evil.example.com/x)}</style>`],
         ['a comment splitting url from its ( (url/* */()', '<style>b{background:url/* x */(https://evil.example.com/x)}</style>'],
         ['a comment splitting @import (@im/* */port)', '<style>@im/* */port "https://evil.example.com/x.css";</style>'],
+        ['a literal url wrapped in escaped comment delimiters (\\2f\\2a...\\2a\\2f)', `<style>b{background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f}</style>`],
     ];
     for (const [label, html] of styleContentBypassCases) {
         it(`throws on <style> content using ${label} (#587)`, () => {
@@ -1180,6 +1187,7 @@ describe('htmlValidate.validateHtmlContent', () => {
         ['a whitespace-terminated hex escape (\\75 rl)', `<div style="background:${BS}75 rl(https://evil.example.com/x)">x</div>`],
         ['literal-char escapes (\\u\\r\\l)', `<div style="background:${BS}u${BS}r${BS}l(https://evil.example.com/x)">x</div>`],
         ['a comment splitting url from its ( (url/* */()', '<div style="background:url/* x */(https://evil.example.com/x)">x</div>'],
+        ['a literal url wrapped in escaped comment delimiters (\\2f\\2a...\\2a\\2f)', `<div style="background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f">x</div>`],
     ];
     for (const [label, html] of styleAttrBypassCases) {
         it(`throws on an inline style attribute using ${label} (#587)`, () => {
@@ -1215,32 +1223,42 @@ describe('htmlValidate.validateHtmlContent', () => {
 });
 
 // ===========================================================================
-// #587: normalizeCssForDangerCheck decoding contract (PublishKbArticle copy)
+// #587: cssHasDangerousConstruct two-pass contract (PublishKbArticle copy)
 // ===========================================================================
-describe('normalizeCssForDangerCheck (#587)', () => {
+describe('cssHasDangerousConstruct (#587)', () => {
     const BS = '\\';
-    it('decodes a hex escape so \\75rl( reads as url(', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75rl(`), 'url(');
+    // The #587 follow-up bypass: decode-then-strip would decode \2f\2a ... \2a\2f
+    // into CSS comment delimiters and DELETE the live url(evil) between them,
+    // passing the gate; a real browser sees no comment there and fetches evil.
+    // The comment-first two-pass order catches the literal url( in the raw text.
+    it('blocks a literal url() wrapped in escaped comment delimiters (\\2f\\2a ... \\2a\\2f)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f`), true);
     });
-    it('decodes @\\69mport to @import', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`@${BS}69mport`), '@import');
+    it('blocks a hex escape so \\75rl( reads as url(', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75rl(`), true);
     });
-    it('consumes the single whitespace terminator after a hex escape (\\75 rl -> url)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75 rl(`), 'url(');
+    it('blocks @\\69mport (decodes to @import)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`@${BS}69mport`), true);
     });
-    it('decodes uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}55RL(`), 'URL(');
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75${BS}72${BS}6C(`), 'url(');
+    it('blocks the whitespace-terminated hex escape (\\75 rl -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75 rl(`), true);
     });
-    it('decodes the literal-char escape form (\\u\\r\\l -> url)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}u${BS}r${BS}l(`), 'url(');
+    it('blocks uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}55RL(`), true);
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75${BS}72${BS}6C(`), true);
     });
-    it('strips a comment splitting the token (url/* */( -> url(, @im/* */port -> @import)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck('url/* x */('), 'url(');
-        assert.strictEqual(normalizeCssForDangerCheck('@im/* */port'), '@import');
+    it('blocks the literal-char escape form (\\u\\r\\l -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}u${BS}r${BS}l(`), true);
     });
-    it('does not synthesize a blocked token from benign escaped content (content:"\\201C")', () => {
-        assert.doesNotMatch(normalizeCssForDangerCheck(`content:"${BS}201C"`), /url\(|@import/);
+    it('blocks a real comment splitting the token (url/* */( , @im/* */port)', () => {
+        assert.strictEqual(cssHasDangerousConstruct('url/* x */(https://evil.example.com/x)'), true);
+        assert.strictEqual(cssHasDangerousConstruct('@im/* */port "x"'), true);
+    });
+    it('allows benign escaped content that forms no fetch (content:"\\201C")', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`content:"${BS}201C"`), false);
+    });
+    it('allows benign CSS with a real comment and no fetch construct', () => {
+        assert.strictEqual(cssHasDangerousConstruct('/* theme */ body{color:#333;padding:20px}'), false);
     });
 });
 

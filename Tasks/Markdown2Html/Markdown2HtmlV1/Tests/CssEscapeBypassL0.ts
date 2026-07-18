@@ -5,16 +5,21 @@
  * `@\69mport`, the literal-char escape form `\u\r\l(...)`, and a comment placed
  * between `url` and its `(` all slip past a raw match. sanitizeRenderedHtml (via
  * convertMarkdownToHtml) strips any <style> ELEMENT wholesale, so for this task
- * the exposed surface is the inline `style` ATTRIBUTE; normalizeCssForDangerCheck
- * (shared uri-scheme-guard.ts, byte-identical with PublishKbArticle) decodes +
- * strips before the pattern runs. Split into a self-titled scenario file (#565)
+ * the exposed surface is the inline `style` ATTRIBUTE; cssHasDangerousConstruct
+ * (shared uri-scheme-guard.ts, byte-identical with PublishKbArticle) runs the
+ * blocklist the way a browser lexes CSS — comments stripped from the raw bytes
+ * FIRST, then that same text escape-decoded — and blocks if either form matches.
+ * That ordering also closes the escaped-comment inversion (#587 follow-up): a
+ * literal `url(evil)` wrapped in escaped comment delimiters `\2f\2a ... \2a\2f`
+ * must NOT be treated as a comment and deleted, because a real browser sees no
+ * comment there and fetches it. Split into a self-titled scenario file (#565)
  * matching the sibling tasks' Tests/ convention; mocha only runs Tests/L0.ts,
  * which imports this file.
  */
 
 import assert = require('assert');
 import { convertMarkdownToHtml } from '../src/render';
-import { normalizeCssForDangerCheck, DANGEROUS_CSS_PATTERN } from '../src/uri-scheme-guard';
+import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 
 const BS = '\\'; // a single literal backslash, built without JS-string-escape ambiguity
 
@@ -25,6 +30,7 @@ describe('CSS-escape / comment-split inline-style bypass stripped by sanitizeRen
         ['a whitespace-terminated hex escape (\\75 rl)', `<div style="background:${BS}75 rl(https://evil.example.com/x)">x</div>`],
         ['literal-char escapes (\\u\\r\\l)', `<div style="background:${BS}u${BS}r${BS}l(https://evil.example.com/x)">x</div>`],
         ['a comment splitting url from its ( (url/* */()', '<div style="background:url/* x */(https://evil.example.com/x)">x</div>'],
+        ['a literal url wrapped in escaped comment delimiters (\\2f\\2a...\\2a\\2f)', `<div style="background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f">x</div>`],
     ];
     for (const [label, md] of cases) {
         it(`strips an inline style attribute using ${label}`, () => {
@@ -39,28 +45,38 @@ describe('CSS-escape / comment-split inline-style bypass stripped by sanitizeRen
     });
 });
 
-describe('normalizeCssForDangerCheck decoding contract, Markdown2Html copy (#587)', () => {
-    it('decodes a hex escape so \\75rl( reads as url(', () => {
-        assert.match(normalizeCssForDangerCheck(`background:${BS}75rl(x)`), /url\(/);
+describe('cssHasDangerousConstruct two-pass contract, Markdown2Html copy (#587)', () => {
+    // The escaped-comment inversion the #587 follow-up fixes: decode-then-strip
+    // would turn \2f\2a ... \2a\2f into CSS comment delimiters and DELETE the live
+    // url(evil) between them, passing the gate; a real browser sees no comment
+    // there and fetches evil. Comment-first two-pass catches the literal url(.
+    it('blocks a literal url() wrapped in escaped comment delimiters (\\2f\\2a ... \\2a\\2f)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f`), true);
     });
-    it('decodes @\\69mport to @import', () => {
-        assert.match(normalizeCssForDangerCheck(`@${BS}69mport "x"`), /@import/);
+    it('blocks a hex escape so \\75rl( reads as url(', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`background:${BS}75rl(x)`), true);
     });
-    it('consumes the single whitespace terminator after a hex escape (\\75 rl -> url)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75 rl(`), 'url(');
+    it('blocks @\\69mport (decodes to @import)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`@${BS}69mport "x"`), true);
     });
-    it('decodes uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}55RL(`), 'URL(');
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}75${BS}72${BS}6C(`), 'url(');
+    it('blocks the whitespace-terminated hex escape (\\75 rl -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75 rl(`), true);
     });
-    it('decodes the literal-char escape form (\\u\\r\\l -> url)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck(`${BS}u${BS}r${BS}l(`), 'url(');
+    it('blocks uppercase/mixed-case and multi-escape forms (\\55RL, \\75\\72\\6C)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}55RL(`), true);
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}75${BS}72${BS}6C(`), true);
     });
-    it('strips a comment splitting the token (url/* */( -> url(, @im/* */port -> @import)', () => {
-        assert.strictEqual(normalizeCssForDangerCheck('url/* x */('), 'url(');
-        assert.strictEqual(normalizeCssForDangerCheck('@im/* */port'), '@import');
+    it('blocks the literal-char escape form (\\u\\r\\l -> url)', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`${BS}u${BS}r${BS}l(`), true);
     });
-    it('does not synthesize a blocked token from benign escaped content (content:"\\201C")', () => {
-        assert.doesNotMatch(normalizeCssForDangerCheck(`content:"${BS}201C"`), /url\(|@import/);
+    it('blocks a real comment splitting the token (url/* */( , @im/* */port)', () => {
+        assert.strictEqual(cssHasDangerousConstruct('url/* x */(https://evil.example.com/x)'), true);
+        assert.strictEqual(cssHasDangerousConstruct('@im/* */port "x"'), true);
+    });
+    it('allows benign escaped content that forms no fetch (content:"\\201C")', () => {
+        assert.strictEqual(cssHasDangerousConstruct(`content:"${BS}201C"`), false);
+    });
+    it('allows benign CSS with a real comment and no fetch construct', () => {
+        assert.strictEqual(cssHasDangerousConstruct('/* theme */ body{color:#333;padding:20px}'), false);
     });
 });
