@@ -194,7 +194,7 @@ Shown when `command = init`. The `azurerm`/`s3`/`gcs`/`oci` field groups are sho
 | `backendGCPWorkloadIdentityProviderId`       | gcs       | — (required for WIF) | OIDC provider ID within the pool.                                                                                |
 | `backendGCPServiceAccountEmail`              | gcs       | — (required for WIF) | Service account to impersonate for backend access.                                                              |
 | `backendServiceOCI`                          | oci       | — (required) | OCI service connection for the backend.                                                                                 |
-| `backendOCIPar`                              | oci       | —       | OCI Object Storage pre-authenticated request (PAR) URL for the state file.                                                  |
+| `backendOCIPar`                              | oci       | —       | OCI Object Storage pre-authenticated request (PAR) URL for the state file. Its `/p/<token>/` path segment is a bearer credential — treat as a secret variable. See [Security](SECURITY.md#oci-backend-par-residual-risk-bearer-credential-persists-in-a-generated-tf-file) for the config-file persistence residual. |
 | `backendOCIConfigGenerate`                   | oci       | `yes`   | Generates the `backend "http"` Terraform config from `backendOCIPar` at runtime; set `no` if the backend block is already in your `.tf` files. |
 | `backendHCPToken`                            | hcp       | — (required) | HCP Terraform / Terraform Cloud API token. Sets `TF_TOKEN_app_terraform_io`.                                        |
 | `backendHCPOrganization`                     | hcp       | —       | HCP organization name; falls back to the `cloud{}` block in `.tf` files if unset. Sets `TF_CLOUD_ORGANIZATION`.             |
@@ -416,7 +416,7 @@ Converts Markdown files to a single styled HTML document (via markdown-it with h
 
 ### `PublishKbArticle@1` — Publish KB Article to ServiceNow
 
-Creates or updates a ServiceNow knowledge base article from an HTML file. Idempotent: a stable `sourceKey` (or a `kb-key:` front-matter field) correlates re-runs to the same article. Optionally auto-creates categories/subcategories and uploads relative `<img>` images as attachments. Authenticates via a `ServiceNowKb` service connection (OAuth client credentials or basic) or inline credentials.
+Creates or updates a ServiceNow knowledge base article from an HTML file. Idempotent: a stable `sourceKey` (or a `kb-key:` front-matter field) correlates re-runs to the same article. Optionally auto-creates categories/subcategories and uploads relative `<img>` images as attachments. Authenticates via a `ServiceNowKb` service connection (OAuth client credentials or basic) or inline credentials. See the [ServiceNow Setup Guide](docs/setup/servicenow-setup.md) for the minimal ServiceNow roles/ACLs this integration needs.
 
 | Input               | Default | Description                                                                                                      |
 | ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -533,6 +533,8 @@ This extension registers its own service connection types so it can be installed
 Azure uses the standard **Azure Resource Manager** service connection built into Azure DevOps.
 
 > **Note:** These are different from the service connection types registered by the Microsoft DevLabs extension (`AWSServiceEndpoint`, `GoogleCloudServiceEndpoint`, `OCIServiceEndpoint`). If you are migrating from the MS DevLabs extension, you will need to create new service connections using the Pipeline types above.
+
+> **OpenTofu note:** the "for Terraform" display names above are a naming carryover, not a functional restriction — all three connection types work identically whether the step installs `binary: terraform` or `binary: tofu` (see `PipelineTerraformInstaller@1`'s `binary` input). An OpenTofu-only pipeline can create and use these connections exactly as documented.
 
 ---
 
@@ -671,7 +673,7 @@ All other commands (`plan`, `apply`, `destroy`, `show`, `output`, `import`, `ref
 
 ## Agent Compatibility
 
-Tasks run on Windows, macOS, and Linux build agents using Node 24.
+Tasks run on Windows, macOS, and Linux build agents using Node 24. Every task also declares a `Node20_1` execution fallback, so older on-prem/air-gapped agents that lack the Node 24 handler still pick up the task instead of failing to find one — Node 24 remains the preferred, actively-targeted runtime.
 
 ---
 
