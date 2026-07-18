@@ -74,4 +74,42 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
         handler.cleanupTempFiles();
         assert.ok(!fs.existsSync(path.join(scratchDir, configFiles[0])), 'cleanupTempFiles must remove the PAR-bearing config file');
     });
+
+    /**
+     * The PAR URL is a bearer credential and this config file cannot be
+     * relocated to a purged temp directory (#595) — a plain unlink only
+     * removes the directory entry, leaving the bytes potentially recoverable
+     * until overwritten. cleanupTempFiles() must scrub the content (zero it
+     * out) before the unlink, so we intercept fs.unlinkSync to read the
+     * file's content at the exact moment cleanup deletes it and assert the
+     * PAR token is already gone.
+     */
+    it('scrubs the PAR-bearing config file content to zeros before cleanupTempFiles unlinks it (#595)', async () => {
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+
+        const configFiles = fs.readdirSync(scratchDir).filter((f) => /^config-[0-9a-f-]+\.tf$/.test(f));
+        assert.strictEqual(configFiles.length, 1);
+        const configPath = path.join(scratchDir, configFiles[0]);
+        const originalSize = fs.statSync(configPath).size;
+
+        const origUnlinkSync = fs.unlinkSync;
+        let contentAtUnlinkTime: Buffer | undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared fs module
+        (fs as any).unlinkSync = (p: fs.PathLike) => {
+            contentAtUnlinkTime = fs.readFileSync(p as string);
+            return origUnlinkSync(p);
+        };
+        try {
+            handler.cleanupTempFiles();
+        } finally {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restore
+            (fs as any).unlinkSync = origUnlinkSync;
+        }
+
+        assert.ok(contentAtUnlinkTime, 'fs.unlinkSync must have been invoked on the config file');
+        assert.strictEqual(contentAtUnlinkTime!.length, originalSize, 'the scrub must preserve the original file length');
+        assert.ok(contentAtUnlinkTime!.every((b) => b === 0), 'the file must be zeroed out before deletion, not left with the PAR token recoverable');
+        assert.ok(!contentAtUnlinkTime!.includes(Buffer.from('TOKEN123')), 'the bearer token must not survive to the unlink call');
+    });
 });

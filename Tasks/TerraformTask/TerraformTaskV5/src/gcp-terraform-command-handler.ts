@@ -10,15 +10,22 @@ import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
 
-const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
+/** The only two Google token endpoints this task ever actually POSTs an assertion to. */
+const ALLOWED_GOOGLE_TOKEN_URI_HOSTS = ['oauth2.googleapis.com', 'sts.googleapis.com'];
 
 /**
  * The static-key path writes the service connection's "Audience" field
  * straight into the credentials file as `token_uri` -- the URL the Google SDK
- * POSTs the service-account-signed JWT assertion to. Constrain it to https
- * Google token endpoints (mirroring the WIF path's hardcoded
- * https://sts.googleapis.com/v1/token) so a hostile or mistyped value cannot
- * direct the signed assertion to an arbitrary origin (#494).
+ * POSTs the service-account-signed JWT assertion to. Constrain it to exactly
+ * the https Google token endpoints this task uses (oauth2.googleapis.com,
+ * plus sts.googleapis.com -- the WIF path's hardcoded
+ * https://sts.googleapis.com/v1/token) rather than the whole *.googleapis.com
+ * namespace, so a hostile or mistyped value cannot direct the signed
+ * assertion to an arbitrary origin (#494), nor to some other unrelated
+ * Google API host that happens to share the domain suffix (#594 --
+ * deliberate narrowing endorsed by the audit; all googleapis.com hosts are
+ * Google-owned so the prior wildcard was low-risk, but offered no benefit
+ * over naming the exact endpoints in use).
  */
 function assertGoogleTokenUri(tokenUri: string): void {
     let parsed: URL;
@@ -28,8 +35,7 @@ function assertGoogleTokenUri(tokenUri: string): void {
         throw new Error(tasks.loc('GcpTokenUriNotAllowed', tokenUri));
     }
     const host = parsed.hostname.toLowerCase();
-    const hostAllowed = host === 'oauth2.googleapis.com'
-        || (host.endsWith('.googleapis.com') && host.length > '.googleapis.com'.length);
+    const hostAllowed = ALLOWED_GOOGLE_TOKEN_URI_HOSTS.includes(host);
     if (parsed.protocol !== 'https:' || !hostAllowed) {
         throw new Error(tasks.loc('GcpTokenUriNotAllowed', tokenUri));
     }
@@ -39,12 +45,6 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "gcp";
-    }
-
-    private validateAuthScheme(scheme: string, inputName: string): void {
-        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
-            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
-        }
     }
 
     private getJsonKeyFilePath(serviceName: string) {

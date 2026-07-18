@@ -39,6 +39,8 @@ import './CrossCloudBackendCredentialTests/HcpOciGenericConfigureBackendCredenti
 import './BinaryNameAllowlistL0';
 // Direct unit tests for the GCP static-key token_uri (Audience) validation.
 import './GcpTokenUriValidationL0';
+// Direct unit tests for the hoisted auth-scheme validator shared by AWS/GCP/OCI.
+import './AuthSchemeValidatorL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.
