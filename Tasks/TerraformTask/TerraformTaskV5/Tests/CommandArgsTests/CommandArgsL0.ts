@@ -1,11 +1,18 @@
 import tl = require('azure-pipelines-task-lib');
-import { parseVarFileTokens, parseTargetTokens } from '../../src/base-terraform-command-handler';
+import { parseVarFileTokens, parseTargetTokens, extractOutFlagPath } from '../../src/base-terraform-command-handler';
 
 let failed = false;
 
 function check(actual: string[], expected: string[], label: string): void {
     const ok = actual.length === expected.length && actual.every((v, i) => v === expected[i]);
     if (!ok) {
+        tl.error(`${label}: expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
+        failed = true;
+    }
+}
+
+function checkOut(actual: string | undefined, expected: string | undefined, label: string): void {
+    if (actual !== expected) {
         tl.error(`${label}: expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
         failed = true;
     }
@@ -54,6 +61,28 @@ try {
 } catch {
     // expected
 }
+
+// extractOutFlagPath (#612): detect a user-supplied plan-file path so plan()/
+// destroy() reuse it instead of injecting a shadowing second -out=.
+checkOut(extractOutFlagPath(undefined), undefined, 'out undefined');
+checkOut(extractOutFlagPath(''), undefined, 'out empty');
+// Equals form, single and double dash.
+checkOut(extractOutFlagPath('-out=tfplan'), 'tfplan', 'out equals');
+checkOut(extractOutFlagPath('--out=tfplan'), 'tfplan', 'out equals double-dash');
+// Space form, single and double dash.
+checkOut(extractOutFlagPath('-out tfplan'), 'tfplan', 'out space');
+checkOut(extractOutFlagPath('--out tfplan'), 'tfplan', 'out space double-dash');
+// A quoted path with spaces in the SPACE form is recognized (quotes stripped so
+// the returned path matches what ToolRunner.line() passes to terraform).
+checkOut(extractOutFlagPath('-out "my plan.tfplan"'), 'my plan.tfplan', 'out quoted space form');
+// -out need not be the first token.
+checkOut(extractOutFlagPath('-var-file=prod.tfvars -out=out/plan.tfplan'), 'out/plan.tfplan', 'out after other flags');
+// No -out present at all.
+checkOut(extractOutFlagPath('-refresh-only -no-color'), undefined, 'out absent');
+// A lookalike flag (-timeout=) must NOT be treated as -out.
+checkOut(extractOutFlagPath('-timeout=5m'), undefined, 'out lookalike not matched');
+// A dangling -out with no following token yields undefined (no crash).
+checkOut(extractOutFlagPath('-out'), undefined, 'out dangling');
 
 if (failed) {
     tl.setResult(tl.TaskResult.Failed, 'Command arg token parsing failed');

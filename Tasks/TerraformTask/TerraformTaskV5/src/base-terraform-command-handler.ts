@@ -85,6 +85,41 @@ export function hasPositionalCommandArg(commandOptions: string | undefined): boo
     return tokens.some(t => !t.startsWith('-'));
 }
 
+/**
+ * Returns the plan-file path from a user-supplied `-out=<path>` / `-out <path>`
+ * (double-dash `--out` accepted too, as Terraform does) token in
+ * `commandOptions`, or undefined if none is present. Uses the SAME best-effort
+ * tokenizer as {@link hasPositionalCommandArg} (double-quoted whole tokens are
+ * recognized -- and their quotes stripped so the returned path matches what
+ * ToolRunner's `.line()` passes to Terraform -- single quotes / backslash
+ * escapes / an `-out="quoted value with spaces"` equals-form are not, matching
+ * that helper's documented limits).
+ *
+ * Used ONLY by plan()/destroy()'s publishPlanSummary path (#612): when the user
+ * already saves the plan via their own `-out=`, the task must NOT inject a second
+ * `-out=` -- Terraform silently honors only the LAST `-out=` on the command line,
+ * so the task's tempfile would shadow the user's file and the user's artifact
+ * plan would never be written. When a user `-out=` is present the subsequent
+ * `terraform show -json` digest is built against the user's own saved plan (which
+ * then describes the very plan that gets applied); when absent, the task injects
+ * its own tempfile exactly as before.
+ */
+export function extractOutFlagPath(commandOptions: string | undefined): string | undefined {
+    if (!commandOptions) return undefined;
+    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
+    const stripQuotes = (s: string): string => s.replace(/"/g, '');
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const eq = token.match(/^--?out=(.*)$/);
+        if (eq) return stripQuotes(eq[1]);
+        if (token === '-out' || token === '--out') {
+            const next = tokens[i + 1];
+            if (next !== undefined) return stripQuotes(next);
+        }
+    }
+    return undefined;
+}
+
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
 // redaction core applies (design §5.2.7): rather than re-derive it here (the
 // detection-vs-redaction drift class, #446), it is defined ONCE in
@@ -282,15 +317,26 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Core infrastructure ---
 
-    protected async execWithStdoutCapture(terraformTool: ToolRunner, options: IExecOptions): Promise<{ code: number; stdout: string }> {
+    protected async execWithStdoutCapture(terraformTool: ToolRunner, options: IExecOptions): Promise<{ code: number; stdout: string; stderr: string }> {
         let stdout = '';
+        let stderr = '';
         terraformTool.on('stdout', (data: string | Buffer) => {
             stdout += data.toString();
+        });
+        // #613: capture stderr too. When a caller runs with `silent: true` (the
+        // structured apply path) the ToolRunner suppresses its own echo of the
+        // child's output, and Terraform writes CLI usage errors / provider
+        // crashes to STDERR rather than the stdout stream the caller consumes --
+        // so without capturing stderr those failures are completely invisible
+        // (the production incident behind #613). Callers that don't need it
+        // simply ignore the field.
+        terraformTool.on('stderr', (data: string | Buffer) => {
+            stderr += data.toString();
         });
 
         const code = await terraformTool.execAsync(options);
 
-        return { code, stdout };
+        return { code, stdout, stderr };
     }
 
     public cleanupTempFiles(): void {
@@ -573,10 +619,26 @@ export abstract class BaseTerraformCommandHandler {
         // publishPlanSummary is set so a publishPlanResults-only (or neither) run's
         // command line -- and therefore its attachment -- is byte-for-byte
         // unchanged (backward-compat regression, design §12.3).
+        //
+        // #612: if the user already saves the plan via their own `-out=<path>` in
+        // commandOptions, reuse THAT path for the show -json digest instead of
+        // injecting a second `-out=`. Terraform honors only the LAST `-out=` on the
+        // command line, so a task-injected tempfile would silently shadow the
+        // user's file -- the user's artifact plan would never be written, breaking
+        // the plan-artifact-then-gated-apply pattern. Reusing the user's path also
+        // makes the digest describe the exact plan that later gets applied. The
+        // user's path is NOT tracked in `tempFiles`, so end-of-step cleanup never
+        // deletes it (neither is the task's own -out tempfile -- both rely on the
+        // agent purging Agent.TempDirectory / the working dir at job end).
         let planFilePath: string | undefined;
         if (publishPlanSummary) {
-            planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
-            terraformTool.arg(`-out=${planFilePath}`);
+            const userOutPath = extractOutFlagPath(commandOptions);
+            if (userOutPath) {
+                planFilePath = userOutPath;
+            } else {
+                planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
+                terraformTool.arg(`-out=${planFilePath}`);
+            }
         }
 
         let result: number;
@@ -794,27 +856,33 @@ export abstract class BaseTerraformCommandHandler {
             replaceFlag: true, refreshOnly: true, varFiles: true,
             targetResources: true, secureVarFile: true,
         }));
-        this.applyAutoApprove(terraformTool);
-        this.applyTokens(terraformTool, this.parallelismTokens());
-        this.appendTerraformVariables(terraformTool);
 
-        await this.handleProvider(applyCommand);
-        await this.warnIfMultipleProviders();
-
+        // Read publishApplyResults BEFORE applyAutoApprove so the structured
+        // path's `-json` can be emitted between `-auto-approve` and the (possibly
+        // positional plan-file) `commandOptions` -- see #613 and applyAutoApprove's
+        // `extraFlags` doc. Appending `-json` after commandOptions (as before)
+        // produced `apply -auto-approve <planfile> -json`, which Terraform rejects
+        // as "Too many command line arguments" for the standard saved-plan pattern.
         const publishApplyResults = tasks.getInput("publishApplyResults");
-        if (!publishApplyResults) {
-            return terraformTool.execAsync(<IExecOptions>{
-                cwd: applyCommand.workingDirectory
-            });
-        }
-
         // Structured path (design §7/D2): -json replaces terraform's
         // human-readable apply log, so the raw NDJSON must not hit the console
         // (silent) -- each event's already-human-readable @message is echoed
         // explicitly below instead, preserving the live-log experience while the
         // structured (secret-bearing) fields are consumed only by the redaction
         // pipeline, never printed.
-        terraformTool.arg("-json");
+        this.applyAutoApprove(terraformTool, publishApplyResults ? ["-json"] : []);
+        this.applyTokens(terraformTool, this.parallelismTokens());
+        this.appendTerraformVariables(terraformTool);
+
+        await this.handleProvider(applyCommand);
+        await this.warnIfMultipleProviders();
+
+        if (!publishApplyResults) {
+            return terraformTool.execAsync(<IExecOptions>{
+                cwd: applyCommand.workingDirectory
+            });
+        }
+
         const commandOutput = await this.execWithStdoutCapture(terraformTool, {
             cwd: applyCommand.workingDirectory,
             silent: true,
@@ -829,8 +897,21 @@ export abstract class BaseTerraformCommandHandler {
         // rejection above (ignoreReturnCode was needed here only so a FAILED
         // apply's NDJSON is still available to build the digest's
         // appliedBeforeFailure/diagnostics picture).
+        const stderr = commandOutput.stderr.trim();
         if (commandOutput.code !== 0) {
-            throw new Error(tasks.loc("TerraformApplyFailed", commandOutput.code));
+            // #613: with silent:true the ToolRunner does NOT echo Terraform's own
+            // output, and CLI usage errors / provider crashes go to STDERR -- not
+            // the -json NDJSON stdout stream the digest consumes. Fold the captured
+            // stderr into the failure so the cause is never swallowed (the incident
+            // showed only a bare "exit code 1" with an empty log).
+            throw new Error(stderr
+                ? `${tasks.loc("TerraformApplyFailed", commandOutput.code)}\n${stderr}`
+                : tasks.loc("TerraformApplyFailed", commandOutput.code));
+        }
+        // A successful apply may still write warnings to stderr; pass them through
+        // at debug level (they are not part of the NDJSON the digest is built from).
+        if (stderr) {
+            tasks.debug(stderr);
         }
         return commandOutput.code;
     }
@@ -921,10 +1002,21 @@ export abstract class BaseTerraformCommandHandler {
         // publishPlanSummary is set (same gating as plan()'s -out), so a run with
         // neither publish input set has a byte-for-byte unchanged command line
         // (backward-compat, design §12.3 applied to destroy).
+        //
+        // #612 (sibling): destroy DOES forward commandOptions -- applyAutoApprove()
+        // above emits them via `terraformTool.line(commandOptions)` -- so the same
+        // last-`-out=`-wins collision applies here. Honor a user-supplied `-out=`
+        // identically to plan(): reuse it for the show -json digest and inject no
+        // second `-out=`.
         let planFilePath: string | undefined;
         if (publishPlanSummary) {
-            planFilePath = path.join(tempDir, `terraform-destroy-${uuidV4()}.tfplan`);
-            terraformTool.arg(`-out=${planFilePath}`);
+            const userOutPath = extractOutFlagPath(this.getCommandOptions());
+            if (userOutPath) {
+                planFilePath = userOutPath;
+            } else {
+                planFilePath = path.join(tempDir, `terraform-destroy-${uuidV4()}.tfplan`);
+                terraformTool.arg(`-out=${planFilePath}`);
+            }
         }
 
         if (!publishPlanSummary) {
@@ -957,11 +1049,22 @@ export abstract class BaseTerraformCommandHandler {
      * Forces `-auto-approve` on the tool runner (apply/destroy), then applies any
      * free-form `commandOptions`. If the user already supplied `-auto-approve` in
      * `commandOptions`, it is not added a second time.
+     *
+     * `extraFlags` are emitted AFTER `-auto-approve` but BEFORE `commandOptions`.
+     * This ordering matters for #613: for the standard saved-plan apply pattern
+     * `commandOptions` is a POSITIONAL plan-file path, and Terraform's flag parser
+     * stops at the first positional argument -- so a flag (e.g. `-json`) appended
+     * after `commandOptions` is rejected as a second positional ("Too many command
+     * line arguments"). Placing such flags here guarantees they precede the
+     * positional. Defaults to none, so destroy()'s call is byte-for-byte unchanged.
      */
-    private applyAutoApprove(terraformTool: ToolRunner): void {
+    private applyAutoApprove(terraformTool: ToolRunner, extraFlags: string[] = []): void {
         const commandOptions = this.getCommandOptions();
         if (!commandOptions || !commandOptions.includes('-auto-approve')) {
             terraformTool.arg('-auto-approve');
+        }
+        for (const flag of extraFlags) {
+            terraformTool.arg(flag);
         }
         if (commandOptions) terraformTool.line(commandOptions);
     }

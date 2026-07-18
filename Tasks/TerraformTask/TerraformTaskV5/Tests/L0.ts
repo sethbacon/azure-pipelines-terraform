@@ -2616,6 +2616,17 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('plan honors a user-supplied -out= in commandOptions (no second injected -out=), builds the digest from the user plan, and leaves the user file after cleanup (#612)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanUserOutHonored.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanUserOutHonoredL0 should have succeeded.'));
+        }, tr);
+    });
+
     it('azure apply should succeed and publish a redacted structured apply summary attachment, echoing @message to the console', async () => {
         let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySuccessPublishResults.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -2646,6 +2657,28 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureApplyDefaultOmitsDiagnosticsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply of a saved plan (positional plan file) with publishApplyResults places -json BEFORE the plan file (#613)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySavedPlanPublishResults.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplySavedPlanPublishResultsL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure apply structured path surfaces terraform stderr on a non-zero exit instead of swallowing it (#613)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplySavedPlanStderrSurfaced.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplySavedPlanStderrSurfacedL0 should have succeeded.'));
         }, tr);
     });
 
@@ -2681,6 +2714,17 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureDestroyPublishSummaryBackwardCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('destroy honors a user-supplied -out= in commandOptions (no second injected -out=) (#612 sibling)', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Azure/AzureDestroyUserOutHonored.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureDestroyUserOutHonoredL0 should have succeeded.'));
         }, tr);
     });
 
