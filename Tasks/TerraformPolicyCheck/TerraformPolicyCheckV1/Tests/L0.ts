@@ -15,6 +15,8 @@ import './HclEscapeL0';
 import './SentinelConfigDirRegistrationL0';
 // Direct unit tests for the secure-temp writeSecretFile/replaceSecretFile copy (#607).
 import './SecureTempL0';
+// Direct unit tests for the bounded engine-output capture guard (#632).
+import './OutputCapL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 

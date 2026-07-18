@@ -439,7 +439,7 @@
             "label": "Output filename",
             "visibleRule": "outputTo = file",
             "required": true,
-            "helpMarkDown": "Path (relative to the working directory) of the file to write the command output to. Used when Output to is set to file for the show and custom commands."
+            "helpMarkDown": "Path (relative to the working directory) of the file to write the command output to. Used when Output to is set to file for the show and custom commands. The file is written with owner-only (0600) permissions, but -- unlike the `output` command, which writes under `Agent.TempDirectory` -- it lands wherever you point it, by default inside the working directory. A `show -json` plan or a `custom` command's output can contain values Terraform declared `sensitive = true` in cleartext, so a step that publishes the working directory as a pipeline artifact would sweep this file up. Choose a path outside any directory you publish as an artifact (e.g. an absolute path under `$(Agent.TempDirectory)`), and delete the file in a later step if downstream steps do not need it."
         },
         {
             "name": "cleanupOutputFile",

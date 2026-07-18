@@ -377,6 +377,20 @@ describe('TerraformDriftReport Test Suite', function () {
         }, tr);
     });
 
+    it('DriftReportHugeFile — an oversized plan file fails closed before it is read (#632)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportHugeFile.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e =>
+                    /PlanFileTooLarge|exceeding the .*-byte guard/.test(e) && e.includes('tdr-huge-plan.json'),
+                ),
+                `error should name the plan file and the size guard: ${tr.errorIssues}`,
+            );
+        }, tr);
+    });
+
     it('DriftReportInvalidJson — malformed plan JSON fails with an error naming the plan file (#563)', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportInvalidJson.js'));
         await tr.runAsync();
