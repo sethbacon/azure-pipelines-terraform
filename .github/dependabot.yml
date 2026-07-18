@@ -7,6 +7,12 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore"
+    groups:
+      # Minor/patch Action bumps are low-risk and numerous; batch them into one
+      # PR so a solo maintainer isn't triaging dozens of near-identical bumps
+      # (issue #639). Majors stay ungrouped for individual review.
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
 
   # npm — TerraformTaskV5
   - package-ecosystem: "npm"
@@ -16,6 +22,15 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      # Batch low-risk devDependency minor/patch bumps into one PR per task so
+      # the moderate/low-severity triage path SECURITY.md describes stays
+      # tractable for a solo maintainer across 11 task ecosystems (issue #639).
+      # Runtime dependencies (e.g. azure-pipelines-task-lib) and any major bump
+      # stay ungrouped for individual review.
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       # ts-node (the test transpiler) does not support TypeScript 6 yet.
       - dependency-name: "typescript"
@@ -29,6 +44,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -41,6 +60,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -53,6 +76,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -65,6 +92,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -77,6 +108,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -89,6 +124,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -101,6 +140,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -113,6 +156,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -125,6 +172,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -137,6 +188,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
@@ -149,6 +204,10 @@ updates:
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]

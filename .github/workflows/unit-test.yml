@@ -87,6 +87,27 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      # task.json declares a Node20_1 execution handler alongside Node24 (see
+      # CLAUDE.md's task.json Schema Key Points) so older on-prem/air-gapped
+      # agents without the Node 24 runner can still invoke this task in
+      # production -- but until now nothing in CI ever ran under Node 20, so a
+      # Node-20-incompatible change would ship invisible (issue #654). Every
+      # step above runs under Node 24 (ts-node/mocha need it); this re-points
+      # the runner's `node` at 20 and exercises the ALREADY-COMPILED
+      # src/index.js the Node20_1 handler targets. With no ADO input
+      # environment variables present, index.ts's own try/catch always
+      # converts the resulting "input required" error into a caught
+      # tasks.setResult(Failed, ...) and the process exits 0 (verified
+      # locally) -- so the exit code alone is a reliable signal: zero means
+      # Node 20 loaded and ran the compiled module graph successfully,
+      # non-zero means a real incompatibility (e.g. a parse-time syntax error)
+      # surfaced before that catch could run.
+      - name: Set up Node 20 for Node20_1 handler smoke test
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+      - name: Verify compiled output runs under Node 20 (Node20_1 handler)
+        run: node src/index.js
 
   build-and-test-installer-v1:
     name: Build and Test Installer V1 (${{ matrix.os }})
@@ -143,6 +164,15 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      # See the identical step in build-and-test-v5 above (issue #654):
+      # TerraformProviderMirrorV1 is the other task.json that still declares a
+      # Node20_1 execution handler alongside Node24.
+      - name: Set up Node 20 for Node20_1 handler smoke test
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+      - name: Verify compiled output runs under Node 20 (Node20_1 handler)
+        run: node src/index.js
 
   build-and-test-publish-v1:
     name: Build and Test Module Publish V1 (${{ matrix.os }})
