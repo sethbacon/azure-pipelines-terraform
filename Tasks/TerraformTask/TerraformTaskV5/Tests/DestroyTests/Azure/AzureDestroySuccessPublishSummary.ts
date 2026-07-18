@@ -7,20 +7,16 @@ import crypto = require('crypto');
 // destroy()'s structured-summary path adds `-out=<planfile>` to the destroy
 // command and later runs `terraform show -json <planfile>` on the SAME path
 // (mirroring plan()'s AzurePlanSuccessPublishSummary.ts), so the mock exec
-// answers below must know that path ahead of time. Pin the first
-// crypto.randomUUID() call (the -out planfile path) and let every later call
-// (the digest attachment's own random filename) fall through to the real
-// implementation.
+// answers below must know that path ahead of time. Pin crypto.randomUUID() to
+// a fixed value for EVERY call (not just the first) -- call-order-independent,
+// because azure-pipelines-task-lib >=5.276 also calls crypto.randomUUID()
+// internally (Vault.genKey(), constructed before task code runs) against this
+// same process-wide crypto module. The digest attachment's own random
+// filename reuses the same fixed value too, which is harmless (different
+// filename prefix/suffix, no path collision; the test never asserts the
+// temp path).
 const FIXED_UUID = 'cccccccc-0000-4000-8000-000000000003';
-const realRandomUUID = crypto.randomUUID.bind(crypto);
-let usedFixed = false;
-(crypto as unknown as { randomUUID: (...a: unknown[]) => string }).randomUUID = (...args: unknown[]): string => {
-    if (!usedFixed) {
-        usedFixed = true;
-        return FIXED_UUID;
-    }
-    return (realRandomUUID as (...a: unknown[]) => string)(...args);
-};
+(crypto as unknown as { randomUUID: (...a: unknown[]) => string }).randomUUID = (): string => FIXED_UUID;
 
 const planFilePath = path.join(os.tmpdir(), `terraform-destroy-${FIXED_UUID}.tfplan`);
 
