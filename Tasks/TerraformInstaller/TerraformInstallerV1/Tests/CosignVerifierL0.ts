@@ -204,3 +204,56 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     });
     /* eslint-enable @typescript-eslint/no-explicit-any */
 });
+
+// Real cosign invocation (#656). Every test above stubs tasks.tool()/exec() and only
+// inspects the argv, so the actual cosign binary is never spawned. This block runs
+// the REAL cosign binary end-to-end through verifyCosignSignature (real tasks.which,
+// real ToolRunner, real process) when cosign is present on PATH, and SKIPS with a
+// message otherwise — so it degrades gracefully in the per-PR Installer V1 CI job,
+// which installs no cosign. It feeds cosign a syntactically-real but non-matching
+// certificate/signature so the real binary actually parses our exact argv and returns
+// a verification failure offline (a malformed certificate fails before any Sigstore/
+// Rekor network call), proving the argv construction + ToolRunner wiring + non-zero-
+// exit → VerificationFailure mapping hold against a real cosign. The POSITIVE
+// end-to-end verify against genuine OpenTofu keyless material (which needs Sigstore
+// network + a real release) is covered by weekly-security.yml's opentofu-cosign-canary,
+// which installs cosign and drives this same verifyCosignSignature code.
+describe('cosign-verifier: real cosign invocation (graceful skip when unavailable) (#656)', function () {
+    this.timeout(30000);
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const hc = httpClient as any;
+    const origFetchBufferAllow404 = hc.fetchBufferAllow404;
+    const VERSION = '1.11.6';
+    let cosignAvailable = false;
+
+    before(() => {
+        try {
+            tasks.which('cosign', true);
+            cosignAvailable = true;
+        } catch {
+            cosignAvailable = false;
+            console.log('cosign not found on PATH — skipping the real cosign invocation test (#656).');
+        }
+    });
+    afterEach(() => { hc.fetchBufferAllow404 = origFetchBufferAllow404; });
+
+    it('spawns the real cosign binary with the built argv and maps its failure to a VerificationFailure', async function () {
+        if (!cosignAvailable) { this.skip(); }
+        // A well-formed PEM wrapper around non-certificate bytes: cosign parses the
+        // --certificate flag we pass, fails to load it as a real X.509 cert, and exits
+        // non-zero — offline, deterministically, without contacting Rekor.
+        hc.fetchBufferAllow404 = async (url: string) =>
+            url.endsWith('.pem')
+                ? new TextEncoder().encode('-----BEGIN CERTIFICATE-----\nbm90LWEtcmVhbC1jZXJ0\n-----END CERTIFICATE-----\n')
+                : new Uint8Array([0x00, 0x01, 0x02, 0x03]);
+        await assert.rejects(
+            verifyCosignSignature('sums-content', 'https://x.example/SHA256SUMS.sig', 'https://x.example/SHA256SUMS.pem', VERSION, true),
+            (err: unknown) => {
+                assert.ok(isVerificationFailure(err), 'a real cosign non-zero exit must map to a typed VerificationFailure');
+                return true;
+            },
+        );
+    });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+});

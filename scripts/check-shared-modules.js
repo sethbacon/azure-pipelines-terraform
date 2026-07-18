@@ -149,23 +149,28 @@ const FAMILIES = [
     },
     {
         // Bounded exponential-backoff retry helper (retryAsync + the 429
-        // Retry-After parser). One shared loop replaces the four that used to be
+        // Retry-After parser). One shared loop replaces the ones that used to be
         // independently open-coded in TokenGenerator (id-token-generator.ts),
-        // retryHttp (http.ts), postJsonWithRetry (callback.ts) and withRetry
-        // (servicenow-http.ts). Each call site preserves its own semantics via
-        // predicates rather than a hardcoded policy, so a hardening change (jitter,
-        // a max-total-time cap, ...) lands here once instead of drifting across
-        // 4-5 copies. Tasks can't cross-import, so it lives as byte-identical
-        // copies gated here. NOTE: the three installer http-client.ts copies keep
-        // their OWN internal withRetry (a separate family above) on purpose — they
-        // sit on a different transport (fetch+AbortController) and trust model
-        // (public artifacts, no credential) — so they are deliberately NOT folded
-        // into this module.
+        // retryHttp (http.ts), postJsonWithRetry (callback.ts), withRetry
+        // (servicenow-http.ts), and the three installer-family fetch clients'
+        // withRetry (http-client.ts). Each call site preserves its own semantics
+        // via predicates rather than a hardcoded policy, so a hardening change
+        // (jitter, a max-total-time cap, ...) lands here once instead of drifting
+        // across copies. Tasks can't cross-import, so it lives as byte-identical
+        // copies gated here. NOTE: the installer http-client.ts copies previously
+        // kept their OWN internal withRetry on purpose; as of #645 they delegate
+        // here too (retry.ts has no azure-pipelines-task-lib dependency, so it is
+        // portable across the fetch+AbortController transport as well), which is
+        // why the three installer src dirs now appear in this family. http-client.ts
+        // itself stays its own separate family above — only the retry loop is shared.
         dirs: [
             'Tasks/TerraformTask/TerraformTaskV5/src',
             'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
             'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
             'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
         ],
         modules: [
             'retry.ts',
