@@ -92,6 +92,28 @@ describe('http client transport', () => {
         }
     });
 
+    it('surfaces response headers (#633) so a 429 Retry-After can reach retryHttp', async () => {
+        // Real end-to-end round-trip (not a hand-built fixture): HttpResponse.headers
+        // must carry the server's actual response headers, case-preserved by Node,
+        // rather than being dropped as before this fix.
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 429;
+            res.setHeader('Retry-After', '2');
+            res.end('{"error":"slow down"}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${port}/api`, {});
+            assert.strictEqual(resp.status, 429);
+            // Node lowercases header names on IncomingMessage.headers.
+            assert.strictEqual(resp.headers?.['retry-after'], '2');
+        } finally {
+            server.close();
+        }
+    });
+
     it('rejects a self-signed certificate when rejectUnauthorized is true (the default)', async () => {
         // Secure-default counterpart to the test above: with TLS verification ON
         // (the default), the exact same self-signed loopback server must be
@@ -285,6 +307,48 @@ describe('retryHttp', () => {
         const res = await retryHttp(() => { calls += 1; return Promise.resolve({ status: 429, body: '' }); }, { retries: 2, baseDelayMs: 0 });
         assert.strictEqual(res.status, 429);
         assert.strictEqual(calls, 3); // initial attempt + 2 retries
+    });
+
+    it('honors a capped 429 Retry-After header over the default backoff (#633)', async () => {
+        // baseDelayMs is deliberately large: if the Retry-After header were NOT
+        // honored, the retry would wait the full 5000ms backoff and this
+        // assertion would fail on the elapsed-time check below.
+        const start = Date.now();
+        let calls = 0;
+        const res = await retryHttp(() => {
+            calls += 1;
+            return Promise.resolve({ status: 429, body: '', headers: { 'retry-after': '0' } });
+        }, { retries: 1, baseDelayMs: 5000 });
+        const elapsed = Date.now() - start;
+        assert.strictEqual(res.status, 429);
+        assert.strictEqual(calls, 2);
+        assert.ok(elapsed < 1000, `expected the Retry-After: 0 header to be honored instead of the 5000ms backoff, took ${elapsed}ms`);
+    });
+
+    it('falls back to the default backoff when Retry-After is absent or invalid (#633)', async () => {
+        let calls = 0;
+        const res = await retryHttp(() => {
+            calls += 1;
+            return Promise.resolve({ status: 429, body: '', headers: { 'retry-after': 'not-a-valid-value' } });
+        }, { retries: 1, baseDelayMs: 5 });
+        assert.strictEqual(res.status, 429);
+        assert.strictEqual(calls, 2);
+    });
+
+    it('does not honor a Retry-After header on a 5xx response (only 429 gets the override) (#633)', async () => {
+        // A 5xx is retryable too, but this family only wires Retry-After for 429
+        // (matching servicenow-http.ts's withRetry); a 5xx always uses the plain
+        // exponential backoff even if the server happened to send the header.
+        const start = Date.now();
+        let calls = 0;
+        const res = await retryHttp(() => {
+            calls += 1;
+            return Promise.resolve({ status: 503, body: '', headers: { 'retry-after': '0' } });
+        }, { retries: 1, baseDelayMs: 50 });
+        const elapsed = Date.now() - start;
+        assert.strictEqual(res.status, 503);
+        assert.strictEqual(calls, 2);
+        assert.ok(elapsed >= 40, `expected the default ~50ms backoff to apply to a 5xx despite the Retry-After header, took ${elapsed}ms`);
     });
 });
 
@@ -677,5 +741,24 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             console.log('STDOUT', tr.stdout);
             throw error;
         }
+    });
+});
+
+describe('index.ts setResourcePath bootstrap (#637)', () => {
+    it('resolves real templated messages from task.json once the resource path is set', () => {
+        // Mirrors the exact call added to run() in src/index.ts:
+        // tasks.setResourcePath(path.join(__dirname, '..', 'task.json')). This
+        // must use the REAL azure-pipelines-task-lib/task (as imported at the
+        // top of this file), not the mock-run harness used by the
+        // "index orchestrator" tests above -- mock-run's TaskMockRunner swaps in
+        // mock-task.js, whose loc() unconditionally returns 'loc_mock_<key> ...'
+        // regardless of whether setResourcePath was ever called, so it cannot
+        // observe this regression at all.
+        tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
+        assert.strictEqual(tasks.loc('InputRequired', 'name'), "Input 'name' is required.");
+        assert.strictEqual(
+            tasks.loc('UnsupportedRegistryType', 'bogus'),
+            "Unsupported registryType 'bogus'. Expected 'hcp' or 'private'.",
+        );
     });
 });

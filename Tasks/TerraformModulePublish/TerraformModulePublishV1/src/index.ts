@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import path = require('path');
 import { createHttpsClient } from './http';
 import { RegistryPublisher, RegistryType } from './types';
 import { PrivateRegistryPublisher } from './private-publisher';
@@ -85,6 +86,7 @@ function buildPublisher(): RegistryPublisher {
 }
 
 async function run(): Promise<void> {
+    tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
     try {
         const result = await buildPublisher().publish();
         console.log(result.message);
