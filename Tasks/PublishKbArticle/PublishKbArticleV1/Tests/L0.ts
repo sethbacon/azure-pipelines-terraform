@@ -21,6 +21,8 @@ import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
 import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;

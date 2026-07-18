@@ -202,4 +202,41 @@ describe('OCI token exchange — URL validation & transport', function () {
         await assert.rejects(exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey), /HTTP 503/);
         assert.strictEqual(calls, 3, 'a persistent 5xx should be retried up to the attempt limit');
     });
+
+    it('retries a 429 and then succeeds (sibling re-sweep)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            if (calls === 1) {
+                return new Response('slow down', { status: 429, statusText: 'Too Many Requests' });
+            }
+            return new Response(JSON.stringify({ access_token: 'after-429' }), { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        const upst = await exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey);
+        assert.strictEqual(upst, 'after-429', 'a 429 must be treated as transient and retried');
+        assert.strictEqual(calls, 2, 'should have retried exactly once after the 429');
+    });
+
+    it('honors a capped Retry-After from a 429 over the default backoff (sibling re-sweep)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            if (calls === 1) {
+                return new Response('slow down', {
+                    status: 429,
+                    statusText: 'Too Many Requests',
+                    headers: { 'Retry-After': '1' },
+                });
+            }
+            return new Response(JSON.stringify({ access_token: 'after-retry-after' }), { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        const started = Date.now();
+        const upst = await exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey);
+        const elapsed = Date.now() - started;
+        assert.strictEqual(upst, 'after-retry-after');
+        assert.strictEqual(calls, 2);
+        // The default first-retry backoff is 200ms; Retry-After: 1 must stretch
+        // the wait to ~1000ms. A generous lower bound keeps this robust on CI.
+        assert.ok(elapsed >= 900, `expected the 1s Retry-After to be honored, waited only ${elapsed}ms`);
+    });
 });

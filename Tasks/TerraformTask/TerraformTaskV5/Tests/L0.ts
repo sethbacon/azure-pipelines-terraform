@@ -8,6 +8,8 @@ import * as os from 'os';
 import './OciTokenExchangeL0';
 // Direct unit tests for the OIDC ID-token generator (WIF fallback).
 import './IdTokenGeneratorL0';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 // Direct unit tests for the agent HTTP proxy configuration helper.
 import './ProxyConfigL0';
 // Direct unit tests for the secure var-file loader.
