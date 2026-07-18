@@ -288,6 +288,8 @@ Installs a policy engine — **OPA** (sha256-verified binary from the `open-poli
 
 Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terraform show -json` output) and gates the pipeline on the result.
 
+> **Note:** Sentinel here runs as a standalone CLI, not inside HCP Terraform/Terraform Enterprise. Policies see the **raw** `terraform show -json` document, not HCP Terraform's `tfplan/v2` mock, and `enforcement_level` is applied by this task (see `defaultEnforcementLevel`/`overrideSoftMandatory` below), not natively enforced by the CLI. An existing HCP Terraform Sentinel policy set will likely need adapting before it works here — see [docs/troubleshooting.md](docs/troubleshooting.md#sentinel-policies-written-for-hcp-terraform-dont-work).
+
 | Input                     | Default          | Description                                                                                               |
 | ------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
 | `engine`                  | `opa`            | `opa` or `sentinel`.                                                                                      |
