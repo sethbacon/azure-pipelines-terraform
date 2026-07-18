@@ -111,9 +111,14 @@ export function sanitizeConfigFile(raw: string | undefined | null, statSync: Sta
 }
 
 /**
- * Builds the ordered terraform-docs argument list (excluding the binary itself and
- * any free-form additional arguments) for the given configuration. The module path
- * is emitted last as the positional argument terraform-docs scans.
+ * Builds the ordered terraform-docs *flag* argument list (excluding the binary
+ * itself, the trailing module-path positional, and any free-form additional
+ * arguments) for the given configuration.
+ *
+ * The module path is intentionally NOT included here -- see
+ * `buildModulePathArgs`. It must be appended last, after any `additionalArgs`
+ * the caller interposes, so a `--` terminator can precede it without also
+ * swallowing flags from `additionalArgs` as extra positionals.
  */
 export function buildTerraformDocsArgs(config: TerraformDocsConfig): string[] {
     const args = resolveFormatter(config.formatter);
@@ -140,6 +145,26 @@ export function buildTerraformDocsArgs(config: TerraformDocsConfig): string[] {
         }
     }
 
-    args.push(config.modulePath && config.modulePath.length > 0 ? config.modulePath : '.');
     return args;
+}
+
+/**
+ * Returns the trailing terraform-docs positional-path tokens: a `--` option
+ * terminator followed by the module path (defaulting to `.`).
+ *
+ * `--` stops terraform-docs' (cobra/pflag) option-parsing before the
+ * positional, so a modulePath beginning with `-` (e.g. a literal `-weird`
+ * directory name) can never be misparsed as a flag -- verified empirically
+ * against terraform-docs v0.24.0 (`-weird` alone fails with "unknown
+ * shorthand flag"; `-- -weird` succeeds). Matches the `--` discipline
+ * policy-source.ts uses before its own url/dir positionals.
+ *
+ * Callers MUST append this last -- after `buildTerraformDocsArgs`'s flags
+ * AND after any free-form `additionalArgs` -- because once terraform-docs
+ * sees `--` it stops parsing flags for the rest of the command line: a flag
+ * placed after this terminator would be treated as a second positional and
+ * rejected ("accepts 1 arg(s), received 2"), rather than parsed as a flag.
+ */
+export function buildModulePathArgs(modulePath: string | undefined): string[] {
+    return ['--', modulePath && modulePath.length > 0 ? modulePath : '.'];
 }

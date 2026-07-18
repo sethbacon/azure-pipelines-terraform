@@ -2,7 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import fs = require('fs');
 import path = require('path');
-import { buildTerraformDocsArgs, sanitizeConfigFile, TerraformDocsConfig } from './args-builder';
+import { buildTerraformDocsArgs, buildModulePathArgs, sanitizeConfigFile, TerraformDocsConfig } from './args-builder';
 
 async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
@@ -30,9 +30,16 @@ async function run() {
             toolRunner.arg(arg);
         }
 
+        // additionalArgs is interposed here -- before the `--` module-path
+        // terminator below -- so any flags it carries are still parsed as
+        // flags rather than being swallowed as extra positionals.
         const additionalArgs = tasks.getInput('additionalArgs', false);
         if (additionalArgs) {
             toolRunner.line(additionalArgs);
+        }
+
+        for (const arg of buildModulePathArgs(config.modulePath)) {
+            toolRunner.arg(arg);
         }
 
         // ignoreReturnCode lets us surface a precise message. terraform-docs exits

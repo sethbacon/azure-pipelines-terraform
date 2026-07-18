@@ -16,7 +16,7 @@ const a: ma.TaskLibAnswers = {
   which: { 'terraform-docs': 'terraform-docs' },
   checkPath: { 'terraform-docs': true },
   exec: {
-    'terraform-docs markdown table --output-file README.md --output-check .': {
+    'terraform-docs markdown table --output-file README.md --output-check -- .': {
       code: 1,
       stdout: 'README.md is out of date'
     }

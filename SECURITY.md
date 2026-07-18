@@ -62,6 +62,12 @@ On a fresh (non-cache-hit) install, the installer verifies the downloaded **arch
 
 The TerraformTask `runAzLogin` helper (opt-in, **default false**) invokes `az login` with the WIF federated token or service-principal secret on the command line, which is visible via `ps` / `/proc/<pid>/cmdline` to other processes on a shared agent — the Azure CLI offers no non-argv way to supply these. The primary provider-auth path never touches argv (credentials flow via environment variables). Scope `runAzLogin` to single-tenant / non-shared agents; leave it disabled otherwise.
 
+## OCI backend PAR residual risk: bearer credential persists in a generated `.tf` file
+
+`backendOCIPar` (TerraformTaskV5, `backendType=oci`) is an OCI Object Storage pre-authenticated request (PAR) URL, and its `/p/<token>/` path segment is itself a bearer credential — anyone who obtains the URL has read/write access to the state bucket for as long as the PAR is valid, with no separate secret required. Unlike every other credential this task handles (which flow via environment variables or a scrubbed secure temp file), the OCI `http` backend has no `-backend-config` flag support, so the task must write `backendOCIPar` into a generated `config-<uuid>.tf` file inside the step's Configuration directory — Terraform only loads `*.tf` files from the working directory, so this file cannot be relocated to a purged temp directory the way the task's other credential files are. The task writes the file with restrictive permissions and scrubs (overwrites) its contents before deleting it at the end of the step, but a host crash before that cleanup runs can still leave the PAR on disk.
+
+**Operator guidance:** treat `backendOCIPar` as a secret pipeline variable (see the README input table and [`docs/yaml-examples.md`](docs/yaml-examples.md#oci)) rather than a literal value in committed YAML, and point the step's `Configuration directory` at an ephemeral, agent-managed path rather than a long-lived checkout or shared directory — the task's own `helpMarkDown` for this input repeats this same guidance.
+
 ## CI/CD residual risk: `npm audit` gate threshold and moderate/low-severity triage
 
 Every task's job in `unit-test.yml` runs `npm audit --omit=dev --audit-level=high`, so a **moderate or low** severity advisory in a production dependency does not fail the PR/push build. This is intentional, not an oversight: moderate/low advisories in transitive dependencies are frequently not independently fixable by this repo (no patched version yet, or the fix is upstream of a pinned tool), and gating PRs on them would create chronic, unactionable red builds unrelated to the change under review.
@@ -76,6 +82,12 @@ Every task's job in `unit-test.yml` runs `npm audit --omit=dev --audit-level=hig
 
 `force` (opt-in, **default false**) only downgrades one heuristic in `html-validate.ts`'s `validateHtmlContent()` — a parsing-fidelity check (does the parsed output retain at least 50% of the input's length) that can have legitimate false positives on unusual-but-safe markdown-to-HTML output — from a hard failure to a warning. Every stored-XSS-relevant check in the same function (external/inline `<script>` elements, inline event-handler attributes, `<base>`/meta-refresh redirects, `javascript:`/`vbscript:`/non-image `data:` URIs, including control-character-obfuscated variants) always fails the task regardless of `force`. This was not always the case: prior to this fix, `force` disabled the entire validation gate, including the XSS-relevant checks — see the resolved history in CHANGELOG.md for the original stored-XSS finding.
 
+
+## Accepted risk: TSM drift-callback token has no destination host allowlist
+
+`TerraformDriftReportV1`'s `callbackUrl`/`callbackToken` inputs (see the README table) POST the drift summary, with the token as an `X-TSM-Callback-Token` bearer header, to an operator-supplied URL. `callbackUrl` is validated only for the `https` scheme — there is no host allowlist pinning it to a specific Terraform State Manager (TSM) instance, unlike the federated-token exchanges for AzureRM/AWS/GCP/OCI, which do pin destination hosts. This is an accepted risk, not an oversight: `callbackUrl` is operator-supplied pipeline configuration pointing at the operator's own TSM instance, not a value an attacker can influence at runtime; `callbackToken` is a one-shot, low-value credential (`callback.ts` never retries after a received response, so a single POST either lands at the intended TSM or fails); and TLS verification is fail-secure by default (`rejectUnauthorized: true` — see the README's `rejectUnauthorized` row for the risk of disabling it).
+
+**Guidance if you want the extra layer:** there is currently no built-in way to pin an expected callback host. If your threat model calls for it, constrain `callbackUrl` at the pipeline-variable level (e.g. a protected pipeline variable an ordinary contributor cannot override) rather than relying on the task to enforce it.
 
 ## Structured plan/apply/state results residual risk: redaction depends on Terraform's own sensitivity marks
 
