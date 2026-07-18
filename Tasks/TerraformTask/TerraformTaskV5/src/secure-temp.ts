@@ -108,18 +108,28 @@ function applyWindowsRestrictiveAcl(filePath: string): void {
  * copy-on-write or log-structured filesystem/SSD wear-leveling remap, which
  * can retain the pre-overwrite blocks regardless -- this narrows the ordinary
  * case, not every storage layer.
+ *
+ * The path is lstat'd (never stat'd) first, and the overwrite is skipped
+ * entirely unless lstat reports a plain regular file. A tracked temp path
+ * that has been swapped for a symlink (e.g. an attacker racing a shared
+ * working directory between write and cleanup) is left alone rather than
+ * followed -- opening through it would zero out whatever the link points at
+ * instead of the tracked file (CWE-59), matching the symlink-refusal idiom
+ * `replaceSecretFile` already uses. `cleanupTempFiles()` still unlinks the
+ * link entry itself; only the content-overwrite is skipped here.
  */
 export function scrubFile(filePath: string): void {
-    let size: number;
+    let stat: fs.Stats;
     try {
-        size = fs.statSync(filePath).size;
+        stat = fs.lstatSync(filePath);
     } catch {
         return; // Nothing at this path to scrub.
     }
-    if (size === 0) return;
+    if (!stat.isFile()) return; // Symlink or other non-regular entry -- never opened.
+    if (stat.size === 0) return;
     const fd = fs.openSync(filePath, 'r+');
     try {
-        fs.writeSync(fd, Buffer.alloc(size, 0), 0, size, 0);
+        fs.writeSync(fd, Buffer.alloc(stat.size, 0), 0, stat.size, 0);
         fs.fsyncSync(fd);
     } finally {
         fs.closeSync(fd);

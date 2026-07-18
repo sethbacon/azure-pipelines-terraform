@@ -294,4 +294,19 @@ describe('scrubFile — overwrite-before-unlink content scrub (#595)', function 
         assert.doesNotThrow(() => scrubFile(target));
         assert.strictEqual(fs.readFileSync(target, 'utf8'), '');
     });
+
+    it('does not follow a symlink onto a victim file (CWE-59)', function () {
+        const victim = path.join(scratchDir, 'victim.txt');
+        const original = 'victim-secret-content';
+        fs.writeFileSync(victim, original);
+        const link = path.join(scratchDir, 'tracked-temp-file.tf');
+        try {
+            fs.symlinkSync(victim, link, 'file');
+        } catch {
+            this.skip();
+        }
+        assert.doesNotThrow(() => scrubFile(link));
+        assert.strictEqual(fs.readFileSync(victim, 'utf8'), original, 'the symlink target must not be zeroed');
+        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink entry itself is left for cleanupTempFiles() to unlink');
+    });
 });
