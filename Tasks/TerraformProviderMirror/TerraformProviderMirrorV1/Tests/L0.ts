@@ -4,6 +4,7 @@ import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
+import './UrlSecretRedactionL0';
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from '../src/config-generator';
 
 describe('config-generator', () => {
