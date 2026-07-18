@@ -9,18 +9,10 @@ import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
 
-const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
-
 export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "aws";
-    }
-
-    private validateAuthScheme(scheme: string, inputName: string): void {
-        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
-            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
-        }
     }
 
     /**

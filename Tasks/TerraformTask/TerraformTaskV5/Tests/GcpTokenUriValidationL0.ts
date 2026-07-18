@@ -6,12 +6,15 @@ import { EnvironmentVariableHelper } from '../src/environment-variables';
 import { TEST_GCP_PRIVATE_KEY_PEM } from './test-gcp-fixtures';
 
 /**
- * Direct unit tests for the GCP static-key token_uri validation (#494): the
- * service connection's "Audience" field is written into the credentials file
- * as `token_uri` -- the URL the Google SDK POSTs the service-account-signed
- * JWT assertion to -- so it must be an https:// Google token endpoint
- * (oauth2.googleapis.com or *.googleapis.com), mirroring the WIF path's
- * hardcoded https://sts.googleapis.com/v1/token.
+ * Direct unit tests for the GCP static-key token_uri validation (#494, #594):
+ * the service connection's "Audience" field is written into the credentials
+ * file as `token_uri` -- the URL the Google SDK POSTs the service-account-signed
+ * JWT assertion to -- so it must be an https:// Google token endpoint, and
+ * exactly one of the two hosts this task actually uses: oauth2.googleapis.com
+ * or sts.googleapis.com (mirroring the WIF path's hardcoded
+ * https://sts.googleapis.com/v1/token). Every other *.googleapis.com
+ * subdomain is rejected (#594 narrowed the allowlist from the whole
+ * *.googleapis.com namespace down to these two exact endpoints).
  */
 describe('GCP static-key token_uri validation (#494)', function () {
     const originalGetInput = tasks.getInput;
@@ -65,7 +68,7 @@ describe('GCP static-key token_uri validation (#494)', function () {
         (handler as any).cleanupTempFiles();
     });
 
-    it('accepts another *.googleapis.com host', async () => {
+    it('accepts the other allowed host, sts.googleapis.com', async () => {
         audienceValue = 'https://sts.googleapis.com/v1/token';
         const handler = await runStaticKeyPath();
         const credsPath = process.env['GOOGLE_BACKEND_CREDENTIALS']!;
@@ -82,6 +85,11 @@ describe('GCP static-key token_uri validation (#494)', function () {
 
     it('rejects a lookalike host that merely ends in googleapis.com without the dot boundary', async () => {
         audienceValue = 'https://evilgoogleapis.com/token';
+        await assert.rejects(runStaticKeyPath(), /GcpTokenUriNotAllowed/);
+    });
+
+    it('rejects a real but non-allowlisted *.googleapis.com subdomain (#594 narrowing)', async () => {
+        audienceValue = 'https://iamcredentials.googleapis.com/v1/token';
         await assert.rejects(runStaticKeyPath(), /GcpTokenUriNotAllowed/);
     });
 
