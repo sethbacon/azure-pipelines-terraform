@@ -21,7 +21,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import tasks = require('azure-pipelines-task-lib/task');
 import { baseUrl, assertQueryValueSafe } from './servicenow-client';
-import { extractLocalImageRefs, rewriteImageSrcs } from './image-rewrite';
+import { extractLocalImageRefs, rewriteImageSrcs, isValidSysId } from './image-rewrite';
 
 export interface SnAttachment {
     sys_id: string;
@@ -54,6 +54,23 @@ export async function listArticleAttachments(
     const result = response.data.result;
     if (!Array.isArray(result)) {
         throw new Error(tasks.loc('AttachmentListNotArray', articleId));
+    }
+    // Trust-boundary validation: every attachment sys_id in this response is
+    // validated against the 32-char hex GUID shape (isValidSysId, shared with
+    // uploadAttachment below and the HTML sink in image-rewrite.ts) right
+    // here, at the point the response is parsed -- before an element can
+    // reach EITHER downstream sink this list feeds: deleteAttachment's URL
+    // path segment (syncImageAttachment's replace path, when a filename match
+    // has a differing hash) or the rewritten `<img src>` (the reuse path,
+    // when the hash matches). A hostile/corrupted backend value such as
+    // `x/../table/kb_knowledge/<victimId>` fails closed here rather than at
+    // whichever sink happens to consume it later (#606 follow-up: the
+    // original fix guarded only the HTML sink, leaving the DELETE call
+    // unvalidated).
+    for (const attachment of result as SnAttachment[]) {
+        if (typeof attachment.sys_id !== 'string' || !isValidSysId(attachment.sys_id)) {
+            throw new Error(tasks.loc('AttachmentSysIdInvalid', String(attachment.sys_id)));
+        }
     }
     return result as SnAttachment[];
 }
@@ -91,7 +108,15 @@ export async function uploadAttachment(
     if (!result || typeof result !== 'object' || typeof (result as { sys_id?: unknown }).sys_id !== 'string') {
         throw new Error(tasks.loc('AttachmentUploadNoSysId', fileName));
     }
-    return (result as { sys_id: string }).sys_id;
+    const sysId = (result as { sys_id: string }).sys_id;
+    // Trust-boundary validation (#606 follow-up, mirrors listArticleAttachments
+    // above): a fresh upload's sys_id feeds the same HTML sink a reused
+    // attachment's sys_id does, so it is validated here too, right where this
+    // producer parses the response.
+    if (!isValidSysId(sysId)) {
+        throw new Error(tasks.loc('AttachmentSysIdInvalid', sysId));
+    }
+    return sysId;
 }
 
 /** Delete an attachment by sys_id. */
@@ -100,7 +125,14 @@ export async function deleteAttachment(
     headers: Record<string, string>,
     attachmentId: string,
 ): Promise<void> {
-    const url = `${baseUrl(instance)}/api/now/attachment/${attachmentId}`;
+    // encodeURIComponent guards the path segment as defense-in-depth, matching
+    // every other URL sink in servicenow-client.ts (getArticle,
+    // updateKnowledgeArticle, updateArticleBody, changeWorkflowState). The
+    // primary guard is isValidSysId, which both producers of attachmentId
+    // (listArticleAttachments, uploadAttachment above) already enforce at the
+    // point their response is parsed -- this is a second, independent layer in
+    // case an invalid value ever reached this call some other way.
+    const url = `${baseUrl(instance)}/api/now/attachment/${encodeURIComponent(attachmentId)}`;
     await snRequest('DELETE', url, { headers });
 }
 
