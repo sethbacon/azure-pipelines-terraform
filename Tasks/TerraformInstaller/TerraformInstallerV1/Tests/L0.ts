@@ -10,6 +10,9 @@ import './CosignVerifierL0';
 import './GpgVerifierL0';
 // Direct unit tests for the http-client timeout guard.
 import './HttpClientL0';
+// Direct unit tests for the checksum/sha256/platform helpers exercising a REAL
+// computed digest (verifySha256 against real file bytes and real crypto) (#636).
+import './InstallerHelpersL0';
 // Direct unit tests for the optional registry download_url host allowlist.
 import './RegistryAllowedHostsL0';
 // Direct unit tests for the operator-URL userinfo redaction helpers (#586).

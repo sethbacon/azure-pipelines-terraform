@@ -354,7 +354,7 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
 // NOTE: the OS/arch/checksum/exec-discovery helpers below are intentionally
 // mirrored in PolicyAgentInstallerV1 (each task bundles independently); keep the two
 // copies in sync — the parseSha256 binary-mode regex especially.
-function parseSha256(sha256SumsContent: string, zipFileName: string): string {
+export function parseSha256(sha256SumsContent: string, zipFileName: string): string {
     const lines = sha256SumsContent.split('\n');
     for (const line of lines) {
         // Format: "<hex-hash>  <filename>"; the optional leading "*" marks
@@ -371,7 +371,7 @@ function parseSha256(sha256SumsContent: string, zipFileName: string): string {
     throw new VerificationFailure(`SHA256 checksum not found for ${zipFileName}`);
 }
 
-async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
+export async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
     const fileBuffer = fs.readFileSync(filePath);
     const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
     if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
@@ -519,7 +519,7 @@ async function downloadVerifiedZipForReverify(downloadSource: string, version: s
     }
 }
 
-function getPlatformString(): string {
+export function getPlatformString(): string {
     switch (os.type()) {
         case "Darwin": return "darwin";
         case "Linux": return "linux";
@@ -528,7 +528,7 @@ function getPlatformString(): string {
     }
 }
 
-function getArchString(): string {
+export function getArchString(): string {
     switch (os.arch()) {
         case "x64": return "amd64";
         case "ia32": return "386";
