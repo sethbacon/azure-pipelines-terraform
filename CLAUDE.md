@@ -164,7 +164,16 @@ azure-pipelines-terraform/
 │   ├── release.json                   # Release publisher override (sethbacon)
 │   └── self.json                      # Personal dev override (gitignored)
 ├── docs/
-│   └── setup/                        # Setup guides (WIF, etc.)
+│   ├── design/
+│   │   └── plan-apply-digest-spec.md # Frozen digest schema/caps contract (Phase 5)
+│   ├── initiatives/
+│   │   └── structured-plan-apply-tabs.md # Retained design/redaction narrative for the shipped tab (see Completed Initiatives below)
+│   ├── setup/                        # WIF setup guides (aws/gcp/oci) + private-testing.md
+│   ├── migration-from-ms-devlabs.md  # Step-by-step migration from the MS DevLabs extension
+│   ├── release-checklist.md          # Manual release verification steps
+│   ├── structured-results.md         # Walkthrough: enabling/reading the Terraform results tab
+│   ├── troubleshooting.md            # Common issues: auth, backend config, installer, agents
+│   └── yaml-examples.md              # YAML examples for every task/command, incl. cross-cloud
 └── .github/workflows/                 # GitHub Actions CI/CD
     ├── unit-test.yml                  # CI: build + test on PR/push
     └── release.yml                    # Release: tag-triggered marketplace publish
@@ -539,4 +548,4 @@ All six roadmap initiatives are complete and shipped:
 - Initiative 5: Policy Evaluation (OPA / Sentinel)
 - Initiative 6: Drift Report Task
 
-The detailed planning documents (formerly under `docs/initiatives/`) were removed once every initiative shipped; see [CHANGELOG.md](CHANGELOG.md) for the release history.
+Most detailed planning documents were removed once their initiative shipped; see [CHANGELOG.md](CHANGELOG.md) for the release history. `docs/initiatives/structured-plan-apply-tabs.md` is retained for reference (it is the authoritative design source cited by `docs/design/plan-apply-digest-spec.md`, which normatively fixes only the frozen digest schema/caps and points back to the initiatives doc for the fuller design/redaction-algorithm narrative) — it is not dead/stale despite the shipped feature.

@@ -4,19 +4,13 @@ import path = require('path');
 import os = require('os');
 import crypto = require('crypto');
 
-// Pin the first crypto.randomUUID() call (the -out planfile path) so the mock
-// exec answers below can match the exact command line -- see
-// AzureDestroySuccessPublishSummary.ts for the full rationale.
+// Pin crypto.randomUUID() to a fixed value for EVERY call (not just the
+// first) so the mock exec answers below can match the exact command line --
+// call-order-independent, see AzureDestroySuccessPublishSummary.ts for the
+// full rationale (azure-pipelines-task-lib's own Vault also calls
+// randomUUID() before task code runs).
 const FIXED_UUID = 'dddddddd-0000-4000-8000-000000000004';
-const realRandomUUID = crypto.randomUUID.bind(crypto);
-let usedFixed = false;
-(crypto as unknown as { randomUUID: (...a: unknown[]) => string }).randomUUID = (...args: unknown[]): string => {
-    if (!usedFixed) {
-        usedFixed = true;
-        return FIXED_UUID;
-    }
-    return (realRandomUUID as (...a: unknown[]) => string)(...args);
-};
+(crypto as unknown as { randomUUID: (...a: unknown[]) => string }).randomUUID = (): string => FIXED_UUID;
 
 const planFilePath = path.join(os.tmpdir(), `terraform-destroy-${FIXED_UUID}.tfplan`);
 
