@@ -168,7 +168,7 @@ azure-pipelines-terraform/
 │   │   └── plan-apply-digest-spec.md # Frozen digest schema/caps contract (Phase 5)
 │   ├── initiatives/
 │   │   └── structured-plan-apply-tabs.md # Retained design/redaction narrative for the shipped tab (see Completed Initiatives below)
-│   ├── setup/                        # WIF setup guides (aws/gcp/oci) + private-testing.md
+│   ├── setup/                        # WIF setup guides (aws/gcp/oci) + private-testing.md + servicenow-setup.md
 │   ├── migration-from-ms-devlabs.md  # Step-by-step migration from the MS DevLabs extension
 │   ├── release-checklist.md          # Manual release verification steps
 │   ├── structured-results.md         # Walkthrough: enabling/reading the Terraform results tab
@@ -452,14 +452,14 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 
 ## Local Development Environment
 
-Verified tooling (as of May 2026):
+Verified tooling snapshot (periodically re-verified rather than tracked to an exact date — re-check locally with `--version` if it's been a while since the table below was last touched):
 
 | Tool               | Status                 | Version                                          |
 | ------------------ | ---------------------- | ------------------------------------------------ |
 | Node.js            | Installed              | v24.14.0 (Active LTS — matches CI target)        |
 | npm                | Installed              | v11.9.0                                          |
 | TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install`         |
-| `tfx-cli`          | Not globally installed | Available as dev dep after `npm install` at root |
+| `tfx-cli`          | Not globally installed | Available as dev dep after `npm install` at root (pinned `0.23.2` at the repo root — see `package.json`) |
 | GitHub CLI (`gh`)  | Installed              | v2.87.3                                          |
 | Terraform          | Installed              | v1.14.6 at `/c/dev/terraform`                    |
 

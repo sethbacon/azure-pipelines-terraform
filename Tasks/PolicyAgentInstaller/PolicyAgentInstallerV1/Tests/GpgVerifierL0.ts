@@ -6,6 +6,7 @@ import * as openpgp from 'openpgp';
 import tasks = require('azure-pipelines-task-lib/task');
 import * as httpClient from '../src/http-client';
 import { verifyGpgSignature } from '../src/gpg-verifier';
+import { HASHICORP_GPG_PUBLIC_KEY } from '../src/hashicorp-gpg-key';
 
 // Direct (parent-process) unit tests for the GPG signature gate. These use the
 // REAL openpgp/crypto (the MockTestRunner integration scenarios stub openpgp away,
@@ -99,5 +100,26 @@ describe('gpg-verifier: HashiCorp trust-root canary (real embedded key)', functi
         // Must not throw. Confirmed independently with `gpg --verify` against this
         // exact fixture pair before committing (see PR description).
         await verifyGpgSignature(sumsContent, 'https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_SHA256SUMS.sig', true);
+    });
+});
+
+// Fingerprint pin (#652). The trust-root canary above proves the embedded key can
+// still verify a genuine HashiCorp signature; the CI byte-identity check
+// (scripts/check-shared-modules.js) proves the bundled copies match EACH OTHER — but
+// neither proves the embedded key is the specific, documented HashiCorp identity
+// rather than some other well-formed OpenPGP key a coordinated edit to all copies
+// could substitute. This computes the primary key's fingerprint/key-ID from the
+// embedded armored block with openpgp and pins them to the documented values
+// (hashicorp-gpg-key.ts's header: Key ID 34365D9472D7468F), so any key swap fails CI
+// independently of the copy-equality check.
+describe('hashicorp-gpg-key: embedded key is pinned to the documented HashiCorp fingerprint (#652)', function () {
+    this.timeout(15000);
+
+    it('the embedded key primary fingerprint / key-ID equal HashiCorp Security\'s known identity', async () => {
+        const key = await openpgp.readKey({ armoredKey: HASHICORP_GPG_PUBLIC_KEY });
+        // Full 40-hex primary fingerprint of HashiCorp Security (security@hashicorp.com);
+        // its low 16 hex are the documented Key ID 34365D9472D7468F.
+        assert.strictEqual(key.getFingerprint(), 'c874011f0ab405110d02105534365d9472d7468f');
+        assert.strictEqual(key.getKeyID().toHex(), '34365d9472d7468f');
     });
 });

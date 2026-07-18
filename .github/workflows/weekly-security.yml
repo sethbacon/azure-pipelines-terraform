@@ -174,23 +174,41 @@ jobs:
             core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) configured.`);
 
   # ── OpenTofu cosign trust-root canary ──────────────────
-  # Exercises the real `cosign verify-blob` invocation -- with the exact same
-  # certificate-identity regexp and OIDC issuer pinned in
-  # TerraformInstallerV1/src/cosign-verifier.ts (OPENTOFU_CERT_IDENTITY_REGEXP) --
-  # against a current OpenTofu release's SHA256SUMS/.sig/.pem. Catches drift between
-  # that pinning and OpenTofu's actual release-signing identity, or a cosign CLI/flag
-  # change, before it breaks every default OpenTofu install in a customer pipeline
-  # (#497b). Non-required: a failure here only opens an issue via notify-on-failure
-  # below, it never blocks a PR.
+  # Exercises the installer's REAL verifyCosignSignature() (cosign-verifier.ts) --
+  # the exact argv it builds, including the version-bound certificate-identity regexp
+  # (buildOpenTofuCertIdentityRegexp, #611) and pinned OIDC issuer -- against a real
+  # cosign binary and a current OpenTofu release's SHA256SUMS/.sig/.pem. This is the
+  # cosign equivalent of the hashicorp-gpg-canary below: it drives THIS codebase's
+  # own invocation end-to-end rather than a hand-typed `cosign verify-blob`, so a bug
+  # that only manifests against the real binary (a flag cosign silently ignores, a
+  # ToolRunner wiring regression, drift between the pinned identity and OpenTofu's
+  # actual release-signing identity, or a cosign CLI/flag change) is caught before it
+  # breaks every default OpenTofu install in a customer pipeline (#497b, #656). The
+  # per-PR unit-test job installs no cosign (and keyless verify-blob additionally
+  # needs Sigstore-network access), so this real end-to-end invocation lives here,
+  # where cosign is installed and network is available. Non-required: a failure here
+  # only opens an issue via notify-on-failure below, it never blocks a PR.
   opentofu-cosign-canary:
     name: OpenTofu cosign trust-root canary
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
     steps:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Install installer-task dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile installer task (emits the JS the canary requires)
+        run: npm run compile
       - name: Resolve latest OpenTofu release version
         id: version
         run: |
@@ -200,24 +218,30 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Download SHA256SUMS + signature + certificate
+      - name: Download SHA256SUMS
         env:
           VERSION: ${{ steps.version.outputs.version }}
+        run: curl -fsSL -o SHA256SUMS "https://github.com/opentofu/opentofu/releases/download/v${VERSION}/tofu_${VERSION}_SHA256SUMS"
+      - name: Verify SHA256SUMS with the installer's own cosign verifier (real argv, end-to-end)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # Reuses cosign-verifier.ts's verifyCosignSignature (required=true, so a
+        # missing/bad signature or a wrong-identity certificate hard-fails) rather than
+        # reimplementing the cosign invocation: it fetches the .sig/.pem from the same
+        # GitHub release via the task's own http-client, builds the version-bound
+        # identity regexp, and shells out to the real cosign binary with the exact argv
+        # a production OpenTofu install uses.
         run: |
-          base="https://github.com/opentofu/opentofu/releases/download/v${VERSION}"
-          curl -fsSL -o SHA256SUMS "${base}/tofu_${VERSION}_SHA256SUMS"
-          curl -fsSL -o SHA256SUMS.sig "${base}/tofu_${VERSION}_SHA256SUMS.sig"
-          curl -fsSL -o SHA256SUMS.pem "${base}/tofu_${VERSION}_SHA256SUMS.pem"
-
-      - name: Verify with cosign (same identity/issuer pinning as cosign-verifier.ts)
-        run: |
-          cosign verify-blob \
-            --certificate SHA256SUMS.pem \
-            --signature SHA256SUMS.sig \
-            --certificate-identity-regexp '^https://github\.com/opentofu/opentofu/\.github/workflows/.+@refs/tags/v[0-9].*$' \
-            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            SHA256SUMS
+          node -e '
+            const fs = require("fs");
+            const { verifyCosignSignature } = require("./src/cosign-verifier");
+            const version = process.env.VERSION;
+            const content = fs.readFileSync("SHA256SUMS", "utf8");
+            const base = "https://github.com/opentofu/opentofu/releases/download/v" + version + "/tofu_" + version + "_SHA256SUMS";
+            verifyCosignSignature(content, base + ".sig", base + ".pem", version, true)
+              .then(function () { console.log("OK: OpenTofu cosign signature verified via the installer's own verifier for tofu " + version); })
+              .catch(function (err) { console.error("OpenTofu cosign canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
 
   # ── HashiCorp GPG trust-root canary ────────────────────
   # Exercises the installer's REAL verifyGpgSignature() (gpg-verifier.ts) against

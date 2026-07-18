@@ -113,7 +113,7 @@
       "helpMarkDown": "Delete the JSON summary file (written to the agent temp directory) when the task finishes. It is retained by default so downstream steps can read it via the `summaryFilePath` output variable. Enable to remove it immediately after the callback -- e.g. on a self-hosted agent whose temp directory is not wiped between jobs and where the summary may contain sensitive plan values."
     }
   ],
-  "OutputVariables": [
+  "outputVariables": [
     {
       "name": "driftDetected",
       "description": "'true' when any non-no-op, non-read change was planned."

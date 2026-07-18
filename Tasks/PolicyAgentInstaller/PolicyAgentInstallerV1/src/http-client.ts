@@ -13,6 +13,7 @@
 // Apply future fixes to both repos' copies where they still apply.
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
+import { retryAsync } from './retry';
 
 /**
  * Per-request timeouts (ms). Without an AbortController a hung TCP connection
@@ -25,6 +26,13 @@ export const DOWNLOAD_TIMEOUT_MS = 600_000;
 const MAX_REDIRECTS = 5;
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_MS = 200;
+
+/**
+ * Upper bound on the non-JSON response body echoed in a fetchJson parse-failure
+ * message, so a credential-reflecting 2xx body (e.g. a captive portal or an auth
+ * proxy's HTML error page returned with a 200) cannot be dumped to the log whole.
+ */
+const JSON_ERROR_BODY_CHARS = 512;
 
 /** Upper bound (ms) on an honored HTTP 429 Retry-After, so a hostile/misconfigured server cannot stall the install. */
 const RETRY_AFTER_CAP_MS = 30_000;
@@ -205,26 +213,34 @@ export async function fetchWithTimeout<T>(
     }
 }
 
-/** Retries a fetch on transient failures (network error, timeout, 5xx, 429) with exponential backoff. */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    let lastErr: unknown;
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-        try {
-            return await fn();
-        } catch (err) {
-            lastErr = err;
-            // A non-HttpError is a network/DNS/TLS failure — treat as transient.
-            const retryable = err instanceof HttpError ? err.retryable : true;
-            if (!retryable || attempt === RETRY_ATTEMPTS) throw err;
-            // Honor a capped 429 Retry-After when the server sent one (#584);
-            // otherwise use the exponential backoff.
-            const retryAfterMs = err instanceof HttpError ? err.retryAfterMs : undefined;
-            const delayMs = retryAfterMs ?? RETRY_BASE_MS * Math.pow(2, attempt - 1);
-            tasks.debug(`Fetch attempt ${attempt} failed (${err instanceof Error ? err.message : err}); retrying...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-    }
-    throw lastErr;
+/**
+ * Retries a fetch on transient failures (network error, timeout, 5xx, 429) with
+ * exponential backoff. Delegates to the shared retry.ts helper (retryAsync) so the
+ * installer family shares the one bounded-backoff loop with the rest of the repo
+ * (#645); the exact previous semantics are preserved via predicates:
+ *   - total attempts = RETRY_ATTEMPTS (retries + the initial try),
+ *   - a non-HttpError (network/DNS/TLS failure) is transient; an HttpError is
+ *     retried only when its `retryable` flag is set,
+ *   - a capped 429 Retry-After is honored when the server sent one (#584),
+ *     otherwise the RETRY_BASE_MS * 2**n exponential backoff is used.
+ */
+function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+    return retryAsync(fn, {
+        retries: RETRY_ATTEMPTS - 1,
+        baseDelayMs: RETRY_BASE_MS,
+        // A non-HttpError is a network/DNS/TLS failure — treat as transient.
+        retryError: (err) => (err instanceof HttpError ? err.retryable : true),
+        // Honor a capped 429 Retry-After when the server sent one (#584);
+        // otherwise fall back to the exponential backoff (backoffMs).
+        delayMs: (_attempt, backoffMs, outcome) =>
+            outcome.kind === 'error' && outcome.error instanceof HttpError && outcome.error.retryAfterMs !== undefined
+                ? outcome.error.retryAfterMs
+                : backoffMs,
+        onRetry: (attempt, _delayMs, outcome) => {
+            const err = outcome.kind === 'error' ? outcome.error : undefined;
+            tasks.debug(`Fetch attempt ${attempt + 1} failed (${err instanceof Error ? err.message : String(err)}); retrying...`);
+        },
+    });
 }
 
 /**
@@ -263,7 +279,19 @@ export function fetchJson<T>(url: string): Promise<T> {
             throw new HttpError(tasks.loc("RegistryRequestFailed", url, response.status), isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         const buf = await readBoundedArrayBuffer(response, url);
-        return JSON.parse(Buffer.from(buf).toString('utf8')) as T;
+        const text = Buffer.from(buf).toString('utf8');
+        try {
+            return JSON.parse(text) as T;
+        } catch {
+            // A 2xx whose body is not valid JSON (a captive portal, a misconfigured
+            // proxy/WAF, or an internal registry returning an HTML error page with a
+            // 200 status) is a DETERMINISTIC failure, not a transient one. Classify it
+            // as a non-retryable HttpError so withRetry does not waste RETRY_ATTEMPTS
+            // retries on it (a bare JSON.parse SyntaxError would default to retryable),
+            // and surface a clear, body-bounded diagnostic instead of a raw
+            // "Unexpected token ... in JSON" — mirroring module-publish's parseJson().
+            throw new HttpError(`Response from ${url} was not valid JSON; first ${JSON_ERROR_BODY_CHARS} bytes: ${text.slice(0, JSON_ERROR_BODY_CHARS)}`, false);
+        }
     }));
 }
 
