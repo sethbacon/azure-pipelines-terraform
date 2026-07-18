@@ -158,9 +158,11 @@ const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
         'figure', 'figcaption',
     ],
     allowedAttributes: {
-        // Inert on every element; `style` is retained for GFM table alignment and
-        // benign author styles, then re-checked by the guard pass (dangerous CSS
-        // constructs are stripped there, not here).
+        // Inert on every element. `style` is allowlisted per-property below via
+        // allowedStyles — sanitize-html PARSES the attribute and reconstructs it
+        // from allowed property/value pairs only, so url()/escape/comment
+        // smuggling dies structurally at this layer (#552); the guard pass's
+        // CSS check remains only as a defense-in-depth pre-filter.
         '*': ['class', 'id', 'title', 'style', 'align', 'dir', 'lang'],
         a: ['href', 'name', 'target', 'rel'],
         img: ['src', 'alt', 'width', 'height'],
@@ -182,8 +184,20 @@ const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
     // Drop disallowed tags but keep their (already guard-cleaned) benign children,
     // so an unknown wrapper an author wrote loses only the wrapper, not its text.
     disallowedTagsMode: 'discard',
-    // Pass a `style` attribute through verbatim; the guard pass owns CSS safety.
-    parseStyleAttributes: false,
+    // Parse `style` attributes and rebuild them from the property/value
+    // allowlist below (#552). Anchored value patterns mean a url(), CSS escape,
+    // comment-split, expression(), or -moz-binding form can never match — the
+    // attribute is reconstructed from parsed declarations, never passed through
+    // raw, so CSS safety no longer rests on the hand-rolled blocklist alone.
+    // The inventory is exactly what the pipeline legitimately emits: GFM table
+    // alignment (markdown-it renders `text-align`) and benign author color.
+    parseStyleAttributes: true,
+    allowedStyles: {
+        '*': {
+            'text-align': [/^(left|right|center|justify)$/],
+            'color': [/^#[0-9a-fA-F]{3,8}$/, /^[a-zA-Z]+$/],
+        },
+    },
     // Backstop: drop these elements AND their entire subtree (not just the tag).
     // Setting nonTextTags REPLACES sanitize-html's defaults, so its four defaults
     // (script/style/textarea/option) are re-listed here, then extended with the
@@ -219,8 +233,18 @@ const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
  * narrows whatever remains. PublishKbArticle/html-validate.ts stays the
  * independent downstream fail-closed gate on raw author HTML.
  */
+/**
+ * The final allowlist layer alone (no guard pre-filter). Exported ONLY so tests
+ * can prove this layer is independently safe — i.e. that dangerous CSS/URI
+ * payloads die here even if a future change weakened the pre-filter. Production
+ * code must always go through sanitizeRenderedHtml.
+ */
+export function applyAllowlistSanitizer(html: string): string {
+    return sanitizeHtml(html, SANITIZE_HTML_OPTIONS);
+}
+
 export function sanitizeRenderedHtml(html: string): string {
-    return sanitizeHtml(applyDefenseInDepthGuards(html), SANITIZE_HTML_OPTIONS);
+    return applyAllowlistSanitizer(applyDefenseInDepthGuards(html));
 }
 
 /**

