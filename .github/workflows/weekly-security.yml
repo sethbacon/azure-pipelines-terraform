@@ -239,7 +239,7 @@ jobs:
             const content = fs.readFileSync("SHA256SUMS", "utf8");
             const base = "https://github.com/opentofu/opentofu/releases/download/v" + version + "/tofu_" + version + "_SHA256SUMS";
             verifyCosignSignature(content, base + ".sig", base + ".pem", version, true)
-              .then(function () { console.log("OK: OpenTofu cosign signature verified via the installer's own verifier for tofu " + version); })
+              .then(function () { console.log("OK: OpenTofu cosign signature verified via the task-owned verifier for tofu " + version); })
               .catch(function (err) { console.error("OpenTofu cosign canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
