@@ -93,16 +93,21 @@ const FAMILIES = [
         ],
     },
     {
-        // Registry-download credential masking: extracts and setSecret()s any
-        // pre-signed-URL query-string token before download, and scrubs the raw
-        // URL/tokens out of a download failure message. A drift here previously let
-        // two of the three installers leak a live storage credential to the build
-        // log (2026-07 re-audit, finding "registry pre-signed URL token leak") while
-        // the third had already fixed it — keep byte-identical across all three.
+        // URL credential masking: (1) extracts and setSecret()s any pre-signed-URL
+        // query-string token before download and scrubs the raw URL/tokens out of a
+        // download failure message; (2) extracts and setSecret()s any basic-auth
+        // userinfo embedded in an operator registry/mirror URL and strips it from any
+        // logged/persisted rendering (#586). A drift here previously let two of the
+        // three installers leak a live storage credential to the build log (2026-07
+        // re-audit, "registry pre-signed URL token leak") while the third had already
+        // fixed it. TerraformProviderMirror joined this family for the userinfo guard
+        // (it echoes the generated .terraformrc, which embeds mirrorUrl) — keep
+        // byte-identical across all four.
         dirs: [
             'Tasks/TerraformInstaller/TerraformInstallerV1/src',
             'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
             'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+            'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src',
         ],
         modules: [
             'url-secret-redaction.ts',

@@ -189,6 +189,45 @@ describe('PolicyAgentInstaller Test Suite', function () {
         }, tr);
     });
 
+    // #589: reverify fails closed when a REACHABLE source withholds required material
+    // (distinct from an unreachable source, which still degrades — CacheHitHashUnavailable
+    // above). Exercises the real reverify classification (subject module not mocked).
+    it('cache hit, no marker: reachable source withholds required checksum, fails closed (not degraded)', async () => {
+        const tp = path.join(__dirname, 'CacheHitReverifyWithheld.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed closed');
+            assert(
+                tr.errorIssues.some((e) => /Checksum verification is required/i.test(e)),
+                'failure should stem from the withheld required checksum. errors: ' + tr.errorIssues
+            );
+            assert(
+                tr.warningIssues.every((w) => !w.includes('CachedToolReverificationUnavailable')),
+                'a withheld-material policy failure must NOT be degraded to the availability warning. warnings: ' + tr.warningIssues
+            );
+        }, tr);
+    });
+
+    // #586: an operator mirror URL with basic-auth userinfo is masked and stripped
+    // from the persisted policyAgentDownloadedFrom variable.
+    it('mirror URL with userinfo: strips credentials from the output variable and masks them', async () => {
+        const tp = path.join(__dirname, 'MirrorUserInfoRedacted.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('##vso[task.setsecret]s3cr3t'),
+                'the embedded password should be registered as a secret. stdout: ' + tr.stdout
+            );
+            assert(
+                tr.stdout.includes('mirror:https://mirror.example.com'),
+                'policyAgentDownloadedFrom should store the userinfo-stripped mirror URL. stdout: ' + tr.stdout
+            );
+        }, tr);
+    });
+
     it('OpaRegistryEmptySha256Warns', async () => {
         const tp = path.join(__dirname, 'OpaRegistryEmptySha256Warns.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
