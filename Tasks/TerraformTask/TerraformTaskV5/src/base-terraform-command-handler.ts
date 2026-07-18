@@ -2,7 +2,7 @@ import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveTool
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
-import { replaceSecretFile, writeSecretFile } from './secure-temp';
+import { replaceSecretFile, scrubFile, writeSecretFile } from './secure-temp';
 import { buildPlanDigest, DigestMeta } from './results/plan-digest';
 import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
@@ -165,6 +165,21 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Helper methods to reduce duplication ---
 
+    /** Authorization schemes accepted for every provider's backend/environment auth-scheme inputs. */
+    protected static readonly VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
+
+    /**
+     * Validates a provider's `*AuthScheme*` input against {@link VALID_AUTH_SCHEMES}.
+     * Shared by the AWS/GCP/OCI handlers (previously copy-pasted verbatim in each) so
+     * a future scheme addition/typo can't diverge silently between otherwise-parallel
+     * providers.
+     */
+    protected validateAuthScheme(scheme: string, inputName: string): void {
+        if (!(BaseTerraformCommandHandler.VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
+            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${BaseTerraformCommandHandler.VALID_AUTH_SCHEMES.join(", ")}`);
+        }
+    }
+
     protected getWorkingDirectory(): string {
         return tasks.getInput("workingDirectory") || '';
     }
@@ -282,6 +297,18 @@ export abstract class BaseTerraformCommandHandler {
         for (const filePath of this.tempFiles) {
             try {
                 if (fs.existsSync(filePath)) {
+                    // Scrub the content (overwrite with zeros) before unlinking, uniformly
+                    // for every tracked secret temp file -- OIDC/UPST/token files, GCP/OCI
+                    // credential JSON, PEM keys, the OCI PAR backend config-<uuid>.tf, and
+                    // cleartext `terraform output -json` dumps alike -- so a crash between
+                    // the overwrite and the unlink is the only remaining exposure window
+                    // (#595). A scrub failure is surfaced but does not skip the unlink
+                    // attempt below.
+                    try {
+                        scrubFile(filePath);
+                    } catch (scrubErr) {
+                        tasks.warning(`Failed to scrub temp file ${filePath} before deletion: ${scrubErr}`);
+                    }
                     fs.unlinkSync(filePath);
                     tasks.debug(`Cleaned up temp file: ${filePath}`);
                 }

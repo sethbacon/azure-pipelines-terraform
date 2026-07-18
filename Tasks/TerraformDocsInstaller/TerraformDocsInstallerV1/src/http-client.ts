@@ -26,6 +26,9 @@ const MAX_REDIRECTS = 5;
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_MS = 200;
 
+/** Upper bound (ms) on an honored HTTP 429 Retry-After, so a hostile/misconfigured server cannot stall the install. */
+const RETRY_AFTER_CAP_MS = 30_000;
+
 /**
  * Upper bound on a response body buffered in memory. Node's built-in fetch()
  * has no default limit on response.json()/.text()/.arrayBuffer() -- they
@@ -40,12 +43,63 @@ const RETRY_BASE_MS = 200;
  */
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
-/** Error carrying whether the failure is worth retrying (transient) vs deterministic (4xx / insecure URL). */
+/**
+ * Error carrying whether the failure is worth retrying (transient) vs
+ * deterministic (4xx / insecure URL). `retryAfterMs` carries the capped 429
+ * Retry-After delay when the server sent one (#584); undefined otherwise, in
+ * which case withRetry falls back to its exponential backoff.
+ */
 class HttpError extends Error {
-    constructor(message: string, readonly retryable: boolean) {
+    constructor(message: string, readonly retryable: boolean, readonly retryAfterMs?: number) {
         super(message);
         this.name = 'HttpError';
     }
+}
+
+/**
+ * A response status worth retrying: a server-side 5xx, or 429 Too Many Requests
+ * (#584). GitHub's release API (called unauthenticated for OpenTofu/OPA/
+ * terraform-docs latest resolution), the checkpoint API, and the registry
+ * endpoints all rate-limit with 429, so a single 429 must back off rather than
+ * fail the install outright.
+ */
+function isRetryableHttpStatus(status: number): boolean {
+    return status >= 500 || status === 429;
+}
+
+/**
+ * Parse an HTTP `Retry-After` header into a capped millisecond delay, or
+ * undefined when it is absent/blank/invalid (the caller then falls back to its
+ * exponential backoff). Accepts both the delta-seconds form (`Retry-After: 120`)
+ * and the HTTP-date form; a past date is treated as invalid. Clamped to
+ * RETRY_AFTER_CAP_MS so a hostile/misconfigured server cannot stall the install.
+ */
+export function parseRetryAfterMs(value: string | null | undefined): number | undefined {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    if (trimmed === '') {
+        return undefined;
+    }
+    if (/^\d+$/.test(trimmed)) {
+        const seconds = Number(trimmed);
+        if (!Number.isFinite(seconds)) {
+            return undefined;
+        }
+        return Math.min(seconds * 1000, RETRY_AFTER_CAP_MS);
+    }
+    const dateMs = Date.parse(trimmed);
+    if (Number.isNaN(dateMs)) {
+        return undefined;
+    }
+    const delta = dateMs - Date.now();
+    return delta > 0 ? Math.min(delta, RETRY_AFTER_CAP_MS) : undefined;
+}
+
+/** The capped 429 Retry-After delay from a response, or undefined for any other status/absent header. */
+function retryAfterMsFromResponse(response: Response): number | undefined {
+    return response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after')) : undefined;
 }
 
 function buildFetchOptions(): RequestInit {
@@ -151,7 +205,7 @@ export async function fetchWithTimeout<T>(
     }
 }
 
-/** Retries a fetch on transient failures (network error, timeout, 5xx) with exponential backoff. */
+/** Retries a fetch on transient failures (network error, timeout, 5xx, 429) with exponential backoff. */
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
@@ -162,8 +216,12 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
             // A non-HttpError is a network/DNS/TLS failure — treat as transient.
             const retryable = err instanceof HttpError ? err.retryable : true;
             if (!retryable || attempt === RETRY_ATTEMPTS) throw err;
+            // Honor a capped 429 Retry-After when the server sent one (#584);
+            // otherwise use the exponential backoff.
+            const retryAfterMs = err instanceof HttpError ? err.retryAfterMs : undefined;
+            const delayMs = retryAfterMs ?? RETRY_BASE_MS * Math.pow(2, attempt - 1);
             tasks.debug(`Fetch attempt ${attempt} failed (${err instanceof Error ? err.message : err}); retrying...`);
-            await new Promise(resolve => setTimeout(resolve, RETRY_BASE_MS * Math.pow(2, attempt - 1)));
+            await new Promise(resolve => setTimeout(resolve, delayMs));
         }
     }
     throw lastErr;
@@ -202,7 +260,7 @@ async function readBoundedArrayBuffer(response: Response, url: string): Promise<
 export function fetchJson<T>(url: string): Promise<T> {
     return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
         if (!response.ok) {
-            throw new HttpError(tasks.loc("RegistryRequestFailed", url, response.status), response.status >= 500);
+            throw new HttpError(tasks.loc("RegistryRequestFailed", url, response.status), isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         const buf = await readBoundedArrayBuffer(response, url);
         return JSON.parse(Buffer.from(buf).toString('utf8')) as T;
@@ -212,7 +270,7 @@ export function fetchJson<T>(url: string): Promise<T> {
 export function fetchText(url: string): Promise<string> {
     return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
         if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
+            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         // The returned promise is awaited inside fetchWithTimeout's guard, so the
         // body read stays bounded by the timeout without a redundant await here.
@@ -231,7 +289,7 @@ export function fetchTextAllow404(url: string): Promise<string | null> {
     return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
         if (response.status === 404) return null;
         if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
+            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         const buf = await readBoundedArrayBuffer(response, url);
         return Buffer.from(buf).toString('utf8');
@@ -241,7 +299,7 @@ export function fetchTextAllow404(url: string): Promise<string | null> {
 export function fetchBuffer(url: string): Promise<Uint8Array> {
     return withRetry(() => fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS, async (response) => {
         if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
+            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         return new Uint8Array(await readBoundedArrayBuffer(response, url));
     }));
@@ -257,7 +315,7 @@ export function fetchBufferAllow404(url: string): Promise<Uint8Array | null> {
     return withRetry(() => fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS, async (response) => {
         if (response.status === 404) return null;
         if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, response.status >= 500);
+            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
         }
         return new Uint8Array(await readBoundedArrayBuffer(response, url));
     }));

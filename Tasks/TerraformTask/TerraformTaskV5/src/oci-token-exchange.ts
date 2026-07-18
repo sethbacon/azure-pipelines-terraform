@@ -1,6 +1,29 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
 import { buildProxyFetchOptions } from './proxy-config';
+import { retryAsync, parseRetryAfterMs } from './retry';
+
+/**
+ * Number of total token-exchange attempts and the initial backoff, matching the
+ * sibling ADO-side TokenGenerator (id-token-generator.ts) so the two hops of the
+ * OCI WIF flow (ADO OIDC token -> OCI UPST) share one retry posture.
+ */
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 200;
+
+/**
+ * Carries whether a token-exchange failure is worth retrying: a network error, a
+ * timeout, a 5xx, or a 429 is transient (retryable); a received other 4xx, a
+ * refused redirect, or a malformed/short body is deterministic (not retryable)
+ * and won't change on a repeat. Also carries the capped Retry-After delay when
+ * a retryable response supplied one.
+ */
+class OciTokenExchangeError extends Error {
+    constructor(message: string, readonly retryable: boolean, readonly retryAfterMs?: number) {
+        super(message);
+        this.name = 'OciTokenExchangeError';
+    }
+}
 
 /**
  * Bound a remote response body before it is interpolated into a thrown error,
@@ -94,6 +117,38 @@ export async function exchangeOidcForUpst(
 
     tasks.debug(`Exchanging OIDC JWT for OCI UPST at ${tokenEndpoint}`);
 
+    // Bounded exponential-backoff retry via the shared retry helper (retry.ts),
+    // matching the sibling ADO-side TokenGenerator: retry a network error, a
+    // timeout, a 5xx, or a 429; never a received other 4xx, a refused redirect,
+    // or a malformed/short body. Each attempt gets its own fresh 30s
+    // AbortController. A capped Retry-After from a retryable response is
+    // honored over the default backoff.
+    return retryAsync(() => attemptExchange(tokenEndpoint, body.toString()), {
+        retries: MAX_RETRIES - 1,
+        baseDelayMs: INITIAL_BACKOFF_MS,
+        retryError: (error) => !(error instanceof OciTokenExchangeError) || error.retryable,
+        delayMs: (attempt, backoffMs, outcome) =>
+            outcome.kind === 'error'
+                && outcome.error instanceof OciTokenExchangeError
+                && outcome.error.retryAfterMs !== undefined
+                ? outcome.error.retryAfterMs
+                : backoffMs,
+        onRetry: (attempt, delayMs, outcome) => {
+            const message = outcome.kind === 'error' && outcome.error instanceof Error ? outcome.error.message : '';
+            tasks.debug(`OCI token exchange attempt ${attempt + 1} failed: ${message}. Retrying in ${delayMs}ms...`);
+        },
+    });
+}
+
+/**
+ * A single OIDC-for-UPST token-exchange attempt, bounded by its own 30s
+ * AbortController timeout (each retry gets a fresh one). Throws an
+ * OciTokenExchangeError tagged retryable=true for transient failures (network
+ * error, timeout, 5xx, 429) and retryable=false for deterministic ones (received
+ * other 4xx, refused redirect, malformed/short body), so the shared retry loop
+ * only repeats what can plausibly change.
+ */
+async function attemptExchange(tokenEndpoint: string, bodyString: string): Promise<string> {
     let response: Response;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -104,7 +159,7 @@ export async function exchangeOidcForUpst(
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: body.toString(),
+                body: bodyString,
                 signal: controller.signal,
                 // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
                 // (preserved with the POST body) to a different, unvalidated origin.
@@ -113,26 +168,37 @@ export async function exchangeOidcForUpst(
             });
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new Error(`Timed out exchanging OIDC token for OCI UPST (30s timeout).`);
+                throw new OciTokenExchangeError(`Timed out exchanging OIDC token for OCI UPST (30s timeout).`, true);
             }
-            throw new Error(`Failed to exchange OIDC token for OCI UPST: ${error instanceof Error ? error.message : error}`);
+            throw new OciTokenExchangeError(`Failed to exchange OIDC token for OCI UPST: ${error instanceof Error ? error.message : error}`, true);
         }
 
         // With redirect:'manual', fetch surfaces a redirect as an opaque response
         // (type 'opaqueredirect', status 0) or, on some runtimes, the raw 3xx.
-        // Treat either as a refusal — do not chase it with the token in hand.
+        // Treat either as a refusal — do not chase it with the token in hand, and
+        // never retry it (a redirect won't resolve to a token on repeat).
         if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-            throw new Error(
+            throw new OciTokenExchangeError(
                 `OCI token exchange endpoint returned a redirect (status ${response.status}); ` +
-                `refusing to forward the OIDC token to another origin.`
+                `refusing to forward the OIDC token to another origin.`,
+                false,
             );
         }
 
         if (!response.ok) {
             // Read the error body while the abort timer is still armed so a stalled
-            // body cannot hang the task, and truncate it before interpolation.
+            // body cannot hang the task, and truncate it before interpolation. A 5xx,
+            // or a 429 from the identity domain's rate limiting, is transient
+            // (retry); a received other 4xx is deterministic (do not retry). A
+            // Retry-After header on a retryable response is honored (capped) over
+            // the default backoff.
             const errorBody = await response.text().catch(() => '(unable to read response body)');
-            throw new Error(`OCI token exchange failed: HTTP ${response.status} ${response.statusText}. Body: ${truncateBody(errorBody)}`);
+            const retryable = response.status >= 500 || response.status === 429;
+            throw new OciTokenExchangeError(
+                `OCI token exchange failed: HTTP ${response.status} ${response.statusText}. Body: ${truncateBody(errorBody)}`,
+                retryable,
+                retryable ? parseRetryAfterMs(response.headers.get('retry-after')) : undefined,
+            );
         }
 
         // Read the success body while the abort timer is still armed, so a server
@@ -146,11 +212,11 @@ export async function exchangeOidcForUpst(
         try {
             result = JSON.parse(bodyText) as { access_token?: string; token?: string };
         } catch {
-            throw new Error(`OCI token exchange returned a non-JSON response: ${truncateBody(bodyText)}`);
+            throw new OciTokenExchangeError(`OCI token exchange returned a non-JSON response: ${truncateBody(bodyText)}`, false);
         }
         const upst = result.access_token || result.token;
         if (!upst) {
-            throw new Error('OCI token exchange response missing access_token/token field.');
+            throw new OciTokenExchangeError('OCI token exchange response missing access_token/token field.', false);
         }
 
         tasks.debug('Successfully exchanged OIDC JWT for OCI UPST.');

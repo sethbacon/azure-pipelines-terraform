@@ -22,6 +22,8 @@ import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
 import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
+// Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
+import './RetryL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;
@@ -258,6 +260,43 @@ describe('servicenow-http.withRetry', () => {
         );
         assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_transport_retry');
         assert.strictEqual(logs.length, 1);
+    });
+
+    it('retries a 429 Too Many Requests then succeeds (#584)', async () => {
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(429, { error: 'rate limited' })
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'ok_after_429', number: 'KB0101', workflow_state: 'draft' } });
+
+        const logs: string[] = [];
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 1, log: (m) => logs.push(m) },
+        );
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_429');
+        assert.strictEqual(logs.length, 1, 'a 429 should trigger exactly one retry here');
+    });
+
+    it('honors a 429 Retry-After header instead of the exponential backoff (#584)', async () => {
+        // Retry-After: 0 (retry immediately) is honored, so the retry sleep is ~0ms
+        // rather than the 5000ms baseDelayMs backoff. A generous upper bound proves
+        // the header was honored without a brittle exact-timing assertion (and a
+        // regression that ignored it would blow the 5s wait, not silently pass).
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge')
+            .reply(429, { error: 'rate limited' }, { 'Retry-After': '0' })
+            .post('/api/now/table/kb_knowledge')
+            .reply(201, { result: { sys_id: 'ok_after_retry_after', number: 'KB0102', workflow_state: 'draft' } });
+
+        const start = Date.now();
+        const resp = await withRetry(
+            () => snRequest('POST', `${BASE_URL}/api/now/table/kb_knowledge`, { headers: HEADERS, body: {} }),
+            { retries: 2, baseDelayMs: 5000 },
+        );
+        const elapsed = Date.now() - start;
+        assert.strictEqual((resp.data.result as { sys_id: string }).sys_id, 'ok_after_retry_after');
+        assert.ok(elapsed < 1000, `expected the honored 0s Retry-After, not the 5s backoff; elapsed ${elapsed}ms`);
     });
 });
 

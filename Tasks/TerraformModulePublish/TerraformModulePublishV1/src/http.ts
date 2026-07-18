@@ -1,4 +1,5 @@
 import { HttpResponse, truncateBody } from './https-client';
+import { retryAsync } from './retry';
 import tasks = require('azure-pipelines-task-lib/task');
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
@@ -28,14 +29,28 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
+ * A response status worth retrying: a server-side 5xx, or 429 Too Many Requests
+ * (#584) — a textbook transient condition on the HCP/registry APIs this task
+ * calls. Any other status (including 202/404/422, which the publishers handle
+ * explicitly) is returned immediately and never retried.
+ */
+function isRetryableStatus(status: number): boolean {
+    return status >= 500 || status === 429;
+}
+
+/**
  * Wraps a single HTTP call with bounded exponential-backoff retry on TRANSIENT
  * failures only — a thrown transport error (socket timeout / connection reset)
- * or a 5xx response. Any response with status < 500 (including 202/404/422,
- * which the publishers handle explicitly) is returned immediately and never
- * retried. Use this only for calls that are safe to repeat: idempotent GETs, or
- * POSTs the caller has already made idempotent (e.g. the 422-tolerant version
- * create). Genuine create/sync POSTs with no server-side idempotency must NOT be
- * wrapped, to avoid duplicate resources on a retry after a lost response.
+ * or a retryable response (5xx, or 429 Too Many Requests). Any other response
+ * (including 202/404/422, which the publishers handle explicitly) is returned
+ * immediately and never retried. Use this only for calls that are safe to
+ * repeat: idempotent GETs, or POSTs the caller has already made idempotent
+ * (e.g. the 422-tolerant version create). Genuine create/sync POSTs with no
+ * server-side idempotency must NOT be wrapped, to avoid duplicate resources on a
+ * retry after a lost response.
+ *
+ * A 429 Retry-After is not honored here because the shared HttpResponse carries
+ * no headers; the exponential backoff is used instead (the sanctioned fallback).
  */
 export async function retryHttp(
     call: () => Promise<HttpResponse>,
@@ -43,20 +58,20 @@ export async function retryHttp(
 ): Promise<HttpResponse> {
     const retries = opts.retries ?? 3;
     const baseDelayMs = opts.baseDelayMs ?? 500;
-    for (let attempt = 0; ; attempt++) {
-        try {
-            const response = await call();
-            if (response.status < 500 || attempt >= retries) {
-                return response;
+    return retryAsync(call, {
+        retries,
+        baseDelayMs,
+        retryResult: (response) => isRetryableStatus(response.status),
+        // A thrown transport error (no response received) is always safe to repeat
+        // within the budget; only a RESPONSE is classified by status above.
+        retryError: () => true,
+        onRetry: (attempt, _delayMs, outcome) => {
+            if (outcome.kind === 'result') {
+                opts.log?.(tasks.loc('TransientHttpRetry', outcome.result.status, attempt + 1, retries));
+            } else {
+                const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+                opts.log?.(tasks.loc('TransientRequestFailureRetry', reason, attempt + 1, retries));
             }
-            opts.log?.(tasks.loc('TransientHttpRetry', response.status, attempt + 1, retries));
-        } catch (err) {
-            if (attempt >= retries) {
-                throw err;
-            }
-            const reason = err instanceof Error ? err.message : String(err);
-            opts.log?.(tasks.loc('TransientRequestFailureRetry', reason, attempt + 1, retries));
-        }
-        await delay(baseDelayMs * 2 ** attempt);
-    }
+        },
+    });
 }

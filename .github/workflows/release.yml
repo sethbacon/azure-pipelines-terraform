@@ -21,6 +21,53 @@ jobs:
     outputs:
       sha: ${{ steps.resolve-sha.outputs.sha }}
     steps:
+      # Preventive, release-time mirror of weekly-security.yml's
+      # verify-marketplace-environment-protection job (which is only a weekly
+      # DETECTIVE canary): assert the 'marketplace' environment that gates
+      # publish-marketplace still has a required-reviewer rule, as an early
+      # BLOCKING step so a silently removed/misconfigured reviewer rule fails
+      # THIS release instead of going unnoticed until the next Monday scan.
+      # Same GET /repos/.../environments/{name} call and same contents:read
+      # token (inherited from the workflow-level permissions) as the weekly job;
+      # the only deliberate divergence is fail-closed error handling (setFailed,
+      # not the weekly canary's soft warning) — a release must not publish past
+      # a gate it could not verify.
+      - name: Verify marketplace environment protection
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const ENVIRONMENT = 'marketplace';
+            let env;
+            try {
+              const response = await github.request('GET /repos/{owner}/{repo}/environments/{environment_name}', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                environment_name: ENVIRONMENT,
+              });
+              env = response.data;
+            } catch (err) {
+              if (err.status === 404) {
+                core.setFailed(`The '${ENVIRONMENT}' GitHub Environment does not exist — publish-marketplace in release.yml references an environment with no protection rules at all.`);
+                return;
+              }
+              core.setFailed(`Could not verify the '${ENVIRONMENT}' environment's protection rules (HTTP ${err.status ?? 'unknown'}): ${err.message}. Failing the release rather than publishing past an unverifiable gate.`);
+              return;
+            }
+
+            const rules = env.protection_rules ?? [];
+            const requiredReviewersRule = rules.find((rule) => rule.type === 'required_reviewers');
+            const hasRequiredReviewers = Boolean(requiredReviewersRule && Array.isArray(requiredReviewersRule.reviewers) && requiredReviewersRule.reviewers.length > 0);
+
+            if (!hasRequiredReviewers) {
+              core.setFailed(
+                `The '${ENVIRONMENT}' GitHub Environment has no required-reviewer protection rule configured. ` +
+                `CLAUDE.md documents this as mandatory ("must have at least one required reviewer") for every VS Marketplace publish. ` +
+                `Configure it under Settings -> Environments -> ${ENVIRONMENT} -> Required reviewers.`
+              );
+              return;
+            }
+
+            core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) configured.`);
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
@@ -314,6 +361,22 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: sbom-and-signatures
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Same integrity gate as publish-marketplace: verify the VSIX against its
+      # cosign bundle (identity/issuer pinned to this repo's release.yml) before
+      # attaching it to the GitHub Release, so the release never distributes an
+      # artifact that fails signature verification. This release stays a draft
+      # until publish-marketplace succeeds (undraft-release), so a failure here
+      # blocks publication too.
+      - name: Verify VSIX signature before release
+        run: |
+          VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
+          cosign verify-blob \
+            --bundle "${VSIX_FILE}.bundle" \
+            --certificate-identity-regexp '^https://github\.com/sethbacon/azure-pipelines-terraform/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$VSIX_FILE"
       - name: Create draft GitHub Release
         id: create_release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
@@ -352,6 +415,34 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vsix
+      # The signing job (sbom-and-sign) produced a cosign keyless sign-blob
+      # bundle over the exact VSIX bytes and uploaded it in sbom-and-signatures.
+      # Re-download it here so the integrity gate below verifies the SAME bytes
+      # that are about to be published, not merely that "some valid signature
+      # exists" somewhere.
+      - name: Download SBOM and signature artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sbom-and-signatures
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Integrity gate: re-verify the downloaded VSIX against the cosign bundle
+      # from sbom-and-sign BEFORE the token-authenticated publish, pinning the
+      # signer identity to THIS repo's release.yml workflow and the GitHub
+      # Actions OIDC issuer (the same identity/issuer anchoring the OpenTofu
+      # cosign canary in weekly-security.yml uses). An artifact substituted
+      # between jobs — a compromised actions/download-artifact, or an
+      # artifact-store isolation failure — fails the release here rather than
+      # being published to the Marketplace. `--bundle` carries the cert +
+      # Rekor entry, so no id-token is needed for verification.
+      - name: Verify VSIX signature before publish
+        run: |
+          VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
+          cosign verify-blob \
+            --bundle "${VSIX_FILE}.bundle" \
+            --certificate-identity-regexp '^https://github\.com/sethbacon/azure-pipelines-terraform/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$VSIX_FILE"
       # Authenticate to Microsoft Entra via GitHub OIDC (federated credential) —
       # no stored secret. The service principal is a member of the 'sethbacon'
       # Marketplace publisher. Replaces the deprecated full-scoped TFX_PAT.
@@ -371,13 +462,13 @@ jobs:
             --query accessToken -o tsv)
           # Mask the runtime-minted token so it is redacted from any log output.
           echo "::add-mask::$ENTRA_TOKEN"
-          # tfx-cli 0.23.2 offers no non-argv way to supply --token (no token-file
-          # or stdin-prompt option), so this is visible in /proc/<pid>/cmdline for
-          # the process lifetime. The only observers on this ephemeral runner would
-          # be other code in the same job; --ignore-scripts above is the actual
-          # mitigation, plus a 10-minute Entra token-lifetime policy on the shared
-          # publishing service principal (see SECURITY.md).
-          ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat --token "$ENTRA_TOKEN"
+          # Supply the token via stdin, NOT on argv: with --token omitted and
+          # --auth-type pat set, tfx-cli 0.23.2 reads the token from its masked
+          # "Personal access token:" prompt on stdin (verified against 0.23.2:
+          # getCredentials() -> token.val() -> qread/prompt), so the token never
+          # appears in /proc/<pid>/cmdline or `ps` (CWE-214). `printf` is a bash
+          # builtin, so it spawns no argv-visible helper process either.
+          printf '%s\n' "$ENTRA_TOKEN" | ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat
         env:
           VARS_AZDO_PUBLISH_TENANT_ID: ${{ vars.AZDO_PUBLISH_TENANT_ID }}
 

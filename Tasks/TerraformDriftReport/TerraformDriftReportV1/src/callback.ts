@@ -1,4 +1,5 @@
 import { createHttpsClient, HttpResponse, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
+import { retryAsync } from './retry';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformModulePublish via ./https-client and guarded by
@@ -72,16 +73,21 @@ export async function postJsonWithRetry(
 ): Promise<HttpResponse> {
     const retries = opts.retries ?? 3;
     const baseDelayMs = opts.baseDelayMs ?? 500;
-    for (let attempt = 0; ; attempt++) {
-        try {
-            return await postJson(url, headers, body, rejectUnauthorized, timeoutMs);
-        } catch (err) {
-            if (attempt >= retries) {
-                throw err;
+    return retryAsync(() => postJson(url, headers, body, rejectUnauthorized, timeoutMs), {
+        retries,
+        baseDelayMs,
+        // Deliberately NEVER retry a received response -- even a 5xx (see the
+        // doc-comment above): the one-shot callback token makes a retry-after-
+        // response ambiguous with a token-replay rejection. retryResult defaults to
+        // "never", but it is set explicitly here to lock that design decision.
+        retryResult: () => false,
+        // Only a pure transport failure (no response received) is retried.
+        retryError: () => true,
+        onRetry: (attempt, _delayMs, outcome) => {
+            if (outcome.kind === 'error') {
+                const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+                opts.log?.(`Drift callback transport failure (${reason}); retrying (${attempt + 1}/${retries}).`);
             }
-            const reason = err instanceof Error ? err.message : String(err);
-            opts.log?.(`Drift callback transport failure (${reason}); retrying (${attempt + 1}/${retries}).`);
-            await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
-        }
-    }
+        },
+    });
 }

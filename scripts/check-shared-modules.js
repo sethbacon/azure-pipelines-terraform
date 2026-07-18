@@ -93,16 +93,21 @@ const FAMILIES = [
         ],
     },
     {
-        // Registry-download credential masking: extracts and setSecret()s any
-        // pre-signed-URL query-string token before download, and scrubs the raw
-        // URL/tokens out of a download failure message. A drift here previously let
-        // two of the three installers leak a live storage credential to the build
-        // log (2026-07 re-audit, finding "registry pre-signed URL token leak") while
-        // the third had already fixed it — keep byte-identical across all three.
+        // URL credential masking: (1) extracts and setSecret()s any pre-signed-URL
+        // query-string token before download and scrubs the raw URL/tokens out of a
+        // download failure message; (2) extracts and setSecret()s any basic-auth
+        // userinfo embedded in an operator registry/mirror URL and strips it from any
+        // logged/persisted rendering (#586). A drift here previously let two of the
+        // three installers leak a live storage credential to the build log (2026-07
+        // re-audit, "registry pre-signed URL token leak") while the third had already
+        // fixed it. TerraformProviderMirror joined this family for the userinfo guard
+        // (it echoes the generated .terraformrc, which embeds mirrorUrl) — keep
+        // byte-identical across all four.
         dirs: [
             'Tasks/TerraformInstaller/TerraformInstallerV1/src',
             'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
             'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+            'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src',
         ],
         modules: [
             'url-secret-redaction.ts',
@@ -121,6 +126,30 @@ const FAMILIES = [
         ],
         modules: [
             'uri-scheme-guard.ts',
+        ],
+    },
+    {
+        // Bounded exponential-backoff retry helper (retryAsync + the 429
+        // Retry-After parser). One shared loop replaces the four that used to be
+        // independently open-coded in TokenGenerator (id-token-generator.ts),
+        // retryHttp (http.ts), postJsonWithRetry (callback.ts) and withRetry
+        // (servicenow-http.ts). Each call site preserves its own semantics via
+        // predicates rather than a hardcoded policy, so a hardening change (jitter,
+        // a max-total-time cap, ...) lands here once instead of drifting across
+        // 4-5 copies. Tasks can't cross-import, so it lives as byte-identical
+        // copies gated here. NOTE: the three installer http-client.ts copies keep
+        // their OWN internal withRetry (a separate family above) on purpose — they
+        // sit on a different transport (fetch+AbortController) and trust model
+        // (public artifacts, no credential) — so they are deliberately NOT folded
+        // into this module.
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/src',
+            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'retry.ts',
         ],
     },
     {

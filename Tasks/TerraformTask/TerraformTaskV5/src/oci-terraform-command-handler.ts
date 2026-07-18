@@ -12,8 +12,6 @@ import path = require('path');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
 
-const VALID_AUTH_SCHEMES = ["ServiceConnection", "WorkloadIdentityFederation"] as const;
-
 // Re-exported for backward compatibility: existing tests and any external
 // consumers import `resolveWifTempDir` from this module. The implementation
 // now lives in `./temp-dir` and is shared with the AWS/GCP handlers, whose
@@ -90,12 +88,6 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     constructor() {
         super();
         this.providerName = "oci";
-    }
-
-    private validateAuthScheme(scheme: string, inputName: string): void {
-        if (!(VALID_AUTH_SCHEMES as readonly string[]).includes(scheme)) {
-            throw new Error(`Unrecognized authorization scheme '${scheme}' for input '${inputName}'. Valid values: ${VALID_AUTH_SCHEMES.join(", ")}`);
-        }
     }
 
     private getPrivateKeyFilePath(privateKey: string) {
