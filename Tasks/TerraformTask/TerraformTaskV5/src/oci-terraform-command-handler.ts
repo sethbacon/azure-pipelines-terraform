@@ -202,10 +202,17 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // so this is the only place they can register the same opt-in cache
         // scrub for a working directory that was already `init`-ed with an OCI
         // PAR backend in an earlier step (#675) -- e.g. when apply/destroy is
-        // the LAST command touching this working directory.
-        if (tasks.getInput("backendOCIConfigGenerate", false) === 'yes') {
-            this.registerOciBackendCacheForCleanup(tasks.getInput("workingDirectory") || '');
-        }
+        // the LAST command touching this working directory. Gated only on
+        // cleanupOCIBackendCache itself (not also on backendOCIConfigGenerate,
+        // unlike setupBackend()'s own registration): that input's group is
+        // only visible/defaulted for `command = init` in the classic UI
+        // designer, so relying on it resolving to "yes" here for a non-init
+        // command would be fragile. An operator who explicitly opts into
+        // cleanupOCIBackendCache has already stated their intent; scrubbing
+        // the cache is a safe, idempotent no-op (via fs.existsSync in
+        // scrubAndUnlink) if no OCI PAR backend was ever actually generated
+        // in this working directory.
+        this.registerOciBackendCacheForCleanup(tasks.getInput("workingDirectory") || '');
 
         const authScheme = tasks.getInput("environmentAuthSchemeOCI", false) || "ServiceConnection";
         this.validateAuthScheme(authScheme, "environmentAuthSchemeOCI");
