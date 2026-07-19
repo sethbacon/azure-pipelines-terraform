@@ -115,6 +115,39 @@ describe('OCI token exchange — URL validation & transport', function () {
         await assert.rejects(exchangeOidcForUpst('jwt', VALID_DOMAIN, 'client', publicKey), /HTTP 400/);
     });
 
+    /* #647: scrub a reflected request secret from an echoed error body */
+
+    it('scrubs the reflected subject_token from a non-OK error body (#647)', async () => {
+        const secretJwt = 'eyJhbGciOiJSUzI1NiJ9.super-secret-subject-token.sig';
+        globalThis.fetch = (async () =>
+            new Response(`invalid_grant: subject_token ${secretJwt} rejected`, { status: 400, statusText: 'Bad Request' })) as unknown as typeof globalThis.fetch;
+        await assert.rejects(
+            exchangeOidcForUpst(secretJwt, VALID_DOMAIN, 'client', publicKey),
+            (err: unknown) => {
+                assert.ok(err instanceof Error, 'should throw an Error');
+                assert.ok(!err.message.includes(secretJwt), 'the reflected subject_token must be scrubbed from the failure message');
+                assert.match(err.message, /HTTP 400/, 'keeps the status for diagnostics');
+                assert.ok(err.message.includes('***'), 'the scrubbed secret is replaced with a redaction marker');
+                return true;
+            },
+        );
+    });
+
+    it('scrubs the reflected subject_token from a non-JSON 200 body (#647)', async () => {
+        const secretJwt = 'eyJhbGciOiJSUzI1NiJ9.another-secret-subject-token.sig';
+        globalThis.fetch = (async () =>
+            new Response(`<html>echoed ${secretJwt}</html>`, { status: 200 })) as unknown as typeof globalThis.fetch;
+        await assert.rejects(
+            exchangeOidcForUpst(secretJwt, VALID_DOMAIN, 'client', publicKey),
+            (err: unknown) => {
+                assert.ok(err instanceof Error, 'should throw an Error');
+                assert.ok(!err.message.includes(secretJwt), 'the reflected subject_token must be scrubbed from the non-JSON failure message');
+                assert.match(err.message, /non-JSON response/);
+                return true;
+            },
+        );
+    });
+
     it('refuses an opaque redirect from the token endpoint', async () => {
         globalThis.fetch = (async () => {
             const r = new Response(null, { status: 200 });

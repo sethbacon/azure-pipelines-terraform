@@ -16,6 +16,10 @@ import './ProxyConfigL0';
 import './SecureFileLoaderL0';
 // Direct unit tests for post-hoc chmod on third-party secure-file downloads.
 import './SecureTempL0';
+// Direct unit tests for the bounded stdout-capture guard (#632).
+import './ExecStdoutCaptureL0';
+// Direct unit tests for the emergency-only output-file cleanup split (#650).
+import './EmergencyOnlyCleanupL0';
 // Direct unit tests for OCI WIF temp-dir resolution (Agent.TempDirectory).
 import './OciWifTempDirL0';
 // Direct unit test for emergency cleanup before a handler is assigned.
@@ -28,6 +32,8 @@ import './OciWifConfigValidationL0';
 import './OciBackendConfigFileL0';
 // Direct unit tests for the optional MSI user-assigned client ID.
 import './ManagedIdentityClientIdL0';
+// Direct unit tests for the opt-in runAzLogin path (gate, argv, secret masking).
+import './RunAzLoginL0';
 // Direct unit tests for cross-cloud state backend detection.
 import './BackendDetectionTests/BackendDetectionL0';
 // Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.

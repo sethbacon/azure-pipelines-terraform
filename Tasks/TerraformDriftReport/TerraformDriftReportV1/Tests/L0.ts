@@ -68,6 +68,31 @@ describe('TerraformDriftReport callback transport', function () {
         }
     });
 
+    it('surfaces response headers (#633) so a 429 Retry-After can reach a caller', async () => {
+        // Real end-to-end round-trip against the shared https-client.ts copy
+        // (byte-identical with TerraformModulePublish, gated by
+        // scripts/check-shared-modules.js): HttpResponse.headers must carry the
+        // server's actual response headers. postJsonWithRetry deliberately never
+        // consults headers (a received response is never retried -- the one-shot
+        // callback token, see callback.ts), so this exercises createHttpsClient
+        // directly rather than through postJson/postJsonWithRetry.
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 429;
+            res.setHeader('Retry-After', '2');
+            res.end('{"error":"slow down"}');
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${port}/drift`, {});
+            assert.strictEqual(resp.status, 429);
+            assert.strictEqual(resp.headers?.['retry-after'], '2');
+        } finally {
+            server.close();
+        }
+    });
+
     it('rejects a self-signed certificate when rejectUnauthorized is true (the default)', async () => {
         // The secure-default counterpart to the test above: with TLS verification
         // ON (the default), a request against the exact same self-signed loopback
@@ -315,6 +340,24 @@ describe('https-client: agent proxy support', function () {
     });
 });
 
+describe('task.json schema (#643)', () => {
+    it('declares the output-variables block with the schema\'s lowercase key', () => {
+        // The Azure Pipelines task.json schema (aka.ms/vsts-tasks.schema.json)
+        // defines this property as lowercase "outputVariables" -- a capitalized
+        // "OutputVariables" is silently ignored by schema-aware tooling (e.g.
+        // the classic editor's output-variables picker) even though the task
+        // still sets the variables at runtime via the SDK.
+        const taskJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'task.json'), 'utf8'));
+        assert.ok(Array.isArray(taskJson.outputVariables), 'task.json must declare a lowercase "outputVariables" array');
+        assert.strictEqual(taskJson.OutputVariables, undefined, 'the wrong-cased "OutputVariables" key must not reappear');
+        const names = taskJson.outputVariables.map((v: { name: string }) => v.name).sort();
+        assert.deepStrictEqual(
+            names,
+            ['addedCount', 'changedCount', 'destroyedCount', 'driftDetected', 'sarifFilePath', 'summaryFilePath'],
+        );
+    });
+});
+
 describe('TerraformDriftReport Test Suite', function () {
 
     before(() => {
@@ -374,6 +417,20 @@ describe('TerraformDriftReport Test Suite', function () {
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
             assert(tr.errorIssues.length > 0, 'should have an error issue');
+        }, tr);
+    });
+
+    it('DriftReportHugeFile — an oversized plan file fails closed before it is read (#632)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportHugeFile.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e =>
+                    /PlanFileTooLarge|exceeding the .*-byte guard/.test(e) && e.includes('tdr-huge-plan.json'),
+                ),
+                `error should name the plan file and the size guard: ${tr.errorIssues}`,
+            );
         }, tr);
     });
 

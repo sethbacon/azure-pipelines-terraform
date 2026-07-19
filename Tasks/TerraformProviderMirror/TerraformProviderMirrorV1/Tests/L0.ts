@@ -5,6 +5,8 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import './UrlSecretRedactionL0';
+// Direct unit tests for this task's copy of the secure-temp writer (#628).
+import './SecureTempL0';
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from '../src/config-generator';
 
 describe('config-generator', () => {

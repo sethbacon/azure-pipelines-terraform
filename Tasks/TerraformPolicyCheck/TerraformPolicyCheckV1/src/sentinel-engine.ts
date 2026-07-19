@@ -5,6 +5,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyResult, PolicyCase } from './types';
+import { attachBoundedCapture } from './output-cap';
 
 /**
  * Evaluates Sentinel policies against Terraform plan JSON.
@@ -44,11 +45,14 @@ export async function runSentinel(
     tool.arg('apply');
     if (traceOutput) tool.arg('-trace');
 
+    // Byte-bounded capture (#632): both streams fold into one buffer as before,
+    // but an unbounded `stdout += chunk` could OOM the agent on a huge Sentinel
+    // trace. On stdout breach the child is killed and assertWithinCap() throws.
     let stdout = '';
-    tool.on('stdout', (data: string | Buffer) => { stdout += data.toString(); });
-    tool.on('stderr', (data: string | Buffer) => { stdout += data.toString(); });
+    const capture = attachBoundedCapture(tool, (_stream, text) => { stdout += text; });
 
     const code = await tool.execAsync(<IExecOptions>{ cwd: workingDir, ignoreReturnCode: true });
+    capture.assertWithinCap();
 
     if (code === 3 || code === 9) {
         throw new Error(`Sentinel returned a non-policy error (exit code ${code}). Output:\n${stdout.slice(0, 2000)}`);
@@ -168,12 +172,13 @@ export function generateConfig(policyDir: string, inputFile: string, level: stri
         // quoted HCL string label here, not an identifier reference used elsewhere
         // in policy code like the import name above -- legitimate filenames commonly
         // use dashes (e.g. require-tags.sentinel), so it must not be restricted to
-        // identifier syntax. `hcl()` escaping is sufficient to keep it inside the
-        // string: a literal embedded newline is not a silent injection vector either
-        // way, since HCL's quoted-string grammar hard-fails to parse ("Invalid
-        // multi-line string") rather than treating it as a request to close the
-        // string. Reachable when policySource=gitUrl points at a shared/third-party
-        // policy repo whose filenames aren't fully trusted.
+        // identifier syntax. `hcl()` escaping (including CR/LF -> literal `\n`,
+        // #648) keeps the value inside the string on a single line, so a policy
+        // filename containing an embedded newline (reachable when
+        // policySource=gitUrl points at a shared/third-party policy repo whose
+        // filenames aren't fully trusted) renders as a literal `\n` in the label
+        // instead of producing a raw multi-line string that would otherwise hard-fail
+        // sentinel.hcl's parse ("Invalid multi-line string").
         const name = path.basename(policyFile, '.sentinel');
         lines.push(`policy "${hcl(name)}" {`);
         lines.push(`  source = "${hcl(policyFile)}"`);
@@ -200,18 +205,28 @@ export function generateConfig(policyDir: string, inputFile: string, level: stri
  * of the quoted string; `${` and `%{` are escaped to their literal HCL forms
  * (`$${` / `%%{`) so a policy filename carrying template-interpolation syntax
  * (reachable when policySource=gitUrl points at a third-party policy repo) is
- * reproduced literally instead of being evaluated by the HCL parser — matching
- * TerraformProviderMirror's escapeHclString. The `$`/`%` escapes use replacer
- * functions because a plain `'$${'` replacement string would itself be mangled
- * by JS's `$$` substitution rules; they only touch `$`/`%`/`{` and never a
- * backslash, so they cannot interfere with the backslash pass.
+ * reproduced literally instead of being evaluated by the HCL parser; CR/LF are
+ * escaped to a literal `\n` so a policy filename containing an embedded
+ * newline (valid on Linux/macOS) cannot produce a raw multi-line string in the
+ * generated sentinel.hcl — matching TerraformProviderMirror's escapeHclString.
+ * Without this, HCL's quoted-string grammar hard-fails to parse such a value
+ * ("Invalid multi-line string"), which is a fail-closed error rather than a
+ * bypass, but escaping keeps this generator consistent with its sibling and
+ * turns the failure into a normal, literal-string result instead of an opaque
+ * Sentinel parse error (#648). The `$`/`%` escapes use replacer functions
+ * because a plain `'$${'` replacement string would itself be mangled by JS's
+ * `$$` substitution rules; they only touch `$`/`%`/`{` and never a backslash
+ * or newline, so they cannot interfere with the backslash or CR/LF passes.
  */
 export function hcl(value: string): string {
     return value
         .replace(/\\/g, '\\\\')
         .replace(/"/g, '\\"')
         .replace(/\$\{/g, () => '$${')
-        .replace(/%\{/g, () => '%%{');
+        .replace(/%\{/g, () => '%%{')
+        .replace(/\r\n/g, '\\n')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\n');
 }
 
 function findSentinelPolicies(dir: string): string[] {

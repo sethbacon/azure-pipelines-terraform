@@ -15,16 +15,34 @@ import os = require('os');
  */
 export function writeSecretFile(filePath: string, content: string): void {
     fs.writeFileSync(filePath, content, { mode: 0o600, flag: 'wx' });
+    // The credential file now exists on disk. The permission-hardening below is
+    // deliberately fail-closed (it throws on a chmod failure on Unix, or an
+    // icacls/DACL failure on Windows), but every call site registers the path
+    // for scrub+cleanup only on the line *after* this returns -- so a throw here
+    // would otherwise leave the file orphaned on disk with weaker-than-intended
+    // permissions AND untracked, defeating cleanupTempFiles()/emergencyCleanup()
+    // (#634). Scrub-then-remove it before re-throwing (mirroring
+    // cleanupTempFiles' scrub-then-unlink) so a hardening failure never leaves a
+    // readable credential behind, independent of how the caller tracks it.
     try {
-        fs.chmodSync(filePath, 0o600);
-    } catch (err) {
-        if (process.platform !== 'win32') {
-            throw new Error(`Failed to set restrictive permissions on ${filePath}: ${err instanceof Error ? err.message : err}`);
+        try {
+            fs.chmodSync(filePath, 0o600);
+        } catch (err) {
+            if (process.platform !== 'win32') {
+                throw new Error(`Failed to set restrictive permissions on ${filePath}: ${err instanceof Error ? err.message : err}`);
+            }
+            tasks.debug('Skipping chmod on Windows platform (a restrictive DACL is applied instead).');
         }
-        tasks.debug('Skipping chmod on Windows platform (a restrictive DACL is applied instead).');
-    }
-    if (process.platform === 'win32') {
-        applyWindowsRestrictiveAcl(filePath);
+        if (process.platform === 'win32') {
+            applyWindowsRestrictiveAcl(filePath);
+        }
+    } catch (hardenErr) {
+        // Best-effort scrub then remove; each guarded independently so a scrub
+        // failure still lets the unlink run. The original hardening error is the
+        // one propagated -- the fail-closed task failure is preserved.
+        try { scrubFile(filePath); } catch { /* best-effort: may be unreadable */ }
+        try { fs.unlinkSync(filePath); } catch { /* best-effort: may already be gone */ }
+        throw hardenErr;
     }
 }
 

@@ -1,8 +1,8 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
-import fs = require('fs');
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from './config-generator';
 import { extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
+import { replaceSecretFile } from './secure-temp';
 
 function parseMultiLineInput(input: string | undefined): string[] {
     if (!input) return [];
@@ -49,7 +49,17 @@ async function run() {
         }
         const configPath = path.join(tempDir, '.terraformrc');
 
-        fs.writeFileSync(configPath, hcl, { encoding: 'utf8' });
+        // The .terraformrc carries the live mirror credential (mirrorUrl may embed
+        // basic-auth userinfo), so write it with the shared hardened primitive --
+        // owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows
+        // (both fail closed) -- instead of a permission-less fs.writeFileSync that
+        // inherits the umask and would follow a pre-planted symlink (#628, CWE-59/
+        // CWE-377). replaceSecretFile (not writeSecretFile) because this fixed path
+        // in Agent.TempDirectory can legitimately pre-exist from a prior run on a
+        // reused self-hosted agent -- it overwrites a stale regular file but still
+        // refuses a symlink. The file is NOT cleanup-tracked: terraform needs it
+        // for the rest of the job (TF_CLI_CONFIG_FILE points at it).
+        replaceSecretFile(configPath, hcl);
 
         tasks.setVariable('TF_CLI_CONFIG_FILE', configPath, false, false);
         tasks.setVariable('configFilePath', configPath, false, true);

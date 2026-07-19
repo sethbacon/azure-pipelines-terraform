@@ -7,15 +7,16 @@ import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-tem
 
 /**
  * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile
- * (#607). The module is a byte-identical copy of TerraformTaskV5's
+ * (#628). The module is a byte-identical copy of TerraformTaskV5's
  * secure-temp.ts (gated by scripts/check-shared-modules.js); these tests
- * exercise it from TerraformPolicyCheck's own compiled output, in this task's
- * own package context, since results.ts (raw engine output, JUnit XML, and
- * SARIF report writes) now depends on it for the same Windows-DACL guarantee
- * TerraformTaskV5 and TerraformDriftReport already have.
+ * exercise it from TerraformProviderMirror's own compiled output, in this
+ * task's own package context, since index.ts now writes the credential-bearing
+ * .terraformrc via replaceSecretFile for the same Windows-DACL + O_EXCL
+ * guarantee TerraformTaskV5 already has (mirrorUrl may embed basic-auth
+ * userinfo).
  */
-describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-platform permission hardening', function () {
-    // monkeypatch the shared child_process module
+describe('secure-temp (TerraformProviderMirror copy) — exclusive create + cross-platform permission hardening', function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared child_process module
     const c = cp as any;
     const origExecFileSync = c.execFileSync;
     const origPlatform = process.platform;
@@ -31,7 +32,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     }
 
     beforeEach(() => {
-        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-secure-temp-test-'));
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-secure-temp-test-'));
     });
 
     afterEach(() => {
@@ -41,16 +42,16 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     });
 
     it('writeSecretFile writes the file with the expected content (mode 0600 on Unix)', () => {
-        const target = path.join(scratchDir, 'policy-results.txt');
-        writeSecretFile(target, 'raw engine output');
-        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'raw engine output');
+        const target = path.join(scratchDir, 'config.terraformrc');
+        writeSecretFile(target, 'provider_installation {}');
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'provider_installation {}');
         if (process.platform !== 'win32') {
             assert.strictEqual(fs.statSync(target).mode & 0o777, 0o600);
         }
     });
 
     it('writeSecretFile refuses to overwrite an existing file at the target path (O_EXCL)', () => {
-        const target = path.join(scratchDir, 'existing.txt');
+        const target = path.join(scratchDir, 'existing.terraformrc');
         fs.writeFileSync(target, 'pre-existing');
         assert.throws(() => writeSecretFile(target, 'new-secret'), /EEXIST/);
         assert.strictEqual(fs.readFileSync(target, 'utf8'), 'pre-existing', 'the pre-existing file must be untouched');
@@ -59,7 +60,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     it('writeSecretFile refuses to write through a pre-planted symlink instead of following it', function () {
         const victim = path.join(scratchDir, 'victim.txt');
         fs.writeFileSync(victim, 'victim-content');
-        const link = path.join(scratchDir, 'link.txt');
+        const link = path.join(scratchDir, 'link.terraformrc');
         if (!trySymlink(victim, link)) this.skip();
         assert.throws(() => writeSecretFile(link, 'stolen-secret'), /EEXIST/);
         assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the secret');
@@ -70,7 +71,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
         c.execFileSync = (file: string, args: string[]) => { seen = { file, args }; return Buffer.from(''); };
         Object.defineProperty(process, 'platform', { value: 'win32' });
 
-        const target = path.join(scratchDir, 'win-results.txt');
+        const target = path.join(scratchDir, 'win-config.terraformrc');
         writeSecretFile(target, 'win-secret');
 
         assert.ok(seen, 'icacls must be invoked on win32');
@@ -85,7 +86,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     it('writeSecretFile fails closed when the icacls restriction cannot be applied on win32', () => {
         c.execFileSync = () => { throw new Error('icacls exploded'); };
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        const target = path.join(scratchDir, 'win-fail.txt');
+        const target = path.join(scratchDir, 'win-fail.terraformrc');
         assert.throws(() => writeSecretFile(target, 'win-secret'), /Failed to set restrictive ACL/);
     });
 
@@ -93,21 +94,20 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
         let called = false;
         c.execFileSync = () => { called = true; return Buffer.from(''); };
         Object.defineProperty(process, 'platform', { value: 'linux' });
-        const target = path.join(scratchDir, 'unix-results.txt');
+        const target = path.join(scratchDir, 'unix-config.terraformrc');
         writeSecretFile(target, 'unix-secret');
         assert.strictEqual(called, false, 'icacls must not run on Unix -- chmod 0600 already applied');
     });
 
     // #634: if the post-write permission-hardening throws, writeSecretFile must
     // scrub+remove the already-written credential file before re-throwing rather
-    // than leaving it orphaned and untracked (call sites register the path only
-    // on the next line), while still failing closed.
+    // than leaving it orphaned and untracked, while still failing closed.
     it('on Unix, removes the orphaned file when chmod fails and still fails closed (#634)', () => {
         Object.defineProperty(process, 'platform', { value: 'linux' });
         const f = fs as unknown as { chmodSync: typeof fs.chmodSync };
         const origChmodSync = f.chmodSync;
         f.chmodSync = () => { throw new Error('EPERM'); };
-        const target = path.join(scratchDir, 'unix-orphan.txt');
+        const target = path.join(scratchDir, 'unix-orphan.terraformrc');
         try {
             assert.throws(() => writeSecretFile(target, 'unix-secret'), /Failed to set restrictive permissions/);
         } finally {
@@ -119,7 +119,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     it('on win32, removes the orphaned file when the DACL cannot be applied and still fails closed (#634)', () => {
         c.execFileSync = () => { throw new Error('icacls exploded'); };
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        const target = path.join(scratchDir, 'win-orphan.txt');
+        const target = path.join(scratchDir, 'win-orphan.terraformrc');
         assert.throws(() => writeSecretFile(target, 'win-secret'), /Failed to set restrictive ACL/);
         assert.strictEqual(fs.existsSync(target), false, 'the orphaned credential file must be removed, not left on disk');
     });
@@ -127,7 +127,7 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
     // Real-ACL integration check: only meaningful (and only runs) on Windows
     // agents, mirroring TerraformTaskV5's own win32 integration test for #495.
     (origPlatform === 'win32' ? it : it.skip)('win32 integration: no broad principal retains access; the current user keeps full control', () => {
-        const target = path.join(scratchDir, 'real-acl.txt');
+        const target = path.join(scratchDir, 'real-acl.terraformrc');
         writeSecretFile(target, 'real-secret');
         const aclOutput = cp.execFileSync('icacls', [target], { encoding: 'utf8' });
         const aceLines = aclOutput.split(/\r?\n/).filter((line: string) => line.includes(':('));
@@ -143,16 +143,16 @@ describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-p
 });
 
 /**
- * Direct unit tests for replaceSecretFile, used by results.ts's writeSarif for
- * the user-named, predictable sarifPath output: a re-run legitimately
- * overwrites a previous run's SARIF file, but a pre-planted symlink is
- * refused outright.
+ * Direct unit tests for replaceSecretFile — the primitive index.ts uses for the
+ * .terraformrc, whose fixed path in Agent.TempDirectory can legitimately
+ * pre-exist from a prior run on a reused self-hosted agent: a stale regular
+ * file is overwritten, but a pre-planted symlink is refused outright.
  */
-describe('replaceSecretFile (TerraformPolicyCheck copy) — user-named SARIF output path', function () {
+describe('replaceSecretFile (TerraformProviderMirror copy) — .terraformrc config path', function () {
     let scratchDir: string;
 
     beforeEach(() => {
-        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-replace-secret-test-'));
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-replace-secret-test-'));
     });
 
     afterEach(() => {
@@ -160,13 +160,13 @@ describe('replaceSecretFile (TerraformPolicyCheck copy) — user-named SARIF out
     });
 
     it('creates the file when nothing exists at the target', () => {
-        const target = path.join(scratchDir, 'policy.sarif');
-        replaceSecretFile(target, '{"version":"2.1.0"}');
-        assert.strictEqual(fs.readFileSync(target, 'utf8'), '{"version":"2.1.0"}');
+        const target = path.join(scratchDir, '.terraformrc');
+        replaceSecretFile(target, 'provider_installation {}');
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'provider_installation {}');
     });
 
-    it('overwrites a pre-existing regular file (re-run semantics)', () => {
-        const target = path.join(scratchDir, 'policy.sarif');
+    it('overwrites a pre-existing regular file (reused-agent re-run semantics)', () => {
+        const target = path.join(scratchDir, '.terraformrc');
         fs.writeFileSync(target, 'old-run');
         replaceSecretFile(target, 'new-run');
         assert.strictEqual(fs.readFileSync(target, 'utf8'), 'new-run');
@@ -176,33 +176,33 @@ describe('replaceSecretFile (TerraformPolicyCheck copy) — user-named SARIF out
     });
 
     it('refuses to write through a pre-existing symlink', function () {
-        const victim = path.join(scratchDir, 'victim.sarif');
+        const victim = path.join(scratchDir, 'victim.txt');
         fs.writeFileSync(victim, 'victim-content');
-        const link = path.join(scratchDir, 'policy.sarif');
+        const link = path.join(scratchDir, '.terraformrc');
         try {
             fs.symlinkSync(victim, link, 'file');
         } catch {
             this.skip();
         }
         assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the output');
+        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the config');
         assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink must be left in place as evidence, not silently deleted');
     });
 });
 
 /**
  * Direct unit tests for this task's copy of scrubFile (#595): overwrites a
- * secret temp file's content with zeros before cleanupTempFiles() unlinks it.
- * PolicyCheck's own runtime never calls scrubFile today, but the module is a
- * byte-identical copy of TerraformTaskV5's secure-temp.ts (gated by
- * scripts/check-shared-modules.js), so it is exercised here from this task's
- * own compiled output to give the parity copy real coverage.
+ * secret temp file's content with zeros. ProviderMirror's own runtime reaches
+ * scrubFile only through writeSecretFile's #634 hardening-failure cleanup path,
+ * but the module is a byte-identical copy of TerraformTaskV5's secure-temp.ts
+ * (gated by scripts/check-shared-modules.js), so it is exercised here from this
+ * task's own compiled output to give the parity copy real coverage.
  */
-describe('scrubFile (TerraformPolicyCheck copy) — overwrite-before-unlink content scrub (#595)', function () {
+describe('scrubFile (TerraformProviderMirror copy) — overwrite-before-unlink content scrub (#595)', function () {
     let scratchDir: string;
 
     beforeEach(() => {
-        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-scrub-file-test-'));
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-scrub-file-test-'));
     });
 
     afterEach(() => {
@@ -211,7 +211,7 @@ describe('scrubFile (TerraformPolicyCheck copy) — overwrite-before-unlink cont
 
     it('overwrites the file content with zeros of the same length, preserving the file', () => {
         const target = path.join(scratchDir, 'secret.txt');
-        const original = 'top-secret-bearer-token-value';
+        const original = 'user:s3cr3t@mirror.example.com';
         fs.writeFileSync(target, original);
         scrubFile(target);
         const scrubbed = fs.readFileSync(target);
@@ -235,7 +235,7 @@ describe('scrubFile (TerraformPolicyCheck copy) — overwrite-before-unlink cont
         const victim = path.join(scratchDir, 'victim.txt');
         const original = 'victim-secret-content';
         fs.writeFileSync(victim, original);
-        const link = path.join(scratchDir, 'tracked-temp-file.tf');
+        const link = path.join(scratchDir, 'tracked-temp-file.terraformrc');
         try {
             fs.symlinkSync(victim, link, 'file');
         } catch {

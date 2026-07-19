@@ -1,9 +1,9 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { tightenFilePermissions } from './secure-temp';
+import { scrubFile, tightenFilePermissions } from './secure-temp';
 
 export interface ISecureFileLoader {
     downloadSecureFile(secureFileId: string): Promise<string>;
-    deleteSecureFile(secureFileId: string): void;
+    deleteSecureFile(secureFileId: string, filePath?: string): void;
 }
 
 /**
@@ -63,8 +63,20 @@ export class SecureFileLoader implements ISecureFileLoader {
         }
     }
 
-    public deleteSecureFile(secureFileId: string): void {
+    public deleteSecureFile(secureFileId: string, filePath?: string): void {
         try {
+            // The secure var file (.tfvars/.pkrvars, commonly secret-bearing) is
+            // about to be unlinked by the vendored helper. Scrub its bytes to zero
+            // first (best-effort) so it gets the same overwrite-before-unlink
+            // treatment as every other credential temp file (#662, #595); a bare
+            // unlink leaves the bytes recoverable until overwritten.
+            if (filePath) {
+                try {
+                    scrubFile(filePath);
+                } catch (scrubErr) {
+                    tasks.warning(`Failed to scrub secure file ${secureFileId} before deletion: ${scrubErr}`);
+                }
+            }
             this.helpers.deleteSecureFile(secureFileId);
             tasks.debug(`Deleted secure file: ${secureFileId}`);
         } catch (err) {
@@ -77,9 +89,10 @@ export class SecureFileLoader implements ISecureFileLoader {
 
 /**
  * If a secureVarsFile input is set, downloads it and returns `-var-file=<path>`.
- * Returns null if no secure file is configured.
+ * Returns null if no secure file is configured. `filePath` is the resolved
+ * download path, surfaced so the caller can scrub it before deletion (#662).
  */
-export async function getSecureVarFileArgs(loader?: ISecureFileLoader): Promise<{ varFileArg: string; secureFileId: string } | null> {
+export async function getSecureVarFileArgs(loader?: ISecureFileLoader): Promise<{ varFileArg: string; secureFileId: string; filePath: string } | null> {
     const secureFileId = tasks.getInput("secureVarsFile", false);
     if (!secureFileId) {
         return null;
@@ -87,5 +100,5 @@ export async function getSecureVarFileArgs(loader?: ISecureFileLoader): Promise<
 
     const secureFileLoader = loader || new SecureFileLoader();
     const filePath = await secureFileLoader.downloadSecureFile(secureFileId);
-    return { varFileArg: `-var-file=${filePath}`, secureFileId };
+    return { varFileArg: `-var-file=${filePath}`, secureFileId, filePath };
 }

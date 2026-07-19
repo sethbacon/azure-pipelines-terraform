@@ -98,6 +98,32 @@ describe('secure-temp (TerraformDriftReport copy) — exclusive create + cross-p
         assert.strictEqual(called, false, 'icacls must not run on Unix -- chmod 0600 already applied');
     });
 
+    // #634: if the post-write permission-hardening throws, writeSecretFile must
+    // scrub+remove the already-written credential file before re-throwing rather
+    // than leaving it orphaned and untracked (call sites register the path only
+    // on the next line), while still failing closed.
+    it('on Unix, removes the orphaned file when chmod fails and still fails closed (#634)', () => {
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        const f = fs as unknown as { chmodSync: typeof fs.chmodSync };
+        const origChmodSync = f.chmodSync;
+        f.chmodSync = () => { throw new Error('EPERM'); };
+        const target = path.join(scratchDir, 'unix-orphan.json');
+        try {
+            assert.throws(() => writeSecretFile(target, 'unix-secret'), /Failed to set restrictive permissions/);
+        } finally {
+            f.chmodSync = origChmodSync;
+        }
+        assert.strictEqual(fs.existsSync(target), false, 'the orphaned credential file must be removed, not left on disk');
+    });
+
+    it('on win32, removes the orphaned file when the DACL cannot be applied and still fails closed (#634)', () => {
+        c.execFileSync = () => { throw new Error('icacls exploded'); };
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        const target = path.join(scratchDir, 'win-orphan.json');
+        assert.throws(() => writeSecretFile(target, 'win-secret'), /Failed to set restrictive ACL/);
+        assert.strictEqual(fs.existsSync(target), false, 'the orphaned credential file must be removed, not left on disk');
+    });
+
     // Real-ACL integration check: only meaningful (and only runs) on Windows
     // agents, mirroring TerraformTaskV5's own win32 integration test for #495.
     (origPlatform === 'win32' ? it : it.skip)('win32 integration: no broad principal retains access; the current user keeps full control', () => {

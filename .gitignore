@@ -5,7 +5,6 @@ tsconfig.tsbuildinfo
 .taskkey
 configs/self.json
 *.vsix
-package-lock.json
 
 # Generated credential/key/token files from tests and runtime
 credentials-*.json

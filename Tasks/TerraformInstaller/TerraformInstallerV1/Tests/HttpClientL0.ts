@@ -224,6 +224,20 @@ describe('http-client: fetchJson / fetchText / fetchBuffer', () => {
         assert.deepStrictEqual(data, { ok: true, n: 7 });
     });
 
+    // #646: a 2xx whose body is not valid JSON (captive portal, proxy/WAF HTML
+    // error page, internal registry serving HTML with a 200) must surface a clear,
+    // body-bounded, NON-retryable error rather than a bare JSON.parse SyntaxError
+    // that withRetry would otherwise treat as transient and retry to exhaustion.
+    it('fetchJson throws a clear non-retryable error on a non-JSON 2xx body (#646)', async () => {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+            calls++;
+            return new Response('<html><body>captive portal</body></html>', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(fetchJson('https://api.example.com/v'), /was not valid JSON/);
+        assert.strictEqual(calls, 1, 'a non-JSON 2xx body must not be retried (deterministic, not transient)');
+    });
+
     it('fetchJson throws on a non-OK status and does not retry a 4xx', async () => {
         let calls = 0;
         globalThis.fetch = (async () => {

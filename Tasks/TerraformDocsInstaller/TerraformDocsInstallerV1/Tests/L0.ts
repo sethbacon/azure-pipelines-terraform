@@ -4,6 +4,9 @@ import * as path from 'path';
 
 // Direct unit tests for the http-client timeout guard.
 import './HttpClientL0';
+// Direct unit tests for the shared bounded-backoff retry helper (retry.ts), which
+// the http-client withRetry now delegates to (#645).
+import './RetryL0';
 // Direct unit tests for the checksum/platform helpers.
 import './InstallerHelpersL0';
 // Direct unit tests for the registry download-host allowlist.
