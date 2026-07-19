@@ -19,7 +19,7 @@ import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment, MAX_ATTACHMENT_BYTES } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
@@ -1340,6 +1340,40 @@ describe('htmlValidate.validateHtmlContent', () => {
 });
 
 // ===========================================================================
+// htmlValidate.readHtmlFile — size cap before read (#677)
+// ===========================================================================
+describe('htmlValidate.readHtmlFile', () => {
+    it('reads a normal file', () => {
+        const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'html-read-'));
+        const p = nodePath.join(dir, 'a.html');
+        fs.writeFileSync(p, '<html><body>hi</body></html>');
+        assert.strictEqual(htmlValidate.readHtmlFile(p), '<html><body>hi</body></html>');
+    });
+
+    it('throws when the file does not exist', () => {
+        assert.throws(
+            () => htmlValidate.readHtmlFile('/does/not/exist.html'),
+            /not found|HtmlFileNotFound/,
+        );
+    });
+
+    it('refuses to read a file larger than MAX_HTML_FILE_BYTES, without buffering it into memory (#677)', () => {
+        const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'html-huge-'));
+        const p = nodePath.join(dir, 'huge.html');
+        // A sparse file just over the cap: ftruncate sets the reported size
+        // without allocating real disk blocks for the unwritten region.
+        const fd = fs.openSync(p, 'w');
+        fs.ftruncateSync(fd, htmlValidate.MAX_HTML_FILE_BYTES + 1);
+        fs.closeSync(fd);
+
+        assert.throws(
+            () => htmlValidate.readHtmlFile(p),
+            /HtmlFileTooLarge|exceeding the .* limit/,
+        );
+    });
+});
+
+// ===========================================================================
 // #587: cssHasDangerousConstruct two-pass contract (PublishKbArticle copy)
 // ===========================================================================
 describe('cssHasDangerousConstruct (#587)', () => {
@@ -1660,7 +1694,7 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             .reply(201, { result: {} });
 
         await assert.rejects(
-            () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
+            () => uploadAttachment(INSTANCE, HEADERS, 'art1', fs.readFileSync(tmpFile), 'pic.png', 'image/png'),
             /did not return a sys_id|AttachmentUploadNoSysId/,
         );
     });
@@ -1688,7 +1722,7 @@ describe('listArticleAttachments / uploadAttachment response hardening (#561)', 
             .reply(201, { result: { sys_id: '"><img src=x onerror=alert(1)>' } });
 
         await assert.rejects(
-            () => uploadAttachment(INSTANCE, HEADERS, 'art1', tmpFile, 'pic.png', 'image/png'),
+            () => uploadAttachment(INSTANCE, HEADERS, 'art1', fs.readFileSync(tmpFile), 'pic.png', 'image/png'),
             /not a 32-character hex GUID|AttachmentSysIdInvalid/,
         );
     });
@@ -1785,6 +1819,24 @@ describe('syncImageAttachment', () => {
             ),
         );
         assert.strictEqual(deleteScope.isDone(), false, 'the old attachment must not be deleted when the upload fails');
+    });
+
+    it('refuses to read/upload a local image file larger than MAX_ATTACHMENT_BYTES, without making any HTTP call (#677)', async () => {
+        const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'att-huge-'));
+        const hugeFile = nodePath.join(dir, 'huge.png');
+        // A sparse file just over the cap: ftruncate sets the reported size
+        // without allocating real disk blocks for the unwritten region.
+        const fd = fs.openSync(hugeFile, 'w');
+        fs.ftruncateSync(fd, MAX_ATTACHMENT_BYTES + 1);
+        fs.closeSync(fd);
+
+        // No nock interceptors registered -> any HTTP call would throw
+        // (netConnect disabled), proving the size guard fires before any
+        // network attempt, not just before the local hash/upload reads.
+        await assert.rejects(
+            () => syncImageAttachment(INSTANCE, HEADERS, 'art1', hugeFile, 'huge.png', []),
+            /ImageTooLarge|exceeding the .* attachment size limit/,
+        );
     });
 });
 

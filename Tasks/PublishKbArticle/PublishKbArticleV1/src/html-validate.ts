@@ -4,6 +4,13 @@ import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefres
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
+ * Upper bound on the operator-supplied `htmlFile` read into memory (#677).
+ * Matches the 10MB cap this codebase applies to comparable local-file/HTTP-
+ * response reads elsewhere (CWE-400).
+ */
+export const MAX_HTML_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
  * Validate HTML content for common issues.
  *
  * `force` ONLY downgrades the content-loss heuristic below (a false-positive-
@@ -186,11 +193,17 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 }
 
 /**
- * Read an HTML file from disk. Throws if the file does not exist.
+ * Read an HTML file from disk. Throws if the file does not exist or exceeds
+ * MAX_HTML_FILE_BYTES (#677) -- the size is checked before the read so an
+ * oversized file is never buffered into memory at all.
  */
 export function readHtmlFile(filePath: string): string {
     if (!fs.existsSync(filePath)) {
         throw new Error(tasks.loc('HtmlFileNotFound', filePath));
+    }
+    const size = fs.statSync(filePath).size;
+    if (size > MAX_HTML_FILE_BYTES) {
+        throw new Error(tasks.loc('HtmlFileTooLarge', filePath, size, MAX_HTML_FILE_BYTES));
     }
     return fs.readFileSync(filePath, 'utf-8');
 }
