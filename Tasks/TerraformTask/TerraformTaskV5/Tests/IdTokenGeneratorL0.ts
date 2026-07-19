@@ -106,12 +106,19 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(called, false, 'must not call fetch with a non-https request URI');
     });
 
-    it('accepts an https *.visualstudio.com host (#493)', async () => {
+    it('rejects a *.visualstudio.com host when no collection URI vouches for its org (#554)', async () => {
+        // Behavior change (#554 reopen): the pre-#554 code accepted ANY
+        // *.visualstudio.com host on the bare suffix match. It now fails closed
+        // when no collection variable exposes a *.visualstudio.com org to
+        // compare against (here neither is set — beforeEach clears both), since
+        // a bare suffix match would admit any tenant's org. The legitimate
+        // legacy-domain case is covered by the same-org test below, where the
+        // collection URI is the matching *.visualstudio.com org.
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/distributedtask/hubs/build/plans/1/jobs/2/oidctoken';
-        globalThis.fetch = (async () =>
-            new Response(JSON.stringify({ oidcToken: 'legacy-domain-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
-        const token = await new TokenGenerator().generate('sc-123');
-        assert.strictEqual(token, 'legacy-domain-token');
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not send the Bearer access token to a *.visualstudio.com host no collection URI vouches for');
     });
 
     it('accepts an on-prem host that matches the System.CollectionUri host (#493)', async () => {
@@ -162,16 +169,19 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         assert.strictEqual(token, 'vstoken-token');
     });
 
-    it('keeps the plain suffix allow for *.visualstudio.com when the collection URI exposes no comparable org (#554)', async () => {
-        // A dev.azure.com-form collection URI carries its org in the PATH, not
-        // the host, so no org comparison is possible -- the pre-#554 suffix
-        // behavior must be preserved for it.
+    it('rejects a *.visualstudio.com host when the collection URI is the dev.azure.com form (#554)', async () => {
+        // Behavior change (#554 reopen): a dev.azure.com-form collection URI
+        // carries its org in the PATH, not the host, so no org comparison is
+        // possible. The pre-#554 code fell through to the broad suffix and
+        // accepted the host; it now fails closed -- a dev.azure.com-era org
+        // never legitimately mints tokens at a *.visualstudio.com host, so the
+        // Bearer access token must not be sent there.
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/oidctoken';
         process.env['SYSTEM_COLLECTIONURI'] = 'https://dev.azure.com/myorg/';
-        globalThis.fetch = (async () =>
-            new Response(JSON.stringify({ oidcToken: 'suffix-token' }), { status: 200 })) as unknown as typeof globalThis.fetch;
-        const token = await new TokenGenerator().generate('sc-123');
-        assert.strictEqual(token, 'suffix-token');
+        let called = false;
+        globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        assert.strictEqual(called, false, 'must not send the Bearer access token to a *.visualstudio.com host when the collection URI is the dev.azure.com form');
     });
 
     it('rejects a foreign host and never sends the Bearer access token to it (#493)', async () => {
