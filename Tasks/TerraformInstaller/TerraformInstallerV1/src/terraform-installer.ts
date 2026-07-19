@@ -6,7 +6,7 @@ import fs = require('fs');
 import crypto = require('crypto');
 
 import { randomUUID as uuidV4 } from 'crypto';
-import { fetchJson, fetchText, fetchTextAllow404 } from './http-client';
+import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
@@ -233,15 +233,21 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     // Optional opt-in host pin: a compromised registry could still point
-    // download_url at an arbitrary HTTPS host (and tools.downloadTool follows
-    // redirects with no way to disable that), so an operator who wants to
+    // download_url at an arbitrary HTTPS host, so an operator who wants to
     // constrain the trusted storage host(s) can set registryAllowedHosts.
     // Default (empty) preserves the existing trust-the-registry behavior.
     const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
     if (allowedHosts.length > 0) {
-        const downloadHost = new URL(data.download_url).hostname;
-        if (!isRegistryHostAllowed(downloadHost, allowedHosts)) {
-            throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", downloadHost, allowedHosts.join(', ')));
+        // Fail fast, before any temp-path resolution or network activity, when
+        // the registry's own advertised download_url host is already
+        // disallowed. downloadToFile() below re-validates this same host (and
+        // every redirect hop) again as defense in depth (#679), but this
+        // upfront check keeps the common case (registry itself is fine, only
+        // a redirect might misbehave) cheap and matches the original
+        // synchronous rejection behavior exactly.
+        const initialHost = new URL(data.download_url).hostname;
+        if (!isRegistryHostAllowed(initialHost, allowedHosts)) {
+            throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", initialHost, allowedHosts.join(', ')));
         }
     }
 
@@ -258,7 +264,24 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
     let zipPath: string;
     try {
-        zipPath = await tools.downloadTool(data.download_url, fileName);
+        if (allowedHosts.length > 0) {
+            // tools.downloadTool() follows redirects with no way to re-validate
+            // or disable that, so a compromised registry could return an
+            // allowlisted download_url that itself 302s to an arbitrary host,
+            // bypassing the pin entirely. Route through the manual-redirect
+            // downloadToFile() instead, which re-checks EVERY hop against
+            // allowedHosts (#679) -- only when the operator actually opted into
+            // the pin, so the default (no allowlist) path is unchanged.
+            const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+            zipPath = path.join(destDir, fileName);
+            await downloadToFile(data.download_url, zipPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+                if (!isRegistryHostAllowed(hostname, allowedHosts)) {
+                    throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", hostname, allowedHosts.join(', ')));
+                }
+            });
+        } else {
+            zipPath = await tools.downloadTool(data.download_url, fileName);
+        }
     } catch (exception) {
         // download_url is a pre-signed URL whose query string carries the signing
         // token; drop the whole query (redactUrl) and scrub the raw URL out of the
