@@ -22,13 +22,19 @@ process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_TENANTID'] = 'DummyTenantId';
 // embedded newline (a JSON string escape here, not a literal control
 // character in the NDJSON line) followed by content shaped like an ADO
 // logging command. echoApplyMessages must neutralize the leading `##` on
-// the injected physical line rather than echoing it verbatim.
+// the injected physical line rather than echoing it verbatim. Also covers
+// the Unicode line/paragraph separators (U+2028/U+2029), which a plain
+// `\r?\n` split would not treat as a line boundary even though some
+// consoles render them as one -- a real (if narrower) bypass of a
+// `\r?\n`-only split.
 const events = [
     { '@level': 'info', '@message': 'Terraform 1.9.5', '@timestamp': '2026-07-15T00:00:00.000000Z', terraform: '1.9.5', type: 'version' },
     { '@level': 'error', '@message': 'Error: something failed\n##vso[task.setvariable variable=pwned]evil', '@timestamp': '2026-07-15T00:00:01.000000Z', type: 'diagnostic' },
+    { '@level': 'error', '@message': 'Error: unicode separator\u2028##vso[task.setvariable variable=pwned2]evil2', '@timestamp': '2026-07-15T00:00:02.000000Z', type: 'diagnostic' },
     { '@level': 'info', '@message': 'Apply complete! Resources: 0 added, 0 changed, 0 destroyed.', '@timestamp': '2026-07-15T00:00:03.000000Z', changes: { add: 0, change: 0, remove: 0, operation: 'apply' }, type: 'change_summary' },
 ];
 const ndjson = events.map((e) => JSON.stringify(e)).join('\n');
+
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {

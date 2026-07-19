@@ -1073,9 +1073,16 @@ export abstract class BaseTerraformCommandHandler {
      * `##vso[...]`/`##[...]` logging command (CWE-117). Splitting on
      * newlines first (rather than filtering the whole string) preserves the
      * message's own intentional line breaks for readability.
+     *
+     * Splits on the full ECMAScript LineTerminatorSequence set (`\r\n`, `\n`,
+     * `\r`, and the Unicode line/paragraph separators U+2028/U+2029) -- a
+     * JSON string escape (`\u2028`) can carry one of the latter two through
+     * JSON.parse just like `\n`, and some consoles/terminals render them as a
+     * new line even though a plain `/\r?\n/` split would not treat them as a
+     * boundary, which would let a leading `##` past this check undetected.
      */
     private echoSafeConsoleLine(message: string): void {
-        for (const line of message.split(/\r?\n/)) {
+        for (const line of message.split(/\r\n|[\r\n\u2028\u2029]/)) {
             console.log(line.replace(/^(\s*)##/, '$1# #'));
         }
     }
