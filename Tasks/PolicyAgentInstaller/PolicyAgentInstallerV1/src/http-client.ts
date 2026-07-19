@@ -240,25 +240,42 @@ export async function downloadToFile(
     // fetchWithTimeout's redirect-validator callback below only re-checks
     // subsequent Location targets, never the URL it was first called with.
     isHostAllowed(new URL(url).hostname);
-    await fetchWithTimeout(
-        url,
-        timeoutMs,
-        async (response) => {
-            if (!response.ok) {
-                throw new HttpError(`Download from ${url} failed with HTTP ${response.status}.`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-            }
-            if (!response.body) {
-                throw new HttpError(`Download from ${url} returned an empty response body.`, false);
-            }
-            await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(destPath));
-        },
-        (_originHost, next) => {
-            // Re-validate every redirect hop against the same allowlist (#679).
-            isHostAllowed(next.host);
-            return true;
-        },
-    );
+    try {
+        await fetchWithTimeout(
+            url,
+            timeoutMs,
+            async (response) => {
+                if (!response.ok) {
+                    throw new HttpError(`Download from ${url} failed with HTTP ${response.status}.`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
+                }
+                if (!response.body) {
+                    throw new HttpError(`Download from ${url} returned an empty response body.`, false);
+                }
+                await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(destPath));
+            },
+            (_originHost, next) => {
+                // Re-validate every redirect hop against the same allowlist (#679).
+                isHostAllowed(next.host);
+                return true;
+            },
+        );
+    } catch (err) {
+        // A write-stream failure partway through (disk full, permission
+        // denied) leaves a truncated file at destPath; a non-2xx/host-
+        // rejection failure never opens the write stream at all. Best-effort
+        // remove whatever partial file might exist so a caller never mistakes
+        // it for a complete, verifiable download.
+        try {
+            fs.unlinkSync(destPath);
+        } catch {
+            // Nothing to remove (the common case -- the failure happened
+            // before any bytes were written) or removal itself failed; either
+            // way this must not mask the real error above.
+        }
+        throw err;
+    }
 }
+
 
 
 /**

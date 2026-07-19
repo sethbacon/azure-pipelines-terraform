@@ -299,6 +299,52 @@ describe('http-client: downloadToFile (#679)', () => {
         }
     });
 
+    it('follows a three-hop redirect chain, validating every hop including the middle one', async () => {
+        const originalFetch = globalThis.fetch;
+        const requestedHosts: string[] = [];
+        globalThis.fetch = (async (url: string) => {
+            const host = new URL(url).hostname;
+            requestedHosts.push(host);
+            if (host === 'a.example.com') {
+                return new Response(null, { status: 302, headers: { Location: 'https://b.example.com/file.zip' } });
+            }
+            if (host === 'b.example.com') {
+                return new Response(null, { status: 302, headers: { Location: 'https://c.example.com/file.zip' } });
+            }
+            return new Response('final-content', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        try {
+            await downloadToFile('https://a.example.com/file.zip', destPath, 1000, allowOnly('a.example.com', 'b.example.com', 'c.example.com'));
+            assert.deepStrictEqual(requestedHosts, ['a.example.com', 'b.example.com', 'c.example.com']);
+            assert.strictEqual(fs.readFileSync(destPath, 'utf8'), 'final-content');
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
+    it('rejects a three-hop chain when only the middle hop is disallowed', async () => {
+        const originalFetch = globalThis.fetch;
+        const requestedHosts: string[] = [];
+        globalThis.fetch = (async (url: string) => {
+            const host = new URL(url).hostname;
+            requestedHosts.push(host);
+            if (host === 'a.example.com') {
+                return new Response(null, { status: 302, headers: { Location: 'https://attacker.example.net/file.zip' } });
+            }
+            return new Response('should not be reached', { status: 200 });
+        }) as unknown as typeof globalThis.fetch;
+        try {
+            await assert.rejects(
+                () => downloadToFile('https://a.example.com/file.zip', destPath, 1000, allowOnly('a.example.com', 'c.example.com')),
+                /disallowed host: attacker\.example\.net/,
+            );
+            assert.deepStrictEqual(requestedHosts, ['a.example.com'], 'must not request the disallowed middle hop or anything beyond it');
+            assert.ok(!fs.existsSync(destPath));
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+
     it('surfaces a clear error on a non-2xx response instead of writing a partial/error-page file', async () => {
         const originalFetch = globalThis.fetch;
         globalThis.fetch = (async () => new Response('not found', { status: 404 })) as unknown as typeof globalThis.fetch;
@@ -312,7 +358,23 @@ describe('http-client: downloadToFile (#679)', () => {
             globalThis.fetch = originalFetch;
         }
     });
+
+    it('removes a partial file left by a write-stream failure instead of leaving a truncated file behind (#679)', async () => {
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async () => new Response('some bytes', { status: 200 })) as unknown as typeof globalThis.fetch;
+        try {
+            // destPath's parent directory does not exist -> fs.createWriteStream
+            // fails immediately (ENOENT), simulating a write-time failure
+            // (disk full / permission denied would fail the same way, just later).
+            const badDestPath = path.join(destDir, 'missing-subdir', 'out.bin');
+            await assert.rejects(() => downloadToFile('https://storage.example.com/file.zip', badDestPath, 1000, allowOnly('storage.example.com')));
+            assert.ok(!fs.existsSync(badDestPath), 'must not leave a partial/truncated file behind after a write failure');
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
 });
+
 
 describe('http-client: fetchJson / fetchText / fetchBuffer', () => {
     let originalFetch: typeof globalThis.fetch;
