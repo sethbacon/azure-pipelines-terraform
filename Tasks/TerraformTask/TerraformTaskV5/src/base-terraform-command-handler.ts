@@ -156,6 +156,22 @@ export function relativeWorkingDirectoryForDigest(workingDirectory: string): str
 }
 
 /**
+ * Upper bound on the terraform stdout buffered in memory by a single
+ * {@link BaseTerraformCommandHandler.execWithStdoutCapture} call — the choke
+ * point every `-json` digest/output pipeline (plan/apply/destroy/show/output/
+ * refresh) runs through. An unbounded `stdout += chunk` lets a huge plan/state
+ * (many resources, large embedded blobs) or a misbehaving provider grow one JS
+ * string until the process OOMs and crashes the task (#632, CWE-400), mirroring
+ * the HTTP clients' MAX_RESPONSE_BYTES body cap. The ceiling is deliberately
+ * generous relative to the digest pipeline's own 12 MB hard / 16 MB tab-parse
+ * ceilings — a real large-estate `show -json` legitimately exceeds those before
+ * redaction — but bounded so a runaway can't exhaust a shared agent. On breach
+ * the child is killed and the call throws; the raw output is never silently
+ * truncated into a parsed digest.
+ */
+export const MAX_CAPTURED_STDOUT_BYTES = 100 * 1024 * 1024; // 100 MB
+
+/**
  * Single abstract base carrying every terraform sub-command (init/plan/apply/...)
  * plus the auth/temp-file plumbing shared by all provider handlers. The size is a
  * deliberate cohesion trade-off: the provider subclasses (azure/aws/gcp/oci/hcp/
@@ -171,7 +187,16 @@ export abstract class BaseTerraformCommandHandler {
     terraformToolHandler: ITerraformToolHandler;
     backendConfig: Map<string, string>;
     protected tempFiles: string[];
+    // Files scrubbed+deleted ONLY on a SIGTERM/cancellation (emergencyCleanupTempFiles),
+    // never on normal step completion: the retained `terraform output -json` file
+    // when cleanupOutputFile is off, which downstream steps still read via
+    // jsonOutputVariablesPath during the same job but has no legitimate reader once
+    // the job is cancelled (#650).
+    protected emergencyOnlyTempFiles: string[] = [];
     private secureFileId: string | null = null;
+    // Path of the downloaded secure var file, retained so it can be scrubbed
+    // (zero-overwrite) before the securefiles-common helper unlinks it (#662).
+    private secureFilePath: string | null = null;
     private static readonly OUTPUT_VAR_MAX_LENGTH = 1024;
 
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
@@ -269,6 +294,8 @@ export abstract class BaseTerraformCommandHandler {
         const result = await getSecureVarFileArgs();
         if (!result) return [];
         this.secureFileId = result.secureFileId;
+        // Retained so cleanupSecureFile can scrub the file before it is unlinked (#662).
+        this.secureFilePath = result.filePath;
         return [result.varFileArg];
     }
 
@@ -317,11 +344,35 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Core infrastructure ---
 
-    protected async execWithStdoutCapture(terraformTool: ToolRunner, options: IExecOptions): Promise<{ code: number; stdout: string; stderr: string }> {
+    protected async execWithStdoutCapture(
+        terraformTool: ToolRunner,
+        options: IExecOptions,
+        // Overridable ONLY so tests can exercise the overflow guard without
+        // allocating 100 MB; production callers always take the module default.
+        maxStdoutBytes: number = MAX_CAPTURED_STDOUT_BYTES,
+    ): Promise<{ code: number; stdout: string; stderr: string }> {
         let stdout = '';
         let stderr = '';
+        // Running byte totals (not stdout.length re-measured per chunk, which would
+        // be O(n^2)) so an unbounded plan/state or a runaway provider can't grow
+        // the buffer until the task OOMs (#632). On stdout breach we stop
+        // appending, drop the partial buffer, kill the child, and throw *after*
+        // exec resolves -- never returning a silently-truncated string that a
+        // caller would parse into a digest.
+        let stdoutBytes = 0;
+        let stderrBytes = 0;
+        let stdoutOverflow = false;
         terraformTool.on('stdout', (data: string | Buffer) => {
-            stdout += data.toString();
+            if (stdoutOverflow) return;
+            const chunk = data.toString();
+            stdoutBytes += Buffer.byteLength(chunk);
+            if (stdoutBytes > maxStdoutBytes) {
+                stdoutOverflow = true;
+                stdout = '';
+                try { terraformTool.killChildProcess('SIGKILL'); } catch { /* best-effort: child may already be gone */ }
+                return;
+            }
+            stdout += chunk;
         });
         // #613: capture stderr too. When a caller runs with `silent: true` (the
         // structured apply path) the ToolRunner suppresses its own echo of the
@@ -329,18 +380,38 @@ export abstract class BaseTerraformCommandHandler {
         // crashes to STDERR rather than the stdout stream the caller consumes --
         // so without capturing stderr those failures are completely invisible
         // (the production incident behind #613). Callers that don't need it
-        // simply ignore the field.
+        // simply ignore the field. stderr is bounded by the same ceiling (cease
+        // appending past it) so a provider spewing to stderr can't OOM the agent
+        // either; unlike stdout it is diagnostic only, so a capped-but-present
+        // buffer is kept rather than failing the call.
         terraformTool.on('stderr', (data: string | Buffer) => {
-            stderr += data.toString();
+            if (stderrBytes > maxStdoutBytes) return;
+            const chunk = data.toString();
+            stderrBytes += Buffer.byteLength(chunk);
+            stderr += chunk;
         });
 
         const code = await terraformTool.execAsync(options);
 
+        if (stdoutOverflow) {
+            throw new Error(
+                `terraform emitted more than ${maxStdoutBytes} bytes on stdout; refusing to buffer an unbounded amount into memory ` +
+                `(an extremely large plan/state, or a misbehaving provider). Narrow the operation (e.g. with -target) if the size is legitimate.`,
+            );
+        }
+
         return { code, stdout, stderr };
     }
 
-    public cleanupTempFiles(): void {
-        for (const filePath of this.tempFiles) {
+    /**
+     * Scrubs (zero-overwrites) then unlinks each tracked temp path. Shared by
+     * {@link cleanupTempFiles} (normal end-of-step) and
+     * {@link emergencyCleanupTempFiles} (SIGTERM/cancellation). Best-effort per
+     * file: a scrub or unlink failure is surfaced above debug but never aborts
+     * cleanup of the remaining files.
+     */
+    private scrubAndUnlink(files: string[]): void {
+        for (const filePath of files) {
             try {
                 if (fs.existsSync(filePath)) {
                     // Scrub the content (overwrite with zeros) before unlinking, uniformly
@@ -365,16 +436,55 @@ export abstract class BaseTerraformCommandHandler {
                 tasks.warning(`Failed to clean up temp file ${filePath}: ${err}`);
             }
         }
-        this.tempFiles = [];
+    }
 
-        if (this.secureFileId) {
-            try {
-                new SecureFileLoader().deleteSecureFile(this.secureFileId);
-            } catch (err) {
-                tasks.warning(`Failed to clean up secure file: ${err}`);
-            }
-            this.secureFileId = null;
+    /**
+     * Scrubs+deletes the secure var file (via securefiles-common) if one was
+     * downloaded. The downloaded path is scrubbed (zero-overwrite) before the
+     * vendored helper unlinks it (#662), matching the scrub-then-unlink every
+     * other credential temp file gets -- the secure var file (.tfvars/.pkrvars)
+     * commonly carries the very secrets passed as `-var-file`.
+     */
+    private cleanupSecureFile(): void {
+        if (!this.secureFileId) return;
+        try {
+            new SecureFileLoader().deleteSecureFile(this.secureFileId, this.secureFilePath ?? undefined);
+        } catch (err) {
+            tasks.warning(`Failed to clean up secure file: ${err}`);
         }
+        this.secureFileId = null;
+        this.secureFilePath = null;
+    }
+
+    /**
+     * End-of-step cleanup (normal completion). Scrubs+deletes every tracked temp
+     * file and the secure var file. Deliberately does NOT touch
+     * {@link emergencyOnlyTempFiles} -- those (a retained `terraform output -json`
+     * file when cleanupOutputFile is off) must survive a normal step so
+     * downstream steps can still read them via the documented output-variable
+     * contract; they are cleaned only on cancellation (#650).
+     */
+    public cleanupTempFiles(): void {
+        this.scrubAndUnlink(this.tempFiles);
+        this.tempFiles = [];
+        this.cleanupSecureFile();
+    }
+
+    /**
+     * Cancellation cleanup (SIGTERM/SIGINT/uncaughtException, via
+     * ParentCommandHandler.emergencyCleanup). Cleans everything
+     * {@link cleanupTempFiles} does, PLUS {@link emergencyOnlyTempFiles}: on a
+     * cancellation there is no legitimate downstream reader left for a retained
+     * output file, so its cleartext (possibly `sensitive = true`) values are
+     * scrubbed+deleted then rather than left on a reused self-hosted agent's
+     * temp dir until job end (#650).
+     */
+    public emergencyCleanupTempFiles(): void {
+        this.scrubAndUnlink(this.tempFiles);
+        this.tempFiles = [];
+        this.scrubAndUnlink(this.emergencyOnlyTempFiles);
+        this.emergencyOnlyTempFiles = [];
+        this.cleanupSecureFile();
     }
 
     /**
@@ -584,6 +694,14 @@ export abstract class BaseTerraformCommandHandler {
 
         if (tasks.getBoolInput('cleanupOutputFile', false)) {
             this.tempFiles.push(jsonOutputVariablesFilePath);
+        } else {
+            // cleanupOutputFile is off: the file must survive a NORMAL step so
+            // downstream steps can still read it via the jsonOutputVariablesPath
+            // contract, but on a cancellation there is no legitimate downstream
+            // reader left -- register it for the emergency-only scrub+delete path
+            // so its cleartext (possibly `sensitive = true`) values aren't left on
+            // a reused self-hosted agent's temp dir until job end (#650).
+            this.emergencyOnlyTempFiles.push(jsonOutputVariablesFilePath);
         }
 
         // Auto-set pipeline variables from terraform output

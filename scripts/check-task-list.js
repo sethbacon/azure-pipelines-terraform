@@ -21,6 +21,15 @@
 // They now DERIVE the list at runtime from the same Tasks/*/*/task.json scan
 // (via scripts/lib/task-dirs.js and scripts/for-each-task.js), so they can no
 // longer drift and are intentionally no longer cross-checked here (issue #502).
+//
+// release.yml's sbom-and-sign job also hand-maintains a SECOND per-task
+// surface alongside the 'Generate SBOM for <Task>' steps already cross-checked
+// above (via taskDirsFromReleaseSbom): a matching 'Attest SBOM (<Task>) for
+// VSIX' step. A task added with a Generate step but no Attest step would ship
+// an unattested SBOM with the task-dir check above still green (issue #630).
+// checkSbomAttestParity() below closes that gap by asserting the two step
+// lists name the exact same set of tasks (by their step-name suffix, since the
+// Attest step names carry no `cd Tasks/...` line to key off of).
 
 const fs = require('fs');
 const path = require('path');
@@ -99,6 +108,51 @@ function taskDirsFromUnitTestJobs() {
     return dirs.sort();
 }
 
+// .github/workflows/release.yml: the sbom-and-sign job's 'Generate SBOM for
+// <Name>' step names, in file order, including the non-task 'Generate SBOM for
+// tab' step (unlike taskDirsFromReleaseSbom above, which keys off `cd
+// Tasks/...` and so naturally excludes it, this list is compared against the
+// Attest step names below, which also include a 'tab' entry).
+function sbomGenerateNames() {
+    const text = readText('.github/workflows/release.yml');
+    const re = /- name: Generate SBOM for (.+)/g;
+    const names = [];
+    let m;
+    while ((m = re.exec(text))) {
+        names.push(m[1].trim());
+    }
+    return names.sort();
+}
+
+// .github/workflows/release.yml: the sbom-and-sign job's 'Attest SBOM (<Name>)
+// for VSIX' step names.
+function sbomAttestNames() {
+    const text = readText('.github/workflows/release.yml');
+    const re = /- name: Attest SBOM \(([^)]+)\) for VSIX/g;
+    const names = [];
+    let m;
+    while ((m = re.exec(text))) {
+        names.push(m[1].trim());
+    }
+    return names.sort();
+}
+
+// Asserts every 'Generate SBOM for <Name>' step has a matching 'Attest SBOM
+// (<Name>) for VSIX' step and vice versa, so a task added to one but not the
+// other (or a name typo between the two) fails the gate instead of shipping an
+// unattested (or orphaned) SBOM.
+function checkSbomAttestParity() {
+    const generate = sbomGenerateNames();
+    const attest = sbomAttestNames();
+    if (setsEqual(generate, attest)) {
+        console.log(`OK: release.yml 'Attest SBOM' steps match 'Generate SBOM' steps (${generate.length} entries).`);
+        return true;
+    }
+    console.error("FAIL: release.yml 'Attest SBOM' steps do not match 'Generate SBOM' steps.");
+    reportDiff("release.yml 'Attest SBOM' steps", attest, generate);
+    return false;
+}
+
 function setsEqual(a, b) {
     if (a.length !== b.length) return false;
     return a.every((v, i) => v === b[i]);
@@ -130,6 +184,10 @@ for (const [label, dirs] of Object.entries(sources)) {
     } else {
         console.log(`OK: ${label} matches the Tasks/ directory listing (${dirs.length} tasks).`);
     }
+}
+
+if (!checkSbomAttestParity()) {
+    hasError = true;
 }
 
 if (hasError) {

@@ -1,6 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { PolicyResult, PolicyCase } from './types';
+import { attachBoundedCapture } from './output-cap';
 
 /**
  * Evaluates OPA policies against Terraform plan/state JSON using `opa exec`.
@@ -23,12 +24,17 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
 
     let stdout = '';
     let stderr = '';
-    tool.on('stdout', (data: string | Buffer) => { stdout += data.toString(); });
-    tool.on('stderr', (data: string | Buffer) => { stderr += data.toString(); });
+    // Byte-bounded capture (#632): an unbounded `stdout += chunk` could OOM the
+    // agent on a huge/misbehaving engine output. On breach the child is killed
+    // and assertWithinCap() below throws rather than parsing a truncated result.
+    const capture = attachBoundedCapture(tool, (stream, text) => {
+        if (stream === 'stdout') stdout += text; else stderr += text;
+    });
 
     // opa exec returns 0 even when the decision contains violations; we gate on the
     // parsed result, not the exit code.
     const code = await tool.execAsync(<IExecOptions>{ ignoreReturnCode: true });
+    capture.assertWithinCap();
 
     // A non-zero exit is a real failure (bad bundle, malformed input, opa crash),
     // not a policy violation — surface stderr instead of failing later on empty JSON.

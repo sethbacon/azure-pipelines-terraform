@@ -8,12 +8,28 @@ import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFail
 import { writeSarif } from './sarif';
 import { writeSecretFile } from './secure-temp';
 
+/**
+ * Upper bound on the JSON files this task reads into memory (the required plan
+ * JSON and the optional module manifest). An unbounded `fs.readFileSync` + JSON
+ * parse of a pathological/wrong file can cause excessive memory use or a hang
+ * (#632, CWE-400), mirroring TerraformTaskV5's backend-detection MAX_BACKEND_
+ * STATE_BYTES guard. Generous: a real `show -json` plan for a large estate is
+ * legitimately tens of MB, but a runaway can't exhaust the agent.
+ */
+export const MAX_PLAN_JSON_BYTES = 100 * 1024 * 1024; // 100 MB
+
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
-// module_locks field; null when absent/unreadable (the backend then records
-// provenance without locked versions).
+// module_locks field; null when absent/unreadable/oversized (the backend then
+// records provenance without locked versions).
 function readModuleLocks(manifestPath: string): unknown {
     try {
         if (!fs.existsSync(manifestPath)) {
+            return null;
+        }
+        // Skip an implausibly large manifest rather than risk an unbounded read
+        // (best-effort field; degrade gracefully, like backend-detection.ts).
+        if (fs.statSync(manifestPath).size > MAX_PLAN_JSON_BYTES) {
+            tasks.debug(`Module manifest ${manifestPath} exceeds the ${MAX_PLAN_JSON_BYTES}-byte guard; skipping module_locks.`);
             return null;
         }
         return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -28,8 +44,15 @@ async function run(): Promise<void> {
     let summaryFile: string | undefined;
     try {
         const planFile = path.resolve(tasks.getInput('planJsonFile', true)!);
-        if (!fs.existsSync(planFile)) {
+        const planStat = fs.existsSync(planFile) ? fs.statSync(planFile) : undefined;
+        if (!planStat) {
             throw new Error(tasks.loc('PlanFileNotFound', planFile));
+        }
+        // Bound the read before it happens: a huge/wrong file would otherwise be
+        // slurped whole and JSON-parsed, risking excessive memory or a hang
+        // (#632). Fail closed with a clear diagnostic since the plan is required.
+        if (planStat.size > MAX_PLAN_JSON_BYTES) {
+            throw new Error(tasks.loc('PlanFileTooLarge', planFile, planStat.size, MAX_PLAN_JSON_BYTES));
         }
 
         // Surface a malformed/truncated plan file as a clear diagnostic naming the

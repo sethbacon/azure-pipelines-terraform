@@ -299,7 +299,7 @@ residual leak risk than the always-included `summary` field — see
     command: 'init'
     backendType: 'oci'
     backendServiceOCI: 'my-oci-service-connection'
-    backendOCIPar: 'https://objectstorage.eu-frankfurt-1.oraclecloud.com/p/...'
+    backendOCIPar: '$(ociBackendPar)'   # secret variable; the /p/<token>/ segment is a bearer credential
 ```
 
 #### Plan (OCI)

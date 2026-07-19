@@ -74,6 +74,26 @@ describe('Secure var-file loader', function () {
         assert.strictEqual(deleted, 'file-2');
     });
 
+    it('deleteSecureFile scrubs the downloaded file before delegating to the helper (#662)', () => {
+        const realPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-securefile-del-')), 'vars.tfvars');
+        const original = 'secret = "top-secret-value"\n';
+        fs.writeFileSync(realPath, original);
+        let deletedId = '';
+        let scrubbedBeforeDelete = false;
+        const loader = new SecureFileLoader({
+            downloadSecureFile: async () => '',
+            deleteSecureFile: (id: string) => {
+                deletedId = id;
+                // The helper runs AFTER the scrub, so the bytes are already zeroed here.
+                const bytes = fs.readFileSync(realPath);
+                scrubbedBeforeDelete = bytes.length === Buffer.byteLength(original) && bytes.every(b => b === 0);
+            },
+        });
+        loader.deleteSecureFile('file-4', realPath);
+        assert.strictEqual(deletedId, 'file-4');
+        assert.ok(scrubbedBeforeDelete, 'the downloaded secure file must be zero-scrubbed before the helper unlinks it');
+    });
+
     it('deleteSecureFile swallows helper errors', () => {
         const loader = new SecureFileLoader({
             downloadSecureFile: async () => '',
@@ -98,7 +118,9 @@ describe('Secure var-file loader', function () {
             deleteSecureFile: () => { /* unused */ },
         };
         const result = await getSecureVarFileArgs(loader);
-        assert.deepStrictEqual(result, { varFileArg: '-var-file=/secure/path.tfvars', secureFileId: 'secure-id-9' });
+        // filePath is surfaced so the caller can scrub the downloaded secure file
+        // before it is unlinked (#662).
+        assert.deepStrictEqual(result, { varFileArg: '-var-file=/secure/path.tfvars', secureFileId: 'secure-id-9', filePath: '/secure/path.tfvars' });
         assert.strictEqual(downloaded, 'secure-id-9');
     });
 });

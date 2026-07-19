@@ -1,5 +1,5 @@
 import { HttpResponse, truncateBody } from './https-client';
-import { retryAsync } from './retry';
+import { retryAsync, parseRetryAfterMs } from './retry';
 import tasks = require('azure-pipelines-task-lib/task');
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
@@ -49,8 +49,8 @@ function isRetryableStatus(status: number): boolean {
  * server-side idempotency must NOT be wrapped, to avoid duplicate resources on a
  * retry after a lost response.
  *
- * A 429 Retry-After is not honored here because the shared HttpResponse carries
- * no headers; the exponential backoff is used instead (the sanctioned fallback).
+ * A 429 Retry-After (#633), when present on the response, is honored (capped)
+ * over the default exponential backoff -- see the delayMs override below.
  */
 export async function retryHttp(
     call: () => Promise<HttpResponse>,
@@ -65,6 +65,19 @@ export async function retryHttp(
         // A thrown transport error (no response received) is always safe to repeat
         // within the budget; only a RESPONSE is classified by status above.
         retryError: () => true,
+        // Honor a capped 429 Retry-After when the server sent one (#633); any other
+        // retryable response (a 5xx, or a 429 with no usable Retry-After) falls back
+        // to the default exponential backoff.
+        delayMs: (_attempt, backoffMs, outcome) => {
+            if (outcome.kind === 'result' && outcome.result.status === 429) {
+                const retryAfter = outcome.result.headers?.['retry-after'];
+                const retryAfterMs = parseRetryAfterMs(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter);
+                if (retryAfterMs !== undefined) {
+                    return retryAfterMs;
+                }
+            }
+            return backoffMs;
+        },
         onRetry: (attempt, _delayMs, outcome) => {
             if (outcome.kind === 'result') {
                 opts.log?.(tasks.loc('TransientHttpRetry', outcome.result.status, attempt + 1, retries));

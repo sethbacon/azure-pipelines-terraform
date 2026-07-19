@@ -7,17 +7,23 @@
 //   Tasks/TerraformModulePublish/TerraformModulePublishV1/src/retry.ts
 //   Tasks/TerraformDriftReport/TerraformDriftReportV1/src/retry.ts
 //   Tasks/PublishKbArticle/PublishKbArticleV1/src/retry.ts
+//   Tasks/TerraformInstaller/TerraformInstallerV1/src/retry.ts
+//   Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/retry.ts
+//   Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/retry.ts
 //
 // CI (scripts/check-shared-modules.js) enforces byte-identity across those
 // copies and fails the build on any divergence, so a future hardening change
 // (jitter, a max-total-time cap, ...) can never be applied to one copy and
 // silently missed in the others. EDIT EVERY COPY TOGETHER.
 //
-// The four retry loops that used to be independently open-coded — the OIDC
+// The retry loops that used to be independently open-coded — the OIDC
 // TokenGenerator (id-token-generator.ts), the registry retryHttp (http.ts), the
-// drift callback postJsonWithRetry (callback.ts), and the ServiceNow withRetry
-// (servicenow-http.ts) — now all delegate here. Each keeps its own EXACT
-// semantics by supplying predicates, not by sharing one hardcoded policy:
+// drift callback postJsonWithRetry (callback.ts), the ServiceNow withRetry
+// (servicenow-http.ts), and the three installer-family fetch clients' withRetry
+// (http-client.ts, shared byte-identically across TerraformInstaller /
+// PolicyAgentInstaller / TerraformDocsInstaller) — now all delegate here. Each
+// keeps its own EXACT semantics by supplying predicates, not by sharing one
+// hardcoded policy:
 //
 //   - retryResult decides whether a RESOLVED value is worth retrying. Default:
 //     never. (The drift callback deliberately never retries a received response
