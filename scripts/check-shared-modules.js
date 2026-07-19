@@ -46,11 +46,15 @@ const FAMILIES = [
         // too (raw engine output, JUnit failure detail, and the SARIF report) —
         // both deserve the same cross-platform guarantee, so each carries a
         // byte-identical copy rather than a re-implementation that could silently
-        // drop the Windows DACL half (#607).
+        // drop the Windows DACL half (#607). TerraformProviderMirror writes the
+        // credential-bearing .terraformrc (mirrorUrl may embed basic-auth
+        // userinfo), so it joined this family too and uses replaceSecretFile for
+        // that config file (#628).
         dirs: [
             'Tasks/TerraformTask/TerraformTaskV5/src',
             'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
             'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src',
+            'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src',
         ],
         modules: [
             'secure-temp.ts',

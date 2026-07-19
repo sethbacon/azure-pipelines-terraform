@@ -5,6 +5,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyResult, PolicyCase } from './types';
+import { attachBoundedCapture } from './output-cap';
 
 /**
  * Evaluates Sentinel policies against Terraform plan JSON.
@@ -44,11 +45,14 @@ export async function runSentinel(
     tool.arg('apply');
     if (traceOutput) tool.arg('-trace');
 
+    // Byte-bounded capture (#632): both streams fold into one buffer as before,
+    // but an unbounded `stdout += chunk` could OOM the agent on a huge Sentinel
+    // trace. On stdout breach the child is killed and assertWithinCap() throws.
     let stdout = '';
-    tool.on('stdout', (data: string | Buffer) => { stdout += data.toString(); });
-    tool.on('stderr', (data: string | Buffer) => { stdout += data.toString(); });
+    const capture = attachBoundedCapture(tool, (_stream, text) => { stdout += text; });
 
     const code = await tool.execAsync(<IExecOptions>{ cwd: workingDir, ignoreReturnCode: true });
+    capture.assertWithinCap();
 
     if (code === 3 || code === 9) {
         throw new Error(`Sentinel returned a non-policy error (exit code ${code}). Output:\n${stdout.slice(0, 2000)}`);

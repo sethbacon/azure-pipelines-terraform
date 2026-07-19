@@ -183,6 +183,34 @@ describe('writeSecretFile — exclusive create + cross-platform permission harde
         assert.strictEqual(called, false, 'icacls must not run on Unix -- chmod 0600 already applied');
     });
 
+    // #634: the file exists on disk the instant fs.writeFileSync returns, but the
+    // permission-hardening runs afterward and every call site tracks the path for
+    // cleanup only on the NEXT line. If hardening throws, writeSecretFile must not
+    // leave the (already-written, weaker-permissioned) credential orphaned and
+    // untracked -- it scrubs+removes it before re-throwing, while still failing
+    // closed.
+    it('on Unix, removes the orphaned file when chmod fails and still fails closed (#634)', () => {
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        const f = fs as unknown as { chmodSync: typeof fs.chmodSync };
+        const origChmodSync = f.chmodSync;
+        f.chmodSync = () => { throw new Error('EPERM'); };
+        const target = path.join(scratchDir, 'unix-orphan.txt');
+        try {
+            assert.throws(() => writeSecretFile(target, 'unix-secret'), /Failed to set restrictive permissions/);
+        } finally {
+            f.chmodSync = origChmodSync;
+        }
+        assert.strictEqual(fs.existsSync(target), false, 'the orphaned credential file must be removed, not left on disk');
+    });
+
+    it('on win32, removes the orphaned file when the DACL cannot be applied and still fails closed (#634)', () => {
+        c.execFileSync = () => { throw new Error('icacls exploded'); };
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        const target = path.join(scratchDir, 'win-orphan.txt');
+        assert.throws(() => writeSecretFile(target, 'win-secret'), /Failed to set restrictive ACL/);
+        assert.strictEqual(fs.existsSync(target), false, 'the orphaned credential file must be removed, not left on disk');
+    });
+
     // Real-ACL integration check: only meaningful (and only runs) on Windows
     // agents, where CI (windows-2025) exercises the genuine icacls path. The
     // security property asserted is the one #495 is about: no broad

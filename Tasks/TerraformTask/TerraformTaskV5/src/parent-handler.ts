@@ -117,8 +117,13 @@ export class ParentCommandHandler implements IParentCommandHandler {
         // (rather than depending on a single "active" handler) covers that whole
         // window. clearTrackedVariables() operates on a process-wide static Set and
         // is independent of any handler, so it always runs.
+        // Uses emergencyCleanupTempFiles (not cleanupTempFiles) so the retained
+        // `terraform output -json` file — kept on a normal step for downstream
+        // readers when cleanupOutputFile is off — is also scrubbed+deleted here:
+        // a cancellation leaves no legitimate downstream reader, so its cleartext
+        // (possibly sensitive) values must not linger on a reused agent (#650).
         for (const handler of this.handlers) {
-            handler.cleanupTempFiles();
+            handler.emergencyCleanupTempFiles();
         }
         EnvironmentVariableHelper.clearTrackedVariables();
     }
