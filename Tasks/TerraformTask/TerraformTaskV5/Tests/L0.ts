@@ -2587,6 +2587,24 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('azure plan rejects a -json flag in commandOptions combined with publishPlanResults, before running terraform (#492 follow-up)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanRejectsJsonFlagWithPublishResults.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            // The L0 script itself asserts plan() threw the -json/publishPlanResults
+            // rejection and reports Succeeded only if so (mirrors
+            // AzureApplyMessageNeutralizesVsoInjectionL0's convention) -- no
+            // "terraform plan ... -json ..." exec answer is registered in the mock
+            // scenario, so a real attempt to run it would have thrown an unrelated
+            // "unable to find mock" error instead, which the L0 script's own message
+            // match would have caught.
+            assert(tr.stdOutContained('AzurePlanRejectsJsonFlagWithPublishResultsL0 should have succeeded.'));
+        }, tr);
+    });
+
     it('azure plan publish results attachment is written with restrictive permissions (#547)', async () => {
         let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanPublishResultsAttachmentPermissions.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

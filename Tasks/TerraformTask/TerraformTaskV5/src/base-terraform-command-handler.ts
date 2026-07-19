@@ -120,6 +120,24 @@ export function extractOutFlagPath(commandOptions: string | undefined): string |
     return undefined;
 }
 
+/**
+ * Detects a standalone `-json` (or `--json`) flag in `commandOptions` as
+ * Terraform itself would parse it -- a whole token, not a substring match, so
+ * e.g. `-var=myjsonvalue` or a quoted value that merely contains the text
+ * "json" is correctly ignored. Used to fail closed on plan()'s
+ * publishPlanResults path (#492): with `-json`, terraform plan's stdout is
+ * machine-readable NDJSON whose `change.after` carries real values in
+ * cleartext (masked only by a parallel `after_sensitive` flag meant for a
+ * redacting CONSUMER to apply -- exactly like apply -json), not the
+ * human-readable format's own `(sensitive value)` redaction that makes
+ * echoing that capture to the console safe.
+ */
+export function commandOptionsContainsJsonFlag(commandOptions: string | undefined): boolean {
+    if (!commandOptions) return false;
+    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
+    return tokens.some((token) => token === '-json' || token === '--json');
+}
+
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
 // redaction core applies (design §5.2.7): rather than re-derive it here (the
 // detection-vs-redaction drift class, #446), it is defined ONCE in
@@ -791,6 +809,16 @@ export abstract class BaseTerraformCommandHandler {
         let planStdout: string | undefined;
         let planStderr: string | undefined;
         if (publishPlanResults) {
+            // #492 follow-up: publishPlanResults re-echoes its capture to the
+            // console below on the assumption that it is terraform's
+            // human-readable plan output, which redacts sensitive values as
+            // "(sensitive value)" -- but a user-supplied -json in
+            // commandOptions would make that capture raw, unredacted NDJSON
+            // instead. Fail closed before ever running the command rather
+            // than silently reproducing the exact leak #492 fixed.
+            if (commandOptionsContainsJsonFlag(commandOptions)) {
+                throw new Error(tasks.loc("PlanJsonFlagNotSupportedWithPublishPlanResults"));
+            }
             const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
