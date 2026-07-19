@@ -6,6 +6,7 @@
 
 import path = require('path');
 import MarkdownIt = require('markdown-it');
+import sanitizeHtml = require('sanitize-html');
 import * as cheerio from 'cheerio';
 import hljs from 'highlight.js';
 import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, cssHasDangerousConstruct } from './uri-scheme-guard';
@@ -107,16 +108,152 @@ export function convertMarkdownToHtml(text: string): string {
 }
 
 /**
+ * The vetted allowlist for the primary sanitizer (sanitize-html). Inverting the
+ * historically-bypassed hand-rolled DENYLIST to a maintained ALLOWLIST sanitizer
+ * is the #552 remediation: six historical bypasses (#446/#498/#523/#552-mXSS/
+ * #587/#606) proved a parse/serialize denylist over a stored-XSS sink leaks, so
+ * only the tags/attributes this task's own renderer legitimately emits — plus
+ * the inert formatting elements a KB author may hand-write via markdown-it's
+ * html:true passthrough — are permitted; everything else is dropped fail-closed
+ * by the allowlist, with no need to enumerate every future active-content vector.
+ *
+ * sanitize-html (pure-Node, htmlparser2-based, allowlist-native) is used rather
+ * than DOMPurify: this is a Node ADO task with no browser DOM, and DOMPurify
+ * would drag in jsdom (a heavy full-DOM emulation) where sanitize-html needs
+ * none. The allowlist inventory below was enumerated from what actually reaches
+ * this function: markdown-it's default-preset output (paragraphs, ATX/setext
+ * headings, emphasis/strong/strikethrough, links, images, inline+fenced code,
+ * blockquotes, ordered/bullet/definition lists, GFM tables with per-column
+ * `style="text-align:…"` on th/td, thematic breaks, hard-break <br>) and the
+ * highlight.js token spans inside fenced blocks (`<pre><code class="hljs
+ * language-…">` wrapping `<span class="hljs-…">` — see the existing golden and
+ * #498 tests for the real class inventory), widened to the common inert
+ * formatting tags a KB author might write as raw HTML.
+ *
+ * Foreign-content namespaces (`<svg>`, `<math>`) are deliberately NOT allowlisted
+ * — markdown-it never emits them, and they are the exact namespace-confusion /
+ * mXSS surface #552 flagged; dropping them at the allowlist root closes that
+ * class rather than chasing individual carriers. Raw author-supplied inline SVG/
+ * MathML is therefore no longer rendered (a documented, security-motivated
+ * normalization); ordinary markdown is unaffected. `class` passes through
+ * unfiltered (all classes are inert and the hljs theme relies on them);
+ * `parseStyleAttributes` is off so a `style` value reaches applyDefenseInDepthGuards
+ * verbatim — its cssHasDangerousConstruct() escape/comment-aware CSS check (#587),
+ * not sanitize-html's postcss normalization, is the authority on dangerous CSS.
+ * `data:` is allowed only on <img> (raster images) and narrowed further to
+ * non-SVG rasters by isDangerousUriScheme() in the guard pass.
+ */
+const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
+    allowedTags: [
+        // markdown-it structural + block output
+        'p', 'br', 'hr', 'blockquote', 'pre', 'code',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+        'a', 'img',
+        // markdown-it inline output + inert author-written formatting
+        'em', 'strong', 's', 'del', 'ins', 'mark', 'sub', 'sup', 'small',
+        'b', 'i', 'u', 'strike', 'span', 'div', 'wbr',
+        'kbd', 'samp', 'var', 'abbr', 'cite', 'q', 'dfn', 'time',
+        'figure', 'figcaption',
+    ],
+    allowedAttributes: {
+        // Inert on every element. `style` is allowlisted per-property below via
+        // allowedStyles — sanitize-html PARSES the attribute and reconstructs it
+        // from allowed property/value pairs only, so url()/escape/comment
+        // smuggling dies structurally at this layer (#552); the guard pass's
+        // CSS check remains only as a defense-in-depth pre-filter.
+        '*': ['class', 'id', 'title', 'style', 'align', 'dir', 'lang'],
+        a: ['href', 'name', 'target', 'rel'],
+        img: ['src', 'alt', 'width', 'height'],
+        ol: ['start', 'type', 'reversed'],
+        li: ['value'],
+        td: ['colspan', 'rowspan', 'headers', 'scope'],
+        th: ['colspan', 'rowspan', 'headers', 'scope', 'abbr'],
+        col: ['span'],
+        colgroup: ['span'],
+        q: ['cite'],
+        blockquote: ['cite'],
+        time: ['datetime'],
+    },
+    // Relative and fragment URLs are allowed by default (no scheme); `data:` is
+    // permitted only on <img> so a raster image survives — isDangerousUriScheme()
+    // in the guard pass then rejects data:image/svg+xml specifically.
+    allowedSchemes: ['http', 'https', 'mailto', 'tel', 'ftp'],
+    allowedSchemesByTag: { img: ['http', 'https', 'data'] },
+    // Drop disallowed tags but keep their (already guard-cleaned) benign children,
+    // so an unknown wrapper an author wrote loses only the wrapper, not its text.
+    disallowedTagsMode: 'discard',
+    // Parse `style` attributes and rebuild them from the property/value
+    // allowlist below (#552). Anchored value patterns mean a url(), CSS escape,
+    // comment-split, expression(), or -moz-binding form can never match — the
+    // attribute is reconstructed from parsed declarations, never passed through
+    // raw, so CSS safety no longer rests on the hand-rolled blocklist alone.
+    // The inventory is exactly what the pipeline legitimately emits: GFM table
+    // alignment (markdown-it renders `text-align`) and benign author color.
+    parseStyleAttributes: true,
+    allowedStyles: {
+        '*': {
+            'text-align': [/^(left|right|center|justify)$/],
+            'color': [/^#[0-9a-fA-F]{3,8}$/, /^[a-zA-Z]+$/],
+        },
+    },
+    // Backstop: drop these elements AND their entire subtree (not just the tag).
+    // Setting nonTextTags REPLACES sanitize-html's defaults, so its four defaults
+    // (script/style/textarea/option) are re-listed here, then extended with the
+    // shared DANGEROUS_TAGS set (which already includes script/noscript and the
+    // SVG/MathML mXSS carriers). The guard pass already removes DANGEROUS_TAGS via
+    // parse5's foreign-content-aware parsing before this runs; listing them here
+    // too means a top-level carrier the guard somehow missed still cannot lift a
+    // child out of the allowlist. `class`/`style` are intentionally absent from
+    // allowedClasses/allowedStyles filtering so all classes and (guard-approved)
+    // styles survive.
+    nonTextTags: ['script', 'style', 'textarea', 'option', ...DANGEROUS_TAGS],
+};
+
+/**
  * Strip active-content vectors from rendered HTML while preserving benign
  * formatting markup (tables, <br>, <div>, code blocks, …). markdown-it runs
  * with html:true so author markdown can use raw formatting HTML — e.g. <br/>
  * inside a table cell, a common idiom — but that same passthrough would let a
  * raw <script>, an on*= event handler, or a javascript:/vbscript:/data: URI flow
- * into the ServiceNow KB body (a stored-XSS sink). This is the sanitizer allowlist
- * the markdown->HTML norm calls for; PublishKbArticle/html-validate.ts is the
- * downstream fail-closed gate and this is defense-in-depth at render time.
+ * into the ServiceNow KB body (a stored-XSS sink).
+ *
+ * Two layers run here (#552): the primary defense is now the vetted ALLOWLIST
+ * sanitizer (sanitize-html, SANITIZE_HTML_OPTIONS) — it produces the final bytes,
+ * so nothing outside the enumerated allowlist can survive. The retained
+ * hand-rolled URI-scheme / CSS / event-handler guards (applyDefenseInDepthGuards)
+ * run FIRST as a defense-in-depth pre-filter. Order matters: those guards parse
+ * with cheerio/parse5, which implements the HTML5 foreign-content algorithm, so a
+ * payload nested inside an mXSS carrier (e.g. `<img onerror>` inside
+ * `<foreignObject>`/`<annotation-xml>`) is removed together with the carrier's
+ * whole subtree. sanitize-html's htmlparser2 has no foreign-content parsing and
+ * would instead LIFT that child out of the carrier, rescuing it; running the
+ * parse5-based guards first removes the subtree intact, then the allowlist
+ * narrows whatever remains. PublishKbArticle/html-validate.ts stays the
+ * independent downstream fail-closed gate on raw author HTML.
  */
+/**
+ * The final allowlist layer alone (no guard pre-filter). Exported ONLY so tests
+ * can prove this layer is independently safe — i.e. that dangerous CSS/URI
+ * payloads die here even if a future change weakened the pre-filter. Production
+ * code must always go through sanitizeRenderedHtml.
+ */
+export function applyAllowlistSanitizer(html: string): string {
+    return sanitizeHtml(html, SANITIZE_HTML_OPTIONS);
+}
+
 export function sanitizeRenderedHtml(html: string): string {
+    return applyAllowlistSanitizer(applyDefenseInDepthGuards(html));
+}
+
+/**
+ * Defense-in-depth pre-filter: the original hand-rolled guards, retained beneath
+ * the allowlist sanitizer. Uses cheerio/parse5 (foreign-content-aware) so an
+ * mXSS carrier's whole subtree is removed intact before the allowlist pass — see
+ * sanitizeRenderedHtml for why this must precede sanitize-html.
+ */
+function applyDefenseInDepthGuards(html: string): string {
     const $ = cheerio.load(html, { xmlMode: false });
     // Remove executable / embedding elements (script/iframe/object/embed/
     // noscript) outright. <form> has no legitimate use in a KB article

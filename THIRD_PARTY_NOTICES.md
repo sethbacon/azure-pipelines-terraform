@@ -19,6 +19,7 @@ repositories.
 | highlight.js                             | Markdown2Html                                                                                          | BSD-3-Clause      |
 | js-yaml                                  | Markdown2Html (front matter)                                                                           | MIT               |
 | cheerio                                  | Markdown2Html, PublishKbArticle (HTML sanitize/validate)                                               | MIT               |
+| sanitize-html                            | Markdown2Html (allowlist HTML sanitizer)                                                               | MIT               |
 | openpgp                                  | TerraformInstaller, PolicyAgentInstaller (GPG signature verification)                                  | LGPL-3.0-or-later |
 | undici                                   | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller, TerraformTaskV5 (HTTP/proxy client)  | MIT               |
 | terraform-drift-contract                 | TerraformDriftReport (drift-summary contract)                                                          | Apache-2.0        |

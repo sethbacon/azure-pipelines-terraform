@@ -31,6 +31,7 @@ import './TocInjectionEscapingL0';
 import './DangerousTagsRemovalL0';
 import './DataImageSvgXmlStrippingL0';
 import './CssEscapeBypassL0';
+import './AllowlistSanitizerL0';
 
 // ---------------------------------------------------------------------------
 // Helpers

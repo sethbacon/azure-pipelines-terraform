@@ -23,7 +23,8 @@
     "cheerio": "^1.2.0",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.2.0",
-    "markdown-it": "^14.2.0"
+    "markdown-it": "^14.2.0",
+    "sanitize-html": "^2.17.6"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
@@ -35,6 +36,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^10.0.0",
     "@types/node": "^24",
+    "@types/sanitize-html": "^2.16.1",
     "eslint": "^9.0.0",
     "mocha": "^11.2.0",
     "nyc": "^18.0.0",
