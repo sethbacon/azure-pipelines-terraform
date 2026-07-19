@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.10.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.4...v1.10.5) (2026-07-19)
+
+
+### Bug Fixes
+
+* deepen installer verification and complete retry unification ([#669](https://github.com/sethbacon/azure-pipelines-terraform/issues/669)) ([7e9e542](https://github.com/sethbacon/azure-pipelines-terraform/commit/7e9e54239e0eb4c308387684e35d17083f0c4fd4)), closes [#656](https://github.com/sethbacon/azure-pipelines-terraform/issues/656)
+* escape Sentinel HCL newlines and terraform-docs arg parsing ([#666](https://github.com/sethbacon/azure-pipelines-terraform/issues/666)) ([731c4e9](https://github.com/sethbacon/azure-pipelines-terraform/commit/731c4e924ebd07da00ca06be5ea2342b2411731b)), closes [#648](https://github.com/sethbacon/azure-pipelines-terraform/issues/648) [#644](https://github.com/sethbacon/azure-pipelines-terraform/issues/644) [#661](https://github.com/sethbacon/azure-pipelines-terraform/issues/661)
+* fail closed on cross-tenant OIDC hosts and harden auth error paths ([#673](https://github.com/sethbacon/azure-pipelines-terraform/issues/673)) ([2866778](https://github.com/sethbacon/azure-pipelines-terraform/commit/28667784b67547fbe3862a33c8d7bd625fd1970b)), closes [#647](https://github.com/sethbacon/azure-pipelines-terraform/issues/647)
+* harden secret-file lifecycle, bound subprocess capture, secure mirror config ([#670](https://github.com/sethbacon/azure-pipelines-terraform/issues/670)) ([c89c19a](https://github.com/sethbacon/azure-pipelines-terraform/commit/c89c19aa5856a061d684601c1b764ddadabf125e))
+* honor 429 Retry-After, bootstrap loc(), fix drift output-var casing ([#665](https://github.com/sethbacon/azure-pipelines-terraform/issues/665)) ([a1ee57c](https://github.com/sethbacon/azure-pipelines-terraform/commit/a1ee57cce80c19ad923786c08b65bc186c7c0b3e)), closes [#633](https://github.com/sethbacon/azure-pipelines-terraform/issues/633) [#637](https://github.com/sethbacon/azure-pipelines-terraform/issues/637) [#643](https://github.com/sethbacon/azure-pipelines-terraform/issues/643)
+* invert KB HTML sanitization to a vetted allowlist sanitizer ([#672](https://github.com/sethbacon/azure-pipelines-terraform/issues/672)) ([64f0ace](https://github.com/sethbacon/azure-pipelines-terraform/commit/64f0acedaac0bced55fac26e930fe5d1be2b5e0e)), closes [#552](https://github.com/sethbacon/azure-pipelines-terraform/issues/552)
+
+
+### Documentation
+
+* fix OCI PAR secret handling, release-process drift, and stale audit docs ([#667](https://github.com/sethbacon/azure-pipelines-terraform/issues/667)) ([ce64257](https://github.com/sethbacon/azure-pipelines-terraform/commit/ce64257a6c5e9455a8837c94fb9f99fc88f8e182)), closes [#631](https://github.com/sethbacon/azure-pipelines-terraform/issues/631) [#640](https://github.com/sethbacon/azure-pipelines-terraform/issues/640) [#641](https://github.com/sethbacon/azure-pipelines-terraform/issues/641) [#642](https://github.com/sethbacon/azure-pipelines-terraform/issues/642) [#657](https://github.com/sethbacon/azure-pipelines-terraform/issues/657) [#658](https://github.com/sethbacon/azure-pipelines-terraform/issues/658) [#660](https://github.com/sethbacon/azure-pipelines-terraform/issues/660) [#663](https://github.com/sethbacon/azure-pipelines-terraform/issues/663)
+
 ## [1.10.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.3...v1.10.4) (2026-07-18)
 
 
