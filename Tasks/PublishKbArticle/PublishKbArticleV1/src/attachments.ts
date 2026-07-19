@@ -155,21 +155,38 @@ function hashBytes(data: Buffer): string {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
-/** SHA-256 hex hash of a file's bytes (matches the ServiceNow attachment `hash` field). */
+/**
+ * SHA-256 hex hash of a file's bytes (matches the ServiceNow attachment `hash`
+ * field). Delegates to readAttachmentFile so a direct call also gets the
+ * MAX_ATTACHMENT_BYTES cap and the race-free fd-based read (#677) -- kept as
+ * its own exported function for callers/tests that only need the hash.
+ */
 export function fileSha256(filePath: string): string {
-    return hashBytes(fs.readFileSync(filePath));
+    return hashBytes(readAttachmentFile(filePath));
 }
 
 /**
  * Reads a local image file into memory once, enforcing MAX_ATTACHMENT_BYTES
- * first so an oversized file is never buffered at all (#677).
+ * first so an oversized file is never buffered at all (#677). Opens the file
+ * ONE time and stats/reads that same file descriptor (fstat + read, not
+ * statSync + readFileSync on the path) so there is no window between the
+ * size check and the read where the path could be repointed at a different,
+ * larger file (TOCTOU / CWE-367, flagged by CodeQL on the earlier
+ * statSync-then-readFileSync version).
  */
 function readAttachmentFile(filePath: string): Buffer {
-    const size = fs.statSync(filePath).size;
-    if (size > MAX_ATTACHMENT_BYTES) {
-        throw new Error(tasks.loc('ImageTooLarge', filePath, size, MAX_ATTACHMENT_BYTES));
+    const fd = fs.openSync(filePath, 'r');
+    try {
+        const size = fs.fstatSync(fd).size;
+        if (size > MAX_ATTACHMENT_BYTES) {
+            throw new Error(tasks.loc('ImageTooLarge', filePath, size, MAX_ATTACHMENT_BYTES));
+        }
+        const buffer = Buffer.alloc(size);
+        fs.readSync(fd, buffer, 0, size, 0);
+        return buffer;
+    } finally {
+        fs.closeSync(fd);
     }
-    return fs.readFileSync(filePath);
 }
 
 const CONTENT_TYPES: Record<string, string> = {
