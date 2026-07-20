@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "981E87CD-B686-4A9E-B09E-B4AFDEDF126B",
     "name": "PipelineTerraformTask",
     "friendlyName": "Pipeline Terraform",

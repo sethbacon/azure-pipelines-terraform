@@ -10,14 +10,15 @@ import * as httpClient from '../src/http-client';
 // in place; the MockTestRunner integration tests in L0.ts run in child processes
 // and are unaffected. afterEach restores every stub.
 
-describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, #611)', () => {
+describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, #611; workflow-file-bound, #697)', () => {
     const VERSION = '1.11.6';
     const identityRe = new RegExp(buildOpenTofuCertIdentityRegexp(VERSION));
 
-    // The canonical SAN OpenTofu's keyless release signing produces for THIS version.
+    // The canonical SAN OpenTofu's keyless release signing produces for THIS version --
+    // confirmed against the real upstream workflow file (opentofu/opentofu's
+    // .github/workflows/release.yml).
     const accepted = [
         `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v${VERSION}`,
-        `https://github.com/opentofu/opentofu/.github/workflows/release-official.yml@refs/tags/v${VERSION}`,
     ];
 
     // Each of these satisfied the previous any-version `@refs/tags/v[0-9].*` pattern
@@ -32,6 +33,12 @@ describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, 
         // anchored, so a longer numeric tail cannot slip past.
         'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v1.11.60',
         'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v1x11x6',
+        // #697: the workflow-file segment is now bound to the exact, real signing
+        // workflow (release.yml) instead of a permissive `.+` -- a look-alike or
+        // otherwise-named workflow file on the SAME repo and exact tag ref must
+        // no longer satisfy the identity.
+        `https://github.com/opentofu/opentofu/.github/workflows/release-official.yml@refs/tags/v${VERSION}`,
+        `https://github.com/opentofu/opentofu/.github/workflows/other.yml@refs/tags/v${VERSION}`,
         // Original anchoring / look-alike protections still hold.
         'https://github.com/opentofu/opentofu',
         'https://github.com/opentofu/opentofu-malicious/.github/workflows/release.yml@refs/tags/v1.11.6',

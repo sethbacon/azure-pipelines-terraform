@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "c4d8e2f6-3a91-4b7c-9e05-1f6a8d3b2c47",
     "name": "PipelineTerraformModulePublish",
     "friendlyName": "Pipeline Terraform module publish",

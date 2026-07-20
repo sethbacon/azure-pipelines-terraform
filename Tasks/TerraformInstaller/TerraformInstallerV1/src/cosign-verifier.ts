@@ -22,7 +22,7 @@ function escapeRegExp(value: string): string {
  * identity (SAN) that OpenTofu's keyless release signing produces for the
  * SPECIFIC requested version. OpenTofu signs each release's SHA256SUMS from its
  * `release.yml` workflow on that release's tag ref, yielding a SAN of the form
- * `https://github.com/opentofu/opentofu/.github/workflows/<wf>@refs/tags/v<version>`.
+ * `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v<version>`.
  *
  * cosign matches `--certificate-identity-regexp` unanchored (Go
  * `regexp.MatchString`), so the pattern is anchored with `^`/`$` and its dots are
@@ -33,9 +33,16 @@ function escapeRegExp(value: string): string {
  * installed, so a validly-signed SHA256SUMS from a DIFFERENT OpenTofu release can
  * no longer satisfy the identity — closing the cross-version replay gap that the
  * previous `@refs/tags/v[0-9].*` (any tag) pattern left to URL-path binding alone.
+ * The workflow-file segment is pinned to the literal, escaped `release.yml` (the
+ * actual, currently-stable signing workflow at
+ * github.com/opentofu/opentofu/.github/workflows/release.yml, confirmed against
+ * the upstream repo) rather than a permissive `.+`, so a Fulcio certificate for
+ * any OTHER workflow file in the repo — even one on the exact release tag ref —
+ * no longer satisfies the identity (#697). If OpenTofu ever renames or splits its
+ * signing workflow, this constant needs updating alongside it.
  */
 export function buildOpenTofuCertIdentityRegexp(version: string): string {
-    return `^https://github\\.com/opentofu/opentofu/\\.github/workflows/.+@refs/tags/v${escapeRegExp(version)}$`;
+    return `^https://github\\.com/opentofu/opentofu/\\.github/workflows/release\\.yml@refs/tags/v${escapeRegExp(version)}$`;
 }
 
 /**

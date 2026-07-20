@@ -1,7 +1,7 @@
 # Structured Plan & Apply Tabs — Design & Implementation Plan
 
 **Repo:** `sethbacon/azure-pipelines-terraform` · **Task:** `TerraformTask/TerraformTaskV5` (`PipelineTerraformTask@5`) + build-results tab under `src/tab/`
-**Status:** design proposal (not yet approved for build) · **Audience:** implementer agents (Sonnet 5 + Opus 4.8) and human reviewers
+**Status:** implemented and shipped (Phase 5 complete) — retained as the authoritative design/redaction narrative · **Audience:** implementer agents (Sonnet 5 + Opus 4.8) and human reviewers
 
 ---
 
@@ -40,7 +40,7 @@ Replace the current "colorized text dump" plan tab with a **structured, safe, mu
 - `src/tab/ansi-to-html.ts`: SGR→span converter, `escapeHtml()` present.
 - Manifest `azure-devops-extension.json`: contribution `terraform-plan-tab` → `ms.vss-build-web.build-results-tab`, `tab/index.html`, `supportsTasks: ["981E87CD-B686-4A9E-B09E-B4AFDEDF126B"]`, `dynamic: true`.
 - Build/CI: per-task mocha `L0.ts`; tab uses **jest** (`npm run test:tab`), coverage thresholds statements 80 / branches 78 / functions 60 / lines 80. CI matrix ubuntu-latest + windows-2025; `Build and Test Tab (os)` + a `build-and-test-tab-gate` job named `Build and Test Tab` (required context). Shared-module byte-identity gate: `scripts/check-shared-modules.js`. Minor-bump gate: `scripts/check-minor-bumps.js` vs the latest release tag. Version consistency: `scripts/check-versions.js`.
-- Root `package.json` `dependencies` is `{}`; tab libs (`azure-devops-extension-sdk`, `azure-devops-ui`, `azure-devops-extension-api`) are dev deps bundled by webpack.
+- Root `package.json` `dependencies` is `{}`; `azure-devops-extension-sdk` and `azure-devops-extension-api` are dev deps bundled by webpack. The shipped tab does **not** depend on `azure-devops-ui` (an earlier plan considered it, but the implementation diverged to hand-rolled components — `SummaryHeader`, `ResourceList`, `ApplyTimeline`, etc. — under `src/tab/components/`).
 
 ---
 
@@ -247,20 +247,20 @@ Apply/plan **diagnostics are freeform strings** that Terraform/providers may bui
 ---
 
 ## 6. Concrete limits (single source of truth)
-| Cap | Value | Behavior on exceed |
-|---|---|---|
-| resources in digest | 2000 | keep first 2000 by action priority (destroy/replace first), set `truncated`, note count |
-| attribute changes / resource | 200 | keep changed attrs alphabetically, note remainder |
-| bytes / `RedactedValue.json` | 4 KB | emit `{kind:"omitted",reason:"too-large"}` |
-| diagnostics | 500 | keep all errors first, then warnings, note remainder |
-| output changes (plan `outputChanges` / apply `outputs`) | 1000 | keep first 1000 by name, set `truncated`, note remainder |
-| drift resources | 2000 | keep first 2000 in address order, set `truncated`, note remainder |
-| applied-before-failure addresses | 2000 (reuses resources) | keep first 2000, set `truncated`, note remainder |
-| truncationNotes | 1000 | keep first 1000, collapse remainder into one count note |
-| total digest bytes (soft) | 5 MB | drop the heavy per-resource arrays (plan `attributeChanges` / state `attributes` **and** `outputs`; apply drops diagnostic `detail`), keep resource rows + summary, set `truncated` |
-| total digest bytes (hard) | 12 MB | attach summary-only digest |
-| tab parse ceiling | 16 MB | refuse structured render, offer raw/download |
-| tab rendered rows (before virtualize/cap) | 2000 | banner "list truncated" |
+| Cap                                                     | Value                   | Behavior on exceed                                                                                                                                                                  |
+| ------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| resources in digest                                     | 2000                    | keep first 2000 by action priority (destroy/replace first), set `truncated`, note count                                                                                             |
+| attribute changes / resource                            | 200                     | keep changed attrs alphabetically, note remainder                                                                                                                                   |
+| bytes / `RedactedValue.json`                            | 4 KB                    | emit `{kind:"omitted",reason:"too-large"}`                                                                                                                                          |
+| diagnostics                                             | 500                     | keep all errors first, then warnings, note remainder                                                                                                                                |
+| output changes (plan `outputChanges` / apply `outputs`) | 1000                    | keep first 1000 by name, set `truncated`, note remainder                                                                                                                            |
+| drift resources                                         | 2000                    | keep first 2000 in address order, set `truncated`, note remainder                                                                                                                   |
+| applied-before-failure addresses                        | 2000 (reuses resources) | keep first 2000, set `truncated`, note remainder                                                                                                                                    |
+| truncationNotes                                         | 1000                    | keep first 1000, collapse remainder into one count note                                                                                                                             |
+| total digest bytes (soft)                               | 5 MB                    | drop the heavy per-resource arrays (plan `attributeChanges` / state `attributes` **and** `outputs`; apply drops diagnostic `detail`), keep resource rows + summary, set `truncated` |
+| total digest bytes (hard)                               | 12 MB                   | attach summary-only digest                                                                                                                                                          |
+| tab parse ceiling                                       | 16 MB                   | refuse structured render, offer raw/download                                                                                                                                        |
+| tab rendered rows (before virtualize/cap)               | 2000                    | banner "list truncated"                                                                                                                                                             |
 
 These constants live in **one shared module** consumed by task and tab so they cannot drift.
 
@@ -380,14 +380,14 @@ WP-0 ──┬─► WP-1 ─► WP-2 ─┐
 Testing is a first-class deliverable of every WP, not a follow-up. Because a redaction bug is a secret disclosure and a render bug is an XSS/DoS vector, the test suite is itself a security control. No WP is "done" until its tests exist, pass on **both** CI OS legs (ubuntu-latest + windows-2025), and hold coverage at or above thresholds. TDD is mandatory (§CONVENTIONS): the failing test is written and observed red before the implementation.
 
 ### 12.1 Test layers
-| Layer | Where | Runner | Scope |
-|---|---|---|---|
-| Unit (pure logic) | `Tasks/…/TerraformTaskV5/Tests/*.ts` | mocha (L0 idiom) | `redact.ts`, `plan-digest.ts`, `apply-digest.ts`, `secret-scrub.ts`, caps behavior — pure functions, no I/O |
-| Unit (tab logic) | `src/tab/**/*.test.ts(x)` | jest | `digest-model.ts` parse/validate, each pure presentational component |
-| Integration (task) | `Tasks/…/TerraformTaskV5/Tests/*.ts` | mocha + `MockTestRunner` | `plan()`/`apply()` end-to-end: command built, `show -json`/`apply -json` consumed, attachment emitted, exit code preserved |
-| Integration (tab) | `src/tab/*.test.tsx` | jest + RTL | `tabContent` load→parse→render across attachment types, pivots, overview list |
-| Regression (golden) | fixtures + snapshot/assertion | both | frozen real-world captures never regress (§12.3) |
-| Anti-regression tripwires | both | mocha/jest/eslint | security invariants that must never silently break (§12.4) |
+| Layer                     | Where                                | Runner                   | Scope                                                                                                                      |
+| ------------------------- | ------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Unit (pure logic)         | `Tasks/…/TerraformTaskV5/Tests/*.ts` | mocha (L0 idiom)         | `redact.ts`, `plan-digest.ts`, `apply-digest.ts`, `secret-scrub.ts`, caps behavior — pure functions, no I/O                |
+| Unit (tab logic)          | `src/tab/**/*.test.ts(x)`            | jest                     | `digest-model.ts` parse/validate, each pure presentational component                                                       |
+| Integration (task)        | `Tasks/…/TerraformTaskV5/Tests/*.ts` | mocha + `MockTestRunner` | `plan()`/`apply()` end-to-end: command built, `show -json`/`apply -json` consumed, attachment emitted, exit code preserved |
+| Integration (tab)         | `src/tab/*.test.tsx`                 | jest + RTL               | `tabContent` load→parse→render across attachment types, pivots, overview list                                              |
+| Regression (golden)       | fixtures + snapshot/assertion        | both                     | frozen real-world captures never regress (§12.3)                                                                           |
+| Anti-regression tripwires | both                                 | mocha/jest/eslint        | security invariants that must never silently break (§12.4)                                                                 |
 
 ### 12.2 Unit testing — required cases
 
