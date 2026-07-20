@@ -15,7 +15,7 @@
  * account can POST and DELETE attachments; the REST file endpoint serves the bytes.
  */
 
-import { snRequest, withRetry } from './servicenow-http';
+import { snRequest, withRetry, nonIdempotentCreateRetryError } from './servicenow-http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -114,6 +114,10 @@ export async function uploadAttachment(
         body: data,
     }), {
         log: (message) => console.log(`[WARN] ${message}`),
+        // Audit id18 (2026-07-20): non-idempotent create -- do not retry an
+        // ambiguous transport failure (the server may have already created the
+        // attachment and only the response was lost), only a definitive 5xx/429.
+        retryError: nonIdempotentCreateRetryError,
     });
     // Same 2xx-non-JSON-body fallback as above (#561): validate the result
     // carries a string sys_id before the cast rather than returning undefined,

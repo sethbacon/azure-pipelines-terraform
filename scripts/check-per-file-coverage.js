@@ -72,6 +72,39 @@ const SECURITY_TIER = new Set([
     // release binaries. Byte-identical parity family across both listed tasks.
     'Tasks/TerraformInstaller/TerraformInstallerV1/src/gpg-verifier.js',
     'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/gpg-verifier.js',
+
+    // Audit id23 (2026-07-20, extends issue #590): the per-file floor mechanism
+    // itself is sound, but it originally covered only the 7 files above -- these
+    // additional credential-transport and trust-verification modules are just as
+    // security-critical and were left at DEFAULT_FLOOR with no per-file guarantee.
+    //
+    // cosign keyless/cert-identity anchor gating trust in downloaded OpenTofu
+    // release binaries -- the direct sibling of the already-tiered gpg-verifier.js.
+    'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.js',
+    // Credential-bearing HTTPS transports (TSM callback token / registry API key,
+    // including the skipTlsVerify branch). Byte-identical parity family across
+    // both listed tasks (scripts/check-shared-modules.js).
+    'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.js',
+    'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.js',
+    // The hand-tracked (not whole-file parity-gated) ServiceNow credential
+    // transport sibling of the https-client.js family above.
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.js',
+    // Registry API-key Bearer transport, including the skipTlsVerify branch.
+    'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/http.js',
+    // KB stored-XSS fail-closed gate: the URI-scheme allowlist shared by both
+    // sanitizer/validator layers (byte-identical parity family, #446 lineage)...
+    'Tasks/Markdown2Html/Markdown2HtmlV1/src/uri-scheme-guard.js',
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/uri-scheme-guard.js',
+    // ...and the independent fail-closed HTML validator itself (the `force`-input
+    // bypass path's gate).
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/html-validate.js',
+    // Git-clone token handling (http.extraheader, ref/subdir validation) for the
+    // policy-source repo.
+    'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/policy-source.js',
+    // .terraformrc / HCL generation from operator-supplied mirror inputs.
+    'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/config-generator.js',
+    // OIDC host allowlist + minting shared by all four cloud handlers' WIF paths.
+    'Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.js',
 ]);
 
 // Files allowed BELOW their applicable floor (DEFAULT_FLOOR, or SECURITY_FLOOR

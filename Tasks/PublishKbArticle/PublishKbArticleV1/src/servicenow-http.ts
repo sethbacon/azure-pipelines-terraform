@@ -380,21 +380,34 @@ export function snRequest(
  * Many Requests IS retried, honoring a capped Retry-After when present (#584).
  * Delegates to the shared bounded-backoff helper (retry.ts) so a future
  * hardening change lands in one place across every task.
+ *
+ * `retryError` may be overridden by the caller (audit id18, 2026-07-20): the
+ * default treats a thrown error with NO captured status (a pure transport
+ * failure -- the request may or may not have reached the server) as
+ * retryable, which is safe for idempotent/read calls but NOT for a
+ * non-idempotent create, where the server may have already processed the
+ * request and the response was simply lost in transit -- retrying would then
+ * create a duplicate record with no way to tell. Callers making a
+ * non-idempotent create/POST should pass a `retryError` that excludes the
+ * status-undefined case, retrying only a captured 5xx/429 (a definitive
+ * response was received, so the ambiguity does not apply) and otherwise
+ * treating the transport failure as fatal so the operator can safely re-run
+ * (self-healing via a get-or-create lookup on the next invocation).
  */
 export async function withRetry<T>(
     call: () => Promise<T>,
-    opts: { retries?: number; baseDelayMs?: number; log?: (message: string) => void } = {},
+    opts: { retries?: number; baseDelayMs?: number; log?: (message: string) => void; retryError?: (err: unknown) => boolean } = {},
 ): Promise<T> {
     const retries = opts.retries ?? 3;
     const baseDelayMs = opts.baseDelayMs ?? 500;
+    const retryError = opts.retryError ?? ((err) => {
+        const status = err instanceof ServiceNowHttpError ? err.status : undefined;
+        return status === undefined || status >= 500 || status === 429;
+    });
     return retryAsync(call, {
         retries,
         baseDelayMs,
-        retryError: (err) => {
-            const status = err instanceof ServiceNowHttpError ? err.status : undefined;
-            return status === undefined || status >= 500 || status === 429;
-        },
-        // Honor a capped 429 Retry-After when the server sent one; otherwise the
+        retryError,        // Honor a capped 429 Retry-After when the server sent one; otherwise the
         // exponential backoff.
         delayMs: (_attempt, backoffMs, outcome) => {
             if (
@@ -414,4 +427,21 @@ export async function withRetry<T>(
             }
         },
     });
+}
+
+/**
+ * `retryError` policy for a non-idempotent create/POST (audit id18, 2026-07-20):
+ * pass this to {@link withRetry}'s `retryError` option for
+ * createKnowledgeArticle / uploadAttachment. Retries ONLY a captured 5xx/429
+ * response (the server definitively responded, so the create is known to have
+ * failed server-side); a thrown error with no status at all (a pure transport
+ * failure -- the response may have been lost after the server already created
+ * the record) is treated as fatal instead of retried, so the operator's own
+ * pipeline re-run is what recovers, via the existing get-or-create lookup
+ * (findArticleBySourceKey) rather than a same-invocation retry that could
+ * create a second, orphaned record with no way to detect it.
+ */
+export function nonIdempotentCreateRetryError(err: unknown): boolean {
+    const status = err instanceof ServiceNowHttpError ? err.status : undefined;
+    return status === 429 || (status !== undefined && status >= 500);
 }

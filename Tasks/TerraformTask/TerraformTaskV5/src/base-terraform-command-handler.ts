@@ -683,9 +683,27 @@ export abstract class BaseTerraformCommandHandler {
 
         let result: number;
         if (outputTo === "console") {
-            result = await terraformTool.execAsync(<IExecOptions>{
-                cwd: showCommand.workingDirectory
+            // #492 follow-up (audit id0): `show -json` cleartext must never reach
+            // the console unredacted-and-unwarned the way the file branch below
+            // already guards against -- capture silently first (never a raw
+            // execAsync, which would mirror the child's stdout before we can
+            // inspect it), run the SAME sensitive-value detection the file path
+            // uses, and only THEN echo. Under the opt-in failOnSensitiveOutputs,
+            // warnIfSensitiveOutputs throws before anything is echoed, so the
+            // console path fully PREVENTS the leak rather than merely warning
+            // after the fact (there is no file to clean up here, unlike the file
+            // branch, since nothing has touched disk).
+            const commandOutput = await this.execWithStdoutCapture(terraformTool, {
+                cwd: showCommand.workingDirectory,
             });
+            if (outputFormat === "json") {
+                this.warnIfSensitiveOutputs(commandOutput.stdout, undefined);
+            }
+            console.log(commandOutput.stdout);
+            if (commandOutput.stderr.trim()) {
+                tasks.debug(commandOutput.stderr.trim());
+            }
+            result = commandOutput.code;
         } else if (outputTo === "file") {
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
             const commandOutput = await this.execWithStdoutCapture(terraformTool, {
@@ -846,7 +864,12 @@ export abstract class BaseTerraformCommandHandler {
             // human plan format already prints `(sensitive value)` for values
             // declared sensitive, which is what makes this echo safe while the
             // `output -json` / `show -json` captures must never be echoed.
-            console.log(planStdout);
+            // Route through echoSafeConsoleLine (audit id9), same as apply()'s
+            // echoApplyMessages: plan output can carry provider/module/remote-state
+            // -controlled text, and a line beginning `##vso[...]`/`##[...]` would
+            // otherwise forge an ADO logging command (#678's fix closed this for
+            // apply; the plan echo was the sibling path it never covered).
+            this.echoSafeConsoleLine(planStdout);
         } else {
             result = await terraformTool.execAsync(<IExecOptions>{
                 cwd: planCommand.workingDirectory,
@@ -1557,15 +1580,21 @@ export abstract class BaseTerraformCommandHandler {
 
     /**
      * Detects `sensitive = true` outputs (and resource attributes) in a
-     * `terraform show -json` plan written to `filePath`. Warns by default;
-     * when the opt-in `failOnSensitiveOutputs` input is set, sensitive
-     * *outputs* instead fail the task (#488) -- the just-written file is
-     * registered for end-of-step deletion first so the cleartext values are
-     * not left behind by the failure. Sensitive resource *attributes* stay
-     * warning-only even in strict mode: nearly every real plan carries some,
-     * so failing on them would make the strict mode unusable.
+     * `terraform show -json` plan. Warns by default; when the opt-in
+     * `failOnSensitiveOutputs` input is set, sensitive *outputs* instead fail
+     * the task (#488). Sensitive resource *attributes* stay warning-only even
+     * in strict mode: nearly every real plan carries some, so failing on them
+     * would make the strict mode unusable.
+     *
+     * `filePath` is the just-written output file for the `outputTo=file`
+     * branch (registered for end-of-step deletion before a strict failure so
+     * the cleartext values are not left behind), or `undefined` for the
+     * `outputTo=console` branch (audit id0) -- there is no file to clean up
+     * there, and the caller is expected to invoke this BEFORE echoing the
+     * captured stdout, so a strict failure throws before anything reaches the
+     * console at all rather than merely warning after the fact.
      */
-    private warnIfSensitiveOutputs(jsonOutput: string, filePath: string): void {
+    private warnIfSensitiveOutputs(jsonOutput: string, filePath: string | undefined): void {
         let plan: { planned_values?: { outputs?: unknown }, resource_changes?: unknown };
         try {
             plan = JSON.parse(jsonOutput);
@@ -1585,10 +1614,17 @@ export abstract class BaseTerraformCommandHandler {
                 .map(([k]) => k);
             if (sensitiveKeys.length > 0) {
                 if (tasks.getBoolInput('failOnSensitiveOutputs', false)) {
-                    this.tempFiles.push(filePath);
-                    throw new Error(tasks.loc('ShowSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
+                    if (filePath) {
+                        this.tempFiles.push(filePath);
+                        throw new Error(tasks.loc('ShowSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
+                    }
+                    throw new Error(tasks.loc('ShowSensitiveOutputsConsoleStrictFailure', sensitiveKeys.length, sensitiveKeys.join(', ')));
                 }
-                tasks.warning(`Terraform plan output file contains ${sensitiveKeys.length} sensitive output(s): ${sensitiveKeys.join(', ')}. Ensure this file is not published as a pipeline artifact.`);
+                if (filePath) {
+                    tasks.warning(`Terraform plan output file contains ${sensitiveKeys.length} sensitive output(s): ${sensitiveKeys.join(', ')}. Ensure this file is not published as a pipeline artifact.`);
+                } else {
+                    tasks.warning(`Terraform show -json output printed to the console contains ${sensitiveKeys.length} sensitive output(s): ${sensitiveKeys.join(', ')}. This build log may be retained and is readable by anyone with pipeline read access.`);
+                }
             }
         }
 
@@ -1602,7 +1638,11 @@ export abstract class BaseTerraformCommandHandler {
                 maskHasSensitiveLeaf(rc.change?.after_sensitive)
             );
             if (sensitiveResources.length > 0) {
-                tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
+                if (filePath) {
+                    tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
+                } else {
+                    tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The console output may contain unredacted secrets.`);
+                }
             }
         }
     }
