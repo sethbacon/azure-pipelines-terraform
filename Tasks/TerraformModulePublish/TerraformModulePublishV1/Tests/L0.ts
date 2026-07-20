@@ -696,6 +696,25 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         }
     });
 
+    it('emits the SkipTlsVerifyEnabled warning when skipTlsVerify is true (audit id31/#731)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishSkipTlsVerifyWarning.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            // The mock task-lib environment resolves tasks.loc() to a
+            // `loc_mock_<Key>` placeholder rather than the real resource string
+            // (no setResourcePath call in this fixture), so assert on the loc key.
+            assert.ok(
+                tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
+                'should have warned that skipTlsVerify is enabled and TLS validation is disabled',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
     it('masks the hcpToken and routes to the HCP publisher', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpToken.js'));
         await tr.runAsync();
