@@ -214,8 +214,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // in this working directory.
         this.registerOciBackendCacheForCleanup(tasks.getInput("workingDirectory") || '');
 
-        const authScheme = tasks.getInput("environmentAuthSchemeOCI", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "environmentAuthSchemeOCI");
+        const authScheme = this.resolveAuthScheme("environmentAuthSchemeOCI");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);
