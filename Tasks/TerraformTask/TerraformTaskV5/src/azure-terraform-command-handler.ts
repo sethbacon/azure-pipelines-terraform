@@ -171,10 +171,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     "--allow-no-subscriptions",
                     "--federated-token", oidcToken]);
 
-                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
-                if (loginResult !== 0) {
-                    throw new Error(`az login failed with exit code ${loginResult}`);
-                }
+                await this.execAzLogin(loginTool);
                 break;
             }
             case AuthorizationScheme.ServicePrincipal: {
@@ -189,10 +186,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     "--tenant", tenantId,
                     "--allow-no-subscriptions"]);
 
-                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
-                if (loginResult !== 0) {
-                    throw new Error(`az login failed with exit code ${loginResult}`);
-                }
+                await this.execAzLogin(loginTool);
                 break;
             }
             case AuthorizationScheme.ManagedServiceIdentity: {
@@ -207,10 +201,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 }
                 loginTool.arg(loginArgs);
 
-                const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
-                if (loginResult !== 0) {
-                    throw new Error(`az login failed with exit code ${loginResult}`);
-                }
+                await this.execAzLogin(loginTool);
                 break;
             }
         }
@@ -223,6 +214,20 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         tasks.debug("az login completed successfully.");
     }
+
+    /**
+     * Runs an already-argv-built `az login` ToolRunner and throws on a non-zero
+     * exit code. Factored out of runAzLogin's three AuthorizationScheme branches,
+     * which build different login argv but otherwise repeated this exact
+     * exec-and-check sequence verbatim (#732).
+     */
+    private async execAzLogin(loginTool: ToolRunner): Promise<void> {
+        const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
+        if (loginResult !== 0) {
+            throw new Error(`az login failed with exit code ${loginResult}`);
+        }
+    }
+
 
     private async setCommonVariables(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, fallbackToIdTokenGeneration: boolean, useCliFlagsForBackend: boolean): Promise<void> {
         EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false) ?? '');

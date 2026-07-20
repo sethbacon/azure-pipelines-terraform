@@ -20,10 +20,11 @@
  * because this API needs JSON-body encoding, query-string params, and
  * axios-like non-2xx rejection that the other client's callers don't — see the
  * tracking note in check-shared-modules.js for the split: the ProxyTunnelAgent
- * class below is byte-identity-gated automatically via that script's
- * REGION_FAMILIES (the `#region shared:ProxyTunnelAgent` markers bracketing it
- * here and in both https-client.ts copies), while the remaining parallels
- * (https-only guard, request timeout, response size cap) stay in sync by hand.
+ * class below, and the request-timeout/response-cap constants, are both
+ * byte-identity-gated automatically via that script's REGION_FAMILIES (the
+ * `#region shared:ProxyTunnelAgent` / `#region shared:HttpHardeningConstants`
+ * markers bracketing them here and in both https-client.ts copies) — only the
+ * https-only guard itself remains a hand-tracked parallel (#722).
  */
 
 import * as https from 'https';
@@ -35,11 +36,18 @@ import { URL } from 'url';
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
 import { retryAsync, parseRetryAfterMs } from './retry';
 
+/**
+ * Per-request socket timeout (ms) and the upper bound on the response body
+ * buffered in memory (ServiceNow table/attachment responses are small JSON, so
+ * this only guards against a misbehaving/hostile endpoint). Byte-identical
+ * with both https-client.ts copies via the `HttpHardeningConstants` region
+ * below (#722) — this used to be a hand-tracked parallel; edit every copy
+ * together.
+ */
+// #region shared:HttpHardeningConstants -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
-
-// Bound how much of a response we buffer; ServiceNow table/attachment responses
-// are small JSON, so this only guards against a misbehaving/hostile endpoint.
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+// #endregion shared:HttpHardeningConstants
 
 /**
  * An https.Agent that tunnels every connection through the agent's configured

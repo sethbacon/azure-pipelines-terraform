@@ -14,7 +14,7 @@ import { ApplyDigest, ApplyResource, Diagnostic, OutputChange } from './digest-s
 import { MAX_RESOURCES, MAX_DIAGNOSTICS, MAX_OUTPUTS, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from './caps';
 import { redactValue, newRedactContext, capDigestBytes, RedactContext } from './redact';
 import { scrubSecrets, sanitizeAttachmentName } from './secret-scrub';
-import { DigestMeta, DigestByteLimits, capNotes } from './plan-digest';
+import { DigestBuildMeta, DigestByteLimits, capNotes } from './plan-digest';
 
 /** Apply-specific build options (diagnostic handling + the byte-cap test seam). */
 export interface ApplyDigestOptions extends DigestByteLimits {
@@ -60,7 +60,7 @@ interface ResAcc {
  * @param meta    provenance/identity supplied by the caller
  * @param options diagnostic-detail toggle, known secrets, byte-cap test seam
  */
-export function buildApplyDigest(ndjson: string, meta: DigestMeta, options?: ApplyDigestOptions): ApplyDigest {
+export function buildApplyDigest(ndjson: string, meta: DigestBuildMeta, options?: ApplyDigestOptions): ApplyDigest {
   const ctx = newRedactContext();
   const includeDiagnostics = options?.includeDiagnostics !== false;
   const includeDetail = options?.includeDiagnosticDetail === true;

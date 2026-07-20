@@ -31,7 +31,7 @@ import { redactValue, newRedactContext, deepEqual, capDigestBytes, RedactContext
 import { sanitizeAttachmentName } from './secret-scrub';
 
 /** Identity/provenance a caller supplies; kept out of the raw Terraform JSON. */
-export interface DigestMeta {
+export interface DigestBuildMeta {
   taskVersion: string;
   toolName: 'terraform' | 'opentofu';
   name: string;
@@ -86,7 +86,7 @@ const KNOWN_ACTIONS = new Set(['no-op', 'create', 'read', 'update', 'delete', 'r
  * @param meta    provenance/identity supplied by the caller
  * @param options destroy marker (`mode`) + the soft/hard byte-ceiling test seam
  */
-export function buildPlanDigest(plan: unknown, meta: DigestMeta, options?: PlanDigestOptions): PlanDigest {
+export function buildPlanDigest(plan: unknown, meta: DigestBuildMeta, options?: PlanDigestOptions): PlanDigest {
   const ctx = newRedactContext();
   const p = (plan && typeof plan === 'object' ? (plan as Record<string, unknown>) : {}) as Record<string, unknown>;
 

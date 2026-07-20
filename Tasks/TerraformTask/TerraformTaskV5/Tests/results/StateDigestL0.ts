@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { buildStateDigest } from '../../src/results/state-digest';
-import { DigestMeta } from '../../src/results/plan-digest';
+import { DigestBuildMeta } from '../../src/results/plan-digest';
 import { serializeDigest } from '../../src/results/redact';
 import { MAX_STATE_RESOURCES, MAX_STATE_ATTRS_PER_RESOURCE, MAX_OUTPUTS } from '../../src/results/caps';
 
@@ -10,7 +10,7 @@ import { MAX_STATE_RESOURCES, MAX_STATE_ATTRS_PER_RESOURCE, MAX_OUTPUTS } from '
 // mismatch rule, the module-flattening walk, the mode split, the caps, and
 // determinism each have a direct assertion.
 
-const META: DigestMeta = {
+const META: DigestBuildMeta = {
   taskVersion: '0.0.0-test',
   toolName: 'terraform',
   name: 'terraform-state',

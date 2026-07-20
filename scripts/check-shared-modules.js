@@ -252,15 +252,15 @@ const FAMILIES = [
 // MAX_RESPONSE_BYTES response cap (see truncate()/truncateBody()). It stays a
 // separate module rather than reusing https-client.ts because its call sites
 // need JSON-body encoding, query-string params, and axios-like non-2xx
-// rejection that the module-publish/drift-report clients don't. Its most
-// complex shared piece, the CONNECT-tunneling ProxyTunnelAgent class, IS gated
-// automatically: it is byte-compared against the two https-client.ts copies by
-// the REGION_FAMILIES mechanism below, via the '#region shared:ProxyTunnelAgent'
-// / '#endregion shared:ProxyTunnelAgent' markers bracketing the class in all
-// three files. The remaining hand-tracked parallels (the https-only guard, the
-// request timeout, the response cap) are scalar constants outside any region; a
-// future hardening change to those in https-client.ts should still be mirrored
-// into servicenow-http.ts by hand.
+// rejection that the module-publish/drift-report clients don't. Its two most
+// hardening-sensitive shared pieces are gated automatically via the
+// REGION_FAMILIES mechanism below: the CONNECT-tunneling ProxyTunnelAgent class
+// (`#region shared:ProxyTunnelAgent`) and, as of #722, the request-timeout /
+// response-cap constants (`#region shared:HttpHardeningConstants`) — both
+// byte-compared against the two https-client.ts copies. Only the https-only
+// guard itself remains a hand-tracked parallel: a future hardening change to
+// it in https-client.ts should still be mirrored into servicenow-http.ts by
+// hand.
 
 // Region families: unlike FAMILIES (whole-file byte-identity), each entry names a
 // marked region that must stay byte-identical across files that are otherwise NOT
@@ -277,6 +277,17 @@ const REGION_FAMILIES = [
         // https-client.ts copies (already whole-file-gated as a FAMILY above) and
         // the ServiceNow transport servicenow-http.ts (not a whole-file copy).
         region: 'ProxyTunnelAgent',
+        files: [
+            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
+        ],
+    },
+    {
+        // The per-request socket timeout and response-body byte cap, previously a
+        // hand-tracked parallel outside any parity gate (#722) -- now byte-
+        // compared the same way as ProxyTunnelAgent above.
+        region: 'HttpHardeningConstants',
         files: [
             'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
             'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
