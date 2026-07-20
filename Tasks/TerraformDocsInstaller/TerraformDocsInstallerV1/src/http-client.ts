@@ -14,6 +14,9 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
 import { retryAsync } from './retry';
+import * as fs from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 /**
  * Per-request timeouts (ms). Without an AbortController a hung TCP connection
@@ -175,6 +178,8 @@ export async function fetchWithTimeout<T>(
     url: string,
     timeoutMs: number,
     consume: (response: Response) => Promise<T>,
+    isRedirectHostAllowed: (originHost: string, next: URL) => boolean = (originHost, next) =>
+        next.host === originHost || isGithubAssetRedirect(originHost, next),
 ): Promise<T> {
     if (!url.startsWith('https://')) {
         throw new HttpError(tasks.loc("InsecureUrlRejected", url), false);
@@ -198,7 +203,7 @@ export async function fetchWithTimeout<T>(
             if (next.protocol !== 'https:') {
                 throw new HttpError(tasks.loc("InsecureUrlRejected", next.toString()), false);
             }
-            if (next.host !== originHost && !isGithubAssetRedirect(originHost, next)) {
+            if (!isRedirectHostAllowed(originHost, next)) {
                 throw new HttpError(`Refusing to follow an off-host redirect (${originHost} -> ${next.host}) while fetching ${url}.`, false);
             }
             currentUrl = next.toString();
@@ -212,6 +217,66 @@ export async function fetchWithTimeout<T>(
         clearTimeout(timer);
     }
 }
+
+/**
+ * Downloads a URL directly to a local file, streaming the response body to
+ * disk rather than buffering it in memory -- matching the memory profile of
+ * azure-pipelines-tool-lib's downloadTool() for a large Terraform/OpenTofu/
+ * OPA/terraform-docs archive. Unlike downloadTool(), redirects are followed
+ * manually (via fetchWithTimeout) so `isHostAllowed` re-validates the host at
+ * EVERY hop, not just the initial URL -- closing the gap where a compromised
+ * registry could return an allowlisted download_url that itself 302s to an
+ * arbitrary host (#679). `isHostAllowed` should throw with a caller-specific
+ * message on a disallowed host rather than returning a bare boolean, so the
+ * error text can name the actual offending host/allowlist.
+ */
+export async function downloadToFile(
+    url: string,
+    destPath: string,
+    timeoutMs: number,
+    isHostAllowed: (hostname: string) => void,
+): Promise<void> {
+    // Validate the initial URL's own host before any network call --
+    // fetchWithTimeout's redirect-validator callback below only re-checks
+    // subsequent Location targets, never the URL it was first called with.
+    isHostAllowed(new URL(url).hostname);
+    try {
+        await fetchWithTimeout(
+            url,
+            timeoutMs,
+            async (response) => {
+                if (!response.ok) {
+                    throw new HttpError(`Download from ${url} failed with HTTP ${response.status}.`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
+                }
+                if (!response.body) {
+                    throw new HttpError(`Download from ${url} returned an empty response body.`, false);
+                }
+                await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(destPath));
+            },
+            (_originHost, next) => {
+                // Re-validate every redirect hop against the same allowlist (#679).
+                isHostAllowed(next.host);
+                return true;
+            },
+        );
+    } catch (err) {
+        // A write-stream failure partway through (disk full, permission
+        // denied) leaves a truncated file at destPath; a non-2xx/host-
+        // rejection failure never opens the write stream at all. Best-effort
+        // remove whatever partial file might exist so a caller never mistakes
+        // it for a complete, verifiable download.
+        try {
+            fs.unlinkSync(destPath);
+        } catch {
+            // Nothing to remove (the common case -- the failure happened
+            // before any bytes were written) or removal itself failed; either
+            // way this must not mask the real error above.
+        }
+        throw err;
+    }
+}
+
+
 
 /**
  * Retries a fetch on transient failures (network error, timeout, 5xx, 429) with
@@ -254,7 +319,7 @@ async function readBoundedArrayBuffer(response: Response, url: string): Promise<
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
-    for (;;) {
+    for (; ;) {
         const { done, value } = await reader.read();
         if (done) break;
         total += value.byteLength;

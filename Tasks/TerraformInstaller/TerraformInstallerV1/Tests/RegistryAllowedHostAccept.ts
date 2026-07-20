@@ -15,7 +15,8 @@ tr.setInput('registryAllowedHosts', 'other.example.com, *.storage.example.com');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => 'C:\\fake-temp'
 });
 
 const EXPECTED_SHA256 = 'abc123def456abc123def456abc123def456abc123def456abc123def456abc1';
@@ -34,6 +35,18 @@ tr.registerMock('./http-client', {
     },
     fetchText: async (url: string) => {
         throw new Error('fetchText should not be called for registry download. Called with: ' + url);
+    },
+    DOWNLOAD_TIMEOUT_MS: 600000,
+    // downloadToFile replaces tools.downloadTool() only on the
+    // registryAllowedHosts-enabled path (#679) -- genuinely exercises the
+    // isHostAllowed callback terraform-installer.ts builds (real
+    // isRegistryHostAllowed logic), proving the wildcard-matched host is
+    // accepted, but stubs out the actual network/disk work the same way
+    // downloadTool is stubbed below. fs.readFileSync is mocked to always
+    // return fake-zip-content regardless of path, so no real file needs to
+    // be written to destPath.
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(url).hostname);
     }
 });
 
