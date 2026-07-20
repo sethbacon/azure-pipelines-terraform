@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildPlanDigest, DigestMeta } from '../../src/results/plan-digest';
+import { buildPlanDigest, DigestBuildMeta } from '../../src/results/plan-digest';
 import { buildStateDigest } from '../../src/results/state-digest';
 import { serializeDigest } from '../../src/results/redact';
 
@@ -14,7 +14,7 @@ export const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures');
 
 // FIXED meta so goldens never churn: never Date.now(), never the real task
 // version (§2.6 determinism).
-export const STATE_META: DigestMeta = {
+export const STATE_META: DigestBuildMeta = {
   taskVersion: '0.0.0-test',
   toolName: 'terraform',
   name: 'terraform-state',
@@ -22,7 +22,7 @@ export const STATE_META: DigestMeta = {
   createdIso: '2026-07-15T00:00:00Z',
 };
 
-export const PLAN_META: DigestMeta = {
+export const PLAN_META: DigestBuildMeta = {
   taskVersion: '0.0.0-test',
   toolName: 'terraform',
   name: 'terraform-plan',

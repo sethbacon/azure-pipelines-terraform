@@ -3,7 +3,7 @@ import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import { replaceSecretFile, scrubFile, writeSecretFile } from './secure-temp';
-import { buildPlanDigest, DigestMeta } from './results/plan-digest';
+import { buildPlanDigest, DigestBuildMeta } from './results/plan-digest';
 import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
 import { Digest } from './results/digest-schema';
@@ -1031,7 +1031,7 @@ export abstract class BaseTerraformCommandHandler {
      * Builds the DigestMeta identity/provenance fields (design §4.1) shared by
      * both the plan and apply structured attachments.
      */
-    private buildDigestMeta(publishName: string, workingDirectory: string): DigestMeta {
+    private buildDigestMeta(publishName: string, workingDirectory: string): DigestBuildMeta {
         return {
             taskVersion: getTaskVersion(),
             toolName: 'terraform',
