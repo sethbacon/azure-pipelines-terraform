@@ -29,7 +29,7 @@ import {
   HARD_MAX_DIGEST_BYTES,
 } from './caps';
 import { redactValue, newRedactContext, capDigestBytes, RedactContext } from './redact';
-import { DigestMeta, DigestByteLimits, capNotes } from './plan-digest';
+import { DigestBuildMeta, DigestByteLimits, capNotes } from './plan-digest';
 import { sanitizeAttachmentName } from './secret-scrub';
 
 // State has no unknown/after-apply values — everything is materialized (spec
@@ -49,7 +49,7 @@ const UNSAFE_ATTR_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
  * @param meta    provenance/identity supplied by the caller
  * @param options optional test seam for the soft/hard byte ceilings
  */
-export function buildStateDigest(state: unknown, meta: DigestMeta, options?: DigestByteLimits): StateDigest {
+export function buildStateDigest(state: unknown, meta: DigestBuildMeta, options?: DigestByteLimits): StateDigest {
   const ctx = newRedactContext();
   const s = obj(state);
   const values = obj(s.values);

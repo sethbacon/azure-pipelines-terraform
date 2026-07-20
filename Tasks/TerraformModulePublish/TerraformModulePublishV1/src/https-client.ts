@@ -7,19 +7,21 @@ import { URL } from 'url';
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
 
 /**
- * Per-request socket timeout (ms). Without it a hung TCP connection makes the
- * caller's own timeout silently ineffective until the agent job timeout.
+ * Per-request socket timeout (ms) and the upper bound on the response body
+ * buffered in memory. The timeout is an *inactivity* timer (a hung connection
+ * makes the caller's own timeout silently ineffective until the agent job
+ * timeout); the byte cap guards against an endpoint that streams continuously
+ * without ever going idle (which the timeout alone can't catch), exhausting
+ * the agent's memory. Byte-identical across the module-publish/drift-report
+ * https-client.ts copies (FAMILIES) AND PublishKbArticleV1's servicenow-http.ts
+ * (REGION_FAMILIES, #722) via the `HttpHardeningConstants` region below — this
+ * used to be a hand-tracked parallel with servicenow-http.ts; edit every copy
+ * together.
  */
+// #region shared:HttpHardeningConstants -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
-
-/**
- * Upper bound on the response body buffered in memory. The socket timeout above
- * is an *inactivity* timer, so an endpoint that streams bytes continuously never
- * trips it and could exhaust the agent's memory; this cap makes such a response
- * fail fast instead. Mirrors servicenow-http.ts and is kept byte-identical
- * across the module-publish and drift-report copies by check-shared-modules.js.
- */
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+// #endregion shared:HttpHardeningConstants
 
 export interface HttpResponse {
     status: number;
