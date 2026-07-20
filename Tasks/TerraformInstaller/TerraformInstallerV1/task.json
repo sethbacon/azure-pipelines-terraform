@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "310afe61-60d3-49bd-b4b8-7abb989a38fc",
     "name": "PipelineTerraformInstaller",
     "friendlyName": "Pipeline Terraform tool installer",

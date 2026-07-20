@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "1c36ffb0-b3b3-4716-90c7-d7d02884acd0",
     "name": "PipelineTerraformProviderMirror",
     "friendlyName": "Pipeline Terraform provider mirror",
@@ -33,7 +34,7 @@
             "label": "Allow direct registry fallback",
             "defaultValue": "true",
             "required": false,
-            "helpMarkDown": "When enabled, Terraform can fall back to downloading providers directly from registry.terraform.io if the mirror does not have them. When disabled, the mirror is authoritative for all providers."
+            "helpMarkDown": "<b>Security-sensitive.</b> When enabled, Terraform can fall back to downloading providers directly from registry.terraform.io if the mirror does not have them. When disabled, the mirror is authoritative for all providers. Operators relying on this mirror for air-gapped/compliance isolation must explicitly set this to <code>false</code> -- the permissive default allows direct internet egress for any provider the mirror lacks."
         },
         {
             "name": "directExcludePatterns",

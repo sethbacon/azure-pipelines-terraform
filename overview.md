@@ -99,16 +99,16 @@ To pin a specific version:
 
 ## Authentication Methods
 
-| Provider        | Method                       | Notes                                                                                       |
-| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
-| Azure (AzureRM) | Workload Identity Federation | Preferred. OIDC-based, no stored secrets.                                                   |
-| Azure (AzureRM) | Managed Service Identity     | For self-hosted agents with MSI.                                                            |
-| Azure (AzureRM) | Service Principal            | Client ID + secret. Deprecated; use WIF instead.                                            |
-| AWS             | Service Connection           | Access key ID + secret access key via AWS service connection.                               |
-| AWS             | Workload Identity Federation | OIDC token exchange via `AWS_WEB_IDENTITY_TOKEN_FILE`. Requires IAM role with trust policy. |
-| GCP             | Service Connection           | Service account JSON key via GCP service connection.                                        |
-| GCP             | Workload Identity Federation | OIDC token exchange via external account credentials. Requires Workload Identity Pool.      |
-| OCI             | Service Connection           | Private key + user/tenancy OCIDs via OCI service connection.                                |
+| Provider        | Method                       | Notes                                                                                                                                      |
+| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Azure (AzureRM) | Workload Identity Federation | Preferred. OIDC-based, no stored secrets.                                                                                                  |
+| Azure (AzureRM) | Managed Service Identity     | For self-hosted agents with MSI.                                                                                                           |
+| Azure (AzureRM) | Service Principal            | Client ID + secret. Deprecated; use WIF instead.                                                                                           |
+| AWS             | Service Connection           | Access key ID + secret access key via AWS service connection.                                                                              |
+| AWS             | Workload Identity Federation | OIDC token exchange via `AWS_WEB_IDENTITY_TOKEN_FILE`. Requires IAM role with trust policy.                                                |
+| GCP             | Service Connection           | Service account JSON key via GCP service connection.                                                                                       |
+| GCP             | Workload Identity Federation | OIDC token exchange via external account credentials. Requires Workload Identity Pool.                                                     |
+| OCI             | Service Connection           | Private key + user/tenancy OCIDs via OCI service connection.                                                                               |
 | OCI             | Workload Identity Federation | OIDC token exchanged for a temporary User Principal Session Token (UPST) via OCI Identity Domains. Requires an Identity Propagation Trust. |
 
 ## Backend Types
@@ -129,12 +129,15 @@ If `backendType` is not set, it defaults to the value of the `provider` input, p
 
 ## Output Variables
 
-| Variable                  | Set by   | Description                                                                                                                     |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `changesPresent`          | `plan`   | `true` when the plan detects infrastructure changes (exit code 2 with `-detailed-exitcode`). Use in `condition:` to gate apply. |
-| `jsonOutputVariablesPath` | `output` | File path to the JSON output of `terraform output -json`.                                                                       |
-| `showFilePath`            | `show`   | File path when `outputTo` is set to `file`.                                                                                     |
-| `customFilePath`          | `custom` | File path when `outputTo` is set to `file`.                                                                                     |
+| Variable                  | Set by   | Description                                                                                                                                                            |
+| ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `changesPresent`          | `plan`   | `true` when the plan detects infrastructure changes (exit code 2 with `-detailed-exitcode`). Use in `condition:` to gate apply.                                        |
+| `jsonPlanFilePath`        | `plan`   | File path to the plan's JSON output (`terraform show -json` equivalent), a policy-as-code integration hook for OPA/Sentinel-style tooling.                             |
+| `jsonOutputVariablesPath` | `output` | File path to the JSON output of `terraform output -json`.                                                                                                              |
+| `destroyChangesPresent`   | `show`   | `true` when a JSON `show` of a plan file contains resource deletions.                                                                                                  |
+| `showFilePath`            | `show`   | File path when `outputTo` is set to `file`.                                                                                                                            |
+| `customFilePath`          | `custom` | File path when `outputTo` is set to `file`.                                                                                                                            |
+| `TF_OUT_<name>`           | `output` | Every Terraform output is auto-set as a pipeline variable named `TF_OUT_<output name>`, masked as secret only when the module declares that output `sensitive = true`. |
 
 Reference output variables using the task `name` prefix: `$(taskName.changesPresent)`.
 
@@ -147,4 +150,4 @@ Reference output variables using the task `name` prefix: `$(taskName.changesPres
 
 ## Trademarks
 
-Terraform is a registered trademark of HashiCorp. OpenTofu is a trademark of the Linux Foundation. This extension is an independent, community-maintained fork and is **not** affiliated with, endorsed by, or sponsored by HashiCorp or the Linux Foundation. Product names are used under nominative fair use solely to describe compatibility.
+Terraform is a registered trademark of HashiCorp. OpenTofu is a trademark of the Linux Foundation. This extension is an independent, community-maintained fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) and is **not** affiliated with, endorsed by, or sponsored by HashiCorp, the Linux Foundation, or Microsoft. Amazon Web Services, Google Cloud, Oracle Cloud Infrastructure, and ServiceNow are trademarks of their respective owners; this project is not affiliated with, endorsed by, or sponsored by any of them. Product names are used under nominative fair use solely to describe compatibility.
