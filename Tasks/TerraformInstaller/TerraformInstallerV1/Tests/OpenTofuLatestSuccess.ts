@@ -50,7 +50,7 @@ tr.registerMock('./cosign-verifier', {
 // fs: readFileSync for verifySha256, chmodSync skipped on Windows
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
-    readFileSync: (_path: string) => Buffer.from('fake-zip-content'),
+    createReadStream: (_path: string) => require('stream').Readable.from(Buffer.from('fake-zip-content')),
     writeFileSync: (_path: string, _content: any) => { },
     unlinkSync: (_path: string) => { }
 });
@@ -58,11 +58,11 @@ tr.registerMock('fs', {
 // crypto: return the expected hash so SHA256 verification passes
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid-1234',
-    createHash: (_algorithm: string) => ({
-        update: (_data: any) => ({
-            digest: (_encoding: string) => EXPECTED_SHA256
-        })
-    })
+    createHash: (_algorithm: string) => {
+        const hash: any = new (require('stream').Writable)({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+        hash.digest = (_encoding: string) => EXPECTED_SHA256;
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
