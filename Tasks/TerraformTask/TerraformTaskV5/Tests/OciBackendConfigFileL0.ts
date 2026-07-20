@@ -113,3 +113,112 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
         assert.ok(!contentAtUnlinkTime!.includes(Buffer.from('TOKEN123')), 'the bearer token must not survive to the unlink call');
     });
 });
+
+/**
+ * Direct unit tests for the opt-in `cleanupOCIBackendCache` scrub (#675):
+ * `terraform init` copies the OCI PAR bearer URL into
+ * `<workingDirectory>/.terraform/terraform.tfstate`, a cache this task does
+ * not generate directly (it's Terraform's own behavior) and therefore cannot
+ * unconditionally delete -- most pipelines run separate init/plan/apply steps
+ * against the same working directory, and each later step needs this cache to
+ * still be present. Default off; only scrubbed when the operator opts in.
+ */
+describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfstate (#675)', function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
+    const t = tasks as any;
+    const taskOrig = {
+        getInput: t.getInput,
+        getBoolInput: t.getBoolInput,
+        setSecret: t.setSecret,
+        debug: t.debug,
+    };
+    let scratchDir: string;
+    let cachePath: string;
+    const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
+
+    function installInputs(cleanupOCIBackendCache: boolean): void {
+        t.getInput = (name: string) => {
+            if (name === 'backendServiceOCI') return 'OCI';
+            if (name === 'backendOCIConfigGenerate') return 'yes';
+            if (name === 'backendOCIPar') return parUrl;
+            if (name === 'workingDirectory') return scratchDir;
+            return undefined;
+        };
+        // A faithful stand-in for task-lib's getBoolInput: the real one
+        // snapshots inputs at module load, so it can't see a value set at
+        // test time -- must be stubbed directly (matches RunAzLoginL0.ts).
+        t.getBoolInput = (name: string) => (name === 'cleanupOCIBackendCache' ? cleanupOCIBackendCache : false);
+    }
+
+    beforeEach(() => {
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oci-backend-cache-test-'));
+        fs.mkdirSync(path.join(scratchDir, '.terraform'));
+        cachePath = path.join(scratchDir, '.terraform', 'terraform.tfstate');
+        fs.writeFileSync(cachePath, JSON.stringify({ backend: { config: { address: parUrl } } }));
+        t.setSecret = () => { /* no-op */ };
+        t.debug = () => { /* silence */ };
+    });
+
+    afterEach(() => {
+        t.getInput = taskOrig.getInput;
+        t.getBoolInput = taskOrig.getBoolInput;
+        t.setSecret = taskOrig.setSecret;
+        t.debug = taskOrig.debug;
+        fs.rmSync(scratchDir, { recursive: true, force: true });
+    });
+
+    function stubToolRunner(): ToolRunner {
+        return { arg: () => { /* backendConfig is empty for OCI */ } } as unknown as ToolRunner;
+    }
+
+    it('leaves .terraform/terraform.tfstate untouched by default (cleanupOCIBackendCache unset)', async () => {
+        installInputs(false);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+        handler.cleanupTempFiles();
+
+        assert.ok(fs.existsSync(cachePath), 'the backend cache must survive cleanup when cleanupOCIBackendCache is not enabled');
+        assert.ok(fs.readFileSync(cachePath, 'utf8').includes('TOKEN123'), 'the file content must be untouched');
+    });
+
+    it('scrubs and removes .terraform/terraform.tfstate when cleanupOCIBackendCache is enabled after init (#675)', async () => {
+        installInputs(true);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+        handler.cleanupTempFiles();
+
+        assert.ok(!fs.existsSync(cachePath), 'the backend cache must be removed once the operator opts in');
+    });
+
+    it('also registers the cache for cleanup from handleProvider (apply/destroy as the last step, no handleBackend call)', async () => {
+        installInputs(true);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleProvider({ serviceProviderName: undefined } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
+        handler.cleanupTempFiles();
+
+        assert.ok(!fs.existsSync(cachePath), 'handleProvider (used by plan/apply/destroy/...) must register the same opt-in cleanup, not only handleBackend (init)');
+    });
+
+    it('registers the cache for cleanup from handleProvider even when backendOCIConfigGenerate is no (#675 simplification: gated only on cleanupOCIBackendCache)', async () => {
+        installInputs(true);
+        t.getInput = (name: string) => {
+            if (name === 'workingDirectory') return scratchDir;
+            if (name === 'backendOCIConfigGenerate') return 'no';
+            return undefined;
+        };
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleProvider({ serviceProviderName: undefined } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
+        handler.cleanupTempFiles();
+
+        // backendOCIConfigGenerate's own input group is only visible/defaulted
+        // for command=init in the classic UI designer, so an apply/destroy
+        // step relying on its default resolving to "yes" would be fragile;
+        // gating solely on the operator's own explicit cleanupOCIBackendCache
+        // opt-in avoids that dependency entirely. Scrubbing a cache that
+        // happens to exist even when this task did not generate the backend
+        // config itself is a safe, idempotent action the operator already
+        // consented to.
+        assert.ok(!fs.existsSync(cachePath), 'handleProvider must register cleanup based on cleanupOCIBackendCache alone, independent of backendOCIConfigGenerate');
+    });
+});
+

@@ -967,7 +967,7 @@
             "type": "string",
             "label": "PAR for Terraform remote state file",
             "required": false,
-            "helpMarkDown": "The OCI object storage PAR configuration for the Terraform remote state file (optional).<br><br>This PAR URL is a bearer credential (its /p/&lt;token&gt;/ path segment grants read/write to the state bucket). It is written into a generated <code>config-&lt;uuid&gt;.tf</code> file inside the 'Configuration directory' below -- Terraform only loads <code>*.tf</code> files from the working directory, so this file cannot be relocated to a purged temp directory like the task's other credential files. It is written with restrictive permissions and its contents are scrubbed (overwritten) before deletion at the end of the step, but a host crash before that cleanup runs can still leave it on disk. For defense in depth, point 'Configuration directory' at an ephemeral, agent-managed path rather than a long-lived checkout or shared directory.",
+            "helpMarkDown": "The OCI object storage PAR configuration for the Terraform remote state file (optional).<br><br>This PAR URL is a bearer credential (its /p/&lt;token&gt;/ path segment grants read/write to the state bucket). It is written into a generated <code>config-&lt;uuid&gt;.tf</code> file inside the 'Configuration directory' below -- Terraform only loads <code>*.tf</code> files from the working directory, so this file cannot be relocated to a purged temp directory like the task's other credential files. It is written with restrictive permissions and its contents are scrubbed (overwritten) before deletion at the end of the step, but a host crash before that cleanup runs can still leave it on disk. <b>Security-sensitive:</b> <code>terraform init</code> also copies this PAR URL into <code>&lt;Configuration directory&gt;/.terraform/terraform.tfstate</code>, a cache this task does not scrub by default because later plan/apply/etc. steps against the same working directory need it. See the 'Scrub cached backend PAR on cleanup' input (enable only on the last state-touching step), use short-lived/narrowly-scoped PARs, and prefer ephemeral working directories on self-hosted agents.",
             "groupName": "backendOCI"
         },
         {
@@ -982,6 +982,15 @@
                 "yes": "yes",
                 "no": "no"
             }
+        },
+        {
+            "name": "cleanupOCIBackendCache",
+            "type": "boolean",
+            "label": "Scrub cached backend PAR on cleanup",
+            "required": false,
+            "defaultValue": "false",
+            "visibleRule": "provider = oci",
+            "helpMarkDown": "<b>Security-sensitive.</b> When enabled, best-effort scrubs (overwrites) and deletes <code>&lt;Configuration directory&gt;/.terraform/terraform.tfstate</code> at the end of this step, removing the OCI PAR bearer credential that <code>terraform init</code> caches there (#675). Default off because most pipelines run separate init/plan/apply steps against the *same* working directory, and each later step needs this cache to still be present -- only enable this on the LAST terraform command touching a given working directory (typically <code>apply</code> or <code>destroy</code>; also works on <code>plan</code>/<code>output</code>/<code>show</code>/<code>import</code>/<code>refresh</code>). Not currently applied on <code>state</code>, <code>workspace</code>, or <code>forceunlock</code> commands -- if one of those is genuinely your last command against this working directory, this option has no effect there. Does not cover a saved plan file (<code>-out=</code>), which can also embed the backend address."
         }
     ],
     "dataSourceBindings": [

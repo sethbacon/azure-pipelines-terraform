@@ -158,7 +158,25 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             writeSecretFile(tfConfigFilePath, config);
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
+            this.registerOciBackendCacheForCleanup(workingDirectory);
         }
+    }
+
+    /**
+     * Opt-in (default off), best-effort scrub of the OCI PAR bearer credential
+     * that `terraform init` copies into `<workingDirectory>/.terraform/terraform.tfstate`
+     * when this backend is generated (#675). Default off because most
+     * pipelines run separate init/plan/apply steps against the *same* working
+     * directory and each later step needs this cache to still be present --
+     * the 'cleanupOCIBackendCache' input documents that it must only be
+     * enabled on the last terraform command touching a given working
+     * directory. Registering into `tempFiles` (rather than deleting inline)
+     * reuses the existing scrub-then-unlink cleanup path (and its emergency/
+     * SIGTERM coverage) uniformly with every other tracked credential file.
+     */
+    private registerOciBackendCacheForCleanup(workingDirectory: string): void {
+        if (!tasks.getBoolInput("cleanupOCIBackendCache", false)) return;
+        this.tempFiles.push(path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`));
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
@@ -180,6 +198,22 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
+        // Non-init commands (plan/apply/destroy/...) never call setupBackend(),
+        // so this is the only place they can register the same opt-in cache
+        // scrub for a working directory that was already `init`-ed with an OCI
+        // PAR backend in an earlier step (#675) -- e.g. when apply/destroy is
+        // the LAST command touching this working directory. Gated only on
+        // cleanupOCIBackendCache itself (not also on backendOCIConfigGenerate,
+        // unlike setupBackend()'s own registration): that input's group is
+        // only visible/defaulted for `command = init` in the classic UI
+        // designer, so relying on it resolving to "yes" here for a non-init
+        // command would be fragile. An operator who explicitly opts into
+        // cleanupOCIBackendCache has already stated their intent; scrubbing
+        // the cache is a safe, idempotent no-op (via fs.existsSync in
+        // scrubAndUnlink) if no OCI PAR backend was ever actually generated
+        // in this working directory.
+        this.registerOciBackendCacheForCleanup(tasks.getInput("workingDirectory") || '');
+
         const authScheme = tasks.getInput("environmentAuthSchemeOCI", false) || "ServiceConnection";
         this.validateAuthScheme(authScheme, "environmentAuthSchemeOCI");
 
