@@ -11,26 +11,13 @@ import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
-import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
+import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 
 const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
-
-/**
- * setSecret() any basic-auth userinfo embedded in an operator-supplied
- * registry/mirror URL so the agent masks it everywhere the URL (or a URL derived
- * from it) might be echoed — pipeline variables, console output, error messages
- * (#586). Idempotent; call at the earliest use of each operator URL. Pair with
- * redactUrlUserInfo() to structurally strip the credential from any value stored
- * or displayed (setSecret only masks logs, not a persisted variable's value).
- */
-function maskOperatorUrlCredentials(url: string): void {
-    for (const secret of extractUrlUserInfoSecrets(url)) {
-        tasks.setSecret(secret);
-    }
-}
 
 // File name of the local, per-cached-tool-directory integrity marker written after
 // a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
@@ -51,7 +38,9 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         case "registry": {
             const registryUrl = tasks.getInput("registryUrl", true)!;
             const mirrorName = tasks.getInput("registryMirrorName", true)! || "terraform";
-            resolvedVersion = await resolveVersionFromRegistry(inputVersion, registryUrl, mirrorName);
+            resolvedVersion = inputVersion.toLowerCase() !== 'latest'
+                ? inputVersion
+                : await resolveVersionFromRegistry(registryUrl, mirrorName);
             break;
         }
         default: // "hashicorp" and "mirror" both use HashiCorp checkpoint for 'latest'
@@ -167,21 +156,6 @@ async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string
         throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
     }
     return data.current_version;
-}
-
-async function resolveVersionFromRegistry(inputVersion: string, registryUrl: string, mirrorName: string): Promise<string> {
-    if (inputVersion.toLowerCase() !== 'latest') {
-        return inputVersion;
-    }
-    maskOperatorUrlCredentials(registryUrl);
-    console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
-    const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
-    const data = await fetchJson<{ version: string }>(latestUrl);
-    if (!data.version) {
-        throw new Error(`Registry API returned invalid response: missing version field from ${latestUrl}`);
-    }
-    console.log(tasks.loc("ResolvedVersionFromRegistry", data.version));
-    return data.version;
 }
 
 // --- Download strategies ---

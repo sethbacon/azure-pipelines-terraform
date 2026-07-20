@@ -258,6 +258,20 @@ export abstract class BaseTerraformCommandHandler {
         }
     }
 
+    /**
+     * Reads and validates a `*AuthScheme*` input in one call: defaults to
+     * "ServiceConnection" when omitted, then validates via
+     * {@link validateAuthScheme}. This exact "read input, default, validate"
+     * shape was previously copy-pasted verbatim at 7 call sites across the
+     * AWS/GCP/OCI handlers (issue #682) -- centralized here so a future change
+     * to the default value or validation call shape has one place to update.
+     */
+    protected resolveAuthScheme(inputName: string): string {
+        const scheme = tasks.getInput(inputName, false) || "ServiceConnection";
+        this.validateAuthScheme(scheme, inputName);
+        return scheme;
+    }
+
     protected getWorkingDirectory(): string {
         return tasks.getInput("workingDirectory") || '';
     }

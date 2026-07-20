@@ -101,6 +101,22 @@ const FAMILIES = [
         ],
     },
     {
+        // Private-registry 'latest' version resolution + operator-URL credential
+        // masking helper, shared by all three installer tasks that support
+        // downloadSource=registry. Previously hand-duplicated with a matching body
+        // in each (issue #681, escaping the parity gate this family now closes) --
+        // a fix to the registry-latest error message or masking order could land in
+        // one copy and be silently missed in the others.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'registry-version-resolver.ts',
+        ],
+    },
+    {
         // Fail-closed boolean-input helper: requireGpgSignature / requireChecksum /
         // requireCosignVerification default to TRUE even on agents that do not
         // materialize task.json defaultValues. A drift here could silently flip a

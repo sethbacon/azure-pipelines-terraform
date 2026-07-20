@@ -13,6 +13,8 @@ import './InstallerHelpersL0';
 import './GpgVerifierL0';
 // Direct unit tests for the registry download-host allowlist.
 import './RegistryAllowedHostsL0';
+// Direct unit tests for the shared registry-version-resolver module (#681).
+import './RegistryVersionResolverL0';
 
 describe('PolicyAgentInstaller Test Suite', function () {
 

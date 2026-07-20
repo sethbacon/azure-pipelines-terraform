@@ -183,8 +183,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         tasks.debug('Setting up backend GCP.');
         const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
-        const authScheme = tasks.getInput("backendAuthSchemeGCP", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "backendAuthSchemeGCP");
+        const authScheme = this.resolveAuthScheme("backendAuthSchemeGCP");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.setupBackendWIF(backendServiceName);
@@ -205,8 +204,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     public async configureBackendCredentials(): Promise<void> {
         tasks.debug('Configuring cross-cloud gcs backend credentials (environment variable only).');
         const backendServiceName = tasks.getInput("backendServiceGCP", true)!;
-        const authScheme = tasks.getInput("backendAuthSchemeGCP", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "backendAuthSchemeGCP");
+        const authScheme = this.resolveAuthScheme("backendAuthSchemeGCP");
 
         if (authScheme === "WorkloadIdentityFederation") {
             this.applyBackendCredentialFile(await this.writeBackendWifCredentials(backendServiceName));
@@ -217,8 +215,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const authScheme = tasks.getInput("environmentAuthSchemeGCP", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "environmentAuthSchemeGCP");
+        const authScheme = this.resolveAuthScheme("environmentAuthSchemeGCP");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);

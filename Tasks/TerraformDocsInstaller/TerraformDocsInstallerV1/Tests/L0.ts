@@ -11,6 +11,8 @@ import './RetryL0';
 import './InstallerHelpersL0';
 // Direct unit tests for the registry download-host allowlist.
 import './RegistryAllowedHostsL0';
+// Direct unit tests for the shared registry-version-resolver module (#681).
+import './RegistryVersionResolverL0';
 
 describe('TerraformDocsInstaller Test Suite', function () {
 
