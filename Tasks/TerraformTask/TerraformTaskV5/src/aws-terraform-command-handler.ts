@@ -79,8 +79,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
-        const authScheme = tasks.getInput("backendAuthSchemeAWS", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "backendAuthSchemeAWS");
+        const authScheme = this.resolveAuthScheme("backendAuthSchemeAWS");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.setupBackendWIF(backendServiceName);
@@ -99,8 +98,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
      */
     public async configureBackendCredentials(): Promise<void> {
         const backendServiceName = tasks.getInput("backendServiceAWS", true)!;
-        const authScheme = tasks.getInput("backendAuthSchemeAWS", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "backendAuthSchemeAWS");
+        const authScheme = this.resolveAuthScheme("backendAuthSchemeAWS");
 
         tasks.debug("Configuring cross-cloud s3 backend credentials (environment variables only).");
         if (authScheme === "WorkloadIdentityFederation") {
@@ -118,8 +116,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const authScheme = tasks.getInput("environmentAuthSchemeAWS", false) || "ServiceConnection";
-        this.validateAuthScheme(authScheme, "environmentAuthSchemeAWS");
+        const authScheme = this.resolveAuthScheme("environmentAuthSchemeAWS");
 
         if (authScheme === "WorkloadIdentityFederation") {
             await this.handleProviderWIF(command);
