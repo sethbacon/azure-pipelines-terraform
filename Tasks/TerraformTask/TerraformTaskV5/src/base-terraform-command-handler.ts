@@ -120,6 +120,24 @@ export function extractOutFlagPath(commandOptions: string | undefined): string |
     return undefined;
 }
 
+/**
+ * Detects a standalone `-json` (or `--json`) flag in `commandOptions` as
+ * Terraform itself would parse it -- a whole token, not a substring match, so
+ * e.g. `-var=myjsonvalue` or a quoted value that merely contains the text
+ * "json" is correctly ignored. Used to fail closed on plan()'s
+ * publishPlanResults path (#492): with `-json`, terraform plan's stdout is
+ * machine-readable NDJSON whose `change.after` carries real values in
+ * cleartext (masked only by a parallel `after_sensitive` flag meant for a
+ * redacting CONSUMER to apply -- exactly like apply -json), not the
+ * human-readable format's own `(sensitive value)` redaction that makes
+ * echoing that capture to the console safe.
+ */
+export function commandOptionsContainsJsonFlag(commandOptions: string | undefined): boolean {
+    if (!commandOptions) return false;
+    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
+    return tokens.some((token) => token === '-json' || token === '--json');
+}
+
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
 // redaction core applies (design §5.2.7): rather than re-derive it here (the
 // detection-vs-redaction drift class, #446), it is defined ONCE in
@@ -391,13 +409,41 @@ export abstract class BaseTerraformCommandHandler {
             stderr += chunk;
         });
 
-        const code = await terraformTool.execAsync(options);
+        const overflowError = () => new Error(
+            `terraform emitted more than ${maxStdoutBytes} bytes on stdout; refusing to buffer an unbounded amount into memory ` +
+            `(an extremely large plan/state, or a misbehaving provider). Narrow the operation (e.g. with -target) if the size is legitimate.`,
+        );
+
+        // #492 (reopen): `silent` is FORCED here, not left to callers -- a capture
+        // primitive must never let the ToolRunner mirror the child's stdout into
+        // the build log. Most captures are `terraform output -json` / `show
+        // -json`, whose cleartext includes values declared `sensitive = true`
+        // (only the human console format is redacted), and setSecret registration
+        // happens only after this call resolves, so the agent's forward-only
+        // masker cannot redact lines that were already echoed. A caller that
+        // wants console output must echo the captured string itself after
+        // redaction (see echoApplyMessages() and plan()'s post-capture echo).
+        let code: number;
+        try {
+            code = await terraformTool.execAsync({ ...options, silent: true });
+        } catch (err) {
+            // A caller without ignoreReturnCode reaches here on a non-zero exit
+            // (or spawn failure). If the overflow guard killed the child, report
+            // the overflow -- the generic rejection would mask the real cause.
+            if (stdoutOverflow) {
+                throw overflowError();
+            }
+            // With the echo suppressed above, terraform's diagnostics (it writes
+            // CLI/config errors to STDERR) would otherwise be swallowed into a
+            // bare "failed with exit code N" (#613) -- fold the captured stderr
+            // into the rethrow.
+            const message = err instanceof Error ? err.message : String(err);
+            const trimmedStderr = stderr.trim();
+            throw new Error(trimmedStderr ? `${message}\n${trimmedStderr}` : message);
+        }
 
         if (stdoutOverflow) {
-            throw new Error(
-                `terraform emitted more than ${maxStdoutBytes} bytes on stdout; refusing to buffer an unbounded amount into memory ` +
-                `(an extremely large plan/state, or a misbehaving provider). Narrow the operation (e.g. with -target) if the size is legitimate.`,
-            );
+            throw overflowError();
         }
 
         return { code, stdout, stderr };
@@ -761,13 +807,31 @@ export abstract class BaseTerraformCommandHandler {
 
         let result: number;
         let planStdout: string | undefined;
+        let planStderr: string | undefined;
         if (publishPlanResults) {
+            // #492 follow-up: publishPlanResults re-echoes its capture to the
+            // console below on the assumption that it is terraform's
+            // human-readable plan output, which redacts sensitive values as
+            // "(sensitive value)" -- but a user-supplied -json in
+            // commandOptions would make that capture raw, unredacted NDJSON
+            // instead. Fail closed before ever running the command rather
+            // than silently reproducing the exact leak #492 fixed.
+            if (commandOptionsContainsJsonFlag(commandOptions)) {
+                throw new Error(tasks.loc("PlanJsonFlagNotSupportedWithPublishPlanResults"));
+            }
             const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
             });
             result = commandOutput.code;
             planStdout = commandOutput.stdout;
+            planStderr = commandOutput.stderr.trim() || undefined;
+            // The capture above is silent (#492), so echo the captured
+            // human-readable plan back to the console ourselves -- terraform's
+            // human plan format already prints `(sensitive value)` for values
+            // declared sensitive, which is what makes this echo safe while the
+            // `output -json` / `show -json` captures must never be echoed.
+            console.log(planStdout);
         } else {
             result = await terraformTool.execAsync(<IExecOptions>{
                 cwd: planCommand.workingDirectory,
@@ -804,7 +868,18 @@ export abstract class BaseTerraformCommandHandler {
         }
 
         if (result !== 0 && result !== 2) {
-            throw new Error(tasks.loc("TerraformPlanFailed", result));
+            // On the silent publishPlanResults path terraform's own error text
+            // (stderr) no longer reaches the log via the ToolRunner echo -- fold
+            // it into the failure exactly like apply() does (#613).
+            throw new Error(planStderr
+                ? `${tasks.loc("TerraformPlanFailed", result)}\n${planStderr}`
+                : tasks.loc("TerraformPlanFailed", result));
+        }
+        // A successful plan may still write warnings to stderr; with the silent
+        // capture they would otherwise vanish -- pass them through at debug level
+        // (mirrors apply()).
+        if (planStderr) {
+            tasks.debug(planStderr);
         }
         tasks.setVariable('changesPresent', (result === 2).toString(), false, true);
         return result;
@@ -841,7 +916,10 @@ export abstract class BaseTerraformCommandHandler {
             ignoreReturnCode: true,
         });
         if (showOutput.code !== 0) {
-            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured plan summary; skipping the 'terraform-plan-summary' attachment.`);
+            // The capture is silent (#492), so include the captured stderr --
+            // otherwise the failure's cause never reaches the log (#613).
+            const stderrDetail = showOutput.stderr.trim();
+            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured plan summary; skipping the 'terraform-plan-summary' attachment.${stderrDetail ? ` terraform stderr: ${stderrDetail}` : ''}`);
             return;
         }
 
@@ -881,7 +959,10 @@ export abstract class BaseTerraformCommandHandler {
             ignoreReturnCode: true,
         });
         if (showOutput.code !== 0) {
-            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured state summary; skipping the 'terraform-state-summary' attachment.`);
+            // The capture is silent (#492), so include the captured stderr --
+            // otherwise the failure's cause never reaches the log (#613).
+            const stderrDetail = showOutput.stderr.trim();
+            tasks.warning(`'terraform show -json' exited with code ${showOutput.code} while building the structured state summary; skipping the 'terraform-state-summary' attachment.${stderrDetail ? ` terraform stderr: ${stderrDetail}` : ''}`);
             return;
         }
 

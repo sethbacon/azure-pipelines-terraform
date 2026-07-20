@@ -631,7 +631,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzurePlanSuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AzurePlanSuccessNoAdditionalArgsL0 should have succeeded.');
@@ -646,7 +646,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzurePlanSuccessAdditionalArgsL0 should have succeeded.'), 'Should have printed: AzurePlanSuccessAdditionalArgsL0 should have succeeded.');
@@ -661,7 +661,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -676,7 +676,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -691,7 +691,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSPlanSuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AWSPlanSuccessNoAdditionalArgsL0 should have succeeded.');
@@ -706,7 +706,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSPlanSuccessAdditionalArgsL0 should have succeeded.'), 'Should have printed: AWSPlanSuccessAdditionalArgsL0 should have succeeded.');
@@ -721,7 +721,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -736,7 +736,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -751,7 +751,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPPlanSuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: GCPPlanSuccessNoAdditionalArgsL0 should have succeeded.');
@@ -766,7 +766,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPPlanSuccessAdditionalArgsL0 should have succeeded.'), 'Should have printed: GCPPlanSuccessAdditionalArgsL0 should have succeeded.');
@@ -781,7 +781,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -796,7 +796,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -813,7 +813,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warnings');
             assert(tr.stdOutContained('AzureApplySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AzureApplySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -828,7 +828,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AzureApplySuccessAuthenticationSchemeManagedServiceIdentityL0 should have succeeded.'), 'Should have printed: AzureApplySuccessAuthenticationSchemeManagedServiceIdentityL0 should have succeeded.');
@@ -843,7 +843,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AzureApplySuccessAuthenticationSchemeWorkloadIdentityFederationL0 should have succeeded.'), 'Should have printed: AzureApplySuccessAuthenticationSchemeWorkloadIdentityFederationL0 should have succeeded.');
@@ -858,7 +858,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzureApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: AzureApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -873,7 +873,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzureApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: AzureApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -888,7 +888,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -903,7 +903,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -918,7 +918,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSApplySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AWSApplySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -933,7 +933,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: AWSApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -948,7 +948,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: AWSApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -963,7 +963,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -978,7 +978,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -993,7 +993,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPApplySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: GCPApplySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -1008,7 +1008,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: GCPApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -1023,7 +1023,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: GCPApplySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -1038,7 +1038,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -1053,7 +1053,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
@@ -1070,7 +1070,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzureDestroySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AzureDestroySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -1085,7 +1085,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzureDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: AzureDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -1100,7 +1100,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('AzureDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: AzureDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -1115,7 +1115,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 1, 'should have 1 warning');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -1130,7 +1130,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSDestroySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: AWSDestroySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -1145,7 +1145,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: AWSDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -1160,7 +1160,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('AWSDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: AWSDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -1175,7 +1175,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -1190,7 +1190,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPDestroySuccessNoAdditionalArgsL0 should have succeeded.'), 'Should have printed: GCPDestroySuccessNoAdditionalArgsL0 should have succeeded.');
@@ -1205,7 +1205,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: GCPDestroySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
@@ -1220,7 +1220,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('GCPDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.'), 'Should have printed: GCPDestroySuccessAdditionalArgsWithoutAutoApproveL0 should have succeeded.');
@@ -1235,7 +1235,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
             assert(tr.stdOutContained('Execution failed: invalid config files'), 'Should have shown error message');
@@ -1262,7 +1262,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIPlanSuccessNoAdditionalArgsL0 should have succeeded.'));
         }, tr);
@@ -1274,7 +1274,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIApplySuccessNoAdditionalArgsL0 should have succeeded.'));
         }, tr);
@@ -1286,7 +1286,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIDestroySuccessNoAdditionalArgsL0 should have succeeded.'));
         }, tr);
@@ -1298,7 +1298,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
         }, tr);
@@ -1310,7 +1310,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.stdOutContained('Error: Invalid working directory'), 'Should have shown error message');
         }, tr);
@@ -1322,7 +1322,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
         }, tr);
@@ -1334,7 +1334,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
         }, tr);
@@ -1346,7 +1346,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 1, 'should have one error');
             assert(tr.stdOutContained('Error: No configuration files'), 'Should have shown error message');
         }, tr);
@@ -1373,7 +1373,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'should have invoked tool one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the terraform providers capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 0, 'should have no warnings');
         }, tr);
@@ -1387,7 +1387,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'should have invoked tool one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the terraform providers capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length === 1, 'should have one warning');
             assert(tr.createdWarningIssue('Multiple provider blocks specified in the .tf files in the current working directory.'), 'Should have created warning: Multiple provider blocks specified in the .tf files in the current working drectory.');
@@ -1674,7 +1674,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AWSPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSPlanWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1690,7 +1690,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPPlanWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1704,7 +1704,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIPlanWIFSuccessL0 should have succeeded.'), 'Should have printed: OCIPlanWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1774,7 +1774,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanWithReplaceAddressL0 should have succeeded.'), 'Should have printed: AzurePlanWithReplaceAddressL0 should have succeeded.');
         }, tr);
@@ -1788,7 +1788,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureApplyWithReplaceAddressL0 should have succeeded.'), 'Should have printed: AzureApplyWithReplaceAddressL0 should have succeeded.');
         }, tr);
@@ -1804,7 +1804,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AWSApplyWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSApplyWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1818,7 +1818,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPApplyWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPApplyWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1834,7 +1834,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AWSDestroyWIFSuccessL0 should have succeeded.'), 'Should have printed: AWSDestroyWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1848,7 +1848,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPDestroyWIFSuccessL0 should have succeeded.'), 'Should have printed: GCPDestroyWIFSuccessL0 should have succeeded.');
         }, tr);
@@ -1878,7 +1878,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-file capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureShowFileSuccessL0 should have succeeded.'), 'Should have printed: AzureShowFileSuccessL0 should have succeeded.');
         }, tr);
@@ -1922,7 +1922,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the output -json capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureOutputSuccessL0 should have succeeded.'), 'Should have printed: AzureOutputSuccessL0 should have succeeded.');
         }, tr);
@@ -1936,7 +1936,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the output -json capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AWSOutputSuccessL0 should have succeeded.'), 'Should have printed: AWSOutputSuccessL0 should have succeeded.');
         }, tr);
@@ -1950,7 +1950,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the output -json capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPOutputSuccessL0 should have succeeded.'), 'Should have printed: GCPOutputSuccessL0 should have succeeded.');
         }, tr);
@@ -1968,11 +1968,13 @@ describe('Terraform Test Suite', function () {
                 tr.warningIssues.some((w) => w.includes("Output 'malicious_output' failed output-variable validation")),
                 'should warn that the malicious output was rejected. warnings: ' + tr.warningIssues
             );
-            // terraform's own raw command output is always echoed to the log by
-            // the ToolRunner regardless of sanitization -- that's unavoidable and
-            // not the risk this guards against. The actual security property is
-            // that the malicious value never reaches an ADO ##vso[task.setvariable]
-            // logging command, which is what a downstream step actually consumes.
+            // #492: execWithStdoutCapture forces silent:true, so terraform's raw
+            // `output -json` is no longer echoed to the log at all -- the
+            // rejected value must appear NOWHERE in stdout, and separately must
+            // never reach an ADO ##vso[task.setvariable] logging command (what a
+            // downstream step actually consumes).
+            assert(!tr.stdout.includes('rm -rf /'),
+                'the raw output -json echo is silenced (#492); the malicious value must not appear anywhere in the log');
             assert(!tr.stdout.includes('##vso[task.setvariable variable=TF_OUT_malicious_output'),
                 'the control-character value must never reach a ##vso[task.setvariable] line');
             assert(tr.stdout.includes('##vso[task.setvariable variable=TF_OUT_safe_output'), 'the well-formed sibling output should still be set');
@@ -1991,6 +1993,14 @@ describe('Terraform Test Suite', function () {
                 tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
                 'should warn about the sensitive output. warnings: ' + tr.warningIssues
             );
+            // #492 (reopen regression floor): the raw `output -json` cleartext --
+            // which includes the sensitive value -- must never be echoed to the
+            // build log. The ##vso[task.setvariable issecret=true] line still
+            // carries the bare value (the agent masks it because setSecret
+            // precedes it), so assert on the raw JSON fragment, which can only
+            // come from a ToolRunner echo.
+            assert(!tr.stdout.includes('"value": "hunter2"'),
+                'the raw output -json echo (cleartext sensitive value) must not reach the build log (#492)');
         }, tr);
     });
 
@@ -2341,10 +2351,15 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-file capture is silent -- no [command] line is echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.warningIssues.length >= 1, 'should have warnings about sensitive outputs or destroy changes');
             assert(tr.stdOutContained('AzureShowFileJsonSensitiveL0 should have succeeded.'));
+            // #492: the `show -json` capture is silent -- the cleartext plan JSON
+            // (which carries the sensitive connection_string value) is written to
+            // the requested file only, never echoed to the build log.
+            assert(!tr.stdout.includes('"value":"Server=..."'),
+                'the raw show -json echo (cleartext sensitive value) must not reach the build log (#492)');
         }, tr);
     });
 
@@ -2386,7 +2401,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessWithVarsL0 should have succeeded.'));
         }, tr);
@@ -2398,7 +2413,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureApplySuccessWithVarsL0 should have succeeded.'));
         }, tr);
@@ -2412,7 +2427,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureDestroySuccessWithVarsL0 should have succeeded.'));
         }, tr);
@@ -2426,7 +2441,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessWithParallelismL0 should have succeeded.'));
         }, tr);
@@ -2438,7 +2453,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureApplySuccessWithParallelismL0 should have succeeded.'));
         }, tr);
@@ -2520,7 +2535,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessWithVarFileL0 should have succeeded.'));
         }, tr);
@@ -2534,7 +2549,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessWithTargetL0 should have succeeded.'));
         }, tr);
@@ -2548,9 +2563,16 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 2, 'tool should have been invoked two times. actual: ' + tr.invokedToolCount);
+            // #492: both invocations (the providers probe and the publishPlanResults
+            // plan capture) are silent -- no [command] line reaches the log.
+            assert(tr.invokedToolCount === 0, 'both invocations are silent captures; no [command] line may be echoed (#492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessPublishResultsL0 should have succeeded.'));
+            // #492: the capture is silent, so plan() must re-echo the captured
+            // human-readable plan itself (terraform redacts sensitive values in
+            // that format) -- the live log keeps showing the plan.
+            assert(tr.stdOutContained('Plan: 1 to add, 0 to change, 0 to destroy.'),
+                'the human-readable plan output must still reach the build log via the post-capture echo (#492)');
         }, tr);
     });
 
@@ -2562,6 +2584,24 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanPublishResultsAttachmentSurvivesCleanupL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure plan rejects a -json flag in commandOptions combined with publishPlanResults, before running terraform (#492 follow-up)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanRejectsJsonFlagWithPublishResults.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            // The L0 script itself asserts plan() threw the -json/publishPlanResults
+            // rejection and reports Succeeded only if so (mirrors
+            // AzureApplyMessageNeutralizesVsoInjectionL0's convention) -- no
+            // "terraform plan ... -json ..." exec answer is registered in the mock
+            // scenario, so a real attempt to run it would have thrown an unrelated
+            // "unable to find mock" error instead, which the L0 script's own message
+            // match would have caught.
+            assert(tr.stdOutContained('AzurePlanRejectsJsonFlagWithPublishResultsL0 should have succeeded.'));
         }, tr);
     });
 
@@ -2608,6 +2648,11 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanSuccessPublishSummaryL0 should have succeeded.'));
+            // #492: the digest's `terraform show -json <planfile>` capture is
+            // silent -- the raw plan JSON must not be echoed to the build log
+            // (only the redacted digest file is attached).
+            assert(!tr.stdout.includes('"after":{"location":"eastus"}'),
+                'the raw show -json echo must not reach the build log (#492)');
         }, tr);
     });
 
@@ -2742,6 +2787,15 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureShowStateSuccessPublishSummaryL0 should have succeeded.'));
+            // The primary `show` runs with outputTo=console -- that echo is the
+            // user's explicit choice and must be preserved...
+            assert(tr.stdOutContained('No state.'),
+                'the console show output the user asked for must still reach the log');
+            // ...but the separate `show -json` state capture behind the digest is
+            // silent (#492): raw current-state JSON (every attribute in
+            // cleartext) must never be echoed to the build log.
+            assert(!tr.stdout.includes('"tenant_id":"00000000-0000-0000-0000-000000000000"'),
+                'the raw state show -json echo must not reach the build log (#492)');
         }, tr);
     });
 

@@ -27,19 +27,28 @@ class TestHandler extends BaseTerraformCommandHandler {
 class FakeTool extends EventEmitter {
     public killed = false;
     public killSignal: string | number | undefined;
+    public lastExecOptions: IExecOptions | undefined;
     constructor(
         private readonly chunks: Array<{ stream: 'stdout' | 'stderr'; data: string }>,
         private readonly exitCode = 0,
+        // When set, execAsync rejects with this error AFTER emitting the chunks
+        // -- models a non-ignoreReturnCode caller's non-zero exit (or a spawn
+        // failure), where the real ToolRunner rejects instead of resolving.
+        private readonly rejectWith?: Error,
     ) { super(); }
     killChildProcess(signal?: string | number): void {
         this.killed = true;
         this.killSignal = signal;
     }
-    async execAsync(_options: IExecOptions): Promise<number> {
+    async execAsync(options: IExecOptions): Promise<number> {
+        this.lastExecOptions = options;
         // Emit synchronously to the listeners execWithStdoutCapture registered
         // before awaiting exec, then resolve with the scripted exit code.
         for (const c of this.chunks) {
             this.emit(c.stream, c.data);
+        }
+        if (this.rejectWith) {
+            throw this.rejectWith;
         }
         return this.exitCode;
     }
@@ -91,5 +100,78 @@ describe('execWithStdoutCapture — bounded stdout capture (#632)', function () 
 
     it('exposes a generous production ceiling', () => {
         assert.strictEqual(MAX_CAPTURED_STDOUT_BYTES, 100 * 1024 * 1024);
+    });
+});
+
+/**
+ * #492 (reopened): the capture primitive must FORCE `silent: true` on every
+ * exec. Captured streams are routinely cleartext-sensitive (`output -json` /
+ * `show -json` print `sensitive = true` values verbatim) and setSecret
+ * registration happens only after the capture resolves, so an echoed line can
+ * never be masked. Enforcing it here -- rather than at each call site -- is
+ * what keeps a future caller from reopening the issue a third time. And
+ * because silencing suppresses terraform's own stderr echo, a rejected exec
+ * (non-ignoreReturnCode caller, non-zero exit) must fold the captured stderr
+ * into the rethrown error or the failure's cause is swallowed (#613).
+ */
+describe('execWithStdoutCapture — forced-silent capture (#492) and stderr surfacing (#613)', function () {
+    it('forces silent:true when the caller passes no silent option', async () => {
+        const fake = new FakeTool([{ stream: 'stdout', data: '{"db_password":{"value":"hunter2","sensitive":true}}' }], 0);
+        await new TestHandler().capture(asTool(fake), {} as IExecOptions);
+        assert.strictEqual(fake.lastExecOptions?.silent, true, 'the exec options must carry silent:true');
+    });
+
+    it('overrides an explicit silent:false from the caller (forced, not defaulted)', async () => {
+        const fake = new FakeTool([{ stream: 'stdout', data: 'x' }], 0);
+        await new TestHandler().capture(asTool(fake), { silent: false } as IExecOptions);
+        assert.strictEqual(fake.lastExecOptions?.silent, true, 'a caller must not be able to re-enable the echo');
+    });
+
+    it('still returns the captured streams unchanged under forced silence', async () => {
+        const fake = new FakeTool([
+            { stream: 'stdout', data: 'captured out' },
+            { stream: 'stderr', data: 'captured err' },
+        ], 2);
+        const result = await new TestHandler().capture(asTool(fake), {} as IExecOptions);
+        assert.strictEqual(result.stdout, 'captured out');
+        assert.strictEqual(result.stderr, 'captured err');
+        assert.strictEqual(result.code, 2);
+    });
+
+    it('folds captured stderr into the error when exec rejects', async () => {
+        const fake = new FakeTool(
+            [{ stream: 'stderr', data: 'Error: Too many command line arguments\n' }],
+            1,
+            new Error("The process 'terraform' failed with exit code 1"),
+        );
+        await assert.rejects(
+            () => new TestHandler().capture(asTool(fake), {} as IExecOptions),
+            (err: Error) => {
+                assert.ok(err.message.includes("failed with exit code 1"), 'must keep the original failure message');
+                assert.ok(err.message.includes('Too many command line arguments'), 'must surface the captured stderr');
+                return true;
+            },
+        );
+    });
+
+    it('keeps the plain error when exec rejects and stderr is empty', async () => {
+        const fake = new FakeTool([], 1, new Error("The process 'terraform' failed with exit code 1"));
+        await assert.rejects(
+            () => new TestHandler().capture(asTool(fake), {} as IExecOptions),
+            /failed with exit code 1$/,
+        );
+    });
+
+    it('reports the overflow (not the generic rejection) when the kill makes exec reject', async () => {
+        const fake = new FakeTool(
+            [{ stream: 'stdout', data: 'aaaaaaaaaaaa' }], // 12 bytes — breaches the 10-byte cap
+            1,
+            new Error("The process 'terraform' was killed"),
+        );
+        await assert.rejects(
+            () => new TestHandler().capture(asTool(fake), {} as IExecOptions, 10),
+            /more than 10 bytes on stdout/,
+        );
+        assert.strictEqual(fake.killed, true);
     });
 });

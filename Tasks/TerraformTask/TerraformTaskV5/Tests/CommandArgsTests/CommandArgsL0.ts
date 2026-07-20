@@ -1,5 +1,5 @@
 import tl = require('azure-pipelines-task-lib');
-import { parseVarFileTokens, parseTargetTokens, extractOutFlagPath } from '../../src/base-terraform-command-handler';
+import { parseVarFileTokens, parseTargetTokens, extractOutFlagPath, commandOptionsContainsJsonFlag } from '../../src/base-terraform-command-handler';
 
 let failed = false;
 
@@ -14,6 +14,13 @@ function check(actual: string[], expected: string[], label: string): void {
 function checkOut(actual: string | undefined, expected: string | undefined, label: string): void {
     if (actual !== expected) {
         tl.error(`${label}: expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
+        failed = true;
+    }
+}
+
+function checkBool(actual: boolean, expected: boolean, label: string): void {
+    if (actual !== expected) {
+        tl.error(`${label}: expected ${expected} but got ${actual}`);
         failed = true;
     }
 }
@@ -83,6 +90,21 @@ checkOut(extractOutFlagPath('-refresh-only -no-color'), undefined, 'out absent')
 checkOut(extractOutFlagPath('-timeout=5m'), undefined, 'out lookalike not matched');
 // A dangling -out with no following token yields undefined (no crash).
 checkOut(extractOutFlagPath('-out'), undefined, 'out dangling');
+
+// commandOptionsContainsJsonFlag (#492 follow-up): detect a standalone -json flag
+// so plan()'s publishPlanResults path can fail closed rather than echo raw,
+// unredacted NDJSON to the console.
+checkBool(commandOptionsContainsJsonFlag(undefined), false, 'json undefined');
+checkBool(commandOptionsContainsJsonFlag(''), false, 'json empty');
+checkBool(commandOptionsContainsJsonFlag('-json'), true, 'json alone');
+checkBool(commandOptionsContainsJsonFlag('--json'), true, 'json double-dash');
+checkBool(commandOptionsContainsJsonFlag('-refresh-only -json -no-color'), true, 'json among other flags');
+checkBool(commandOptionsContainsJsonFlag('-refresh-only -no-color'), false, 'json absent');
+// Lookalikes must NOT be treated as the -json flag: a substring match would
+// wrongly flag these.
+checkBool(commandOptionsContainsJsonFlag('-var=myjsonvalue'), false, 'json lookalike substring in flag value');
+checkBool(commandOptionsContainsJsonFlag('-var-file=json.tfvars'), false, 'json lookalike substring in path');
+checkBool(commandOptionsContainsJsonFlag('"-json-ish"'), false, 'json lookalike token with suffix');
 
 if (failed) {
     tl.setResult(tl.TaskResult.Failed, 'Command arg token parsing failed');
