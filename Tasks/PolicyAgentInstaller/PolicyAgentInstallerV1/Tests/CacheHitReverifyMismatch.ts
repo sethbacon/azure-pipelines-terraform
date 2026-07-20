@@ -41,6 +41,10 @@ tr.registerMock('fs', {
         }
         return Buffer.from('cached-binary-content');
     },
+    createReadStream: (p: string) => {
+        const content = p.includes('opa-fresh-binary') ? 'fresh-binary-content' : 'cached-binary-content';
+        return require('stream').Readable.from(Buffer.from(content));
+    },
     writeFileSync: () => {
         throw new Error('writeFileSync should not be called when re-verification rejects the cached copy');
     },
@@ -51,11 +55,17 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
-    createHash: () => ({
-        update: (data: any) => ({
-            digest: () => data.toString() === 'fresh-binary-content' ? FRESH_HASH : CACHED_HASH
-        })
-    })
+    createHash: () => {
+        const chunks: Buffer[] = [];
+        const hash: any = new (require('stream').Writable)({
+            write(chunk: any, _e: any, cb: any) {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+                cb();
+            }
+        });
+        hash.digest = () => Buffer.concat(chunks).toString() === 'fresh-binary-content' ? FRESH_HASH : CACHED_HASH;
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
