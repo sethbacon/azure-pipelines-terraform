@@ -2689,6 +2689,17 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('azure apply neutralizes a ##vso[...]-shaped line embedded in an @message before echoing to the console (#678)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyMessageNeutralizesVsoInjection.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureApplyMessageNeutralizesVsoInjectionL0 should have succeeded.'));
+        }, tr);
+    });
+
     it('azure apply with publishApplyResults still fails the task on a non-zero exit code, and still attaches the failed-outcome summary', async () => {
         let tp = path.join(__dirname, './ApplyTests/Azure/AzureApplyFailurePublishResultsExitCodePreserved.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

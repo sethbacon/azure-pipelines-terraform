@@ -1116,14 +1116,21 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     /**
-     * Echoes each `apply -json` NDJSON event's `@message` field verbatim to the
-     * console so the live log stays human-readable when `-json` replaces
-     * Terraform's normal human-readable apply output (design D2/§5.4). Never
-     * echoes raw structured event fields -- only the already-human-readable
-     * `@message` line Terraform itself produced; the structured fields are
-     * consumed only by the redaction pipeline. Malformed lines are skipped
-     * silently here -- apply-digest.ts's own parser separately counts and notes
-     * them in the digest's truncationNotes.
+     * Echoes each `apply -json` NDJSON event's `@message` field to the console
+     * so the live log stays human-readable when `-json` replaces Terraform's
+     * normal human-readable apply output (design D2/§5.4). Never echoes raw
+     * structured event fields -- only the already-human-readable `@message`
+     * line Terraform itself produced; the structured fields are consumed only
+     * by the redaction pipeline. Malformed lines are skipped silently here --
+     * apply-digest.ts's own parser separately counts and notes them in the
+     * digest's truncationNotes.
+     *
+     * `@message` is least-trusted content (provider/module/remote-state
+     * controlled) reaching a raw console.log sink, unlike tasks.* calls which
+     * route through azure-pipelines-task-lib's own newline-escaping. An
+     * embedded newline followed by a `##vso[`/`##[` marker could otherwise
+     * forge an ADO logging command, so each physical line is echoed
+     * separately (see #678) and neutralized via echoSafeConsoleLine().
      */
     private echoApplyMessages(ndjson: string): void {
         for (const rawLine of ndjson.split('\n')) {
@@ -1132,11 +1139,32 @@ export abstract class BaseTerraformCommandHandler {
             try {
                 const event = JSON.parse(line);
                 if (event && typeof event === 'object' && typeof event['@message'] === 'string') {
-                    console.log(event['@message']);
+                    this.echoSafeConsoleLine(event['@message']);
                 }
             } catch {
                 // ignore -- see doc comment above.
             }
+        }
+    }
+
+    /**
+     * Prints least-trusted, multi-line-capable text to the console one
+     * physical line at a time, neutralizing any leading `##` marker on each
+     * resulting line so it cannot be interpreted by the ADO agent as a
+     * `##vso[...]`/`##[...]` logging command (CWE-117). Splitting on
+     * newlines first (rather than filtering the whole string) preserves the
+     * message's own intentional line breaks for readability.
+     *
+     * Splits on the full ECMAScript LineTerminatorSequence set (`\r\n`, `\n`,
+     * `\r`, and the Unicode line/paragraph separators U+2028/U+2029) -- a
+     * JSON string escape (`\u2028`) can carry one of the latter two through
+     * JSON.parse just like `\n`, and some consoles/terminals render them as a
+     * new line even though a plain `/\r?\n/` split would not treat them as a
+     * boundary, which would let a leading `##` past this check undetected.
+     */
+    private echoSafeConsoleLine(message: string): void {
+        for (const line of message.split(/\r\n|[\r\n\u2028\u2029]/)) {
+            console.log(line.replace(/^(\s*)##/, '$1# #'));
         }
     }
 
