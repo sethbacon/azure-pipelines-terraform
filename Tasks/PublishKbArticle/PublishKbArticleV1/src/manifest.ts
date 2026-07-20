@@ -1,5 +1,21 @@
 import * as fs from 'fs';
 import tasks = require('azure-pipelines-task-lib/task');
+import { isValidSysId } from './image-rewrite';
+
+/**
+ * Collapse any newline-family character (CR, LF, CRLF, and the Unicode
+ * line/paragraph separators U+2028/U+2029 -- a JSON \u-escape can carry one
+ * of the latter two through JSON.parse just like \n) in a value about to be
+ * interpolated into a single-line console/manifest log line. The
+ * `##[manifest] ...` line (and PublishKbArticleV1's ArticleNumberLine/
+ * ArticleIdLine/WorkflowStateLine lines) are meant to be exactly one line
+ * each -- without this, an embedded newline in an author/ServiceNow-supplied
+ * field could smuggle in a fake ##vso[...]/##[...] logging command that the
+ * agent would then interpret as a separate line (#693).
+ */
+export function sanitizeForSingleLineEcho(value: string): string {
+    return value.replace(/\r\n|[\r\n\u2028\u2029]/g, ' ');
+}
 
 /** Append an article entry to the kb-manifest JSON file. */
 export function appendToManifest(manifestPath: string, entry: Record<string, unknown>): void {
@@ -85,8 +101,20 @@ export function emitArticleOutput(
     const number = article['number'] as string;
 
     if (sourceKey) {
+        // The article's own sys_id comes from the same (semi-trusted) ServiceNow
+        // response as an attachment sys_id -- validate it with the same strict
+        // 32-hex-char check the URL/HTML sinks already use (image-rewrite.ts),
+        // and neutralize embedded newlines in every interpolated field, before
+        // echoing this single-line log entry (#693). Only the ECHOED copy is
+        // validated/sanitized this way -- the manifest file entry below keeps
+        // the raw values so a merely format-surprising (but real) sys_id is
+        // never corrupted in the persisted duplicate-detection record.
+        const sysIdForEcho = isValidSysId(sysId) ? sysId : '(invalid-sys_id)';
+        if (sysIdForEcho === '(invalid-sys_id)') {
+            tasks.warning(tasks.loc('ArticleSysIdInvalidForEcho', sysId));
+        }
         // Log-scrapers depend on this exact format — do not change.
-        process.stdout.write(`##[manifest] source_key=${sourceKey} sys_id=${sysId} number=${number}\n`);
+        process.stdout.write(`##[manifest] source_key=${sanitizeForSingleLineEcho(sourceKey)} sys_id=${sysIdForEcho} number=${sanitizeForSingleLineEcho(number)}\n`);
     }
 
     if (manifestPath) {
