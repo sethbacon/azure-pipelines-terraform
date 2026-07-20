@@ -1,8 +1,8 @@
 import * as assert from 'assert';
-import { buildPlanDigest, DigestMeta, capNotes } from '../../src/results/plan-digest';
+import { buildPlanDigest, DigestBuildMeta, capNotes } from '../../src/results/plan-digest';
 import { MAX_RESOURCES, MAX_ATTR_CHANGES_PER_RESOURCE, MAX_OUTPUTS, MAX_DRIFT, MAX_NOTES } from '../../src/results/caps';
 
-const META: DigestMeta = {
+const META: DigestBuildMeta = {
   taskVersion: '0.0.0-test',
   toolName: 'terraform',
   name: 'terraform-plan',
