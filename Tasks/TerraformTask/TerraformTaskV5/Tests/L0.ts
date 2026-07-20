@@ -1879,11 +1879,46 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-console capture is now silent too (audit id0) -- no [command] line is echoed. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('Executed Successfully'), 'Should have echoed the captured stdout to the console');
             assert(tr.stdOutContained('AzureShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: AzureShowConsoleSuccessL0 should have succeeded.');
         }, tr);
     });
+
+    it('azure show to console with json warns on sensitive outputs and still echoes the content (audit id0)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowConsoleJsonSensitive.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 0, 'the show-to-console capture is silent -- no [command] line is echoed. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.warningIssues.length >= 1, 'should have warned about the sensitive output');
+            assert(tr.stdOutContained('"connection_string"'), 'the console path still echoes the captured JSON (outputTo=console is intended to show it)');
+            assert(tr.stdOutContained('AzureShowConsoleJsonSensitiveL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure show to console with json and failOnSensitiveOutputs=true fails BEFORE echoing anything to the console (audit id0)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AzureShowConsoleJsonSensitiveStrict.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.stdout.includes('ShowSensitiveOutputsConsoleStrictFailure'),
+                'should fail with the strict console sensitive-outputs error. stdout: ' + tr.stdout
+            );
+            assert(!tr.stdout.includes('SuperSecretConnectionString'),
+                'the sensitive value must never reach the console at all under failOnSensitiveOutputs (stronger than the file path, which must delete an already-written file)');
+        }, tr);
+    });
+
 
     it('azure show to file should succeed', async () => {
         let tp = path.join(__dirname, './ShowTests/AzureShowFileSuccess.js');
@@ -1907,7 +1942,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-console capture is now silent too (audit id0) -- no [command] line is echoed. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AWSShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: AWSShowConsoleSuccessL0 should have succeeded.');
         }, tr);
@@ -1921,7 +1956,7 @@ describe('Terraform Test Suite', function () {
 
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-console capture is now silent too (audit id0) -- no [command] line is echoed. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('GCPShowConsoleSuccessL0 should have succeeded.'), 'Should have printed: GCPShowConsoleSuccessL0 should have succeeded.');
         }, tr);
@@ -2311,7 +2346,7 @@ describe('Terraform Test Suite', function () {
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
+            assert(tr.invokedToolCount === 0, 'the show-to-console capture is now silent too (audit id0) -- no [command] line is echoed. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIShowConsoleSuccessL0 should have succeeded.'));
         }, tr);
@@ -2639,6 +2674,17 @@ describe('Terraform Test Suite', function () {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzurePlanPublishResultsOnlyBackwardCompatL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('azure plan neutralizes a ##vso[...]-shaped line embedded in the human-readable plan text before echoing to the console (audit id9)', async () => {
+        let tp = path.join(__dirname, './PlanTests/Azure/AzurePlanMessageNeutralizesVsoInjection.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzurePlanMessageNeutralizesVsoInjectionL0 should have succeeded.'));
         }, tr);
     });
 

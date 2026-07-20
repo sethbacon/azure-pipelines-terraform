@@ -1,4 +1,4 @@
-import { snRequest, withRetry } from './servicenow-http';
+import { snRequest, withRetry, nonIdempotentCreateRetryError } from './servicenow-http';
 import tasks = require('azure-pipelines-task-lib/task');
 
 const WORKFLOW_STATE_MAP: Record<string, string> = {
@@ -141,6 +141,10 @@ export async function createKnowledgeArticle(
 
     const response = await withRetry(() => snRequest('POST', url, { headers, body: payload }), {
         log: (message) => console.log(`[WARN] ${message}`),
+        // Audit id18 (2026-07-20): this create is non-idempotent -- do not retry
+        // an ambiguous transport failure (the server may have already created the
+        // article and only the response was lost), only a definitive 5xx/429.
+        retryError: nonIdempotentCreateRetryError,
     });
     assertArticleResult(response.data.result, title);
     return response.data.result;

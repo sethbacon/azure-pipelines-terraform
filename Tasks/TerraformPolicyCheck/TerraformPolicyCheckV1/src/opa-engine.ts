@@ -56,7 +56,7 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
     }
 
     const decision = entry ? entry.result : undefined;
-    const violations = extractViolations(decision, failMode);
+    const violations = extractViolations(decision, failMode, decisionPath);
     const passed = violations.length === 0;
 
     const cases: PolicyCase[] = passed
@@ -70,7 +70,7 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
     return { passed, violations, cases, rawOutput: stdout };
 }
 
-function extractViolations(decision: unknown, failMode: string): string[] {
+function extractViolations(decision: unknown, failMode: string, decisionPath: string): string[] {
     if (failMode === 'defined') {
         const isFailing = decision !== undefined && decision !== null && decision !== false;
         if (!isFailing) return [];
@@ -87,5 +87,17 @@ function extractViolations(decision: unknown, failMode: string): string[] {
             .filter(([, v]) => v === true || (typeof v === 'string' && v.length > 0))
             .map(([k, v]) => typeof v === 'string' ? v : k);
     }
-    return [];
+    if (decision === undefined || decision === null) {
+        return [];
+    }
+    // Audit id19 (2026-07-20): any other decision shape (boolean/number/string)
+    // does not match the nonEmpty convention (an array/object of violations).
+    // Silently falling through to "no violations" would fail the policy gate
+    // OPEN on a decisionPath/failMode mismatch (e.g. a rule that evaluates to a
+    // bare `true`/`false` instead of a `deny[msg]{...}` set). Fail loudly
+    // instead, naming the actual type and pointing at the fix.
+    throw new Error(
+        `OPA decision at '${decisionPath}' is a ${typeof decision} (${JSON.stringify(decision)}), which does not match the 'nonEmpty' failMode's expected shape (an array or object of violations). ` +
+        `If this policy intentionally returns a single boolean/scalar decision, set failMode to 'defined' instead.`
+    );
 }

@@ -68,6 +68,17 @@ describe('TerraformPolicyCheck Test Suite', function () {
     expectFailure('OpaFailPath');
     expectFailure('OpaFailDefined');
 
+    it('OpaFailNonEmptyScalarDecision — a scalar decision under the default nonEmpty failMode fails loudly instead of passing (audit id19)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'OpaFailNonEmptyScalarDecision.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/does not match the 'nonEmpty' failMode/.test(output), `error should name the failMode mismatch; got: ${output}`);
+            assert(/failMode to 'defined'/.test(output), `error should point at the fix; got: ${output}`);
+        }, tr);
+    });
+
     it('OpaExecError — non-zero opa exit surfaces stderr and the exit code', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'OpaExecError.js'));
         await tr.runAsync();
