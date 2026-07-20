@@ -135,6 +135,33 @@ try {
             console.log('OK: exits 0 (nothing to compare) when no previous release tag exists.');
         }
     }
+
+    // --- Case 4 (#676): a task.json-ONLY change (e.g. flipping a security-relevant
+    // input's defaultValue) with NO src/ touch at all must still require a Minor
+    // bump -- proves the diff scope covers task.json, not just src/. ---
+    {
+        const repo = makeBaseRepo('taskjson-only-nobump');
+        // Same Minor (0), same src/ content as the base commit -- only task.json's
+        // extra field differs, and src/ is never rewritten in this commit at all.
+        fs.writeFileSync(
+            path.join(repo, CHANGED_TASK, 'task.json'),
+            JSON.stringify({ id: CHANGED_TASK, version: { Major: 1, Minor: 0, Patch: 0 }, requireGpgSignature: false }, null, 2),
+        );
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m "task.json-only change"');
+        const res = runCheck(repo);
+        const out = `${res.stdout}${res.stderr}`;
+        const ok = res.status !== 0
+            && out.includes(CHANGED_TASK)
+            && out.includes('Minor did not increase');
+        if (!ok) {
+            console.error('FAIL: check-minor-bumps.js did not catch a task.json-only change without a Minor bump (#676).');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: catches a task.json-only change (no src/ touch) without a Minor bump (#676).');
+        }
+    }
 } finally {
     fs.rmSync(scratchDir, { recursive: true, force: true });
 }
