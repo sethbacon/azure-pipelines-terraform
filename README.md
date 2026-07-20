@@ -701,6 +701,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history of changes since the fork.
 
+See [docs/initiatives/smoke-fuzz-testing-plan.md](docs/initiatives/smoke-fuzz-testing-plan.md) for **planned** work to add a real-terraform behavioral smoke harness and a property/fuzz test layer over the security-critical parsers/sanitizers.
+
 ---
 
 ## Trademarks
