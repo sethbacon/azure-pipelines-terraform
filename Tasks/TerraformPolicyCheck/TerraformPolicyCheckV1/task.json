@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "a83a73f5-15bf-418a-9a72-01e5ab2353c6",
     "name": "PipelineTerraformPolicyCheck",
     "friendlyName": "Pipeline Terraform policy check",

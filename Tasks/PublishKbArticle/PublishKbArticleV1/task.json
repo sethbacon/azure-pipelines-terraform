@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
     "id": "ea38750c-69f1-4e02-8328-6247491297fa",
     "name": "PublishKbArticle",
     "friendlyName": "Publish KB Article to ServiceNow",
