@@ -34,6 +34,9 @@ import './OciBackendConfigFileL0';
 import './ManagedIdentityClientIdL0';
 // Direct unit tests for the opt-in runAzLogin path (gate, argv, secret masking).
 import './RunAzLoginL0';
+// Direct unit tests for handleProviderWIF's config content, fingerprint, and
+// secret masking / cleanup-ordering guarantees (#680).
+import './OciWifHandleProviderL0';
 // Direct unit tests for cross-cloud state backend detection.
 import './BackendDetectionTests/BackendDetectionL0';
 // Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.
@@ -1325,6 +1328,18 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.'), 'Should have printed: OCIApplySuccessAdditionalArgsWithAutoApproveL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('oci apply should succeed with workload identity federation (#695)', async () => {
+        let tp = path.join(__dirname, './ApplyTests/OCI/OCIApplyWIFSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('OCIApplyWIFSuccessL0 should have succeeded.'), 'Should have printed: OCIApplyWIFSuccessL0 should have succeeded.');
         }, tr);
     });
 
