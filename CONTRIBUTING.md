@@ -206,15 +206,17 @@ runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
 
 ### Retry/backoff helper parity
 
-Three tasks each implement their own bounded exponential-backoff HTTP retry helper, independently of one another and outside `scripts/check-shared-modules.js`'s automated byte-identity enforcement:
+`retry.ts` (`retryAsync()`) is the single canonical, CI-enforced-byte-identical bounded-retry implementation, duplicated across all **seven** tasks that need it (Tasks can't cross-import, so `scripts/check-shared-modules.js` gates byte-identity across the copies instead):
 
-- `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/http.ts` — `retryHttp()` (the reference implementation the other two mirror)
-- `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/callback.ts` — `postJsonWithRetry()`
-- `Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts` — `withRetry()`
+- `Tasks/TerraformTask/TerraformTaskV5/src/retry.ts`
+- `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/retry.ts` (consumed by `http.ts`'s `retryHttp()`)
+- `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/retry.ts` (consumed by `callback.ts`'s `postJsonWithRetry()`)
+- `Tasks/PublishKbArticle/PublishKbArticleV1/src/retry.ts` (consumed by `servicenow-http.ts`'s `withRetry()`)
+- `Tasks/TerraformInstaller/TerraformInstallerV1/src/retry.ts`, `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/retry.ts`, `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/retry.ts` (the installer family's shared `http-client.ts` fetch client)
 
-All three share the same `{ retries?, baseDelayMs?, log? }` options shape and `baseDelayMs * 2 ** attempt` backoff. **When hardening the retry/backoff behavior (timeout, backoff formula, retry predicate, etc.) in any one of these, review the other two in the same change** and update them together if the hardening applies equally.
+The default backoff is AWS-style decorrelated jitter (`delay = min(maxBackoffMs, baseDelayMs + random() * (max(baseDelayMs, previousDelay * 3) - baseDelayMs))`), not a fixed `baseDelayMs * 2 ** attempt` schedule, and each call site supplies its own `retryResult`/`retryError` predicates rather than sharing one hardcoded policy. An optional `maxElapsedMs` wall-clock budget across all attempts is also available (#692). **When hardening the retry/backoff behavior (the backoff formula, a retry predicate, a new option, etc.), edit `retry.ts` and update every one of the seven copies together in the same change** — `scripts/check-shared-modules.js`'s `Check Shared Module Parity` CI job fails the build on any divergence, so this is enforced, not just a convention to remember.
 
-`callback.ts`'s `postJsonWithRetry()` deliberately diverges from the other two: it never retries after a *received* HTTP response, including a 5xx, and only retries transport-level failures. This is intentional, not an oversight — `TerraformDriftReport`'s TSM callback token is one-shot, so retrying after the server has already seen (and possibly consumed) the token risks a spurious duplicate-submission error on the retry rather than a real recovery. Keep this divergence when syncing the other two helpers' behavior into `callback.ts`.
+`callback.ts`'s `postJsonWithRetry()` deliberately supplies a `retryResult` that never retries after a *received* HTTP response, including a 5xx, and only retries transport-level failures via the default `retryError`. This is intentional, not an oversight — `TerraformDriftReport`'s TSM callback token is one-shot, so retrying after the server has already seen (and possibly consumed) the token risks a spurious duplicate-submission error on the retry rather than a real recovery. Keep this divergence (via its own predicate, not a fork of `retry.ts` itself) when hardening the other call sites' behavior.
 
 ## Terraform results tab (build-results-tab)
 
