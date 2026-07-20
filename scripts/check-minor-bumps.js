@@ -15,7 +15,7 @@
 // `require.main === module` guard at the bottom. The CLI output strings are
 // asserted verbatim by scripts/test-check-minor-bumps.js and must not change.
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { discoverTaskDirs } = require('./lib/task-dirs.js');
 
 // The task list is DERIVED from the Tasks/*/*/task.json directory scan (see
@@ -26,12 +26,19 @@ function getTaskDirs() {
   return discoverTaskDirs(process.cwd());
 }
 
+// Takes an argv array (not a pre-built string) and runs it via execFileSync,
+// which spawns git directly with no intervening shell -- ref/taskDir values
+// (the latter ultimately from a directory-name scan of the checked-out tree,
+// e.g. a PR-introduced Tasks/* folder) are passed through as literal argv
+// elements and can never be interpreted as shell metacharacters, closing the
+// command/argument-injection flagged on the previous execSync(`git ${args}`)
+// template-string form.
 function git(args) {
-  return execSync(`git ${args}`, { encoding: 'utf8' }).trim();
+  return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
 function minorAt(ref, taskDir) {
-  const raw = git(`show ${ref}:${taskDir}/task.json`);
+  const raw = git(['show', `${ref}:${taskDir}/task.json`]);
   return parseInt(JSON.parse(raw).version.Minor, 10);
 }
 
@@ -40,8 +47,8 @@ function minorAt(ref, taskDir) {
 // the remaining tags are sorted by version (newest first). Returns undefined
 // when no such tag exists.
 function resolvePrevRef(currRef) {
-  const head = git(`rev-parse ${currRef}`);
-  const tags = git('tag --sort=-v:refname')
+  const head = git(['rev-parse', currRef]);
+  const tags = git(['tag', '--sort=-v:refname'])
     .split('\n')
     .map((t) => t.trim())
     .filter((t) => /^v\d+\.\d+\.\d+$/.test(t));
@@ -49,7 +56,7 @@ function resolvePrevRef(currRef) {
   // being released (which typically already carries this release's own tag).
   return tags.find((t) => {
     try {
-      return git(`rev-list -n1 ${t}`) !== head;
+      return git(['rev-list', '-n1', t]) !== head;
     } catch {
       return false;
     }
@@ -72,7 +79,7 @@ function analyze({ prevRef, currRef, readCurrMinor }) {
   for (const task of getTaskDirs()) {
     let changed;
     try {
-      changed = git(`diff --name-only ${prevRef} ${currRef} -- ${task}/src`);
+      changed = git(['diff', '--name-only', prevRef, currRef, '--', `${task}/src`]);
     } catch (e) {
       results.push({ task, kind: 'diff-error', message: e.message });
       continue;

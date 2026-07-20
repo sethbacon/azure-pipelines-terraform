@@ -54,30 +54,40 @@ const BACKEND_TYPE_TO_CLOUD: Readonly<Record<string, BackendCloud>> = {
 export function detectBackendCloud(workingDirectory: string): BackendCloud | null {
   const tfstatePath = path.join(workingDirectory || '.', '.terraform', 'terraform.tfstate');
 
-  let stats: fs.Stats;
+  // Opened once and stat/read via that same descriptor (not a statSync/
+  // readFileSync pair on the path) so there is no window between the
+  // is-a-file/size check and the read where the path could be repointed at a
+  // different, larger file (TOCTOU / CWE-367).
+  let fd: number;
   try {
-    stats = fs.statSync(tfstatePath);
+    fd = fs.openSync(tfstatePath, 'r');
   } catch {
     tasks.debug(`Backend detection: no ${tfstatePath} found (not yet initialized?); skipping cross-cloud backend credential injection.`);
     return null;
   }
 
-  if (!stats.isFile()) {
-    tasks.debug(`Backend detection: ${tfstatePath} is not a regular file; skipping.`);
-    return null;
-  }
-
-  if (stats.size > MAX_BACKEND_STATE_BYTES) {
-    tasks.debug(`Backend detection: ${tfstatePath} is ${stats.size} bytes, exceeding the ${MAX_BACKEND_STATE_BYTES}-byte guard; skipping rather than risk an unbounded read.`);
-    return null;
-  }
-
   let raw: string;
   try {
-    raw = fs.readFileSync(tfstatePath, 'utf-8');
-  } catch (err) {
-    tasks.debug(`Backend detection: failed to read ${tfstatePath}: ${err instanceof Error ? err.message : err}`);
-    return null;
+    const stats = fs.fstatSync(fd);
+
+    if (!stats.isFile()) {
+      tasks.debug(`Backend detection: ${tfstatePath} is not a regular file; skipping.`);
+      return null;
+    }
+
+    if (stats.size > MAX_BACKEND_STATE_BYTES) {
+      tasks.debug(`Backend detection: ${tfstatePath} is ${stats.size} bytes, exceeding the ${MAX_BACKEND_STATE_BYTES}-byte guard; skipping rather than risk an unbounded read.`);
+      return null;
+    }
+
+    try {
+      raw = fs.readFileSync(fd, 'utf-8');
+    } catch (err) {
+      tasks.debug(`Backend detection: failed to read ${tfstatePath}: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
+  } finally {
+    fs.closeSync(fd);
   }
 
   let parsed: unknown;

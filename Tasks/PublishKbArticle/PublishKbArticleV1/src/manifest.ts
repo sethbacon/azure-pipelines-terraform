@@ -4,9 +4,19 @@ import tasks = require('azure-pipelines-task-lib/task');
 /** Append an article entry to the kb-manifest JSON file. */
 export function appendToManifest(manifestPath: string, entry: Record<string, unknown>): void {
     let entries: unknown[] = [];
-    if (fs.existsSync(manifestPath)) {
+    // Opened once and read via that same descriptor (not an existsSync +
+    // readFileSync pair on the path) so there is no window between the
+    // existence check and the read where the path could be repointed at a
+    // different file (TOCTOU / CWE-367).
+    let fd: number | undefined;
+    try {
+        fd = fs.openSync(manifestPath, 'r');
+    } catch {
+        fd = undefined; // Missing (or otherwise unopenable) -- start from an empty manifest.
+    }
+    if (fd !== undefined) {
         try {
-            entries = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            entries = JSON.parse(fs.readFileSync(fd, 'utf-8'));
         } catch (e: unknown) {
             // The manifest exists but is unreadable/corrupt. Do NOT silently reset it
             // to [] -- that would overwrite and permanently discard every prior article
@@ -20,6 +30,8 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
                 console.warn(tasks.loc('ManifestCorruptNoBackup', manifestPath, e));
             }
             entries = [];
+        } finally {
+            fs.closeSync(fd);
         }
     }
     entries.push(entry);

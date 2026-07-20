@@ -127,26 +127,43 @@ function applyWindowsRestrictiveAcl(filePath: string): void {
  * can retain the pre-overwrite blocks regardless -- this narrows the ordinary
  * case, not every storage layer.
  *
- * The path is lstat'd (never stat'd) first, and the overwrite is skipped
- * entirely unless lstat reports a plain regular file. A tracked temp path
- * that has been swapped for a symlink (e.g. an attacker racing a shared
- * working directory between write and cleanup) is left alone rather than
- * followed -- opening through it would zero out whatever the link points at
- * instead of the tracked file (CWE-59), matching the symlink-refusal idiom
- * `replaceSecretFile` already uses. `cleanupTempFiles()` still unlinks the
- * link entry itself; only the content-overwrite is skipped here.
+ * The file is opened first (a plain open, which on Windows follows a
+ * symlink -- Node's O_NOFOLLOW is not honored there, confirmed empirically:
+ * it silently follows rather than erroring), and only AFTER that is the path
+ * separately lstat'd to check whether it is currently a symlink. Ordering the
+ * check after the open (rather than the more obvious lstat-then-open) avoids
+ * a check-then-use race window (CWE-367): whatever the open captured is a
+ * fixed reference that a later path swap cannot retarget, so the subsequent
+ * lstat only ever has to answer "was this path a symlink going into (or
+ * immediately after) the open" -- if so, the descriptor is closed WITHOUT
+ * writing through it, so a tracked path swapped for a symlink onto a victim
+ * file (e.g. an attacker racing a shared working directory between write and
+ * cleanup) is never scrubbed, matching the symlink-refusal idiom
+ * `replaceSecretFile` already uses (CWE-59). The worst case on a benign race
+ * (the path is legitimately replaced/removed between the open and the lstat)
+ * is a missed scrub, never a wrong-target write -- the correct fail-closed
+ * tradeoff for a security-sensitive scrub. `cleanupTempFiles()` still unlinks
+ * the link entry itself; only the content-overwrite is skipped here.
  */
 export function scrubFile(filePath: string): void {
-    let stat: fs.Stats;
+    let fd: number;
     try {
-        stat = fs.lstatSync(filePath);
+        fd = fs.openSync(filePath, 'r+');
     } catch {
         return; // Nothing at this path to scrub.
     }
-    if (!stat.isFile()) return; // Symlink or other non-regular entry -- never opened.
-    if (stat.size === 0) return;
-    const fd = fs.openSync(filePath, 'r+');
     try {
+        let linkCheck: fs.Stats;
+        try {
+            linkCheck = fs.lstatSync(filePath);
+        } catch {
+            return; // Path no longer resolves -- do not write through a stale descriptor.
+        }
+        if (linkCheck.isSymbolicLink()) return; // Never write through a (possibly just-followed) symlink.
+
+        const stat = fs.fstatSync(fd);
+        if (!stat.isFile()) return; // Not a regular file -- never written through.
+        if (stat.size === 0) return;
         fs.writeSync(fd, Buffer.alloc(stat.size, 0), 0, stat.size, 0);
         fs.fsyncSync(fd);
     } finally {
