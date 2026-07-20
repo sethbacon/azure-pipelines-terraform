@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.10.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.5...v1.10.6) (2026-07-20)
+
+
+### Bug Fixes
+
+* add decorrelated jitter and an optional wall-clock budget to the shared retry backoff ([#692](https://github.com/sethbacon/azure-pipelines-terraform/issues/692)) ([#711](https://github.com/sethbacon/azure-pipelines-terraform/issues/711)) ([dce7b11](https://github.com/sethbacon/azure-pipelines-terraform/commit/dce7b117b9c3d35bff546656dac08ffbcf78b05e))
+* broaden Minor-bump gate to cover task.json-only changes ([#676](https://github.com/sethbacon/azure-pipelines-terraform/issues/676)) ([#705](https://github.com/sethbacon/azure-pipelines-terraform/issues/705)) ([babbaa2](https://github.com/sethbacon/azure-pipelines-terraform/commit/babbaa26e778d18e231da8369565d6ea7bb36af8))
+* cap local image/HTML file reads in PublishKbArticle ([#700](https://github.com/sethbacon/azure-pipelines-terraform/issues/700)) ([270faf3](https://github.com/sethbacon/azure-pipelines-terraform/commit/270faf32935ffdc9d3ea1349fee0fbeb4923696f))
+* close CodeQL-flagged TOCTOU races and command injection ([#703](https://github.com/sethbacon/azure-pipelines-terraform/issues/703)) ([7a1cc82](https://github.com/sethbacon/azure-pipelines-terraform/commit/7a1cc82819f29c2a4d8a19e92526a26f37a1c206))
+* enforce registryAllowedHosts across the whole redirect chain ([#701](https://github.com/sethbacon/azure-pipelines-terraform/issues/701)) ([559b1d6](https://github.com/sethbacon/azure-pipelines-terraform/commit/559b1d640c91199ac54faf5f084e2515afac66de))
+* mask percent-encoded proxy password and thread known secrets into apply summary scrub ([#684](https://github.com/sethbacon/azure-pipelines-terraform/issues/684), [#694](https://github.com/sethbacon/azure-pipelines-terraform/issues/694)) ([#710](https://github.com/sethbacon/azure-pipelines-terraform/issues/710)) ([6c28e3b](https://github.com/sethbacon/azure-pipelines-terraform/commit/6c28e3b068c631297f793d6b34702e45c2923775))
+* neutralize ##vso injection in echoed apply [@message](https://github.com/message) ([#698](https://github.com/sethbacon/azure-pipelines-terraform/issues/698)) ([8fabfd4](https://github.com/sethbacon/azure-pipelines-terraform/commit/8fabfd4417dcb4d263ece48d8070e29e386ec3fd)), closes [#678](https://github.com/sethbacon/azure-pipelines-terraform/issues/678)
+* never echo captured terraform stdout to the log ([#702](https://github.com/sethbacon/azure-pipelines-terraform/issues/702)) ([2fc9579](https://github.com/sethbacon/azure-pipelines-terraform/commit/2fc95793fe70e175093f77895ce008d1debabb02)), closes [#492](https://github.com/sethbacon/azure-pipelines-terraform/issues/492)
+* opt-in scrub of cached OCI PAR backend credential ([#699](https://github.com/sethbacon/azure-pipelines-terraform/issues/699)) ([ee0c36e](https://github.com/sethbacon/azure-pipelines-terraform/commit/ee0c36e44771b7e57525a7257900c36ca41ca162)), closes [#675](https://github.com/sethbacon/azure-pipelines-terraform/issues/675)
+* remove unreachable duplicate auth validation, neutralize echoed ServiceNow fields ([#683](https://github.com/sethbacon/azure-pipelines-terraform/issues/683), [#693](https://github.com/sethbacon/azure-pipelines-terraform/issues/693)) ([#709](https://github.com/sethbacon/azure-pipelines-terraform/issues/709)) ([8b8740e](https://github.com/sethbacon/azure-pipelines-terraform/commit/8b8740e7d181644377114936de2ebfe5ac7e604f))
+
+
+### Refactor
+
+* centralize duplicated auth-scheme resolution and registry version resolution ([#681](https://github.com/sethbacon/azure-pipelines-terraform/issues/681), [#682](https://github.com/sethbacon/azure-pipelines-terraform/issues/682)) ([#708](https://github.com/sethbacon/azure-pipelines-terraform/issues/708)) ([da2a6a6](https://github.com/sethbacon/azure-pipelines-terraform/commit/da2a6a6224cd9594e94ef97fdfcd454509497f48))
+
 ## [1.10.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.4...v1.10.5) (2026-07-19)
 
 
