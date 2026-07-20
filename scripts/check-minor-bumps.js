@@ -8,7 +8,11 @@
 // Usage: node scripts/check-minor-bumps.js [prevRef] [currRef]
 //   prevRef defaults to the newest v*.*.* tag that is not the current HEAD commit
 //           (i.e. the previous release); currRef defaults to HEAD.
-// Only changes under <task>/src count — test/doc-only changes do not require a bump.
+// Changes under <task>/src OR to <task>/task.json itself count (#676 -- a
+// defaultValue-only edit in task.json, e.g. flipping a security-relevant input
+// like requireGpgSignature, carries the same cached-agent staleness risk as a
+// src/ change and must not be able to ship without a Minor bump). Changes
+// under <task>/Tests or docs elsewhere still do not require a bump.
 //
 // The analysis is also reused by scripts/bump-minor-versions.js, so the pieces
 // below are exported via module.exports and the CLI runs only under the
@@ -79,7 +83,7 @@ function analyze({ prevRef, currRef, readCurrMinor }) {
   for (const task of getTaskDirs()) {
     let changed;
     try {
-      changed = git(['diff', '--name-only', prevRef, currRef, '--', `${task}/src`]);
+      changed = git(['diff', '--name-only', prevRef, currRef, '--', `${task}/src`, `${task}/task.json`]);
     } catch (e) {
       results.push({ task, kind: 'diff-error', message: e.message });
       continue;
