@@ -200,7 +200,7 @@ azure-pipelines-terraform/
 | `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
 | `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
 | `secure-temp.ts`                     | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
-| `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 
 ### Structured plan/apply results (`src/results/`)
 
@@ -312,7 +312,7 @@ Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terra
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `index.ts`        | Entry point — computes drift counts, orchestrates the callback and SARIF report                                                    |
 | `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot) |
-| `retry.ts`        | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`        | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                          |
 | `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                               |
 
@@ -328,7 +328,7 @@ Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes 
 | `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
 | `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
 | `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
-| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                      |
 | `types.ts`             | Shared type definitions for both publishers                                                             |
 
@@ -359,7 +359,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                     |
 | `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                    |
 | `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                         |
-| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all four tasks in this retry family, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `attachments.ts`       | Image-attachment upload/list/sync                                                                                          |
 | `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                          |
 | `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks |
@@ -433,7 +433,8 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 | `azure-pipelines-tasks-securefiles-common` | Secure file download — TerraformTaskV5 (`secureVarsFile` input)                        |
 | `openpgp`                                  | GPG signature verification for installer downloads                                     |
 | `undici`                                   | HTTP/proxy client — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller   |
-| `cheerio`                                  | HTML sanitize/validate — Markdown2Html, PublishKbArticle                               |
+| `sanitize-html`                             | Primary allowlist HTML sanitizer (final stored-XSS defense) — Markdown2Html            |
+| `cheerio`                                  | Markdown2Html: defense-in-depth pre-filter parsing ahead of `sanitize-html`; PublishKbArticle: independent `html-validate.ts` content-inspection gate |
 | `markdown-it`                              | Markdown parser — Markdown2Html                                                        |
 | `highlight.js`                             | Syntax highlighting — Markdown2Html                                                    |
 | `js-yaml`                                  | YAML front-matter parsing — Markdown2Html                                              |
