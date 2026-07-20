@@ -18,6 +18,8 @@ import './RetryL0';
 import './InstallerHelpersL0';
 // Direct unit tests for the optional registry download_url host allowlist.
 import './RegistryAllowedHostsL0';
+// Direct unit tests for the shared registry-version-resolver module (#681).
+import './RegistryVersionResolverL0';
 // Direct unit tests for the operator-URL userinfo redaction helpers (#586).
 import './UrlSecretRedactionL0';
 

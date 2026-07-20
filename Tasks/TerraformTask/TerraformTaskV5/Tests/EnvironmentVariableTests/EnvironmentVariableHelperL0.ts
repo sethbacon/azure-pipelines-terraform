@@ -20,12 +20,24 @@ if (getEnv('TEST_VAR_1') !== 'value1') {
         if (getEnv('TEST_VAR_2') !== 'value2') {
             tl.setResult(tl.TaskResult.Failed, 'TEST_VAR_2 should be "value2"');
         } else {
-            // Test 4: clearTrackedVariables removes all tracked vars
-            EnvironmentVariableHelper.clearTrackedVariables();
-            if (getEnv('TEST_VAR_1') !== undefined || getEnv('TEST_VAR_2') !== undefined) {
-                tl.setResult(tl.TaskResult.Failed, 'Tracked variables should be cleared');
+            // Test 4 (#694): a secret variable's VALUE is tracked for later exact-match
+            // redaction, a non-secret variable's value is not.
+            EnvironmentVariableHelper.setEnvironmentVariable('TEST_VAR_SECRET', 'secret-value-xyz', true);
+            const trackedSecrets = EnvironmentVariableHelper.getTrackedSecretValues();
+            if (!trackedSecrets.includes('secret-value-xyz')) {
+                tl.setResult(tl.TaskResult.Failed, 'getTrackedSecretValues() should include the secret variable\'s value');
+            } else if (trackedSecrets.includes('value2')) {
+                tl.setResult(tl.TaskResult.Failed, 'getTrackedSecretValues() should NOT include a non-secret variable\'s value');
             } else {
-                tl.setResult(tl.TaskResult.Succeeded, 'EnvironmentVariableHelperL0 should have succeeded.');
+                // Test 5: clearTrackedVariables removes all tracked vars AND tracked secret values
+                EnvironmentVariableHelper.clearTrackedVariables();
+                if (getEnv('TEST_VAR_1') !== undefined || getEnv('TEST_VAR_2') !== undefined || getEnv('TEST_VAR_SECRET') !== undefined) {
+                    tl.setResult(tl.TaskResult.Failed, 'Tracked variables should be cleared');
+                } else if (EnvironmentVariableHelper.getTrackedSecretValues().length !== 0) {
+                    tl.setResult(tl.TaskResult.Failed, 'getTrackedSecretValues() should be empty after clearTrackedVariables()');
+                } else {
+                    tl.setResult(tl.TaskResult.Succeeded, 'EnvironmentVariableHelperL0 should have succeeded.');
+                }
             }
         }
     }

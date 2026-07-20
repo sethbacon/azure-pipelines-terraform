@@ -55,6 +55,22 @@ describe('buildProxyFetchOptions', () => {
     assert.ok(setSecretCalls.includes('p@ss'), 'proxy password should be registered as a secret');
   });
 
+  it('#684: also masks the percent-encoded form of the password that ends up embedded in the proxy URL', () => {
+    const setSecretCalls: string[] = [];
+    t.setSecret = (v: string) => setSecretCalls.push(v);
+    t.getHttpProxyConfiguration = () => ({
+      proxyUrl: 'http://proxy.example.com:8080',
+      proxyUsername: 'user',
+      proxyPassword: 'p@ss',
+    });
+    buildProxyFetchOptions();
+    // 'p@ss' -> 'p%40ss': the WHATWG URL password setter percent-encodes '@',
+    // and that encoded string (not the raw password) is what proxyUrl.toString()
+    // actually embeds -- ADO only masks literal registered strings, so the
+    // encoded form needs its own setSecret() call too.
+    assert.ok(setSecretCalls.includes('p%40ss'), `expected the percent-encoded password to also be masked: ${JSON.stringify(setSecretCalls)}`);
+  });
+
   it('throws a clear error on a malformed proxy URL instead of an unhandled TypeError', () => {
     t.getHttpProxyConfiguration = () => ({
       proxyUrl: 'not a url',

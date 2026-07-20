@@ -10,24 +10,11 @@ import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEO
 import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
-import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
+import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
+import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 
 const isWindows = os.type().match(/^Win/);
-
-/**
- * setSecret() any basic-auth userinfo embedded in an operator-supplied
- * registry/mirror URL so the agent masks it everywhere the URL (or a URL derived
- * from it) might be echoed — pipeline variables, console output, error messages
- * (#586). Idempotent; call at the earliest use of each operator URL. Pair with
- * redactUrlUserInfo() to structurally strip the credential from any value stored
- * or displayed (setSecret only masks logs, not a persisted variable's value).
- */
-function maskOperatorUrlCredentials(url: string): void {
-    for (const secret of extractUrlUserInfoSecrets(url)) {
-        tasks.setSecret(secret);
-    }
-}
 
 // File name of the local, per-cached-tool-directory integrity marker written after
 // a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
@@ -151,18 +138,6 @@ async function resolveLatestOpa(): Promise<string> {
     }
     // tag_name is like "v1.17.1" — strip the leading "v"
     return data.tag_name.replace(/^v/, '');
-}
-
-async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string): Promise<string> {
-    maskOperatorUrlCredentials(registryUrl);
-    console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
-    const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
-    const data = await fetchJson<{ version: string }>(latestUrl);
-    if (!data.version) {
-        throw new Error(`Registry API returned invalid response: missing version field from ${latestUrl}`);
-    }
-    console.log(tasks.loc("ResolvedVersionFromRegistry", data.version));
-    return data.version;
 }
 
 // --- Download strategies (return the path to the downloaded artifact, and
