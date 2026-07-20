@@ -12,8 +12,7 @@ import fs = require('fs');
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const testDir = path.join(os.tmpdir(), 'tpc-opa-nonempty-scalar');
-fs.rmSync(testDir, { recursive: true, force: true });
+const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-opa-nonempty-scalar-'));
 fs.mkdirSync(path.join(testDir, 'policies'), { recursive: true });
 const planFile = path.join(testDir, 'plan.json');
 fs.writeFileSync(planFile, '{}');
