@@ -20,29 +20,56 @@ function escapeRegExp(value: string): string {
 /**
  * Builds the anchored, escaped regular expression for the Fulcio certificate
  * identity (SAN) that OpenTofu's keyless release signing produces for the
- * SPECIFIC requested version. OpenTofu signs each release's SHA256SUMS from its
- * `release.yml` workflow on that release's tag ref, yielding a SAN of the form
- * `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v<version>`.
+ * SPECIFIC requested version.
+ *
+ * OpenTofu's actual signing ref depends on the release: some releases sign from
+ * a version TAG ref (`refs/tags/v<version>`), but as of the 1.12.x line OpenTofu
+ * cuts patch releases from a long-lived per-minor release-maintenance BRANCH, and
+ * the release.yml run that performs the keyless signing is triggered on that
+ * branch push — so the Fulcio certificate's SAN carries `refs/heads/v<major>.<minor>`
+ * (no patch component) instead of a tag ref. Confirmed directly against the real,
+ * current upstream certificate (`tofu_1.12.4_SHA256SUMS.pem`'s SAN is
+ * `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.12`)
+ * after the weekly cosign trust-root canary caught the previous tag-only pattern
+ * rejecting every current release (#734-era incident). The pattern therefore
+ * accepts EITHER form: the full-version tag ref, or the major.minor branch ref —
+ * both bound to the requested version (the branch alternative to its major.minor
+ * only, since that is all the ref itself encodes; the SHA256SUMS content is still
+ * independently bound to the exact patch version by `parseSha256`'s exact
+ * `tofu_<version>_<file>` filename lookup in the caller, so a same-branch
+ * cross-patch substitution is still caught even though the identity alone cannot
+ * distinguish patch versions on the same branch).
  *
  * cosign matches `--certificate-identity-regexp` unanchored (Go
  * `regexp.MatchString`), so the pattern is anchored with `^`/`$` and its dots are
  * escaped. Anchoring alone prevents a look-alike certificate whose SAN merely
- * *contains* the OpenTofu identity (or sits on a different host/org/repo, a branch
- * ref, or http) from satisfying the match. Interpolating the exact version
- * (regex-escaped) additionally binds the signed SHA256SUMS to the version being
- * installed, so a validly-signed SHA256SUMS from a DIFFERENT OpenTofu release can
- * no longer satisfy the identity — closing the cross-version replay gap that the
- * previous `@refs/tags/v[0-9].*` (any tag) pattern left to URL-path binding alone.
- * The workflow-file segment is pinned to the literal, escaped `release.yml` (the
- * actual, currently-stable signing workflow at
- * github.com/opentofu/opentofu/.github/workflows/release.yml, confirmed against
- * the upstream repo) rather than a permissive `.+`, so a Fulcio certificate for
- * any OTHER workflow file in the repo — even one on the exact release tag ref —
- * no longer satisfies the identity (#697). If OpenTofu ever renames or splits its
- * signing workflow, this constant needs updating alongside it.
+ * *contains* the OpenTofu identity (or sits on a different host/org/repo, an
+ * unrelated branch, or http) from satisfying the match. Binding to the requested
+ * version (tag) / its major.minor (branch) means a validly-signed SHA256SUMS from
+ * a DIFFERENT OpenTofu release line can no longer satisfy the identity — closing
+ * the cross-version replay gap that the original `@refs/tags/v[0-9].*` (any tag)
+ * pattern left to URL-path binding alone. The workflow-file segment is pinned to
+ * the literal, escaped `release.yml` (the actual, currently-stable signing
+ * workflow at github.com/opentofu/opentofu/.github/workflows/release.yml,
+ * confirmed against the upstream repo) rather than a permissive `.+`, so a Fulcio
+ * certificate for any OTHER workflow file in the repo — even one on an otherwise
+ * matching ref — no longer satisfies the identity (#697). If OpenTofu ever
+ * renames or splits its signing workflow, or changes its branching scheme again,
+ * this constant needs updating alongside it.
  */
 export function buildOpenTofuCertIdentityRegexp(version: string): string {
-    return `^https://github\\.com/opentofu/opentofu/\\.github/workflows/release\\.yml@refs/tags/v${escapeRegExp(version)}$`;
+    const workflowPrefix = 'https://github\\.com/opentofu/opentofu/\\.github/workflows/release\\.yml@refs/';
+    const tagAlternative = `tags/v${escapeRegExp(version)}`;
+    const majorMinorMatch = version.match(/^(\d+\.\d+)/);
+    if (!majorMinorMatch) {
+        // Version string doesn't look like <major>.<minor>[.<patch>...] (e.g. an
+        // unusual operator-supplied 'version' input) — fall back to the
+        // tag-only pattern rather than emitting a malformed/absent branch
+        // alternative.
+        return `^${workflowPrefix}${tagAlternative}$`;
+    }
+    const branchAlternative = `heads/v${escapeRegExp(majorMinorMatch[1])}`;
+    return `^${workflowPrefix}(${tagAlternative}|${branchAlternative})$`;
 }
 
 /**
