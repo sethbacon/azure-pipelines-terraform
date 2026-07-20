@@ -82,7 +82,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/ Tests/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -135,7 +135,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -171,7 +171,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -207,7 +207,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -243,7 +243,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -279,7 +279,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -315,7 +315,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -351,7 +351,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -387,7 +387,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -423,7 +423,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -459,7 +459,7 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Lint
-        run: npx eslint src/
+        run: npx --no-install eslint src/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -497,7 +497,7 @@ jobs:
         # installs the root toolchain, so it is the natural place to gate it.
         run: npm audit --audit-level=high
       - name: Type-check tab
-        run: npx tsc -p src/tab/tsconfig.json --noEmit
+        run: npx --no-install tsc -p src/tab/tsconfig.json --noEmit
       - name: Run tab unit tests
         run: npm run test:tab
 
