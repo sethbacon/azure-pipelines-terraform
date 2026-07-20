@@ -22,19 +22,29 @@ export const MAX_PLAN_JSON_BYTES = 100 * 1024 * 1024; // 100 MB
 // module_locks field; null when absent/unreadable/oversized (the backend then
 // records provenance without locked versions).
 function readModuleLocks(manifestPath: string): unknown {
+    // Opened once and stat/read via that same descriptor (not an existsSync +
+    // statSync + readFileSync sequence on the path) so there is no window
+    // between the size check and the read where the path could be repointed
+    // at a different, larger file (TOCTOU / CWE-367).
+    let fd: number;
     try {
-        if (!fs.existsSync(manifestPath)) {
-            return null;
-        }
+        fd = fs.openSync(manifestPath, 'r');
+    } catch {
+        return null;
+    }
+    try {
         // Skip an implausibly large manifest rather than risk an unbounded read
         // (best-effort field; degrade gracefully, like backend-detection.ts).
-        if (fs.statSync(manifestPath).size > MAX_PLAN_JSON_BYTES) {
+        const size = fs.fstatSync(fd).size;
+        if (size > MAX_PLAN_JSON_BYTES) {
             tasks.debug(`Module manifest ${manifestPath} exceeds the ${MAX_PLAN_JSON_BYTES}-byte guard; skipping module_locks.`);
             return null;
         }
-        return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        return JSON.parse(fs.readFileSync(fd, 'utf8'));
     } catch {
         return null;
+    } finally {
+        fs.closeSync(fd);
     }
 }
 
