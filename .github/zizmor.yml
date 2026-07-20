@@ -1,14 +1,24 @@
 # zizmor configuration — https://docs.zizmor.sh/configuration/
 # Documented, intentional exceptions. Every other finding fails CI.
+# Ignores are scoped to the exact line:column zizmor reports today (#686) --
+# not the whole file -- so a future edit that introduces a genuinely new
+# instance of either rule in release.yml for an unrelated reason is still
+# surfaced for review instead of being silently swallowed by a blanket
+# per-file ignore. Re-verify these line numbers with
+# `zizmor --no-config --format plain .github/workflows/release.yml` if
+# release.yml's setup-node/action-gh-release steps ever move.
 rules:
   cache-poisoning:
     ignore:
-      # The release pipeline's setup-node steps do not enable dependency
+      # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml
+      - release.yml:123:9
+      - release.yml:146:9
+      - release.yml:178:9
+      - release.yml:405:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml
+      - release.yml:382:15
