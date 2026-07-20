@@ -10,7 +10,7 @@ import {
     findArticleBySourceKey,
 } from './servicenow-client';
 import { validateHtmlContent, readHtmlFile } from './html-validate';
-import { emitArticleOutput, findKbArticleJson, readFrontMatterKey } from './manifest';
+import { emitArticleOutput, findKbArticleJson, readFrontMatterKey, sanitizeForSingleLineEcho } from './manifest';
 import { DryRunPlan, PlannedAction, formatDryRunReport } from './dry-run';
 import { processArticleImages } from './attachments';
 import { updateArticleBody } from './servicenow-client';
@@ -87,10 +87,10 @@ async function resolveAuth(): Promise<ResolvedAuth> {
         const token = await getOAuthToken(instance, clientId, clientSecret);
         headers = getAuthHeaders('oauth', { accessToken: token });
     } else {
-        if (!username || !password) {
-            throw new Error(tasks.loc('BasicCredentialsRequired'));
-        }
-        tasks.setSecret(password);
+        // Validation (and the credential setSecret()-masking) is owned entirely
+        // by getAuthHeaders()/basicAuthHeader() -- a separate pre-check here was
+        // dead code (this is that function's only call site for 'basic') using
+        // a second, drifted loc key for the identical condition (#683).
         headers = getAuthHeaders('basic', { username, password });
     }
 
@@ -314,9 +314,12 @@ async function run() {
         // -----------------------------------------------------------------
         const article = await executeCreateOrUpdate(instance, headers, plan);
 
-        console.log(tasks.loc('ArticleNumberLine', article['number']));
-        console.log(tasks.loc('ArticleIdLine', article['sys_id']));
-        console.log(tasks.loc('WorkflowStateLine', article['workflow_state']));
+        // Neutralize embedded newlines in these ServiceNow-response-derived
+        // values before echoing -- without it, an embedded newline could smuggle
+        // in a fake ##vso[...]/##[...] logging command (#693).
+        console.log(tasks.loc('ArticleNumberLine', sanitizeForSingleLineEcho(article['number'] as string)));
+        console.log(tasks.loc('ArticleIdLine', sanitizeForSingleLineEcho(article['sys_id'] as string)));
+        console.log(tasks.loc('WorkflowStateLine', sanitizeForSingleLineEcho(article['workflow_state'] as string)));
 
         // -----------------------------------------------------------------
         // Emit manifest line + output variables BEFORE the image-upload phase, so a

@@ -2099,6 +2099,45 @@ describe('manifest.emitArticleOutput / findKbArticleJson', () => {
         assert.strictEqual(written[0].source_key, 'my-key');
     });
 
+    it('#693: echoes a placeholder (not the raw value) for a sys_id that fails the ServiceNow format check, while the manifest file entry keeps the real value', () => {
+        const originalWrite = process.stdout.write;
+        const written: string[] = [];
+        process.stdout.write = ((chunk: string) => { written.push(chunk); return true; }) as typeof process.stdout.write;
+        try {
+            const p = nodePath.join(tmpDir(), 'manifest-invalid-sysid.json');
+            // 'sys-1' (this suite's fixture) is not a 32-hex ServiceNow sys_id.
+            manifest.emitArticleOutput(article, 'my-key', p, 'kb-1');
+            assert.ok(written.some((line) => line.includes('(invalid-sys_id)')), `expected the echoed line to use the placeholder: ${written}`);
+            assert.ok(!written.some((line) => line.includes('sys_id=sys-1')), `expected the raw sys_id to NOT be echoed: ${written}`);
+            const manifestEntry = JSON.parse(fs.readFileSync(p, 'utf8'))[0];
+            assert.strictEqual(manifestEntry.sys_id, 'sys-1', 'the manifest FILE entry must still keep the real sys_id');
+        } finally {
+            process.stdout.write = originalWrite;
+        }
+    });
+
+    it('#693: neutralizes an embedded newline in sourceKey/number so a fake logging command cannot be smuggled into the echoed line', () => {
+        const originalWrite = process.stdout.write;
+        const written: string[] = [];
+        process.stdout.write = ((chunk: string) => { written.push(chunk); return true; }) as typeof process.stdout.write;
+        try {
+            const p = nodePath.join(tmpDir(), 'manifest-newline.json');
+            const hostileSourceKey = 'my-key\n##vso[task.complete result=Failed]forced failure';
+            manifest.emitArticleOutput({ ...article, number: 'KB0001\n##vso[task.setvariable variable=evil]1' }, hostileSourceKey, p, 'kb-1');
+            // Isolate the single ##[manifest] write chunk -- other, unrelated
+            // stdout writes in the same call (tasks.warning/console.log) also
+            // legitimately contain their own ##vso[...] sequences elsewhere in
+            // the captured stream, so the check must be scoped to this one chunk.
+            const manifestLines = written.filter((chunk) => chunk.includes('##[manifest]'));
+            assert.strictEqual(manifestLines.length, 1, `expected exactly one ##[manifest] write: ${JSON.stringify(written)}`);
+            const manifestLine = manifestLines[0];
+            assert.ok(!manifestLine.includes('\n##vso'), `expected no embedded newline+##vso to survive within the manifest line itself: ${JSON.stringify(manifestLine)}`);
+            assert.strictEqual((manifestLine.match(/\n/g) ?? []).length, 1, `expected exactly one trailing newline in the manifest line: ${JSON.stringify(manifestLine)}`);
+        } finally {
+            process.stdout.write = originalWrite;
+        }
+    });
+
     it('writes a legacy KB<number>.json file and finds it (no manifest path)', () => {
         const cwd = process.cwd();
         process.chdir(tmpDir());
