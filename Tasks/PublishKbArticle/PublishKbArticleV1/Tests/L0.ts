@@ -2349,6 +2349,19 @@ describe('PublishKbArticle full-task: instance SSRF guard', () => {
         }, tr);
     });
 
+    it('DryRunGetArticleAuthErrorWarns — a genuine auth failure fetching the current article warns instead of being silently normalized (audit id27/#727)', async () => {
+        const tp = nodePath.join(__dirname, 'DryRunGetArticleAuthErrorWarns.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'a dry run should still succeed even when the current-state lookup fails');
+            assert.ok(
+                tr.warningIssues.some((w) => w.includes('DryRunGetArticleFailed') || w.includes('Unauthorized')),
+                `should have warned about the real (non-404) getArticle failure: ${tr.warningIssues}`,
+            );
+        }, tr);
+    });
+
     it('SourceKeyMissFallsBackToJson — a source-key miss falls through to the KB*.json lookup instead of creating a duplicate', async () => {
         const tp = nodePath.join(__dirname, 'SourceKeyMissFallsBackToJson.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
