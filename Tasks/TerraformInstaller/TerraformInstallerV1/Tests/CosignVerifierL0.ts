@@ -14,11 +14,16 @@ describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, 
     const VERSION = '1.11.6';
     const identityRe = new RegExp(buildOpenTofuCertIdentityRegexp(VERSION));
 
-    // The canonical SAN OpenTofu's keyless release signing produces for THIS version --
-    // confirmed against the real upstream workflow file (opentofu/opentofu's
-    // .github/workflows/release.yml).
+    // The canonical SANs OpenTofu's keyless release signing produces for THIS
+    // version -- confirmed against the real upstream workflow file (opentofu/
+    // opentofu's .github/workflows/release.yml). Both the (older/occasional)
+    // full-version tag ref and the (current, 1.12.x-line) major.minor release
+    // branch ref must be accepted -- confirmed directly against the real
+    // Fulcio certificate for the current upstream release (tofu_1.12.4_
+    // SHA256SUMS.pem's SAN is .../release.yml@refs/heads/v1.12).
     const accepted = [
         `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v${VERSION}`,
+        'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.11',
     ];
 
     // Each of these satisfied the previous any-version `@refs/tags/v[0-9].*` pattern
@@ -33,6 +38,14 @@ describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, 
         // anchored, so a longer numeric tail cannot slip past.
         'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v1.11.60',
         'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v1x11x6',
+        // A DIFFERENT major.minor release branch must still be rejected (cross-
+        // release-line replay via the branch alternative).
+        'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.10',
+        'https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.12',
+        // The branch alternative only ever encodes major.minor -- a branch ref
+        // carrying the full patch version is not a real OpenTofu ref and must
+        // still be rejected.
+        `https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v${VERSION}`,
         // #697: the workflow-file segment is now bound to the exact, real signing
         // workflow (release.yml) instead of a permissive `.+` -- a look-alike or
         // otherwise-named workflow file on the SAME repo and exact tag ref must
@@ -71,6 +84,24 @@ describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, 
         assert.ok(
             !re.test('https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/v1.7.0-alpha2'),
             'should reject a different prerelease tag',
+        );
+        // A prerelease version still carries a real major.minor, so its own
+        // release-branch ref must also be accepted.
+        assert.ok(
+            re.test('https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.7'),
+            'should accept the prerelease version\'s own major.minor branch ref',
+        );
+    });
+
+    it('falls back to a tag-only pattern for a version with no leading major.minor', () => {
+        const re = new RegExp(buildOpenTofuCertIdentityRegexp('unusual-version'));
+        assert.ok(
+            re.test('https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/tags/vunusual-version'),
+            'should still accept the exact tag ref for the literal version string',
+        );
+        assert.ok(
+            !re.test('https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/vunusual-version'),
+            'should not accept a branch ref when no major.minor could be extracted',
         );
     });
 });
@@ -153,8 +184,11 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         const idIdx = args.indexOf('--certificate-identity-regexp');
         assert.ok(idIdx >= 0, 'the --certificate-identity-regexp flag should be passed');
         assert.strictEqual(args[idIdx + 1], buildOpenTofuCertIdentityRegexp(VERSION));
-        // The passed regexp must bind the exact version (with escaped dots), not any tag.
-        assert.ok(args[idIdx + 1].includes('v1\\.11\\.6$'), 'the identity regexp must anchor the exact requested version');
+        // The passed regexp must bind the exact version (with escaped dots) on the
+        // tag alternative, not any tag.
+        assert.ok(args[idIdx + 1].includes('tags/v1\\.11\\.6'), 'the identity regexp must anchor the exact requested version on the tag alternative');
+        // ...and must bind only VERSION's own major.minor on the branch alternative.
+        assert.ok(args[idIdx + 1].includes('heads/v1\\.11)$'), 'the identity regexp must anchor the requested version\'s major.minor on the branch alternative');
         const issIdx = args.indexOf('--certificate-oidc-issuer');
         assert.ok(issIdx >= 0, 'the --certificate-oidc-issuer flag should be passed');
         assert.strictEqual(args[issIdx + 1], 'https://token.actions.githubusercontent.com');
