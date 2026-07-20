@@ -29,6 +29,17 @@ export function buildProxyFetchOptions(): RequestInit {
     }
     url.username = proxy.proxyUsername;
     url.password = proxy.proxyPassword ?? "";
+    // url.password is now the WHATWG URL setter's PERCENT-ENCODED form (e.g.
+    // 'p@ss' -> 'p%40ss') -- a byte-different string from the raw
+    // proxyPassword already setSecret()'d above. ADO's log masker matches
+    // literal registered strings, not derivations, so this encoded form
+    // (which is what proxyUrl.toString() below actually embeds) needs its
+    // own registration too, matching the derived-form masking the installer/
+    // module-publish transport helpers already do for their own credential
+    // URLs (#684).
+    if (url.password) {
+      tasks.setSecret(url.password);
+    }
     proxyUrl = url.toString();
   }
 

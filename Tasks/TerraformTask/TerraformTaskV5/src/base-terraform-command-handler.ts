@@ -8,6 +8,7 @@ import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
 import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
+import { EnvironmentVariableHelper } from './environment-variables';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -1191,14 +1192,19 @@ export abstract class BaseTerraformCommandHandler {
             // console log.
             includeDiagnostics,
             includeDiagnosticDetail: tasks.getBoolInput('includeDiagnosticDetail', false),
-            // §5.4: the task has NO general readback of every secret it registered via
-            // setSecret() across the provider handlers, so knownSecrets is [] here and
-            // the freeform diagnostic scrub relies on secret-scrub.ts's PEM/high-entropy
-            // heuristic ALONE (best-effort; a short provider-echoed secret can still slip
-            // through -- documented residual, SECURITY.md / design §5.10). Mitigated by
-            // includeDiagnostics (above) and by includeDiagnosticDetail defaulting to
-            // false so the more leak-prone 'detail' field is omitted unless opted in.
-            knownSecrets: [],
+            // §5.4 / #694: exact-match redaction now also covers every credential
+            // this task itself injected via EnvironmentVariableHelper's
+            // isSecret=true path (the standard mechanism the provider handlers use
+            // for cloud credentials) -- closing the gap for a SHORT injected secret
+            // that the PEM/high-entropy heuristic alone would miss. A value passed
+            // directly to tasks.setSecret() elsewhere (e.g. an ephemeral WIF token
+            // exchanged mid-command) is not tracked by this helper and still relies
+            // on the heuristic alone; this narrows, but does not eliminate, the
+            // documented residual (SECURITY.md / design §5.10). Mitigated further
+            // by includeDiagnostics (above) and by includeDiagnosticDetail
+            // defaulting to false so the more leak-prone 'detail' field is omitted
+            // unless opted in.
+            knownSecrets: EnvironmentVariableHelper.getTrackedSecretValues(),
         };
 
         const digest = buildApplyDigest(ndjson, this.buildDigestMeta(publishName, workingDirectory), options);
