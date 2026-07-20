@@ -23,6 +23,15 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { baseUrl, assertQueryValueSafe } from './servicenow-client';
 import { extractLocalImageRefs, rewriteImageSrcs, isValidSysId } from './image-rewrite';
 
+/**
+ * Upper bound on a single local image file read into memory before hashing/
+ * uploading (#677). A relative <img src> resolves to a semi-trusted,
+ * author-controlled local file with no size input to bound it otherwise;
+ * this matches the 10MB cap every HTTP client in this codebase already
+ * applies to a comparable class of read (CWE-400).
+ */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
 export interface SnAttachment {
     sys_id: string;
     file_name: string;
@@ -75,17 +84,22 @@ export async function listArticleAttachments(
     return result as SnAttachment[];
 }
 
-/** Upload a file as an attachment on a kb_knowledge record. Returns the new attachment sys_id. */
+/**
+ * Upload an attachment on a kb_knowledge record from already-read bytes.
+ * Takes the raw `data` Buffer (rather than a file path) so a caller that also
+ * needs to hash the same file (syncImageAttachment) can read it once and
+ * reuse the buffer for both, instead of two separate fs.readFileSync calls
+ * (#677). Returns the new attachment sys_id.
+ */
 export async function uploadAttachment(
     instance: string,
     headers: Record<string, string>,
     articleId: string,
-    filePath: string,
+    data: Buffer,
     fileName: string,
     contentType: string,
 ): Promise<string> {
     const url = `${baseUrl(instance)}/api/now/attachment/file`;
-    const data = fs.readFileSync(filePath);
     // Attachment upload uses the binary body + the file's own content type, NOT
     // the JSON Content-Type from the shared headers. Copy auth/accept only.
     const uploadHeaders: Record<string, string> = {
@@ -136,10 +150,43 @@ export async function deleteAttachment(
     await snRequest('DELETE', url, { headers });
 }
 
-/** SHA-256 hex hash of a file's bytes (matches the ServiceNow attachment `hash` field). */
-export function fileSha256(filePath: string): string {
-    const data = fs.readFileSync(filePath);
+/** SHA-256 hex hash of a Buffer's bytes (matches the ServiceNow attachment `hash` field). */
+function hashBytes(data: Buffer): string {
     return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * SHA-256 hex hash of a file's bytes (matches the ServiceNow attachment `hash`
+ * field). Delegates to readAttachmentFile so a direct call also gets the
+ * MAX_ATTACHMENT_BYTES cap and the race-free fd-based read (#677) -- kept as
+ * its own exported function for callers/tests that only need the hash.
+ */
+export function fileSha256(filePath: string): string {
+    return hashBytes(readAttachmentFile(filePath));
+}
+
+/**
+ * Reads a local image file into memory once, enforcing MAX_ATTACHMENT_BYTES
+ * first so an oversized file is never buffered at all (#677). Opens the file
+ * ONE time and stats/reads that same file descriptor (fstat + read, not
+ * statSync + readFileSync on the path) so there is no window between the
+ * size check and the read where the path could be repointed at a different,
+ * larger file (TOCTOU / CWE-367, flagged by CodeQL on the earlier
+ * statSync-then-readFileSync version).
+ */
+function readAttachmentFile(filePath: string): Buffer {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+        const size = fs.fstatSync(fd).size;
+        if (size > MAX_ATTACHMENT_BYTES) {
+            throw new Error(tasks.loc('ImageTooLarge', filePath, size, MAX_ATTACHMENT_BYTES));
+        }
+        const buffer = Buffer.alloc(size);
+        fs.readSync(fd, buffer, 0, size, 0);
+        return buffer;
+    } finally {
+        fs.closeSync(fd);
+    }
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -169,7 +216,11 @@ export async function syncImageAttachment(
     fileName: string,
     existing: SnAttachment[],
 ): Promise<string> {
-    const localHash = fileSha256(filePath);
+    // Read the file once (size-capped) and reuse the same buffer for both the
+    // hash and the upload body, instead of two separate fs.readFileSync calls
+    // (#677).
+    const data = readAttachmentFile(filePath);
+    const localHash = hashBytes(data);
     const match = existing.find((a) => a.file_name === fileName);
 
     if (match && match.hash && match.hash === localHash) {
@@ -184,7 +235,7 @@ export async function syncImageAttachment(
     // the local source file is never touched), but this avoids a window where
     // the image is briefly missing from the article.
     const newId = await uploadAttachment(
-        instance, headers, articleId, filePath, fileName, contentTypeFor(fileName),
+        instance, headers, articleId, data, fileName, contentTypeFor(fileName),
     );
     if (match) {
         // Retried (#509) the same as uploadAttachment above -- deleteAttachment

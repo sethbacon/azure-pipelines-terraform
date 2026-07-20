@@ -4,6 +4,13 @@ import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefres
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
+ * Upper bound on the operator-supplied `htmlFile` read into memory (#677).
+ * Matches the 10MB cap this codebase applies to comparable local-file/HTTP-
+ * response reads elsewhere (CWE-400).
+ */
+export const MAX_HTML_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
  * Validate HTML content for common issues.
  *
  * `force` ONLY downgrades the content-loss heuristic below (a false-positive-
@@ -186,11 +193,34 @@ export function validateHtmlContent(html: string, force: boolean = false): void 
 }
 
 /**
- * Read an HTML file from disk. Throws if the file does not exist.
+ * Read an HTML file from disk. Throws if the file does not exist or exceeds
+ * MAX_HTML_FILE_BYTES (#677) -- the size is checked before the read so an
+ * oversized file is never buffered into memory at all. Opens the file ONE
+ * time and stats/reads that same file descriptor (fstat + read, not
+ * statSync/existsSync + readFileSync on the path) so there is no window
+ * between the size check and the read where the path could be repointed at a
+ * different, larger file (TOCTOU / CWE-367, flagged by CodeQL on the earlier
+ * existsSync+statSync-then-readFileSync version).
  */
 export function readHtmlFile(filePath: string): string {
-    if (!fs.existsSync(filePath)) {
-        throw new Error(tasks.loc('HtmlFileNotFound', filePath));
+    let fd: number;
+    try {
+        fd = fs.openSync(filePath, 'r');
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new Error(tasks.loc('HtmlFileNotFound', filePath));
+        }
+        throw err;
     }
-    return fs.readFileSync(filePath, 'utf-8');
+    try {
+        const size = fs.fstatSync(fd).size;
+        if (size > MAX_HTML_FILE_BYTES) {
+            throw new Error(tasks.loc('HtmlFileTooLarge', filePath, size, MAX_HTML_FILE_BYTES));
+        }
+        const buffer = Buffer.alloc(size);
+        fs.readSync(fd, buffer, 0, size, 0);
+        return buffer.toString('utf-8');
+    } finally {
+        fs.closeSync(fd);
+    }
 }
