@@ -79,6 +79,15 @@ Two throw styles coexist across the tasks: `throw new Error(tasks.loc('Key', ...
 
 ## Testing
 
+Node 24 is the sole behavioral test gate (`npm test` in every task directory runs the full
+mocha/L0 assertion suite under Node 24 only). Every task also ships a `Node20_1` fallback
+handler for agents that haven't upgraded their runner yet, and each task's CI leg includes a
+load-only smoke step (compiled `src/index.js` run under Node 20 with no inputs) proving the
+module graph parses/loads there — but that step never exercises real command, credential, or
+verification logic. This is an intentional scope decision (#720), not a gap to fill by
+duplicating the full suite under Node 20: doing so would roughly double CI time per task for a
+runtime that's already EOL (April 2026).
+
 ### TerraformTaskV5
 
 ```bash
