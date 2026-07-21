@@ -286,6 +286,7 @@
         "ArticleInfoSaved": "Article information saved to %s",
         "ArticleInfoSaveFailed": "Could not save article information to the KB JSON file: %s. A later run may fail to resolve this article and create a duplicate.",
         "MultipleKbJsonFilesFound": "Warning: multiple KB article JSON files found (%s); using the most recently modified.",
+        "DryRunGetArticleFailed": "Warning: could not fetch the existing article's current state (not a plain not-found): %s",
         "FoundKbJsonFile": "Found KB article JSON file: %s",
         "ImageNotFound": "Image not found, leaving src unchanged: '%s' (resolved to '%s')",
         "ImageAttached": "Attached image '%s' -> sys_attachment.do?sys_id=%s",

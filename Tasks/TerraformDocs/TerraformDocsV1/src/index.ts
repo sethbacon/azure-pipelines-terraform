@@ -44,9 +44,16 @@ async function run() {
 
         // ignoreReturnCode lets us surface a precise message. terraform-docs exits
         // non-zero on a genuine error and, with --output-check, when the target file
-        // is out of date — both should fail the task.
+        // is out of date -- both should fail the task, but they are surfaced with
+        // DIFFERENT messages (#726) so a build-summary-only view (e.g. a
+        // notification, or the pipeline's Result column) can tell 'the docs are
+        // stale, regenerate them' apart from 'terraform-docs crashed' without
+        // needing the interleaved raw tool stdout/stderr above in the log.
         const exitCode = await toolRunner.execAsync(<IExecOptions>{ ignoreReturnCode: true });
         if (exitCode !== 0) {
+            if (config.outputCheck) {
+                throw new Error(tasks.loc('TerraformDocsOutdated', config.outputFile || config.modulePath));
+            }
             throw new Error(tasks.loc('TerraformDocsFailed', exitCode));
         }
 

@@ -14,6 +14,7 @@ import { emitArticleOutput, findKbArticleJson, readFrontMatterKey, sanitizeForSi
 import { DryRunPlan, PlannedAction, formatDryRunReport } from './dry-run';
 import { processArticleImages } from './attachments';
 import { updateArticleBody } from './servicenow-client';
+import { ServiceNowHttpError } from './servicenow-http';
 
 interface ResolvedAuth {
     instance: string;
@@ -271,9 +272,20 @@ async function run() {
                 try {
                     const existing = await getArticle(instance, headers, articleId);
                     currentWorkflowState = existing.workflow_state;
-                } catch {
-                    // Non-fatal in dry-run: report what we can without the current state.
+                } catch (error) {
+                    // A genuine 404 (the article truly doesn't exist under this ID) is
+                    // non-fatal in dry-run: report what we can without the current
+                    // state. Any OTHER failure (401/403 auth, 5xx, transport) is a real
+                    // connectivity/misconfiguration problem masquerading as "unknown" --
+                    // surface it loudly (#727) instead of silently normalizing every
+                    // failure the same way, since dryRun is explicitly documented as a
+                    // way to catch misconfiguration early.
                     currentWorkflowState = undefined;
+                    const is404 = error instanceof ServiceNowHttpError && error.status === 404;
+                    if (!is404) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        tasks.warning(tasks.loc('DryRunGetArticleFailed', message));
+                    }
                 }
             } else if (plannedAction === 'create') {
                 // Surface the same required-field problems a real create would hit,
