@@ -466,6 +466,19 @@ Verified tooling snapshot (periodically re-verified rather than tracked to an ex
 
 CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). Node 20 is EOL as of April 2026.
 
+**Node 20 is load-only, not a behavioral gate (#720):** every task ships a `Node20_1` fallback
+handler (see above), and each task's CI leg has a "Set up Node 20 for Node20_1 handler smoke
+test" step that runs the already-compiled `src/index.js` under Node 20 with no ADO inputs
+supplied — this proves the compiled module graph parses and loads under Node 20 (a real,
+useful check: a Node-20-incompatible dependency or syntax construct would fail it), but the
+task's own try/catch converts the resulting "input required" error into a caught failure
+before any real command, credential, or verification logic executes. The full mocha/L0
+assertion suite only ever runs under Node 24 — **Node 24 is the sole behavioral gate**;
+Node 20 is deliberately load-only. This is an intentional scope decision (not an oversight):
+running the full test suite twice per task would roughly double CI time for every task, and
+Node 20 is already EOL, so the fallback handler exists purely for agents that haven't yet
+upgraded their runner, not as a second fully-verified execution path.
+
 ## Supported Providers
 
 | Provider  | Handler class                    | Auth method                                                                                   |
