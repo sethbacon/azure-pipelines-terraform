@@ -37,6 +37,9 @@ import './RunAzLoginL0';
 // Direct unit tests for handleProviderWIF's config content, fingerprint, and
 // secret masking / cleanup-ordering guarantees (#680).
 import './OciWifHandleProviderL0';
+// Direct unit tests for handleProvider's classic (non-WIF, API-key) private
+// key masking guarantees (#723).
+import './OciApiKeyPrivateKeyMaskingL0';
 // Direct unit tests for cross-cloud state backend detection.
 import './BackendDetectionTests/BackendDetectionL0';
 // Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.
