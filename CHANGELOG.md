@@ -4,6 +4,41 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.11.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.6...v1.11.0) (2026-07-21)
+
+
+### Features
+
+* **v5:** real-terraform smoke harness -- Workstream 1 of [#719](https://github.com/sethbacon/azure-pipelines-terraform/issues/719) ([#751](https://github.com/sethbacon/azure-pipelines-terraform/issues/751)) ([812684b](https://github.com/sethbacon/azure-pipelines-terraform/commit/812684b7ddf80188a9370cd715a794de36d36daf))
+
+
+### Bug Fixes
+
+* accept OpenTofu's release-branch signing identity for 1.12.x patch releases ([#738](https://github.com/sethbacon/azure-pipelines-terraform/issues/738)) ([d6a0c31](https://github.com/sethbacon/azure-pipelines-terraform/commit/d6a0c31d0f63a123dab37250c60407f5499575c4)), closes [#714](https://github.com/sethbacon/azure-pipelines-terraform/issues/714)
+* **ci:** dedup scheduled-scan issues instead of filing a new one every week ([#747](https://github.com/sethbacon/azure-pipelines-terraform/issues/747)) ([81813e5](https://github.com/sethbacon/azure-pipelines-terraform/commit/81813e5ba0f66f7ec6f2524eb1ba81460da4c190)), closes [#724](https://github.com/sethbacon/azure-pipelines-terraform/issues/724)
+* **deps:** update tar to patch critical PAX path-confusion/DoS CVEs ([#744](https://github.com/sethbacon/azure-pipelines-terraform/issues/744)) ([24630bd](https://github.com/sethbacon/azure-pipelines-terraform/commit/24630bd19c1b66d726a8b8d72c4144fe17f92ed5))
+* destroy+publishPlanSummary against real terraform, and surface apply's -json diagnostic on failure ([#749](https://github.com/sethbacon/azure-pipelines-terraform/issues/749), [#750](https://github.com/sethbacon/azure-pipelines-terraform/issues/750)) ([#752](https://github.com/sethbacon/azure-pipelines-terraform/issues/752)) ([a2d4a27](https://github.com/sethbacon/azure-pipelines-terraform/commit/a2d4a27ab448e0fa6cf36af49d36e40487216311))
+* distinguish stale-docs failure from crash, and warn on real getArticle errors in dry-run ([#743](https://github.com/sethbacon/azure-pipelines-terraform/issues/743)) ([8877d1c](https://github.com/sethbacon/azure-pipelines-terraform/commit/8877d1c263f60bcbc24365f5a053628f147c99c6)), closes [#726](https://github.com/sethbacon/azure-pipelines-terraform/issues/726) [#727](https://github.com/sethbacon/azure-pipelines-terraform/issues/727)
+* **installer:** stream SHA256 hashing + reject private/link-local hosts by default ([#745](https://github.com/sethbacon/azure-pipelines-terraform/issues/745)) ([8350860](https://github.com/sethbacon/azure-pipelines-terraform/commit/8350860a512ad0c358bfab70604389f7e89ade01))
+
+
+### Documentation
+
+* clarify Node 24 is the sole behavioral test gate, Node 20 is load-only ([#720](https://github.com/sethbacon/azure-pipelines-terraform/issues/720)) ([#748](https://github.com/sethbacon/azure-pipelines-terraform/issues/748)) ([17a668e](https://github.com/sethbacon/azure-pipelines-terraform/commit/17a668e99fb2b736a9086ca8c73e00544c3d8311))
+* correct stale retry-family task count and Key Dependencies HTML sanitizer entries ([#739](https://github.com/sethbacon/azure-pipelines-terraform/issues/739)) ([124f5b3](https://github.com/sethbacon/azure-pipelines-terraform/commit/124f5b30686aea7e6600fc87f1fcc57a609f8d83)), closes [#725](https://github.com/sethbacon/azure-pipelines-terraform/issues/725) [#733](https://github.com/sethbacon/azure-pipelines-terraform/issues/733)
+* move smoke-fuzz plan to docs/initiatives, link from README ([#734](https://github.com/sethbacon/azure-pipelines-terraform/issues/734)) ([0c1480c](https://github.com/sethbacon/azure-pipelines-terraform/commit/0c1480c7394cdfdec0040e65306df06eea19ca61))
+
+
+### Refactor
+
+* resolve DigestMeta name collision, gate HTTP hardening constants, dedupe az login exec ([#740](https://github.com/sethbacon/azure-pipelines-terraform/issues/740)) ([95ded79](https://github.com/sethbacon/azure-pipelines-terraform/commit/95ded7940ac9f3b109eb66ab0286405b5b325b22)), closes [#721](https://github.com/sethbacon/azure-pipelines-terraform/issues/721) [#722](https://github.com/sethbacon/azure-pipelines-terraform/issues/722) [#732](https://github.com/sethbacon/azure-pipelines-terraform/issues/732)
+
+
+### Security
+
+* refresh brace-expansion to clear a new HIGH-severity DoS advisory ([#742](https://github.com/sethbacon/azure-pipelines-terraform/issues/742)) ([e2df7e1](https://github.com/sethbacon/azure-pipelines-terraform/commit/e2df7e1796ddc67f68656debc767c3b84f3ccc61))
+* remediate 5 mediums from the 2026-07-20 blind audit ([#735](https://github.com/sethbacon/azure-pipelines-terraform/issues/735)) ([e5651b0](https://github.com/sethbacon/azure-pipelines-terraform/commit/e5651b0c040e1a47b756f7ef40176a0e5785e1e6))
+
 ## [1.10.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.10.5...v1.10.6) (2026-07-20)
 
 
