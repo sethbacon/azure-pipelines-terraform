@@ -75,6 +75,17 @@ describe('TerraformTaskV5 Smoke Test Suite (real terraform, #719)', function () 
         assert(tr.stdOutContained('Regression613StderrL0 should have succeeded.'), 'expected the L0 driver to report success');
       }, tr);
     });
+
+    it('#749 destroy + publishPlanSummary: a real destroy-plan digest is built and the real destroy still succeeds', async () => {
+      const tp = path.join(__dirname, 'SmokeTests', 'Regression749DestroyPlanSummary.js');
+      const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+      await tr.runAsync();
+
+      runValidations(() => {
+        assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+        assert(tr.stdOutContained('Regression749DestroyPlanSummaryL0 should have succeeded.'), 'expected the L0 driver to report success');
+      }, tr);
+    });
   });
 
   describe('Baseline command matrix', () => {

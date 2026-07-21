@@ -65,6 +65,7 @@
   "loc.messages.TerraformToolNotFound": "Could not locate the terraform/tofu binary. Run PipelineTerraformInstaller in the same job as this task, or ensure the binary is installed on the agent's PATH.",
   "loc.messages.TerraformApplyFailed": "Terraform apply failed with exit code %s",
   "loc.messages.TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
+  "loc.messages.TerraformDestroyPlanForSummaryFailed": "Could not build the destroy plan summary: 'terraform plan -destroy' failed with exit code %s. The real destroy was not attempted.",
   "loc.messages.OidcRequestUriHostNotAllowed": "SYSTEM_OIDCREQUESTURI host '%s' is not a recognized Azure DevOps host (expected dev.azure.com, *.dev.azure.com, *.visualstudio.com, or the host of System.CollectionUri); refusing to send the job access token to it.",
   "loc.messages.GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
   "loc.messages.OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",

@@ -4,10 +4,13 @@ import path = require('path');
 import os = require('os');
 import crypto = require('crypto');
 
-// destroy()'s structured-summary path adds `-out=<planfile>` to the destroy
-// command and later runs `terraform show -json <planfile>` on the SAME path
-// (mirroring plan()'s AzurePlanSuccessPublishSummary.ts), so the mock exec
-// answers below must know that path ahead of time. Pin crypto.randomUUID() to
+// destroy()'s structured-summary path (#749) runs a SEPARATE, real
+// `terraform plan -destroy -out=<planfile>` BEFORE the real (auto-approved,
+// -out-free) destroy, then runs `terraform show -json <planfile>` on that
+// same path to build the digest -- real `terraform destroy` (a convenience
+// alias for `apply -destroy`) does not accept `-out=` at all, unlike
+// plan()'s single-command `-out=` injection (AzurePlanSuccessPublishSummary.ts).
+// The mock exec answers below must know that path ahead of time. Pin crypto.randomUUID() to
 // a fixed value for EVERY call (not just the first) -- call-order-independent,
 // because azure-pipelines-task-lib >=5.276 also calls crypto.randomUUID()
 // internally (Vault.genKey(), constructed before task code runs) against this
@@ -70,7 +73,11 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "code": 0,
             "stdout": "provider azurerm"
         },
-        [`terraform destroy -auto-approve -out=${planFilePath}`]: {
+        [`terraform plan -destroy -out=${planFilePath}`]: {
+            "code": 0,
+            "stdout": "Plan: 0 to add, 0 to change, 1 to destroy."
+        },
+        "terraform destroy -auto-approve": {
             "code": 0,
             "stdout": "Destroy complete! Resources: 1 destroyed."
         },
