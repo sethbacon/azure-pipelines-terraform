@@ -30,11 +30,12 @@ process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_SERVICEPRINCIPALID'] = 'DummyServic
 process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_SERVICEPRINCIPALKEY'] = 'DummyServicePrincipalKey';
 process.env['ENDPOINT_AUTH_PARAMETER_AzureRM_TENANTID'] = 'DummyTenantId';
 
-// Terraform writes -out during the PLANNING phase, before the auto-approved
-// apply phase runs -- so the plan file exists even when the apply portion of
-// destroy fails partway through. The mocked show -json below simulates that:
-// the plan file's content is available for the digest despite the destroy
-// command itself exiting non-zero.
+// #749: the destroy-plan digest is now built by a SEPARATE, real
+// `terraform plan -destroy -out=<file>` BEFORE the real (auto-approved,
+// -out-free) destroy runs -- real `terraform destroy` (a convenience alias
+// for `apply -destroy`) does not accept `-out=` at all. So the plan file
+// exists (and the digest can be attached) even when the real destroy that
+// follows fails outright.
 const destroyPlanJson = JSON.stringify({
     format_version: '1.2',
     terraform_version: '1.9.5',
@@ -69,7 +70,11 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
             "code": 0,
             "stdout": "provider azurerm"
         },
-        [`terraform destroy -auto-approve -out=${planFilePath}`]: {
+        [`terraform plan -destroy -out=${planFilePath}`]: {
+            "code": 0,
+            "stdout": "Plan: 0 to add, 0 to change, 1 to destroy."
+        },
+        "terraform destroy -auto-approve": {
             "code": 1,
             "stdout": "Error: A resource could not be destroyed."
         },

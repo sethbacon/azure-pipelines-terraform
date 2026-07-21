@@ -8,6 +8,7 @@ import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
 import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
+import { scrubSecrets } from './results/secret-scrub';
 import { EnvironmentVariableHelper } from './environment-variables';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
@@ -1141,8 +1142,18 @@ export abstract class BaseTerraformCommandHandler {
             // the -json NDJSON stdout stream the digest consumes. Fold the captured
             // stderr into the failure so the cause is never swallowed (the incident
             // showed only a bare "exit code 1" with an empty log).
-            throw new Error(stderr
-                ? `${tasks.loc("TerraformApplyFailed", commandOutput.code)}\n${stderr}`
+            //
+            // #750: under -json, a real terraform CLI-level failure (e.g. an
+            // unreadable saved plan file) is instead reported as a `diagnostic`
+            // event on STDOUT, not stderr -- the stderr-fold above alone never
+            // sees it, reproducing the exact "bare exit code, no cause" problem
+            // #613 fixed, just via the one path that fix didn't cover. Fold any
+            // error-severity diagnostic summaries from the NDJSON alongside
+            // stderr.
+            const errorDiagnostics = this.extractApplyErrorDiagnostics(commandOutput.stdout);
+            const detailLines = [...errorDiagnostics, ...(stderr ? [stderr] : [])];
+            throw new Error(detailLines.length > 0
+                ? `${tasks.loc("TerraformApplyFailed", commandOutput.code)}\n${detailLines.join('\n')}`
                 : tasks.loc("TerraformApplyFailed", commandOutput.code));
         }
         // A successful apply may still write warnings to stderr; pass them through
@@ -1151,6 +1162,45 @@ export abstract class BaseTerraformCommandHandler {
             tasks.debug(stderr);
         }
         return commandOutput.code;
+    }
+
+    /**
+     * Extracts error-severity diagnostic summaries from apply's `-json` NDJSON
+     * stdout (#750). Mirrors apply-digest.ts's own NDJSON line-parsing and
+     * `diagnostic` event shape (`{diagnostic: {severity, summary, ...}}`), kept
+     * intentionally lighter-weight here: this is a one-shot extraction for an
+     * error message, not the full digest, so no caps or detail-toggle plumbing.
+     * Malformed lines are skipped silently, same as the digest builder's own
+     * tolerance for a partial/truncated NDJSON stream.
+     *
+     * Each summary is scrubbed via scrubSecrets() with the SAME knownSecrets
+     * source (EnvironmentVariableHelper.getTrackedSecretValues()) the production
+     * digest call site uses -- this text reaches the thrown error unconditionally
+     * (unlike the digest attachment's own includeDiagnostics opt-in gate, #613's
+     * stderr-fold precedent is likewise unconditional), so it must carry the same
+     * redaction guarantee the digest's `summary` field always gets.
+     */
+    private extractApplyErrorDiagnostics(ndjson: string): string[] {
+        const knownSecrets = EnvironmentVariableHelper.getTrackedSecretValues();
+        const summaries: string[] = [];
+        for (const rawLine of ndjson.split('\n')) {
+            const line = rawLine.replace(/\r$/, '').trim();
+            if (!line) continue;
+            let event: unknown;
+            try {
+                event = JSON.parse(line);
+            } catch {
+                continue;
+            }
+            if (!event || typeof event !== 'object') continue;
+            const diagnostic = (event as Record<string, unknown>).diagnostic;
+            if (!diagnostic || typeof diagnostic !== 'object') continue;
+            const d = diagnostic as Record<string, unknown>;
+            if (d.severity === 'error' && typeof d.summary === 'string' && d.summary) {
+                summaries.push(scrubSecrets(d.summary, knownSecrets));
+            }
+        }
+        return summaries;
     }
 
     /**
@@ -1273,19 +1323,36 @@ export abstract class BaseTerraformCommandHandler {
         // neither publish input set has a byte-for-byte unchanged command line
         // (backward-compat, design §12.3 applied to destroy).
         //
-        // #612 (sibling): destroy DOES forward commandOptions -- applyAutoApprove()
-        // above emits them via `terraformTool.line(commandOptions)` -- so the same
-        // last-`-out=`-wins collision applies here. Honor a user-supplied `-out=`
-        // identically to plan(): reuse it for the show -json digest and inject no
-        // second `-out=`.
+        // #749: unlike plan(), destroy() cannot inject its OWN `-out=` on the
+        // real destroy command -- real `terraform destroy` is a convenience
+        // alias for `terraform apply -destroy`, and apply does not accept
+        // `-out=` at all (a plan-only concept: -out SAVES a new plan file;
+        // apply/destroy CONSUME one or run interactively, neither ever produces
+        // one). A prior fix injected `-out=` here anyway, which real terraform
+        // rejected outright ("flag provided but not defined: -out") every time
+        // destroy + publishPlanSummary were used together.
+        //
+        // #612 (sibling): honor a user-supplied `-out=` in commandOptions
+        // identically to plan() -- reuse it for the show -json digest and run
+        // no separate plan of our own. (Real terraform destroy would itself
+        // reject a user's own `-out=` the same way, so this only matters if an
+        // operator is relying on destroy silently ignoring an `-out=` they
+        // also pass to other commands via a shared commandOptions value.)
         let planFilePath: string | undefined;
         if (publishPlanSummary) {
             const userOutPath = extractOutFlagPath(this.getCommandOptions());
             if (userOutPath) {
                 planFilePath = userOutPath;
             } else {
+                // Run a SEPARATE, real `terraform plan -destroy -out=<file>` to
+                // produce a genuine destroy-plan file for the digest -- the same
+                // shape of extra, independent terraform invocation
+                // publishStateSummaryAttachment() already runs for show(). Runs
+                // BEFORE the real destroy below, using the same leading args
+                // (var files/target resources/secure var file) so the preview
+                // matches what destroy is about to do.
                 planFilePath = path.join(tempDir, `terraform-destroy-${uuidV4()}.tfplan`);
-                terraformTool.arg(`-out=${planFilePath}`);
+                await this.runDestroyPlanForSummary(planFilePath, destroyCommand.workingDirectory);
             }
         }
 
@@ -1295,13 +1362,12 @@ export abstract class BaseTerraformCommandHandler {
             });
         }
 
-        // ignoreReturnCode is needed ONLY so a FAILED destroy's already-written
-        // plan file (terraform writes -out during planning, before the
-        // auto-approved apply phase runs) is still available to build+attach the
-        // structured summary below -- mirrors apply()'s identical
-        // ignoreReturnCode/manual-throw pattern for the same reason (design D2).
-        // Destroy still auto-approves and still fails the task on a non-zero exit
-        // exactly as the non-structured path above.
+        // ignoreReturnCode: a FAILED destroy should still get its
+        // pre-destroy plan digest attached below (useful context for the
+        // failure) -- mirrors apply()'s identical ignoreReturnCode/manual-throw
+        // pattern for the same reason (design D2). Destroy still auto-approves
+        // and still fails the task on a non-zero exit exactly as the
+        // non-structured path above.
         const result = await terraformTool.execAsync(<IExecOptions>{
             cwd: destroyCommand.workingDirectory,
             ignoreReturnCode: true,
@@ -1313,6 +1379,41 @@ export abstract class BaseTerraformCommandHandler {
             throw new Error(tasks.loc("TerraformDestroyFailed", result));
         }
         return result;
+    }
+
+    /**
+     * Runs a SEPARATE, real `terraform plan -destroy -out=<planFilePath>` to
+     * produce a genuine destroy-plan file for destroy()'s publishPlanSummary
+     * digest (#749). Real `terraform destroy` (a convenience alias for `apply
+     * -destroy`) does not accept `-out=` at all, unlike plan()'s single-command
+     * `-out=` injection -- destroy's structured summary needs this independent
+     * plan invocation before the real (auto-approved, `-out`-free) destroy runs.
+     * Uses the same leading args (var files/target resources/secure var file)
+     * destroy() itself applies, so the preview matches what destroy is about to
+     * do; deliberately does NOT forward destroy's own commandOptions (which may
+     * carry destroy-specific flags plan doesn't accept) beyond that.
+     *
+     * Fails loudly (throws) rather than silently degrading like
+     * publishPlanSummaryAttachment's own `show -json` failures do: a failure
+     * here means the working directory itself can't produce a valid plan (bad
+     * HCL, backend issue), and proceeding to a real destroy blind would be
+     * unsafe.
+     */
+    private async runDestroyPlanForSummary(planFilePath: string, workingDirectory: string): Promise<void> {
+        const planCommand = this.createBaseCommand("plan", `-destroy -out=${planFilePath}`);
+        const planTool = this.terraformToolHandler.createToolRunner(planCommand);
+        this.applyTokens(planTool, await this.buildLeadingArgs({
+            varFiles: true, targetResources: true, secureVarFile: true,
+        }));
+        this.appendTerraformVariables(planTool);
+
+        const result = await planTool.execAsync(<IExecOptions>{
+            cwd: workingDirectory,
+            ignoreReturnCode: true,
+        });
+        if (result !== 0 && result !== 2) {
+            throw new Error(tasks.loc("TerraformDestroyPlanForSummaryFailed", result));
+        }
     }
 
     /**

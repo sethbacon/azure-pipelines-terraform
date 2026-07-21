@@ -6,14 +6,15 @@ import { prepareScratchFixture, setFakeAzureServiceConnectionEnv } from './smoke
  * #613 stderr-surfacing (real terraform, no mocks): apply() against a
  * nonexistent saved-plan file, with publishApplyResults set (the structured
  * path runs with `silent:true`, so ToolRunner's own stderr echo is
- * suppressed). Asserts the task fails closed (never silently succeeds).
+ * suppressed). Asserts the task fails closed (never silently succeeds) AND
+ * that the real terraform diagnostic text is present in the thrown error.
  *
  * Building this harness found that under -json (publishApplyResults),
  * terraform's own error for this exact case is an NDJSON diagnostic on
- * STDOUT, not stderr -- so apply()'s stderr-fold (#613's original fix) does
- * not surface it, and the thrown message is currently just the bare loc
- * string. Filed as #750; see the L0 driver's comment for the exact assertion
- * this test currently makes pending that fix.
+ * STDOUT, not stderr -- so apply()'s original stderr-fold (#613's fix) did
+ * not surface it, and the thrown message was just the bare loc string with
+ * no cause. Filed and fixed as #750: error-severity diagnostic summaries
+ * from the NDJSON stdout are now folded into the failure alongside stderr.
  */
 const scratchDir = prepareScratchFixture();
 

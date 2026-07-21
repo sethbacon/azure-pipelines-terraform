@@ -6,11 +6,13 @@ import fs = require('fs');
 /**
  * Structured destroy-summary attach path (Phase 5 §5.5): destroy REUSES
  * PlanDigest -- a destroy plan is a plan whose resource_changes are all
- * deletes. publishPlanSummary set on `destroy` must add `-out=<planfile>` to
- * the auto-approved destroy invocation, run `terraform show -json` on it, and
- * attach a redacted `terraform-plan-summary` digest with `planMode: "destroy"`
- * so the tab can label the view. Destroy still auto-approves and the exit
- * code (0) is unaffected by publishing the summary.
+ * deletes. publishPlanSummary set on `destroy` runs a SEPARATE, real
+ * `terraform plan -destroy -out=<planfile>` (#749 -- real destroy itself
+ * does not accept `-out=`), runs `terraform show -json` on that plan file,
+ * and attaches a redacted `terraform-plan-summary` digest with
+ * `planMode: "destroy"` so the tab can label the view. Destroy still
+ * auto-approves and the exit code (0) is unaffected by publishing the
+ * summary.
  */
 async function run(): Promise<void> {
     let response: number | undefined;

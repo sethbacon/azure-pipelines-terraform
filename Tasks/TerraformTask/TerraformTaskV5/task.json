@@ -15,7 +15,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "284",
+        "Minor": "285",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -1037,6 +1037,7 @@
         "TerraformPlanFailed": "Terraform plan failed with exit code %s",
         "TerraformApplyFailed": "Terraform apply failed with exit code %s",
         "TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
+        "TerraformDestroyPlanForSummaryFailed": "Could not build the destroy plan summary: 'terraform plan -destroy' failed with exit code %s. The real destroy was not attempted.",
         "PlanJsonFlagNotSupportedWithPublishPlanResults": "'commandOptions' contains a -json flag, which is not supported together with 'publishPlanResults': terraform plan -json output carries real sensitive values in cleartext (masked only by a parallel after_sensitive flag meant for a redacting consumer to apply), unlike the human-readable format's own '(sensitive value)' redaction that 'publishPlanResults' relies on being safe to echo to the console. Remove -json from 'commandOptions', or use 'publishPlanSummary' instead for a redacted, structured JSON summary.",
         "OidcRequestUriHostNotAllowed": "SYSTEM_OIDCREQUESTURI host '%s' is not a recognized Azure DevOps host (expected dev.azure.com, *.dev.azure.com, *.visualstudio.com, or the host of System.CollectionUri); refusing to send the job access token to it.",
         "GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
