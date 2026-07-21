@@ -97,6 +97,11 @@ function taskDirsFromDependabot() {
 // run at repo root), so keying off `working-directory: Tasks/...` naturally
 // excludes them (and any future non-task job) exactly like the `cd Tasks/...`
 // key excludes release.yml's non-task 'Generate SBOM for tab' step above.
+// A task dir may legitimately have MORE than one job pointing at it (e.g.
+// TerraformTaskV5's real-terraform smoke-test job, `build-and-test-v5-smoke`,
+// alongside its main `build-and-test-v5` job, #719) -- mirrors the extension
+// manifest's own "two contribution ids, one task dir" dedup above, so compare
+// the deduplicated set of dirs, not the raw occurrence count.
 function taskDirsFromUnitTestJobs() {
     const text = readText('.github/workflows/unit-test.yml');
     const re = /working-directory:\s*(Tasks\/\S+)/g;
@@ -105,7 +110,7 @@ function taskDirsFromUnitTestJobs() {
     while ((m = re.exec(text))) {
         dirs.push(m[1]);
     }
-    return dirs.sort();
+    return [...new Set(dirs)].sort();
 }
 
 // .github/workflows/release.yml: the sbom-and-sign job's 'Generate SBOM for
