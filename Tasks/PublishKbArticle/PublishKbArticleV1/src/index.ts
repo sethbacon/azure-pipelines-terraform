@@ -50,10 +50,12 @@ async function resolveAuth(): Promise<ResolvedAuth> {
             authType = 'basic';
             username = tasks.getEndpointAuthorizationParameter(serviceConnection, 'username', false) || undefined;
             password = tasks.getEndpointAuthorizationParameter(serviceConnection, 'password', false) || undefined;
+            if (password) tasks.setSecret(password);
         } else {
             authType = 'oauth';
             clientId = tasks.getEndpointAuthorizationParameter(serviceConnection, 'clientId', false) || undefined;
             clientSecret = tasks.getEndpointAuthorizationParameter(serviceConnection, 'clientSecret', false) || undefined;
+            if (clientSecret) tasks.setSecret(clientSecret);
         }
     }
 
@@ -64,6 +66,13 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     clientSecret = tasks.getInput('clientSecret', false) || clientSecret;
     username = tasks.getInput('username', false) || username;
     password = tasks.getInput('password', false) || password;
+    // Mask clientSecret/password at the point of read (#771): getOAuthToken()/
+    // basicAuthHeader() below also setSecret them, but only after authType
+    // branching (and, for basic, header construction) -- masking here closes
+    // the window between read and that deferred call where an early
+    // throw/log could otherwise leak the plain value unmasked.
+    if (clientSecret) tasks.setSecret(clientSecret);
+    if (password) tasks.setSecret(password);
 
     if (!instance) {
         throw new Error(tasks.loc('InstanceRequired'));
