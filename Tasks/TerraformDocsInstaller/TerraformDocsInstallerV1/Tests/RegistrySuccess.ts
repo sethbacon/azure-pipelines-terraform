@@ -28,12 +28,16 @@ tr.registerMock('undici', { ProxyAgent: class { } });
 
 tr.registerMock('fs', {
   chmodSync: () => { },
-  readFileSync: () => Buffer.from('fake-archive')
+  createReadStream: () => require('stream').Readable.from(Buffer.from('fake-archive'))
 });
 
 tr.registerMock('crypto', {
   randomUUID: () => 'test-uuid',
-  createHash: () => ({ update: () => ({ digest: () => EXPECTED_SHA256 }) })
+  createHash: () => {
+    const hash: any = new (require('stream').Writable)({ write(_c: any, _e: any, cb: any) { cb(); } });
+    hash.digest = () => EXPECTED_SHA256;
+    return hash;
+  }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
