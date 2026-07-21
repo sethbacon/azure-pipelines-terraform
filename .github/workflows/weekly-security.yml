@@ -61,7 +61,14 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const title = `OSV-Scanner: vulnerabilities found — ${new Date().toISOString().slice(0,10)}`;
+            // #724: search for an already-open issue for this same recurring
+            // finding before filing a new one -- otherwise an unremediated
+            // vulnerability gets a brand-new issue every Monday, burying any
+            // genuinely new finding among duplicates. Matched on a stable
+            // title PREFIX (the full title also embeds today's date) plus
+            // both labels, so only a prior OSV-Scanner issue is ever matched.
+            const titlePrefix = 'OSV-Scanner: vulnerabilities found';
+            const title = `${titlePrefix} — ${new Date().toISOString().slice(0,10)}`;
             const body = [
               '## OSV-Scanner Vulnerability Report',
               '',
@@ -70,13 +77,31 @@ jobs:
               'OSV-Scanner found known vulnerabilities in npm dependencies. Please review the run summary (or the workflow logs) and update affected packages.',
             ].join('\n');
 
-            await github.rest.issues.create({
+            const openIssues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body,
-              labels: ['security', 'dependencies'],
+              state: 'open',
+              labels: 'security,dependencies',
+              per_page: 100,
             });
+            const existing = openIssues.data.find((issue) => issue.title.startsWith(titlePrefix));
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Still failing as of ${new Date().toISOString().slice(0,10)}:\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['security', 'dependencies'],
+              });
+            }
 
   # ── Stale Dependabot PRs ──────────────────────────────
   stale-dependabot:
@@ -360,7 +385,12 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const title = `Scheduled build failed — ${new Date().toISOString().slice(0,10)}`;
+            // #724: same dedup-before-create as the OSV-scan step above -- a
+            // persistent scheduled-build failure would otherwise get a new
+            // issue every Monday instead of one issue tracking the ongoing
+            // failure.
+            const titlePrefix = 'Scheduled build failed';
+            const title = `${titlePrefix} — ${new Date().toISOString().slice(0,10)}`;
             const body = [
               '## Scheduled Build Failure',
               '',
@@ -369,10 +399,28 @@ jobs:
               'The weekly security scan failed. Please investigate and fix before the next release.',
             ].join('\n');
 
-            await github.rest.issues.create({
+            const openIssues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body,
-              labels: ['bug', 'ci'],
+              state: 'open',
+              labels: 'bug,ci',
+              per_page: 100,
             });
+            const existing = openIssues.data.find((issue) => issue.title.startsWith(titlePrefix));
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Still failing as of ${new Date().toISOString().slice(0,10)}:\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['bug', 'ci'],
+              });
+            }
