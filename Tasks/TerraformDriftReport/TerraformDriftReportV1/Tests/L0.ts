@@ -13,6 +13,8 @@ import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy 
 
 // Direct unit tests for the fail-secure rejectUnauthorized default.
 import './RejectUnauthorizedDefaultL0';
+// Direct unit tests confirming the https-client destination-host is unrestricted by design (#730).
+import './HttpsClientHostHandlingByDesignL0';
 // Direct unit tests for the fail-secure failOnCallbackError default.
 import './FailOnCallbackErrorDefaultL0';
 // Direct unit tests for the secure-temp writeSecretFile/replaceSecretFile copy (#607).

@@ -33,6 +33,7 @@
   "loc.messages.ArticleInfoSaved": "Article information saved to %s",
   "loc.messages.ArticleInfoSaveFailed": "Could not save article information to the KB JSON file: %s. A later run may fail to resolve this article and create a duplicate.",
   "loc.messages.MultipleKbJsonFilesFound": "Warning: multiple KB article JSON files found (%s); using the most recently modified.",
+  "loc.messages.DryRunGetArticleFailed": "Warning: could not fetch the existing article's current state (not a plain not-found): %s",
   "loc.messages.FoundKbJsonFile": "Found KB article JSON file: %s",
   "loc.messages.ImageNotFound": "Image not found, leaving src unchanged: '%s' (resolved to '%s')",
   "loc.messages.ImageTooLarge": "Image '%s' is %s bytes, exceeding the %s-byte attachment size limit; refusing to read it into memory.",
