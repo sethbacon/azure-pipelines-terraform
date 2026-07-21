@@ -395,6 +395,31 @@ describe('TerraformDriftReport Test Suite', function () {
         }, tr);
     });
 
+    it('DriftReportScrubBeforeUnlink — cleanupSummaryFile scrubs (zeroes) the summary file before unlinking it (#423)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportScrubBeforeUnlink.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.stdout.includes('SCRUB_BEFORE_UNLINK_CHECK zeroed=true markerAbsent=true'),
+                `summary file must be scrubbed (zeroed, marker gone) before unlink; stdout: ${tr.stdout}`,
+            );
+        }, tr);
+    });
+
+    it('DriftReportCleanupFailureWarns — a cleanup failure on the summary file surfaces as a warning, not just debug (#423)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCleanupFailureWarns.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the drift report itself should still succeed even though cleanup failed');
+            const summaryFile = path.join(os.tmpdir(), 'tsm-drift-report-fixed-driftreport-cleanupfail-uuid.json');
+            assert(
+                tr.warningIssues.some((w) => w.includes(`Failed to clean up summary file ${summaryFile}`)),
+                `cleanup failure must be surfaced as a warning; warnings: ${tr.warningIssues}`,
+            );
+        }, tr);
+    });
+
     it('DriftReportFailOnDrift — drift + failOnDrift=true fails the task', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportFailOnDrift.js'));
         await tr.runAsync();
@@ -403,6 +428,7 @@ describe('TerraformDriftReport Test Suite', function () {
             assert(tr.errorIssues.length > 0, 'should have an error issue');
         }, tr);
     });
+
 
     it('DriftReportClean — no-op only is clean and succeeds even with failOnDrift=true', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportClean.js'));

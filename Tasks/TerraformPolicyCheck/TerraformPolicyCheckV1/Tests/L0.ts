@@ -188,6 +188,19 @@ describe('TerraformPolicyCheck Test Suite', function () {
         }, tr);
     });
 
+    it('GitCloneCleanupFailureWarns — a cleanup failure on the clone dir surfaces as a warning, not just debug (#766)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitCloneCleanupFailureWarns.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the policy check itself should still succeed even though cleanup failed');
+            const cloneDir = path.join(os.tmpdir(), 'policy-repo-fixed-cleanupfail-uuid');
+            assert(
+                tr.warningIssues.some((w) => w.includes(`Failed to clean up ${cloneDir}`)),
+                `cleanup failure must be surfaced as a warning; warnings: ${tr.warningIssues}`,
+            );
+        }, tr);
+    });
+
     it('MissingSubdir — an absent subdir in the clone surfaces a clear error', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'MissingSubdir.js'));
         await tr.runAsync();
