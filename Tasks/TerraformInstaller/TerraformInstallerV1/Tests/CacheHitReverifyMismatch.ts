@@ -56,6 +56,15 @@ tr.registerMock('fs', {
         }
         return Buffer.from('cached-exe-content');
     },
+    createReadStream: (p: string) => {
+        let content = 'cached-exe-content';
+        if (p.includes('terraform-reverify')) {
+            content = 'fresh-zip-content';
+        } else if (p.includes('terraform-fresh')) {
+            content = 'fresh-exe-content';
+        }
+        return require('stream').Readable.from(Buffer.from(content));
+    },
     writeFileSync: () => {
         throw new Error('writeFileSync should not be called when re-verification rejects the cached copy');
     },
@@ -64,16 +73,22 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid-1234',
-    createHash: (_algorithm: string) => ({
-        update: (data: any) => ({
-            digest: (_encoding: string) => {
-                const s = data.toString();
-                if (s === 'fresh-zip-content') return ZIP_HASH;
-                if (s === 'fresh-exe-content') return FRESH_EXE_HASH;
-                return CACHED_EXE_HASH;
+    createHash: (_algorithm: string) => {
+        const chunks: Buffer[] = [];
+        const hash: any = new (require('stream').Writable)({
+            write(chunk: any, _enc: any, cb: any) {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+                cb();
             }
-        })
-    })
+        });
+        hash.digest = (_encoding: string) => {
+            const s = Buffer.concat(chunks).toString();
+            if (s === 'fresh-zip-content') return ZIP_HASH;
+            if (s === 'fresh-exe-content') return FRESH_EXE_HASH;
+            return CACHED_EXE_HASH;
+        };
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {

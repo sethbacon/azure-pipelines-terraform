@@ -33,6 +33,7 @@ tr.registerMock('fs', {
         }
         return Buffer.from('cached-exe-content');
     },
+    createReadStream: (_p: string) => require('stream').Readable.from(Buffer.from('cached-exe-content')),
     writeFileSync: () => { throw new Error('writeFileSync should not be called on a cache hit'); },
     chmodSync: () => { },
     mkdirSync: () => undefined,
@@ -41,7 +42,11 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
-    createHash: () => ({ update: () => ({ digest: () => CACHED_EXE_HASH }) })
+    createHash: () => {
+        const hash: any = new (require('stream').Writable)({ write(_c: any, _e: any, cb: any) { cb(); } });
+        hash.digest = () => CACHED_EXE_HASH;
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
