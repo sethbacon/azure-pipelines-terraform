@@ -30,12 +30,16 @@ tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { throw new 
 
 tr.registerMock('fs', {
     chmodSync: () => { },
-    readFileSync: () => Buffer.from('fake-zip')
+    createReadStream: () => require('stream').Readable.from(Buffer.from('fake-zip'))
 });
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
-    createHash: () => ({ update: () => ({ digest: () => EXPECTED_SHA256 }) })
+    createHash: () => {
+        const hash: any = new (require('stream').Writable)({ write(_c: any, _e: any, cb: any) { cb(); } });
+        hash.digest = () => EXPECTED_SHA256;
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {

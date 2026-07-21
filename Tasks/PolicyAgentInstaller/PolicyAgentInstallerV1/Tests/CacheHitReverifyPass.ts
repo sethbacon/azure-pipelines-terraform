@@ -34,6 +34,7 @@ tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { } });
 tr.registerMock('fs', {
     existsSync: (_p: string) => false, // no stored integrity marker
     readFileSync: (_p: string, _enc?: string) => Buffer.from('shared-binary-content'),
+    createReadStream: (_p: string) => require('stream').Readable.from(Buffer.from('shared-binary-content')),
     writeFileSync: (p: string, _data: any, _enc?: string) => {
         console.log('MARKER_WRITTEN:' + p);
     },
@@ -44,13 +45,19 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
-    createHash: () => ({
-        update: (data: any) => ({
-            digest: () => data.toString() === 'shared-binary-content'
-                ? BINARY_HASH
-                : 'ffffffff00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233'
-        })
-    })
+    createHash: () => {
+        const chunks: Buffer[] = [];
+        const hash: any = new (require('stream').Writable)({
+            write(chunk: any, _e: any, cb: any) {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+                cb();
+            }
+        });
+        hash.digest = () => Buffer.concat(chunks).toString() === 'shared-binary-content'
+            ? BINARY_HASH
+            : 'ffffffff00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {

@@ -45,16 +45,16 @@ tr.registerMock('./cosign-verifier', {
 
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
-    readFileSync: (_path: string) => Buffer.from('fake-zip-content')
+    createReadStream: (_path: string) => require('stream').Readable.from(Buffer.from('fake-zip-content'))
 });
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid-1234',
-    createHash: (_algorithm: string) => ({
-        update: (_data: any) => ({
-            digest: (_encoding: string) => EXPECTED_SHA256
-        })
-    })
+    createHash: (_algorithm: string) => {
+        const hash: any = new (require('stream').Writable)({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+        hash.digest = (_encoding: string) => EXPECTED_SHA256;
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
