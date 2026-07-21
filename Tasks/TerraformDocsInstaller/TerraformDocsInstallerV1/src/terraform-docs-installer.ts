@@ -4,10 +4,11 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import crypto = require('crypto');
+import { pipeline } from 'stream/promises';
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { parseAllowedHosts, isRegistryHostAllowed } from './registry-allowlist';
+import { parseAllowedHosts, isRegistryHostAllowed, isPrivateOrLinkLocalHost } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
@@ -72,12 +73,12 @@ export async function downloadTerraformDocs(inputVersion: string): Promise<strin
         // was originally downloaded and verified — see verifyCachedTool — and, when
         // no marker exists (cached before markers, or cached with verification
         // disabled), re-verify against a freshly downloaded, verified release.
-        const markerVerified = verifyCachedTool(cachedToolPath, exePath, `terraform-docs ${version}`);
+        const markerVerified = await verifyCachedTool(cachedToolPath, exePath, `terraform-docs ${version}`);
         if (!markerVerified) {
             await reverifyUnmarkedCacheEntry(downloadSource, version, cachedToolPath, exePath);
         }
     } else if (verified) {
-        writeCacheIntegrityMarker(cachedToolPath, exePath);
+        await writeCacheIntegrityMarker(cachedToolPath, exePath);
     }
 
     tasks.setVariable('terraformDocsLocation', exePath);
@@ -182,6 +183,7 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     // host(s) via registryAllowedHosts. Default (empty) preserves the
     // trust-the-registry behavior.
     const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+    const initialHost = new URL(data.download_url).hostname;
     if (allowedHosts.length > 0) {
         // Fail fast, before any temp-path resolution or network activity, when
         // the registry's own advertised download_url host is already
@@ -190,10 +192,19 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
         // upfront check keeps the common case (registry itself is fine, only
         // a redirect might misbehave) cheap and matches the original
         // synchronous rejection behavior exactly.
-        const initialHost = new URL(data.download_url).hostname;
         if (!isRegistryHostAllowed(initialHost, allowedHosts)) {
             throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", initialHost, allowedHosts.join(', ')));
         }
+    } else if (isPrivateOrLinkLocalHost(initialHost)) {
+        // Baseline protection even on the DEFAULT (no explicit allowlist) path
+        // (#729): a compromised or misconfigured registry pointing download_url
+        // straight at a loopback/link-local/private address (notably the cloud
+        // metadata service, conventionally at 169.254.169.254) is refused
+        // without requiring the operator to opt into registryAllowedHosts.
+        // Does not apply once an explicit allowlist is configured, so an
+        // operator who deliberately points at a private-IP mirror for an
+        // air-gapped environment is unaffected.
+        throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", initialHost));
     }
 
     const fileName = `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`;
@@ -326,16 +337,28 @@ export function parseSha256(sha256SumsContent: string, fileName: string): string
 }
 
 export async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
-    const fileBuffer = fs.readFileSync(filePath);
-    const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    const actualHash = await computeSha256Streaming(filePath);
     if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
         throw new VerificationFailure(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
     }
     tasks.debug(`SHA256 verification passed: ${actualHash}`);
 }
 
-function hashFile(filePath: string): string {
-    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+/**
+ * Computes a file's SHA256 via a streaming read (fs.createReadStream piped into
+ * the hash) instead of buffering the whole file into memory at once (#728).
+ * A compromised/malicious registry or mirror serving an oversized artifact
+ * would otherwise drive the agent toward memory exhaustion at this step; the
+ * streaming approach keeps memory usage constant regardless of file size.
+ */
+async function computeSha256Streaming(filePath: string): Promise<string> {
+    const hash = crypto.createHash('sha256');
+    await pipeline(fs.createReadStream(filePath), hash);
+    return hash.digest('hex');
+}
+
+async function hashFile(filePath: string): Promise<string> {
+    return computeSha256Streaming(filePath);
 }
 
 /**
@@ -346,9 +369,9 @@ function hashFile(filePath: string): string {
  * only means a future cache hit for this tool degrades to the pre-existing
  * trust-the-cache behavior.
  */
-function writeCacheIntegrityMarker(toolDir: string, exePath: string): void {
+async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Promise<void> {
     try {
-        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), hashFile(exePath), 'utf8');
+        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), await hashFile(exePath), 'utf8');
     } catch (err) {
         tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
     }
@@ -375,14 +398,14 @@ function writeCacheIntegrityMarker(toolDir: string, exePath: string): void {
  * cross-job verification-policy mixing, not against an attacker who already has
  * write access to the agent's tool cache (who effectively owns the agent).
  */
-function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): boolean {
+async function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): Promise<boolean> {
     const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
     if (!fs.existsSync(markerPath)) {
         tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification).`);
         return false;
     }
     const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
-    const actualHash = hashFile(exePath).toLowerCase();
+    const actualHash = (await hashFile(exePath)).toLowerCase();
     if (actualHash !== storedHash) {
         throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
     }
@@ -441,12 +464,12 @@ async function reverifyUnmarkedCacheEntry(downloadSource: string, version: strin
     if (!freshExePath) {
         throw new Error(tasks.loc("TerraformDocsNotFoundInFolder", freshDir));
     }
-    const freshHash = hashFile(freshExePath).toLowerCase();
-    const cachedHash = hashFile(cachedExePath).toLowerCase();
+    const freshHash = (await hashFile(freshExePath)).toLowerCase();
+    const cachedHash = (await hashFile(cachedExePath)).toLowerCase();
     if (freshHash !== cachedHash) {
         throw new Error(tasks.loc("CachedToolReverificationMismatch", toolLabel, freshHash, cachedHash));
     }
-    writeCacheIntegrityMarker(toolDir, cachedExePath);
+    await writeCacheIntegrityMarker(toolDir, cachedExePath);
     console.log(tasks.loc("CachedToolReverified", toolLabel));
 }
 

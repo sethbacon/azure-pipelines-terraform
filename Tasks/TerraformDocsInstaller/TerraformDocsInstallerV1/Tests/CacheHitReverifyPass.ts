@@ -40,6 +40,10 @@ tr.registerMock('fs', {
     // same bytes — the cached entry matches the verified release.
     return Buffer.from('shared-exe-content');
   },
+  createReadStream: (p: string) => {
+    const content = p.includes('terraform-docs-reverify') ? 'fresh-archive-content' : 'shared-exe-content';
+    return require('stream').Readable.from(Buffer.from(content));
+  },
   writeFileSync: (p: string, _data: any, _enc?: string) => {
     console.log('MARKER_WRITTEN:' + p);
   },
@@ -48,11 +52,17 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
   randomUUID: () => 'test-uuid',
-  createHash: () => ({
-    update: (data: any) => ({
-      digest: () => data.toString() === 'fresh-archive-content' ? ARCHIVE_HASH : EXE_HASH
-    })
-  })
+  createHash: () => {
+    const chunks: Buffer[] = [];
+    const hash: any = new (require('stream').Writable)({
+      write(chunk: any, _e: any, cb: any) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        cb();
+      }
+    });
+    hash.digest = () => Buffer.concat(chunks).toString() === 'fresh-archive-content' ? ARCHIVE_HASH : EXE_HASH;
+    return hash;
+  }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
