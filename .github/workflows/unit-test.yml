@@ -81,6 +81,14 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # --omit=dev above only audits this task's production dependencies. Its
+      # devDependencies (eslint, mocha, ts-node, nyc, ...) execute real code in
+      # the Lint/Compile/Test steps below the same as a production dependency
+      # would, so they need the same gate (issue #753): a second, deliberately
+      # overlapping audit with no --omit=dev, repeated identically in every
+      # build-and-test-* job in this file.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -180,6 +188,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -216,6 +228,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -252,6 +268,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -288,6 +308,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -324,6 +348,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -360,6 +388,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -396,6 +428,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -432,6 +468,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -468,6 +508,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript
@@ -504,6 +548,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      # See build-and-test-v5's identical step above for the full rationale
+      # (issue #753): this scans the task's devDependencies too.
+      - name: Audit development dependencies
+        run: npm audit --audit-level=high
       - name: Lint
         run: npx --no-install eslint src/
       - name: Compile TypeScript

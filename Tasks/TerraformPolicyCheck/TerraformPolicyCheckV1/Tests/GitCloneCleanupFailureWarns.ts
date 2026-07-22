@@ -34,16 +34,16 @@ tr.setInput('publishTestResults', 'false');
 const gitPath = '/usr/bin/git';
 const opaPath = '/usr/bin/opa';
 const a: ma.TaskLibAnswers = {
-    which: { git: gitPath, opa: opaPath },
-    checkPath: { [gitPath]: true, [opaPath]: true },
-    exec: {
-        [`${gitPath} clone --depth 1 --branch main -- https://github.com/example/policies ${cloneDir}`]: {
-            code: 0, stdout: 'Cloning...'
-        },
-        [`${opaPath} exec --decision terraform/deny --bundle ${cloneDir} ${planFile}`]: {
-            code: 0, stdout: JSON.stringify({ result: [{ path: planFile, result: [] }] })
-        }
+  which: { git: gitPath, opa: opaPath },
+  checkPath: { [gitPath]: true, [opaPath]: true },
+  exec: {
+    [`${gitPath} clone --depth 1 --branch main -- https://github.com/example/policies ${cloneDir}`]: {
+      code: 0, stdout: 'Cloning...'
+    },
+    [`${opaPath} exec --decision terraform/deny --bundle ${cloneDir} ${planFile}`]: {
+      code: 0, stdout: JSON.stringify({ result: [{ path: planFile, result: [] }] })
     }
+  }
 };
 tr.setAnswers(a);
 
@@ -54,10 +54,10 @@ tr.setAnswers(a);
 const origRmSync = fs.rmSync;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared fs module
 (fs as any).rmSync = (p: fs.PathLike, opts?: fs.RmOptions) => {
-    if (p === cloneDir) {
-        throw new Error('simulated cleanup failure');
-    }
-    return origRmSync(p, opts);
+  if (p === cloneDir) {
+    throw new Error('simulated cleanup failure');
+  }
+  return origRmSync(p, opts);
 };
 
 tr.run();

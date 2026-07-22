@@ -13,12 +13,12 @@ rules:
       # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml:123:9
-      - release.yml:146:9
-      - release.yml:178:9
-      - release.yml:405:9
+      - release.yml:134:9
+      - release.yml:157:9
+      - release.yml:189:9
+      - release.yml:416:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:382:15
+      - release.yml:393:15

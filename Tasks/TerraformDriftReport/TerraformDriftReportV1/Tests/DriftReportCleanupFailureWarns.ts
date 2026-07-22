@@ -11,12 +11,12 @@ fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const planFile = path.join(dir, 'plan.json');
 fs.writeFileSync(
-    planFile,
-    JSON.stringify({
-        resource_changes: [
-            { address: 'aws_instance.new', change: { actions: ['create'], before: null, after: { ami: 'ami-1' } } },
-        ],
-    }),
+  planFile,
+  JSON.stringify({
+    resource_changes: [
+      { address: 'aws_instance.new', change: { actions: ['create'], before: null, after: { ami: 'ami-1' } } },
+    ],
+  }),
 );
 
 const FIXED_UUID = 'fixed-driftreport-cleanupfail-uuid';
@@ -43,10 +43,10 @@ tr.setInput('cleanupSummaryFile', 'true');
 const origUnlinkSync = fs.unlinkSync;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared fs module
 (fs as any).unlinkSync = (p: fs.PathLike) => {
-    if (p === summaryFile) {
-        throw new Error('simulated cleanup failure');
-    }
-    return origUnlinkSync(p);
+  if (p === summaryFile) {
+    throw new Error('simulated cleanup failure');
+  }
+  return origUnlinkSync(p);
 };
 
 tr.run();

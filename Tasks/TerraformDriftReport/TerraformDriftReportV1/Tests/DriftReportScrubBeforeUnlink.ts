@@ -11,12 +11,12 @@ fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const planFile = path.join(dir, 'plan.json');
 fs.writeFileSync(
-    planFile,
-    JSON.stringify({
-        resource_changes: [
-            { address: 'aws_instance.new', change: { actions: ['create'], before: null, after: { ami: 'ami-1' } } },
-        ],
-    }),
+  planFile,
+  JSON.stringify({
+    resource_changes: [
+      { address: 'aws_instance.new', change: { actions: ['create'], before: null, after: { ami: 'ami-1' } } },
+    ],
+  }),
 );
 
 // A distinctive marker embedded in the summary file's `detail` field (#423):
@@ -42,13 +42,13 @@ tr.setInput('cleanupSummaryFile', 'true');
 const origUnlinkSync = fs.unlinkSync;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared fs module
 (fs as any).unlinkSync = (p: fs.PathLike) => {
-    if (typeof p === 'string' && /tsm-drift-report-.*\.json$/.test(p)) {
-        const content = fs.readFileSync(p);
-        const zeroed = content.length > 0 && content.every((b) => b === 0);
-        const markerAbsent = !content.includes(Buffer.from(MARKER));
-        console.log(`SCRUB_BEFORE_UNLINK_CHECK zeroed=${zeroed} markerAbsent=${markerAbsent} length=${content.length}`);
-    }
-    return origUnlinkSync(p);
+  if (typeof p === 'string' && /tsm-drift-report-.*\.json$/.test(p)) {
+    const content = fs.readFileSync(p);
+    const zeroed = content.length > 0 && content.every((b) => b === 0);
+    const markerAbsent = !content.includes(Buffer.from(MARKER));
+    console.log(`SCRUB_BEFORE_UNLINK_CHECK zeroed=${zeroed} markerAbsent=${markerAbsent} length=${content.length}`);
+  }
+  return origUnlinkSync(p);
 };
 
 tr.run();

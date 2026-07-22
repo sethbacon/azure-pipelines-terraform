@@ -60,6 +60,21 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
+      # scripts/bump-minor-versions.js is about to run under a repo-wide
+      # contents:write App token (see the Get GitHub App token step above).
+      # Running it straight from this PR's own head ref would let any
+      # same-repo collaborator who can open a branch named release-please--*
+      # (the only gate on the job's `if:` above) smuggle a modified script —
+      # or a modified scripts/lib/*.js helper it requires — into this
+      # privileged execution (issue #754). Reset scripts/ to the trusted base
+      # branch immediately before executing anything in it; release-please
+      # PRs never touch scripts/ under normal operation, so this is a no-op
+      # diff in the common case.
+      - name: Check out scripts/ from main (trusted source)
+        run: |
+          git fetch origin main
+          git checkout origin/main -- scripts/
+
       - name: Bump task Minor versions and push
         env:
           BUMP_TOKEN: ${{ steps.token.outputs.token }}

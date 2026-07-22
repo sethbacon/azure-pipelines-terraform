@@ -9,6 +9,18 @@ on:
 permissions:
   contents: read
 
+# Serialize release-please runs (sibling hardening for issue #762): a rapid
+# sequence of pushes to main (e.g. merging several PRs back to back) could
+# otherwise trigger overlapping runs racing to update the same Release PR
+# branch or, when a Release PR has just merged, to cut the release tag/GitHub
+# Release itself. Non-cancelling, mirroring release.yml's concurrency guard —
+# a run that reaches the tag/release-cutting step is producing an external,
+# hard-to-undo artifact and must be allowed to finish rather than being killed
+# mid-publish.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
     name: Release Please
