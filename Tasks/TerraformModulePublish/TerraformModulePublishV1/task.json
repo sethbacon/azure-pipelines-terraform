@@ -269,6 +269,7 @@
         "HcpPollingFailed": "Polling version status failed, will retry: %s",
         "PrivateResolveModuleFailed": "Failed to resolve module (HTTP %s): %s",
         "PrivateNoModuleId": "Registry response did not include a module id.",
+        "PrivateModuleIdInvalid": "Registry returned a module id '%s' that is not a valid identifier; refusing to use it in an admin API request.",
         "PrivateTriggerSyncFailed": "Failed to trigger sync (HTTP %s): %s",
         "PrivateSyncTriggered": "Sync triggered for %s/%s/%s.",
         "PrivateSyncTriggeredVersion": "Sync triggered for version %s.",

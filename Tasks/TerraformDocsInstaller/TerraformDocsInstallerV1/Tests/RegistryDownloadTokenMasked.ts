@@ -17,6 +17,16 @@ tr.setInput('registryMirrorName', 'terraform-docs');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
+// dns: storage.example.com is a fictional test host with no real DNS record;
+// mock it to a public (non-private/link-local) address so the #769
+// resolvesToPrivateOrLinkLocalAddress check passes without a real network
+// lookup, instead of failing with a real ENOTFOUND in this offline test run.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
+
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
 const AWS_SIGNATURE = 'AWSSIGNATUREtoken1111';        // X-Amz-Signature       -> masked

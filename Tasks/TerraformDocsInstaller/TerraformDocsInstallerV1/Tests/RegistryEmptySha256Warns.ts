@@ -15,6 +15,16 @@ tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
+// dns: storage.example.com is a fictional test host with no real DNS record;
+// mock it to a public (non-private/link-local) address so the #769
+// resolvesToPrivateOrLinkLocalAddress check passes without a real network
+// lookup, instead of failing with a real ENOTFOUND in this offline test run.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
+
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => {
     if (url.includes('/terraform/binaries/terraform-docs/versions/0.24.0/linux/amd64')) {

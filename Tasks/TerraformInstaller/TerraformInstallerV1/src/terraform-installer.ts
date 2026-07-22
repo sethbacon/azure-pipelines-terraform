@@ -8,7 +8,7 @@ import { pipeline } from 'stream/promises';
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { parseAllowedHosts, isRegistryHostAllowed, isPrivateOrLinkLocalHost } from './registry-allowlist';
+import { parseAllowedHosts, isRegistryHostAllowed, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from './registry-allowlist';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
@@ -224,7 +224,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         if (!isRegistryHostAllowed(initialHost, allowedHosts)) {
             throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", initialHost, allowedHosts.join(', ')));
         }
-    } else if (isPrivateOrLinkLocalHost(initialHost)) {
+    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
         // Baseline protection even on the DEFAULT (no explicit allowlist) path
         // (#729): a compromised or misconfigured registry pointing download_url
         // straight at a loopback/link-local/private address (notably the cloud
@@ -232,7 +232,13 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         // without requiring the operator to opt into registryAllowedHosts.
         // Does not apply once an explicit allowlist is configured, so an
         // operator who deliberately points at a private-IP mirror for an
-        // air-gapped environment is unaffected.
+        // air-gapped environment is unaffected. Also resolves the host and
+        // re-checks every returned address (resolvesToPrivateOrLinkLocalAddress),
+        // so a DNS name that simply resolves to a private/metadata address is
+        // refused too, not just a literal IP (#769). This resolves at check
+        // time and does not pin the IP into the download connection, so it is
+        // defense-in-depth against the static case, not a complete defense
+        // against active DNS rebinding.
         throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", initialHost));
     }
 
