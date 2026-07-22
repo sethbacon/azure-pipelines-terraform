@@ -5,12 +5,13 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import { exchangeOidcForUpst } from './oci-token-exchange';
-import { writeSecretFile } from './secure-temp';
+import { writeSecretFile, tightenFilePermissions } from './secure-temp';
 import { normalizePem } from './pem-normalizer';
 import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
+import fs = require('fs');
 
 // Re-exported for backward compatibility: existing tests and any external
 // consumers import `resolveWifTempDir` from this module. The implementation
@@ -85,6 +86,12 @@ export function validateAndEscapeOciParUrl(parUrl: string): string {
 }
 
 export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
+    // Set by setupBackend() when this run generated a fresh OCI PAR backend
+    // config file -- tells afterInit() whether the .terraform/terraform.tfstate
+    // cache terraform init is about to (re-)write needs default-secure
+    // permission tightening (#675).
+    private parBackendGeneratedThisInit = false;
+
     constructor() {
         super();
         this.providerName = "oci";
@@ -159,6 +166,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             this.tempFiles.push(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
             this.registerOciBackendCacheForCleanup(workingDirectory);
+            this.parBackendGeneratedThisInit = true;
         }
     }
 
@@ -177,6 +185,83 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     private registerOciBackendCacheForCleanup(workingDirectory: string): void {
         if (!tasks.getBoolInput("cleanupOCIBackendCache", false)) return;
         this.tempFiles.push(path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`));
+    }
+
+    /**
+     * Default-secure companion to the opt-in scrub above (#675): whenever this
+     * run generated a fresh OCI PAR backend, `terraform init` copies the PAR
+     * bearer URL into `<workingDirectory>/.terraform/terraform.tfstate` under
+     * the agent's default umask -- readable well beyond just the pipeline
+     * account on a reused/self-hosted agent. Unlike the opt-in cache above,
+     * this cannot wait for an explicit flag: it always tightens that file's
+     * permissions to the current user only, invoked via the base class's
+     * afterInit() hook, while still leaving the cache's *content* in place for
+     * later init/plan/apply steps against the same working directory. Reuses
+     * tightenFilePermissions (secure-temp.ts) -- the primitive already used by
+     * secure-file-loader.ts for hardening a file this task did not write
+     * itself -- rather than writeSecretFile, since the cache already exists on
+     * disk by the time we get here. A no-op if the cache file doesn't exist
+     * (e.g. init never reached the backend-init phase, or a future Terraform
+     * http backend implementation stops writing it).
+     *
+     * `initFailed` (#675 follow-up): the base class now invokes this from a
+     * `finally` around `terraform init`'s own execAsync, so it runs whether
+     * init succeeded OR failed (e.g. backend configured fine, but a later
+     * provider-install phase failed and rejected). On the SUCCESS path this
+     * stays fail-closed exactly as before: a hardening failure fails this init
+     * step rather than silently leaving the cache over-exposed. On the FAILURE
+     * path this goes best-effort -- init() is about to re-throw the real init
+     * error unchanged, and a hardening failure here must never mask or replace
+     * it, so it is caught and reported as a warning instead.
+     */
+    protected async afterInit(initFailed: boolean): Promise<void> {
+        if (!this.parBackendGeneratedThisInit) return;
+        const workingDirectory = tasks.getInput("workingDirectory") || '';
+        const cacheFilePath = path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`);
+        if (!fs.existsSync(cacheFilePath)) return;
+        if (initFailed) {
+            try {
+                tightenFilePermissions(cacheFilePath);
+            } catch (error) {
+                tasks.warning(`Failed to tighten permissions on the OCI PAR backend cache after a failed terraform init: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            return;
+        }
+        tightenFilePermissions(cacheFilePath);
+    }
+
+    /**
+     * Plan-file sibling of afterInit() above (#675 follow-up): Terraform's
+     * config-snapshot plan format embeds the ACTIVE backend config -- including
+     * an OCI PAR bearer URL, exactly like `.terraform/terraform.tfstate` -- into
+     * every saved plan file, so a plan/destroy step against an OCI PAR backend
+     * leaves an equally-live credential in whatever `-out=` file it produced.
+     * Unlike afterInit(), this cannot gate on `parBackendGeneratedThisInit`:
+     * plan/destroy commonly run as their OWN pipeline step, a separate process
+     * from the `init` that originally generated the backend (that flag is
+     * in-process-only and would be false here even against a genuinely
+     * OCI-PAR-backed working directory). This handler is only ever
+     * instantiated for `provider: oci`, so tightening every plan file it
+     * produces is a safe, idempotent action, the same "safe even if this
+     * working directory turns out not to have an OCI PAR backend after all"
+     * reasoning `registerOciBackendCacheForCleanup` above already relies on --
+     * a no-op via the `fs.existsSync` guard if `planFilePath` doesn't exist.
+     *
+     * `commandFailed` mirrors afterInit()'s `initFailed`: fail-closed (throws)
+     * when the command that produced this plan file succeeded, best-effort/warn
+     * (never masks the command's own error) when it did not.
+     */
+    protected async afterPlanFileWritten(planFilePath: string, commandFailed: boolean): Promise<void> {
+        if (!fs.existsSync(planFilePath)) return;
+        if (commandFailed) {
+            try {
+                tightenFilePermissions(planFilePath);
+            } catch (error) {
+                tasks.warning(`Failed to tighten permissions on the saved Terraform plan file after a failed command: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            return;
+        }
+        tightenFilePermissions(planFilePath);
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {

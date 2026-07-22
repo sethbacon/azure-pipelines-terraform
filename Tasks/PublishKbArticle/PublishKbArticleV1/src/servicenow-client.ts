@@ -226,9 +226,10 @@ export async function updateArticleBody(
     // encodeURIComponent guards the path segment: an unencoded articleId containing
     // '/', '?', or '#' could otherwise alter the effective REST path/query.
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
-    await withRetry(() => snRequest('PATCH', url, { headers, body: { text } }), {
+    const response = await withRetry(() => snRequest('PATCH', url, { headers, body: { text } }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
+    assertArticleResult(response.data.result, articleId);
 }
 
 /**

@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
-import { writeSecretFile } from './secure-temp';
+import { writeSecretFile, scrubFile } from './secure-temp';
 
 /**
  * Upper bound on the JSON files this task reads into memory (the required plan
@@ -170,7 +170,30 @@ async function run(): Promise<void> {
         // sensitive temp file gone immediately, e.g. on a self-hosted agent whose temp
         // dir is not wiped between jobs -- can opt into deleting it here.
         if (summaryFile && tasks.getBoolInput('cleanupSummaryFile', false)) {
-            try { fs.unlinkSync(summaryFile); } catch { /* best effort */ }
+            try {
+                // Mirrors TerraformTaskV5's scrubAndUnlink: skip silently if the file
+                // was never created (e.g. an earlier failure before writeSecretFile
+                // ran) rather than emit a misleading ENOENT warning below.
+                if (fs.existsSync(summaryFile)) {
+                    // Scrub the content (overwrite with zeros) before unlinking, matching
+                    // every other credential/sensitive temp file in this codebase (#595):
+                    // a bare unlink only removes the directory entry, leaving the plan
+                    // values in this summary file recoverable on disk until overwritten.
+                    // A scrub failure is surfaced but does not skip the unlink attempt.
+                    try {
+                        scrubFile(summaryFile);
+                    } catch (scrubErr) {
+                        tasks.warning(`Failed to scrub summary file ${summaryFile} before deletion: ${scrubErr}`);
+                    }
+                    fs.unlinkSync(summaryFile);
+                    tasks.debug(`Cleaned up summary file: ${summaryFile}`);
+                }
+            } catch (err) {
+                // A leftover summary file (which can hold sensitive plan values) is a
+                // real exposure on a self-hosted agent -- surface it above debug,
+                // matching TerraformTaskV5's scrubAndUnlink rationale.
+                tasks.warning(`Failed to clean up summary file ${summaryFile}: ${err}`);
+            }
         }
     }
 }

@@ -13,7 +13,11 @@ function cleanup(tempDirs: string[]): void {
             fs.rmSync(dir, { recursive: true, force: true });
             tasks.debug(`Cleaned up temp dir: ${dir}`);
         } catch (err) {
-            tasks.debug(`Failed to clean up ${dir}: ${err}`);
+            // A leftover temp dir (a cloned policy repo, which may be a private
+            // source, or a generated Sentinel config dir) is a real exposure on a
+            // self-hosted agent -- surface it above debug, matching
+            // TerraformTaskV5's scrubAndUnlink rationale.
+            tasks.warning(`Failed to clean up ${dir}: ${err}`);
         }
     }
 }

@@ -70,6 +70,9 @@ import './results/Phase5GoldenFixturesL0';
 // Direct unit tests for maskHasSensitiveLeaf, the shared sensitivity predicate
 // warnIfSensitiveOutputs was rerouted onto (design §5.2.7, WP-2).
 import './MaskHasSensitiveLeafL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT registration: emergency
+// cleanup runs, then the signal is re-raised (#758).
+import './SignalHandlerL0';
 
 describe('Terraform Test Suite', function () {
 

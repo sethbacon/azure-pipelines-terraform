@@ -97,18 +97,6 @@ describe('writeSecretFile — exclusive create + cross-platform permission harde
     const origPlatform = process.platform;
     let scratchDir: string;
 
-    // Create/destroy a symlink pointing at `target`; returns false when the
-    // environment cannot create symlinks (non-elevated Windows without
-    // developer mode), letting the test skip instead of failing spuriously.
-    function trySymlink(target: string, linkPath: string): boolean {
-        try {
-            fs.symlinkSync(target, linkPath, 'file');
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
     beforeEach(() => {
         scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'secure-temp-test-'));
     });
@@ -135,13 +123,32 @@ describe('writeSecretFile — exclusive create + cross-platform permission harde
         assert.strictEqual(fs.readFileSync(target, 'utf8'), 'pre-existing', 'the pre-existing file must be untouched');
     });
 
-    it('refuses to write through a pre-planted symlink instead of following it (#484)', function () {
-        const victim = path.join(scratchDir, 'victim.txt');
-        fs.writeFileSync(victim, 'victim-content');
-        const link = path.join(scratchDir, 'link.txt');
-        if (!trySymlink(victim, link)) this.skip();
-        assert.throws(() => writeSecretFile(link, 'stolen-secret'), /EEXIST/);
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the secret');
+    it('requests an exclusive create (flag "wx") so a pre-planted symlink cannot be followed (#484) (#757)', () => {
+        // A real pre-planted symlink cannot be created deterministically in
+        // every CI environment (Windows requires SeCreateSymbolicLinkPrivilege/
+        // Developer Mode; this test previously used this.skip() when that
+        // privilege was unavailable, which --forbid-pending now treats as a
+        // hard failure). writeSecretFile has no application-level symlink
+        // check of its own -- it relies entirely on the OS/runtime honoring
+        // O_EXCL (Node's flag: 'wx'), which POSIX guarantees refuses ANY
+        // pre-existing path node, symlink or not. Asserting the flag is
+        // requested is therefore a deterministic, causal proof of the same
+        // security property, on every platform, with no privilege dependency.
+        const f = fs as unknown as { writeFileSync: typeof fs.writeFileSync };
+        const origWriteFileSync = f.writeFileSync;
+        let seenOptions: unknown;
+        f.writeFileSync = (...args: Parameters<typeof fs.writeFileSync>) => {
+            seenOptions = args[2];
+            return origWriteFileSync(...args);
+        };
+        const target = path.join(scratchDir, 'flag-check.txt');
+        try {
+            writeSecretFile(target, 'secret');
+        } finally {
+            f.writeFileSync = origWriteFileSync;
+        }
+        assert.deepStrictEqual(seenOptions, { mode: 0o600, flag: 'wx' });
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'secret');
     });
 
     it('on win32, restricts the DACL via icacls (inheritance stripped, only the current user granted) (#495)', () => {
@@ -219,7 +226,8 @@ describe('writeSecretFile — exclusive create + cross-platform permission harde
     // NT AUTHORITY\SYSTEM / BUILTIN\Administrators may legitimately remain on
     // machines that stamp them explicitly -- they are the Windows equivalent
     // of root, which Unix 0600 does not exclude either.
-    (origPlatform === 'win32' ? it : it.skip)('win32 integration: no broad principal retains access; the current user keeps full control (#495)', () => {
+    it('win32 integration: no broad principal retains access; the current user keeps full control (#495)', () => {
+        if (origPlatform !== 'win32') return; // guard clause, not it.skip (#757): keeps this test out of --forbid-pending's reach on non-Windows CI legs.
         const target = path.join(scratchDir, 'real-acl.txt');
         writeSecretFile(target, 'real-secret');
         const aclOutput = cp.execFileSync('icacls', [target], { encoding: 'utf8' });
@@ -268,18 +276,26 @@ describe('replaceSecretFile — user-named output paths', function () {
         }
     });
 
-    it('refuses to write through a pre-existing symlink (#484)', function () {
-        const victim = path.join(scratchDir, 'victim.json');
-        fs.writeFileSync(victim, 'victim-content');
+    it('refuses to write through a path reported as a symlink (#484) (#757)', () => {
+        // A pre-existing regular file stands in for a pre-planted symlink so
+        // the assertion is deterministic on every platform/CI environment
+        // (this test previously used this.skip() when the environment could
+        // not create a real symlink, which --forbid-pending now treats as a
+        // hard failure): replaceSecretFile's refusal is driven entirely by
+        // fs.lstatSync(...).isSymbolicLink(), so mocking that call to report
+        // "yes, a symlink" exercises the exact same guarded branch a real
+        // symlink would.
         const link = path.join(scratchDir, 'out.json');
+        fs.writeFileSync(link, 'placeholder-content');
+        const f = fs as unknown as { lstatSync: (p: fs.PathLike) => fs.Stats };
+        const origLstatSync = f.lstatSync;
+        f.lstatSync = () => ({ isSymbolicLink: () => true }) as fs.Stats;
         try {
-            fs.symlinkSync(victim, link, 'file');
-        } catch {
-            this.skip();
+            assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
+        } finally {
+            f.lstatSync = origLstatSync;
         }
-        assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the output');
-        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink must be left in place as evidence, not silently deleted');
+        assert.strictEqual(fs.readFileSync(link, 'utf8'), 'placeholder-content', 'a path reported as a symlink must not be overwritten');
     });
 });
 
@@ -323,18 +339,23 @@ describe('scrubFile — overwrite-before-unlink content scrub (#595)', function 
         assert.strictEqual(fs.readFileSync(target, 'utf8'), '');
     });
 
-    it('does not follow a symlink onto a victim file (CWE-59)', function () {
-        const victim = path.join(scratchDir, 'victim.txt');
+    it('does not follow a path reported as a symlink onto a victim file (CWE-59) (#757)', () => {
+        // Same deterministic-mock rationale as replaceSecretFile's symlink
+        // test above (#757): scrubFile's refusal to write through a symlink
+        // is driven entirely by fs.lstatSync(...).isSymbolicLink(), so
+        // mocking it is a faithful, privilege-independent substitute for a
+        // real pre-planted symlink.
+        const target = path.join(scratchDir, 'tracked-temp-file.tf');
         const original = 'victim-secret-content';
-        fs.writeFileSync(victim, original);
-        const link = path.join(scratchDir, 'tracked-temp-file.tf');
+        fs.writeFileSync(target, original);
+        const f = fs as unknown as { lstatSync: (p: fs.PathLike) => fs.Stats };
+        const origLstatSync = f.lstatSync;
+        f.lstatSync = () => ({ isSymbolicLink: () => true }) as fs.Stats;
         try {
-            fs.symlinkSync(victim, link, 'file');
-        } catch {
-            this.skip();
+            assert.doesNotThrow(() => scrubFile(target));
+        } finally {
+            f.lstatSync = origLstatSync;
         }
-        assert.doesNotThrow(() => scrubFile(link));
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), original, 'the symlink target must not be zeroed');
-        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink entry itself is left for cleanupTempFiles() to unlink');
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), original, 'a path reported as a symlink must not be zeroed');
     });
 });

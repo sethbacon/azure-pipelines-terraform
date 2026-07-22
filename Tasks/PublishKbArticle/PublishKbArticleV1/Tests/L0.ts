@@ -597,6 +597,35 @@ describe('client.updateKnowledgeArticle', () => {
 });
 
 // ===========================================================================
+// servicenow-client — updateArticleBody
+// ===========================================================================
+describe('client.updateArticleBody', () => {
+    it('PATCHes the text field and resolves when the 2xx response is a valid article object', async () => {
+        let patchedBody: Record<string, unknown> = {};
+        nock(BASE_URL)
+            .patch('/api/now/table/kb_knowledge/art_010', (body: Record<string, unknown>) => {
+                patchedBody = body;
+                return true;
+            })
+            .reply(200, { result: { sys_id: 'art_010', number: 'KB0099', workflow_state: 'draft' } });
+
+        await client.updateArticleBody(INSTANCE, HEADERS, 'art_010', '<p>New body</p>');
+        assert.strictEqual(patchedBody['text'], '<p>New body</p>');
+    });
+
+    it('#372: throws a clear error instead of silently succeeding when a 2xx response is not a JSON article object', async () => {
+        nock(BASE_URL)
+            .patch('/api/now/table/kb_knowledge/art_011')
+            .reply(200, '<html>Not the ServiceNow API you expected</html>');
+
+        await assert.rejects(
+            () => client.updateArticleBody(INSTANCE, HEADERS, 'art_011', '<p>New body</p>'),
+            /no article object in "result"|ArticleNotObject/,
+        );
+    });
+});
+
+// ===========================================================================
 // servicenow-client — findArticleBySourceKey
 // ===========================================================================
 describe('client.findArticleBySourceKey', () => {
@@ -2265,6 +2294,20 @@ describe('servicenow-http.snRequest', () => {
         );
     });
 
+    it('accepts a response at exactly the response-size guard boundary (#756)', async () => {
+        // MAX_RESPONSE_BYTES is 10 MiB and the guard rejects only when the accumulated
+        // body is strictly greater than the cap, so a response of EXACTLY 10 MiB must be
+        // accepted (not destroyed) -- the symmetric companion to the over-limit reject test
+        // above. Mirrors the boundary-accept test the http-client.ts / https-client.ts family
+        // carries; servicenow-http.ts is the hand-tracked (non-parity-family) third credential
+        // transport, so it needs its own copy.
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/atcap')
+            .reply(200, 'x'.repeat(10 * 1024 * 1024));
+        const res = await snRequest('GET', `${BASE_URL}/api/now/table/kb_knowledge/atcap`, { headers: HEADERS });
+        assert.strictEqual(res.status, 200);
+    });
+
     it('rejects when the socket times out (server accepts the connection but never responds)', async function () {
         // nock's mock socket doesn't independently fire req.setTimeout() timers, so
         // this exercises the real Node socket-timeout path against a raw TCP listener
@@ -2483,6 +2526,32 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
                 tr.stdout.includes('##[MOCK] getOAuthToken called with instance=sc-instance clientId=sc-client-id clientSecret=sc-client-secret'),
                 `resolveAuth should have derived instance/clientId/clientSecret from the service connection endpoint: ${tr.stdout}`,
             );
+        }, tr);
+    });
+
+    // #771: resolveAuth() masks clientSecret/password at the point of read, before
+    // the instance-required/instance-format checks that can throw ahead of the
+    // deferred tasks.setSecret() calls inside getOAuthToken()/basicAuthHeader().
+    // Provide an inline clientSecret but omit `instance` so resolveAuth reads and
+    // masks the secret, then throws InstanceRequired BEFORE getOAuthToken is ever
+    // invoked -- this must fail against the pre-#771 code (which only masked
+    // clientSecret inside getOAuthToken/basicAuthHeader, never reached here) and
+    // pass now that the point-of-read masking exists.
+    it('ClientSecretMaskedBeforeInstanceThrow — resolveAuth masks an inline clientSecret at the point of read, before the missing-instance check throws (#771)', async () => {
+        const tp = nodePath.join(__dirname, 'ClientSecretMaskedBeforeInstanceThrow.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.errorIssues.some((e) => /instance is required|InstanceRequired/i.test(e)),
+                `error should mention the missing instance: ${tr.errorIssues}`,
+            );
+            assert.ok(
+                tr.stdout.includes('##vso[task.setsecret]super-secret-oauth-value'),
+                `clientSecret should already be masked even though resolveAuth throws before getOAuthToken is ever called: ${tr.stdout}`,
+            );
+            assert.ok(!/NETWORK_CALLED/.test(tr.stdout + tr.errorIssues.join('\n')), 'no network client should have been invoked');
         }, tr);
     });
 });

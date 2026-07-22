@@ -97,11 +97,14 @@ export function hasPositionalCommandArg(commandOptions: string | undefined): boo
  * escapes / an `-out="quoted value with spaces"` equals-form are not, matching
  * that helper's documented limits).
  *
- * Used ONLY by plan()/destroy()'s publishPlanSummary path (#612): when the user
- * already saves the plan via their own `-out=`, the task must NOT inject a second
- * `-out=` -- Terraform silently honors only the LAST `-out=` on the command line,
- * so the task's tempfile would shadow the user's file and the user's artifact
- * plan would never be written. When a user `-out=` is present the subsequent
+ * Used by plan() UNCONDITIONALLY (#675 2nd follow-up) to detect a user-supplied
+ * `-out=` so its plan file can be permission-tightened via afterPlanFileWritten()
+ * even when publishPlanSummary is unset, and by plan()/destroy()'s
+ * publishPlanSummary path (#612): when the user already saves the plan via
+ * their own `-out=`, the task must NOT inject a second `-out=` -- Terraform
+ * silently honors only the LAST `-out=` on the command line, so the task's
+ * tempfile would shadow the user's file and the user's artifact plan would
+ * never be written. When a user `-out=` is present the subsequent
  * `terraform show -json` digest is built against the user's own saved plan (which
  * then describes the very plan that gets applied); when absent, the task injects
  * its own tempfile exactly as before.
@@ -235,6 +238,51 @@ export abstract class BaseTerraformCommandHandler {
      * inject (OCI's PAR-based http backend, generic/local) are no-ops.
      */
     abstract configureBackendCredentials(): Promise<void>;
+
+    /**
+     * Hook invoked after `terraform init`'s `execAsync` SETTLES — whether it
+     * resolved or rejected. `init()` below runs this from a `finally` around
+     * that `execAsync` (#675 follow-up): `execAsync` is called with no
+     * `ignoreReturnCode`, so a non-zero exit REJECTS the promise, and a bare
+     * `await this.afterInit()` placed only after it (the pre-fix shape) would
+     * never run once the backend was configured but a later phase of init
+     * (e.g. provider install) failed — silently skipping any default-secure
+     * hardening of whatever init already wrote to disk before failing.
+     * `initFailed` is true on the reject path, so an override can go
+     * best-effort/warn there (never mask init's own error, which `init()`
+     * always re-throws unchanged after this hook returns) while staying
+     * fail-closed (throwing) on the success path. No-op by default; overridden
+     * by the OCI handler (#675) to default-secure the OCI PAR bearer
+     * credential `terraform init` caches into `.terraform/terraform.tfstate`,
+     * independent of the separate opt-in `cleanupOCIBackendCache` flag (which
+     * instead governs that same cache's full scrub+delete via the ordinary
+     * tempFiles/cleanupTempFiles path).
+     */
+    protected async afterInit(_initFailed: boolean): Promise<void> {
+        // No-op by default — see TerraformCommandHandlerOCI.afterInit override.
+    }
+
+    /**
+     * Hook invoked after `plan()`/`destroy()` (directly, or via
+     * `runDestroyPlanForSummary()`) finish running the terraform command that
+     * writes a saved plan file to `planFilePath` -- whether that command
+     * succeeded or not (`commandFailed` mirrors `afterInit`'s `initFailed`).
+     * `planFilePath` may be either a task-generated tempfile or a
+     * user-supplied `-out=` path (see `extractOutFlagPath`); both are handled
+     * identically here. No-op by default; overridden by the OCI handler
+     * (#675 follow-up) for the same reason as `afterInit`: Terraform's
+     * config-snapshot plan format embeds the ACTIVE backend config -- including
+     * an OCI PAR bearer URL -- into every saved plan file, not just
+     * `.terraform/terraform.tfstate`, so a plan/destroy step run against an
+     * already-`init`-ed OCI PAR backend leaves an equally-live credential in
+     * whatever `-out=` file this produced, regardless of the in-process-only
+     * `cleanupOCIBackendCache`/afterInit state (plan/destroy commonly run as a
+     * separate pipeline step -- a separate process -- from the `init` that
+     * originally configured the backend).
+     */
+    protected async afterPlanFileWritten(_planFilePath: string, _commandFailed: boolean): Promise<void> {
+        // No-op by default — see TerraformCommandHandlerOCI.afterPlanFileWritten override.
+    }
 
     constructor() {
         this.providerName = "";
@@ -661,9 +709,32 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(initCommand);
         await this.handleBackend(terraformTool);
 
-        return terraformTool.execAsync(<IExecOptions>{
-            cwd: initCommand.workingDirectory
-        });
+        // #675 follow-up: afterInit() must run whether this execAsync resolves
+        // OR rejects. There is no `ignoreReturnCode` here, so a non-zero exit
+        // (e.g. the backend configured successfully but a later provider-install
+        // phase failed) REJECTS the promise -- a bare `await this.afterInit()`
+        // placed only after it (the pre-fix shape) would then never run, even
+        // though the backend-configuration phase already wrote whatever
+        // afterInit() needs to harden. The `finally` guarantees afterInit() always
+        // runs; the original error (if any) is re-thrown unchanged afterward so
+        // init's own failure is never masked or replaced.
+        let result: number | undefined;
+        let initError: unknown;
+        try {
+            result = await terraformTool.execAsync(<IExecOptions>{
+                cwd: initCommand.workingDirectory
+            });
+        } catch (error) {
+            initError = error;
+        } finally {
+            await this.afterInit(initError !== undefined);
+        }
+
+        if (initError !== undefined) {
+            throw initError;
+        }
+
+        return result!;
     }
 
     public async show(): Promise<number> {
@@ -813,10 +884,10 @@ export abstract class BaseTerraformCommandHandler {
 
         // Structured path (design §7/D1): ensure a plan file exists so the
         // `terraform show -json <planfile>` run below (after this command
-        // completes) has something to show. -out is added ONLY when
-        // publishPlanSummary is set so a publishPlanResults-only (or neither) run's
-        // command line -- and therefore its attachment -- is byte-for-byte
-        // unchanged (backward-compat regression, design §12.3).
+        // completes) has something to show. The task's OWN -out is injected
+        // ONLY when publishPlanSummary is set so a publishPlanResults-only (or
+        // neither) run's command line -- and therefore its attachment -- is
+        // byte-for-byte unchanged (backward-compat regression, design §12.3).
         //
         // #612: if the user already saves the plan via their own `-out=<path>` in
         // commandOptions, reuse THAT path for the show -json digest instead of
@@ -828,15 +899,22 @@ export abstract class BaseTerraformCommandHandler {
         // user's path is NOT tracked in `tempFiles`, so end-of-step cleanup never
         // deletes it (neither is the task's own -out tempfile -- both rely on the
         // agent purging Agent.TempDirectory / the working dir at job end).
-        let planFilePath: string | undefined;
-        if (publishPlanSummary) {
-            const userOutPath = extractOutFlagPath(commandOptions);
-            if (userOutPath) {
-                planFilePath = userOutPath;
-            } else {
-                planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
-                terraformTool.arg(`-out=${planFilePath}`);
-            }
+        //
+        // #675 2nd follow-up: detecting the user's own `-out=` must NOT be gated
+        // on publishPlanSummary. commandOptions (and any -out= inside it) is
+        // applied to the command line unconditionally, above -- so a bare
+        // `commandOptions: -out=<path>` run with publishPlanSummary unset still
+        // writes a real plan file, which embeds the active backend config (an OCI
+        // PAR bearer URL included) exactly like the publishPlanSummary-injected
+        // tempfile does. planFilePath must be populated in that case too, so
+        // afterPlanFileWritten() below (which OCI overrides to permission-tighten
+        // the file) actually runs. Only the task's OWN tempfile *injection*
+        // remains gated on publishPlanSummary; the digest/attachment behavior
+        // below, which separately checks publishPlanSummary, is unchanged.
+        let planFilePath: string | undefined = extractOutFlagPath(commandOptions);
+        if (publishPlanSummary && !planFilePath) {
+            planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
+            terraformTool.arg(`-out=${planFilePath}`);
         }
 
         let result: number;
@@ -876,6 +954,17 @@ export abstract class BaseTerraformCommandHandler {
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
             });
+        }
+
+        // #675 follow-up: tighten planFilePath's permissions (OCI PAR backends
+        // only; no-op elsewhere) as soon as this command finishes writing it --
+        // regardless of the exit code, since a plan file embeds the active
+        // backend config the same way `.terraform/terraform.tfstate` does. Runs
+        // before the publishPlanResults/publishPlanSummary attachments below so
+        // neither ever reads/re-shows a file some OTHER process could have
+        // gotten to first.
+        if (planFilePath) {
+            await this.afterPlanFileWritten(planFilePath, result !== 0 && result !== 2);
         }
 
         if (publishPlanResults && planStdout !== undefined) {
@@ -1061,29 +1150,61 @@ export abstract class BaseTerraformCommandHandler {
 
     public async custom(): Promise<number> {
         const outputTo = tasks.getInput("outputTo");
+        const commandOptions = this.getCommandOptions();
         const customCommand = this.createAuthCommand(
             tasks.getInput("customCommand", true)!,
-            this.getCommandOptions()
+            commandOptions
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
         await this.handleProvider(customCommand);
 
-        if (outputTo === "console") {
-            return terraformTool.execAsync(<IExecOptions>{
-                cwd: customCommand.workingDirectory
-            });
-        } else if (outputTo === "file") {
-            const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
-            const commandOutput = await this.execWithStdoutCapture(terraformTool, {
-                cwd: customCommand.workingDirectory
-            });
+        // #675 sibling: `customCommand: plan` (or `plan -destroy`) plus a
+        // user-supplied `-out=` in commandOptions writes a real saved-plan file
+        // through this same free-text passthrough -- Terraform doesn't care that
+        // the task labels the step "custom" rather than "plan". Detected
+        // unconditionally, exactly like plan()'s own unconditional
+        // extractOutFlagPath() call (#675 2nd follow-up); no customCommand
+        // parsing needed since afterPlanFileWritten() is already a safe no-op
+        // (via fs.existsSync) when planFilePath doesn't exist -- i.e. every
+        // non-plan custom command. Wrapped in try/catch/finally mirroring
+        // init()'s identical afterInit() pattern: neither exec path below sets
+        // ignoreReturnCode, so a failing custom command REJECTS -- the hook
+        // must still run on that path, and the original error is re-thrown
+        // unchanged afterward.
+        const planFilePath = extractOutFlagPath(commandOptions);
+        let result: number | undefined;
+        let customError: unknown;
+        try {
+            if (outputTo === "console") {
+                result = await terraformTool.execAsync(<IExecOptions>{
+                    cwd: customCommand.workingDirectory
+                });
+            } else if (outputTo === "file") {
+                const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
+                const commandOutput = await this.execWithStdoutCapture(terraformTool, {
+                    cwd: customCommand.workingDirectory
+                });
 
-            this.writeCommandOutputFile(customFilePath, commandOutput.stdout);
-            tasks.setVariable('customFilePath', customFilePath, false, true);
-            return commandOutput.code;
+                this.writeCommandOutputFile(customFilePath, commandOutput.stdout);
+                tasks.setVariable('customFilePath', customFilePath, false, true);
+                result = commandOutput.code;
+            } else {
+                throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
+            }
+        } catch (error) {
+            customError = error;
+        } finally {
+            if (planFilePath) {
+                await this.afterPlanFileWritten(planFilePath, customError !== undefined);
+            }
         }
-        throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
+
+        if (customError !== undefined) {
+            throw customError;
+        }
+
+        return result!;
     }
 
     public async apply(): Promise<number> {
@@ -1373,6 +1494,13 @@ export abstract class BaseTerraformCommandHandler {
             ignoreReturnCode: true,
         });
 
+        // #675 follow-up: same reasoning as plan()'s call above. Also covers
+        // the user-supplied `-out=` case (#612, above) that
+        // runDestroyPlanForSummary() never touches -- redundant-but-harmless
+        // (idempotent) for the task-tempfile case, which runDestroyPlanForSummary()
+        // already tightened itself immediately after producing it.
+        await this.afterPlanFileWritten(planFilePath!, result !== 0);
+
         await this.publishPlanSummaryAttachment(planFilePath!, destroyCommand.workingDirectory, publishPlanSummary, tempDir, 'destroy');
 
         if (result !== 0) {
@@ -1411,6 +1539,12 @@ export abstract class BaseTerraformCommandHandler {
             cwd: workingDirectory,
             ignoreReturnCode: true,
         });
+        // #675 follow-up: tighten planFilePath's permissions (OCI PAR backends
+        // only; no-op elsewhere) immediately after THIS sub-plan produces it --
+        // before the throw below, so a failing sub-plan (result !== 0 && !== 2)
+        // still gets the file it may have already written hardened rather than
+        // skipped, mirroring init()'s own try/finally reasoning.
+        await this.afterPlanFileWritten(planFilePath, result !== 0 && result !== 2);
         if (result !== 0 && result !== 2) {
             throw new Error(tasks.loc("TerraformDestroyPlanForSummaryFailed", result));
         }
