@@ -30,7 +30,8 @@
     "diff": "^8.0.3",
     "@babel/core": "^7.29.7",
     "js-yaml": "^4.2.0",
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.0",
+    "fast-uri": "^3.1.4"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
