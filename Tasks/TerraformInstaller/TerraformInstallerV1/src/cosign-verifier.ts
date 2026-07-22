@@ -3,9 +3,24 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 
-import { randomUUID as uuidV4 } from 'crypto';
+import { randomUUID as uuidV4, createHash } from 'crypto';
+import { pipeline } from 'stream/promises';
 import { fetchBufferAllow404 } from './http-client';
 import { VerificationFailure } from './verification-failure';
+
+/**
+ * Computes a file's SHA256 via a streaming read (fs.createReadStream piped into
+ * the hash) rather than buffering the whole file into memory at once, mirroring
+ * the same memory-safety property terraform-installer.ts's own
+ * computeSha256Streaming establishes for downloaded archives (#728). Used to
+ * verify the resolved `cosign` binary itself against an operator-pinned
+ * cosignSha256 (#550).
+ */
+async function computeSha256Streaming(filePath: string): Promise<string> {
+    const hash = createHash('sha256');
+    await pipeline(fs.createReadStream(filePath), hash);
+    return hash.digest('hex');
+}
 
 /**
  * Escapes every regular-expression metacharacter in `value` so it matches
@@ -92,7 +107,8 @@ export async function verifyCosignSignature(
     signatureUrl: string,
     certificateUrl: string,
     version: string,
-    required: boolean = false
+    required: boolean = false,
+    expectedCosignSha256?: string
 ): Promise<void> {
     let cosignPath: string;
     try {
@@ -109,6 +125,20 @@ export async function verifyCosignSignature(
     // so log where it resolved from — a shadowed/unexpected binary is then auditable
     // from the build log.
     console.log(`Using cosign at ${cosignPath} for OpenTofu signature verification.`);
+
+    if (expectedCosignSha256) {
+        // Optional, opt-in pin (#550): an operator who has provisioned cosign from a
+        // known-good, integrity-verified source (e.g. sigstore/cosign-installer
+        // pinned to a commit SHA) can pin its exact binary hash here, closing the
+        // ambient-PATH trust gap -- a PATH-write attacker who shadows `cosign` with a
+        // stub is caught instead of silently trusted. Fails closed on a mismatch;
+        // left unset (default), behavior is completely unchanged.
+        const actualCosignSha256 = await computeSha256Streaming(cosignPath);
+        if (actualCosignSha256.toLowerCase() !== expectedCosignSha256.toLowerCase()) {
+            throw new VerificationFailure(`cosign binary at ${cosignPath} has SHA256 ${actualCosignSha256}, which does not match the pinned cosignSha256 (${expectedCosignSha256}). Refusing to trust it for OpenTofu signature verification.`);
+        }
+        tasks.debug('cosign binary SHA256 matches the pinned cosignSha256.');
+    }
 
     // Fetch the signature + certificate, distinguishing a genuine 404 (the files
     // are not published) from a transient 5xx / network / TLS failure. Only a real

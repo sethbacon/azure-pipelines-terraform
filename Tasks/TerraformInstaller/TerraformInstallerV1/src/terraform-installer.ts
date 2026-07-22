@@ -271,7 +271,25 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
                 }
             });
         } else {
-            zipPath = await tools.downloadTool(data.download_url, fileName);
+            // Baseline redirect-hop protection on the DEFAULT (no explicit allowlist)
+            // path (#729 follow-up): tools.downloadTool() follows redirects with no
+            // way to re-validate them, so a compromised/misconfigured registry could
+            // return an initially-safe download_url that itself 302s to a
+            // private/link-local address (notably the cloud metadata service) -- the
+            // initial-host check above only covers the first hop. Route through the
+            // same manual-redirect downloadToFile() used on the allowlist path,
+            // re-checking every hop against isPrivateOrLinkLocalHost. This is a
+            // synchronous literal-IP/hostname check (unlike the initial-host check,
+            // it does not also perform a DNS lookup per hop), so a redirect Location
+            // that is a DNS name resolving to a private address is not caught here --
+            // only a literal private/link-local host/IP is.
+            const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+            zipPath = path.join(destDir, fileName);
+            await downloadToFile(data.download_url, zipPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+                if (isPrivateOrLinkLocalHost(hostname)) {
+                    throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", hostname));
+                }
+            });
         }
     } catch (exception) {
         // download_url is a pre-signed URL whose query string carries the signing
@@ -686,7 +704,11 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     const requireCosign = getBoolInputDefaultTrue("requireCosignVerification");
     const signatureUrl = `${sha256SumsUrl}.sig`;
     const certificateUrl = `${sha256SumsUrl}.pem`;
-    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign);
+    // Optional, opt-in pin (#550): verifies the resolved `cosign` binary itself
+    // against an operator-supplied hash before trusting it, closing the ambient
+    // PATH-lookup trust gap. Unset (default), behavior is unchanged.
+    const cosignSha256 = tasks.getInput("cosignSha256", false);
+    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined);
 
     const expectedHash = parseSha256(sha256SumsContent, zipFileName);
     await verifySha256(zipPath, expectedHash);

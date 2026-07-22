@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseAllowedHosts, isRegistryHostAllowed, resolvesToPrivateOrLinkLocalAddress } from '../src/registry-allowlist';
+import { parseAllowedHosts, isRegistryHostAllowed, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from '../src/registry-allowlist';
 
 /**
  * Direct unit tests for the optional registry download_url host allowlist.
@@ -69,6 +69,56 @@ describe('registry download_url host allowlist', function () {
         it('propagates a lookup failure (e.g. NXDOMAIN) instead of misreporting it as private', async () => {
             const lookup = async () => { throw new Error('ENOTFOUND attacker.example.net'); };
             await assert.rejects(resolvesToPrivateOrLinkLocalAddress('attacker.example.net', lookup), /ENOTFOUND/);
+        });
+    });
+
+    describe('isPrivateOrLinkLocalHost: port-suffix handling (#729 follow-up)', () => {
+        it('still detects a bare private IPv4 address with no port', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('10.0.0.5'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('169.254.169.254'), true);
+        });
+
+        it('still returns false for a bare public IPv4 address with no port', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('93.184.216.34'), false);
+        });
+
+        it('detects a private IPv4 address with an explicit port (WHATWG URL.host shape)', () => {
+            // downloadToFile's per-redirect-hop callback is invoked with URL.host,
+            // which includes a non-default port -- a redirect straight to the
+            // cloud metadata service on a non-default port must still be caught.
+            assert.strictEqual(isPrivateOrLinkLocalHost('169.254.169.254:8443'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('10.0.0.5:443'), true);
+        });
+
+        it('does not treat a public IPv4 address with an explicit port as private', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('93.184.216.34:8443'), false);
+        });
+
+        it('detects a bracketed private IPv6 address with an explicit port', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('[::1]:8443'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('[fe80::1]:443'), true);
+        });
+
+        it('still detects a bracketed private IPv6 address with no port', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('[::1]'), true);
+        });
+
+        it('does not treat "localhost" with an explicit port as a non-match', () => {
+            assert.strictEqual(isPrivateOrLinkLocalHost('localhost:8443'), true);
+        });
+
+        it('still detects a BARE (unbracketed, no port) IPv6 loopback/link-local address -- the shape dns.lookup() actually returns', () => {
+            // Regression: an earlier version of the port-stripping fix used
+            // hostname.lastIndexOf(':') unconditionally, which found the SECOND
+            // colon in '::1', treated the trailing '1' as a "port", and sliced
+            // the address down to ':' -- silently breaking the exact DNS-resolved
+            // loopback shape resolvesToPrivateOrLinkLocalAddress depends on. A
+            // bare IPv6 address always has >=2 colons, so port-stripping must
+            // only fire when there is EXACTLY one.
+            assert.strictEqual(isPrivateOrLinkLocalHost('::1'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('::'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('fe80::1'), true);
+            assert.strictEqual(isPrivateOrLinkLocalHost('fc00::1'), true);
         });
     });
 });

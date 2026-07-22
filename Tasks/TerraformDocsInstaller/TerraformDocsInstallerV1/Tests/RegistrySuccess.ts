@@ -17,9 +17,9 @@ tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/
 // resolvesToPrivateOrLinkLocalAddress check passes without a real network
 // lookup, instead of failing with a real ENOTFOUND in this offline test run.
 tr.registerMock('dns', {
-    promises: {
-        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
-    }
+  promises: {
+    lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+  }
 });
 
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
@@ -31,7 +31,14 @@ tr.registerMock('./http-client', {
     }
     throw new Error('Unexpected fetchJson URL: ' + url);
   },
-  fetchText: async (url: string) => { throw new Error('Registry path should not fetch text: ' + url); }
+  fetchText: async (url: string) => { throw new Error('Registry path should not fetch text: ' + url); },
+  DOWNLOAD_TIMEOUT_MS: 600000,
+  // downloadToFile now replaces tools.downloadTool() on the DEFAULT (no
+  // allowlist) path too (#729 follow-up); simulate a clean, non-redirected
+  // download the same way downloadTool is stubbed elsewhere.
+  downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+    isHostAllowed(new URL(url).hostname);
+  }
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });

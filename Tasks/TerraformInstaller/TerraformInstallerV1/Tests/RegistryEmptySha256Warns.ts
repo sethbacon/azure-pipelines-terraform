@@ -17,7 +17,8 @@ tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => '/tmp'
 });
 
 // dns: storage.example.com is a fictional test host with no real DNS record;
@@ -45,6 +46,13 @@ tr.registerMock('./http-client', {
     },
     fetchText: async (url: string) => {
         throw new Error('fetchText should not be called for registry download. Called with: ' + url);
+    },
+    DOWNLOAD_TIMEOUT_MS: 600000,
+    // downloadToFile now replaces tools.downloadTool() on the DEFAULT (no
+    // allowlist) path too (#729 follow-up); simulate a clean, non-redirected
+    // download the same way downloadTool is stubbed below.
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(url).hostname);
     }
 });
 
