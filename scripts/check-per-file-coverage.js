@@ -61,10 +61,13 @@ const SECURITY_TIER = new Set([
     'Tasks/TerraformTask/TerraformTaskV5/src/results/redact.js',
     // Owner-only 0600 + O_EXCL (Unix) / restrictive icacls DACL (Windows)
     // secure-temp-file primitive guarding WIF/OCI credential material.
-    // Byte-identical parity family across all three listed tasks.
+    // Byte-identical parity family across all four listed tasks (Batch E
+    // round 1: ProviderMirror's copy was missing from this tier despite
+    // check-shared-modules.js already tracking it as the same parity family).
     'Tasks/TerraformTask/TerraformTaskV5/src/secure-temp.js',
     'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/secure-temp.js',
     'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/secure-temp.js',
+    'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/secure-temp.js',
     // SSRF/token-exfiltration guard for the host the ADO OIDC bearer JWT is
     // exchanged with for an OCI UPST.
     'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.js',
@@ -105,6 +108,41 @@ const SECURITY_TIER = new Set([
     'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/config-generator.js',
     // OIDC host allowlist + minting shared by all four cloud handlers' WIF paths.
     'Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.js',
+
+    // Issue #755: the per-cloud command handlers that actually write the
+    // credential material id-token-generator.js/oci-token-exchange.js mint --
+    // PEM private keys, OCI PAR-embedding backend config, and WIF/ARM_* tokens
+    // -- to disk and/or the child process environment. Tiering the minting
+    // helpers above but not these was an inconsistent gap: a regression here is
+    // just as exposure-relevant as one in the helpers that feed them.
+    'Tasks/TerraformTask/TerraformTaskV5/src/azure-terraform-command-handler.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/aws-terraform-command-handler.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/gcp-terraform-command-handler.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.js',
+    // Batch E round 1 (#755 missed sibling): same credential-to-env pattern as
+    // the four handlers above -- applyBackendEnv() reads backendHCPToken,
+    // setSecret()s it, then writes it to TF_TOKEN_app_terraform_io. Left out of
+    // the original #755 pass alongside them despite fitting its rationale
+    // exactly. generic-terraform-command-handler.js handles no credentials at
+    // all and correctly stays untiered.
+    'Tasks/TerraformTask/TerraformTaskV5/src/hcp-terraform-command-handler.js',
+    // Batch E round 1 (#755 missed sibling): the shared PEM parsing/validation
+    // helper the gcp and oci handlers above call (normalizePem) before that
+    // normalized private-key material is written to disk/env -- as exposure-
+    // relevant as the already-tiered id-token-generator.js/oci-token-
+    // exchange.js minting helpers it sits alongside.
+    'Tasks/TerraformTask/TerraformTaskV5/src/pem-normalizer.js',
+    // The single credential-to-process.env channel every provider handler
+    // funnels secret values through (setEnvironmentVariable / setSecret /
+    // trackedSecretValues) -- the same rationale as the handlers above.
+    'Tasks/TerraformTask/TerraformTaskV5/src/environment-variables.js',
+    // PublishKbArticleV1's ServiceNow credential path: auth.js builds the
+    // Basic/OAuth Authorization header (setSecret point-of-read for the
+    // password/token), and servicenow-client.js is the sole caller that sends
+    // it -- the direct sibling of the already-tiered servicenow-http.js
+    // transport and uri-scheme-guard.js validator in this same pipeline.
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/auth.js',
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.js',
 ]);
 
 // Files allowed BELOW their applicable floor (DEFAULT_FLOOR, or SECURITY_FLOOR

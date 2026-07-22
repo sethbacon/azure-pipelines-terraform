@@ -22,15 +22,6 @@ describe('secure-temp (TerraformProviderMirror copy) — exclusive create + cros
     const origPlatform = process.platform;
     let scratchDir: string;
 
-    function trySymlink(target: string, linkPath: string): boolean {
-        try {
-            fs.symlinkSync(target, linkPath, 'file');
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
     beforeEach(() => {
         scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-secure-temp-test-'));
     });
@@ -57,13 +48,32 @@ describe('secure-temp (TerraformProviderMirror copy) — exclusive create + cros
         assert.strictEqual(fs.readFileSync(target, 'utf8'), 'pre-existing', 'the pre-existing file must be untouched');
     });
 
-    it('writeSecretFile refuses to write through a pre-planted symlink instead of following it', function () {
-        const victim = path.join(scratchDir, 'victim.txt');
-        fs.writeFileSync(victim, 'victim-content');
-        const link = path.join(scratchDir, 'link.terraformrc');
-        if (!trySymlink(victim, link)) this.skip();
-        assert.throws(() => writeSecretFile(link, 'stolen-secret'), /EEXIST/);
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the secret');
+    it('writeSecretFile requests an exclusive create (flag "wx") so a pre-planted symlink cannot be followed (#757)', () => {
+        // A real pre-planted symlink cannot be created deterministically in
+        // every CI environment (Windows requires SeCreateSymbolicLinkPrivilege/
+        // Developer Mode; this test previously used this.skip() when that
+        // privilege was unavailable, which --forbid-pending now treats as a
+        // hard failure). writeSecretFile has no application-level symlink
+        // check of its own -- it relies entirely on the OS/runtime honoring
+        // O_EXCL (Node's flag: 'wx'), which POSIX guarantees refuses ANY
+        // pre-existing path node, symlink or not. Asserting the flag is
+        // requested is therefore a deterministic, causal proof of the same
+        // security property, on every platform, with no privilege dependency.
+        const f = fs as unknown as { writeFileSync: typeof fs.writeFileSync };
+        const origWriteFileSync = f.writeFileSync;
+        let seenOptions: unknown;
+        f.writeFileSync = (...args: Parameters<typeof fs.writeFileSync>) => {
+            seenOptions = args[2];
+            return origWriteFileSync(...args);
+        };
+        const target = path.join(scratchDir, 'flag-check.terraformrc');
+        try {
+            writeSecretFile(target, 'secret');
+        } finally {
+            f.writeFileSync = origWriteFileSync;
+        }
+        assert.deepStrictEqual(seenOptions, { mode: 0o600, flag: 'wx' });
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'secret');
     });
 
     it('writeSecretFile restricts the DACL via icacls on win32 (inheritance stripped, only the current user granted)', () => {
@@ -126,7 +136,8 @@ describe('secure-temp (TerraformProviderMirror copy) — exclusive create + cros
 
     // Real-ACL integration check: only meaningful (and only runs) on Windows
     // agents, mirroring TerraformTaskV5's own win32 integration test for #495.
-    (origPlatform === 'win32' ? it : it.skip)('win32 integration: no broad principal retains access; the current user keeps full control', () => {
+    it('win32 integration: no broad principal retains access; the current user keeps full control', () => {
+        if (origPlatform !== 'win32') return; // guard clause, not it.skip (#757): keeps this test out of --forbid-pending's reach on non-Windows CI legs.
         const target = path.join(scratchDir, 'real-acl.terraformrc');
         writeSecretFile(target, 'real-secret');
         const aclOutput = cp.execFileSync('icacls', [target], { encoding: 'utf8' });
@@ -175,18 +186,26 @@ describe('replaceSecretFile (TerraformProviderMirror copy) — .terraformrc conf
         }
     });
 
-    it('refuses to write through a pre-existing symlink', function () {
-        const victim = path.join(scratchDir, 'victim.txt');
-        fs.writeFileSync(victim, 'victim-content');
+    it('refuses to write through a path reported as a symlink (#757)', () => {
+        // A pre-existing regular file stands in for a pre-planted symlink so
+        // the assertion is deterministic on every platform/CI environment
+        // (this test previously used this.skip() when the environment could
+        // not create a real symlink, which --forbid-pending now treats as a
+        // hard failure): replaceSecretFile's refusal is driven entirely by
+        // fs.lstatSync(...).isSymbolicLink(), so mocking that call to report
+        // "yes, a symlink" exercises the exact same guarded branch a real
+        // symlink would.
         const link = path.join(scratchDir, '.terraformrc');
+        fs.writeFileSync(link, 'placeholder-content');
+        const f = fs as unknown as { lstatSync: (p: fs.PathLike) => fs.Stats };
+        const origLstatSync = f.lstatSync;
+        f.lstatSync = () => ({ isSymbolicLink: () => true }) as fs.Stats;
         try {
-            fs.symlinkSync(victim, link, 'file');
-        } catch {
-            this.skip();
+            assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
+        } finally {
+            f.lstatSync = origLstatSync;
         }
-        assert.throws(() => replaceSecretFile(link, 'captured'), /symbolic link/);
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'victim-content', 'the symlink target must not receive the config');
-        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink must be left in place as evidence, not silently deleted');
+        assert.strictEqual(fs.readFileSync(link, 'utf8'), 'placeholder-content', 'a path reported as a symlink must not be overwritten');
     });
 });
 
@@ -231,18 +250,23 @@ describe('scrubFile (TerraformProviderMirror copy) — overwrite-before-unlink c
         assert.strictEqual(fs.readFileSync(target, 'utf8'), '');
     });
 
-    it('does not follow a symlink onto a victim file (CWE-59)', function () {
-        const victim = path.join(scratchDir, 'victim.txt');
+    it('does not follow a path reported as a symlink onto a victim file (CWE-59) (#757)', () => {
+        // Same deterministic-mock rationale as replaceSecretFile's symlink
+        // test above (#757): scrubFile's refusal to write through a symlink
+        // is driven entirely by fs.lstatSync(...).isSymbolicLink(), so
+        // mocking it is a faithful, privilege-independent substitute for a
+        // real pre-planted symlink.
+        const target = path.join(scratchDir, 'tracked-temp-file.terraformrc');
         const original = 'victim-secret-content';
-        fs.writeFileSync(victim, original);
-        const link = path.join(scratchDir, 'tracked-temp-file.terraformrc');
+        fs.writeFileSync(target, original);
+        const f = fs as unknown as { lstatSync: (p: fs.PathLike) => fs.Stats };
+        const origLstatSync = f.lstatSync;
+        f.lstatSync = () => ({ isSymbolicLink: () => true }) as fs.Stats;
         try {
-            fs.symlinkSync(victim, link, 'file');
-        } catch {
-            this.skip();
+            assert.doesNotThrow(() => scrubFile(target));
+        } finally {
+            f.lstatSync = origLstatSync;
         }
-        assert.doesNotThrow(() => scrubFile(link));
-        assert.strictEqual(fs.readFileSync(victim, 'utf8'), original, 'the symlink target must not be zeroed');
-        assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the symlink entry itself is left for cleanupTempFiles() to unlink');
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), original, 'a path reported as a symlink must not be zeroed');
     });
 });

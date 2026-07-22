@@ -2294,6 +2294,20 @@ describe('servicenow-http.snRequest', () => {
         );
     });
 
+    it('accepts a response at exactly the response-size guard boundary (#756)', async () => {
+        // MAX_RESPONSE_BYTES is 10 MiB and the guard rejects only when the accumulated
+        // body is strictly greater than the cap, so a response of EXACTLY 10 MiB must be
+        // accepted (not destroyed) -- the symmetric companion to the over-limit reject test
+        // above. Mirrors the boundary-accept test the http-client.ts / https-client.ts family
+        // carries; servicenow-http.ts is the hand-tracked (non-parity-family) third credential
+        // transport, so it needs its own copy.
+        nock(BASE_URL)
+            .get('/api/now/table/kb_knowledge/atcap')
+            .reply(200, 'x'.repeat(10 * 1024 * 1024));
+        const res = await snRequest('GET', `${BASE_URL}/api/now/table/kb_knowledge/atcap`, { headers: HEADERS });
+        assert.strictEqual(res.status, 200);
+    });
+
     it('rejects when the socket times out (server accepts the connection but never responds)', async function () {
         // nock's mock socket doesn't independently fire req.setTimeout() timers, so
         // this exercises the real Node socket-timeout path against a raw TCP listener

@@ -126,6 +126,56 @@ describe('TerraformDriftReport callback transport', function () {
         }
     });
 
+    it('rejects a response exceeding the response-size guard instead of buffering it unbounded (#756)', async () => {
+        // Ports the boundary test that already covers TerraformInstallerV1's
+        // http-client.ts (and PublishKbArticleV1's servicenow-http.ts) to this
+        // task's copy of the same MAX_RESPONSE_BYTES guard -- until now neither
+        // real task instance (this one nor TerraformModulePublish) had a test
+        // proving the guard actually trips against a real streaming response.
+        const chunkSize = 1024 * 1024; // 1MiB
+        const chunkCount = 11; // 11 MiB total, comfortably over the 10 MiB guard
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            // The client destroys its request once the guard trips, which can
+            // surface as a socket-level write error on this side; swallow it so
+            // an unhandled 'error' event does not crash the test process.
+            res.on('error', () => { /* expected once the client aborts */ });
+            res.writeHead(200);
+            for (let i = 0; i < chunkCount; i++) {
+                res.write(Buffer.alloc(chunkSize, 'a'));
+            }
+            res.end();
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            await assert.rejects(
+                client('GET', `https://127.0.0.1:${port}/drift`, {}),
+                /exceeded 10485760 bytes/,
+            );
+        } finally {
+            server.close();
+        }
+    });
+
+    it('accepts a response at exactly the response-size guard boundary (#756)', async () => {
+        const exactly10MiB = 10 * 1024 * 1024;
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.writeHead(200);
+            res.end(Buffer.alloc(exactly10MiB, 'a'));
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${port}/drift`, {});
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(resp.body.length, exactly10MiB);
+        } finally {
+            server.close();
+        }
+    });
+
     it('times out a hung callback connection instead of hanging', async () => {
         // A bare TCP server that accepts the socket but never completes the TLS
         // handshake — req.setTimeout must fire and reject.
