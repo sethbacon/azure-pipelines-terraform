@@ -278,6 +278,16 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID", serviceConnectionID);
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID);
                     }
+                    // SECURITY (#761): this default "ID token refresh" path exports the
+                    // pipeline's broad System.AccessToken (the SystemVssConnection AccessToken)
+                    // into the terraform child process as ARM_OIDC_REQUEST_TOKEN so azurerm can
+                    // refresh its own OIDC token mid-run. Unlike the one-shot ARM_OIDC_TOKEN
+                    // minted when environmentAzureRmUseIdTokenGeneration=true, this token stays
+                    // valid for the life of the job, can call back to Azure DevOps, and is
+                    // inherited by any local-exec provisioner or external data source. Pipelines
+                    // running untrusted third-party modules on shared agents should prefer
+                    // environmentAzureRmUseIdTokenGeneration=true. See
+                    // docs/setup/azure-wif-setup.md ("Token modes and exposure").
                     const accessToken = tasks.getEndpointAuthorizationParameter('SystemVssConnection', 'AccessToken', false);
                     if (!accessToken) {
                         throw new Error("AccessToken not found in SystemVssConnection. Ensure the pipeline has OIDC enabled.");

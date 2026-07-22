@@ -40,7 +40,7 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 **Fix:**
 
 - The AzureRM handler lowercases the incoming scheme before matching, so `serviceprincipal`, `ServicePrincipal`, and `SERVICEPRINCIPAL` all resolve the same way.
-- If you see this error, the service connection was created with a scheme the task does not recognize (for example, a legacy certificate-based principal). Recreate the connection using one of the supported schemes from the Azure DevOps UI.
+- If you see this error, the service connection was created with a scheme the task does not recognize (for example, a legacy certificate-based principal). Recreate the connection using one of the supported schemes from the Azure DevOps UI. See [Azure WIF Setup Guide](setup/azure-wif-setup.md).
 - **AWS / GCP schemes are case-sensitive**, unlike Azure. The `environmentAuthSchemeAWS` and `environmentAuthSchemeGCP` inputs must be exactly `WorkloadIdentityFederation` or `ServiceConnection` — `workloadidentityfederation` will silently fall through to the static-credentials path.
 
 ### AWS / GCP — WIF configured but task uses static credentials
@@ -173,7 +173,7 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 Since this fix, a step missing the required backend inputs fails immediately with an actionable error (naming the detected backend, the provider, and the command) instead of the opaque authorizer/login error above — if you still see the opaque error, you're on an older task version; update to the latest `PipelineTerraformTask@5`.
 
-**Note on `local-exec`/`external` data sources:** when using Workload Identity Federation for the azurerm backend/provider with `runAzLogin: true`, the ADO pipeline OIDC access token (`ARM_OIDC_REQUEST_TOKEN`) is present in the process environment for the whole Terraform run and is therefore inherited by any `local-exec` provisioner or `external` data source. Avoid combining `runAzLogin` with untrusted modules on shared agents.
+**Note on `local-exec`/`external` data sources:** when using Workload Identity Federation for the azurerm backend/provider in the **default** ID-token-refresh mode (`environmentAzureRmUseIdTokenGeneration`/`backendAzureRmUseIdTokenGeneration` left `false`), the broad ADO pipeline OIDC access token (`ARM_OIDC_REQUEST_TOKEN`) is present in the Terraform process environment for the **whole run** — regardless of whether `runAzLogin` is enabled; `runAzLogin` only additionally signs the Azure CLI in with it. This token is therefore inherited by any `local-exec` provisioner or `external` data source. For pipelines running untrusted third-party modules/providers on shared agents, set `environmentAzureRmUseIdTokenGeneration`/`backendAzureRmUseIdTokenGeneration` to `true` to switch to the narrower one-shot `ARM_OIDC_TOKEN` instead. See [Azure WIF Setup Guide § Token modes and exposure](setup/azure-wif-setup.md#token-modes-and-exposure).
 
 ### Multiple provider blocks warning
 

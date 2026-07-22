@@ -53,55 +53,7 @@ Closes #12
 
 ## Release Process
 
-Releases are fully automated via [release-please](https://github.com/googleapis/release-please):
-
-1. Merge conventional-commit PRs to `main` — release-please accumulates them.
-2. release-please opens a **Release PR** that bumps `azure-devops-extension.json` (`version`) and updates `CHANGELOG.md`.
-3. The per-task `Minor` bumps happen **automatically** on the Release PR — this used to be a manual step and was repeatedly missed. ADO agents cache tasks by `Major.Minor` and will not pick up new code until `Minor` increments, so every task whose `src/` changed OR whose `task.json` itself changed (e.g. a `defaultValue` edit with no accompanying `src/` change) since the last release must have its `task.json` `Minor` incremented before the release is tagged. Three layers enforce this, so in the normal case there is nothing to do by hand:
-
-   - **Auto-bump (primary):** `.github/workflows/release-pr-minor-bumps.yml` triggers on the Release PR (head branch `release-please--…`), runs `scripts/bump-minor-versions.js`, and commits + pushes the bumps back to the PR branch using the release App token — pushing with the App token (not `GITHUB_TOKEN`) is what re-triggers the PR's checks. It is idempotent and self-healing: release-please force-pushes its branch on every new `main` commit, wiping the bump commit, and this workflow re-runs on the resulting `synchronize` and re-applies it (its own push also fires `synchronize`, but that second run is a clean no-op).
-   - **Merge gate (backstop):** the `Release PR Minor Bumps` required check in `.github/workflows/pr-checks.yml` runs `scripts/check-minor-bumps.js` against the Release PR and fails it if any bump is still missing, so a Release PR can never merge un-bumped (e.g. if the auto-bump workflow was broken).
-   - **Tag-time guard (final defense, unchanged):** `release.yml`'s `Verify per-task Minor bumps` step re-runs the same check after the tag is pushed and fails the release if anything slipped through.
-
-   **Security rule (mandatory):** for any release, every task whose code was touched by a **security** issue in at least one of the release's PRs **must** have its `Minor` bumped in that release — never ship a security fix while agents keep serving the cached old code. The automation bumps any task whose `src/` OR `task.json` changed (#676), which already covers this; when unsure whether a change qualifies, bump it.
-
-   **Manual fallback (only if the automation is broken):** if the auto-bump workflow is disabled/failing and the merge gate is red, apply the bumps yourself — the simplest way is `node scripts/bump-minor-versions.js` from the repo root, which does exactly what the workflow does. To edit by hand instead, bump `Minor` by 1 (leave `Patch` at 0) in the `task.json` of every task whose `src/` or `task.json` changed since the last release:
-
-   - `Tasks/TerraformTask/TerraformTaskV5/task.json` — if TerraformTaskV5 changed
-   - `Tasks/TerraformInstaller/TerraformInstallerV1/task.json` — if TerraformInstallerV1 changed
-   - `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/task.json` — if TerraformProviderMirrorV1 changed
-   - `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/task.json` — if PolicyAgentInstallerV1 changed
-   - `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/task.json` — if TerraformPolicyCheckV1 changed
-   - `Tasks/TerraformDriftReport/TerraformDriftReportV1/task.json` — if TerraformDriftReportV1 changed
-   - `Tasks/TerraformModulePublish/TerraformModulePublishV1/task.json` — if TerraformModulePublishV1 changed
-   - `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/task.json` — if TerraformDocsInstallerV1 changed
-   - `Tasks/TerraformDocs/TerraformDocsV1/task.json` — if TerraformDocsV1 changed
-   - `Tasks/Markdown2Html/Markdown2HtmlV1/task.json` — if Markdown2HtmlV1 changed
-   - `Tasks/PublishKbArticle/PublishKbArticleV1/task.json` — if PublishKbArticleV1 changed
-
-   **Avoid a double-increment:** when a change must reach agents immediately (e.g. dropping a Node execution handler), `Minor` may have been bumped in the feature PR instead. A task already incremented in a merged feature PR since the last release must **not** be bumped again — both the bump script and the check compare against the last release tag and already skip such tasks, so prefer the script over hand-editing.
-
-4. Merge the Release PR. release-please creates a draft GitHub Release and pushes the `vX.Y.Z` tag.
-5. The `release.yml` workflow fires on the tag:
-   - Verifies the tag is reachable from `main`
-   - Verifies `azure-devops-extension.json` version matches the tag
-   - Runs full CI
-   - Builds release bundle + packages `.vsix`
-   - Generates CycloneDX SBOMs + cosign signature
-   - Creates draft GitHub Release with assets
-   - **Publishes to VS Marketplace** (requires `marketplace` environment approval)
-   - Undrafts the GitHub Release
-
-**Required secrets/variables:**
-
-| Name                       | Type     | Purpose                                                                          |
-| -------------------------- | -------- | -------------------------------------------------------------------------------- |
-| `AZDO_PUBLISH_CLIENT_ID`   | Variable | Client ID of the Entra app federated to GitHub for the Marketplace publish login |
-| `AZDO_PUBLISH_TENANT_ID`   | Variable | Entra tenant ID for the publish login                                            |
-| `RELEASE_DISPATCH_APP_ID`  | Variable | GitHub App client ID for release-please                                          |
-| `RELEASE_DISPATCH_APP_KEY` | Secret   | GitHub App private key for release-please                                        |
-
-As of PR #218, `release.yml` publishes via **GitHub OIDC federated to Microsoft Entra** — there is no stored `TFX_PAT`. The publish job (under the `marketplace` environment, `id-token: write`) signs in with `azure/login` using the two `AZDO_PUBLISH_*` variables, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app needs a federated credential with subject `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
+**[CONTRIBUTING.md → Release process](CONTRIBUTING.md#release-process) is the single authoritative reference.** release-please opens a **Release PR** that bumps the extension version and changelog. Per-task `task.json` `Minor` bumps are applied automatically and triple-enforced (auto-bump workflow, PR merge gate, tag-time guard) — never hand-edit them, and never bump an already-bumped task again (no double-increment). Merging the Release PR pushes the `vX.Y.Z` tag, and `release.yml` then runs full CI, builds and signs the `.vsix`, and publishes it to the VS Marketplace via GitHub OIDC federated to Microsoft Entra.
 
 The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval. This is verified automatically by the `verify-marketplace-environment-protection` job in `weekly-security.yml`, which fails the scheduled run (filing an issue) if the required-reviewer rule is missing, removed, or the environment itself no longer exists.
 
@@ -446,7 +398,7 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 
 ## CI/CD
 
-- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Check Shared Module Parity`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Module Publish V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Drift Report V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Markdown2Html V1`, `Build and Test Publish KB Article V1`, `Build and Test Tab`, `Lint GitHub Actions`.
+- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Check Shared Module Parity`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Module Publish V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Drift Report V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Markdown2Html V1`, `Build and Test Publish KB Article V1`, `Build and Test V5 Smoke`, `Build and Test Tab`, `Lint GitHub Actions`.
 - `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
@@ -506,7 +458,7 @@ upgraded their runner, not as a second fully-verified execution path.
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (27 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test Tab`, `Lint GitHub Actions`, `Scan Workflows (zizmor)`, and `Release PR Minor Bumps` (the pr-checks.yml merge gate — a fast no-op pass on non-release PRs, and the layer-2 backstop that keeps an un-bumped Release PR from merging if the auto-bump workflow is ever broken). Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
+- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (29 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test V5 Smoke`, `Build and Test Tab`, `Lint GitHub Actions`, `Scan Workflows (zizmor)`, and `Release PR Minor Bumps` (the pr-checks.yml merge gate — a fast no-op pass on non-release PRs, and the layer-2 backstop that keeps an un-bumped Release PR from merging if the auto-bump workflow is ever broken). Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)
