@@ -1,5 +1,5 @@
 {
-  "name": "terraform-module-publish-task",
+  "name": "terraformmodulepublish",
   "version": "1.0.0",
   "description": "",
   "main": "src/index.js",
@@ -10,7 +10,7 @@
     "test": "npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
     "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
     "posttest:coverage": "node ../../../scripts/check-per-file-coverage.js",
-    "lint": "npx eslint src/"
+    "lint": "npx eslint src/ Tests/"
   },
   "author": "",
   "license": "ISC",

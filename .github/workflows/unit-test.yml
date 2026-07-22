@@ -59,6 +59,8 @@ jobs:
         run: node scripts/check-shared-modules.js
       - name: Self-test check-shared-modules.js
         run: node scripts/test-check-shared-modules.js
+      - name: Check for unregistered near-duplicate modules
+        run: node scripts/check-near-duplicate-modules.js
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})
@@ -193,7 +195,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -233,7 +235,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -273,7 +275,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -313,7 +315,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -353,7 +355,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -393,7 +395,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -433,7 +435,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -473,7 +475,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -513,7 +515,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -553,7 +555,7 @@ jobs:
       - name: Audit development dependencies
         run: npm audit --audit-level=high
       - name: Lint
-        run: npx --no-install eslint src/
+        run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage

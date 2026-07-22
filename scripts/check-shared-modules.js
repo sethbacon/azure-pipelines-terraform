@@ -341,61 +341,73 @@ function extractRegion(relPath, region) {
     return { ok: true, full, content: lines.slice(opens[0] + 1, closes[0]).join('\n') };
 }
 
-let hasError = false;
+function main() {
+    let hasError = false;
 
-for (const { dirs, modules } of FAMILIES) {
-    const [canonicalDir, ...otherDirs] = dirs;
-    for (const file of modules) {
-        const base = read(canonicalDir, file);
+    for (const { dirs, modules } of FAMILIES) {
+        const [canonicalDir, ...otherDirs] = dirs;
+        for (const file of modules) {
+            const base = read(canonicalDir, file);
+            if (!base.ok) {
+                console.error(`FAIL: canonical copy missing: ${path.join(canonicalDir, file)}`);
+                hasError = true;
+                continue;
+            }
+            for (const dir of otherDirs) {
+                const other = read(dir, file);
+                if (!other.ok) {
+                    console.error(`FAIL: copy missing: ${path.join(dir, file)}`);
+                    hasError = true;
+                    continue;
+                }
+                if (other.content !== base.content) {
+                    console.error(`FAIL: ${file} diverged between ${canonicalDir} and ${dir}`);
+                    console.error(`      reconcile both copies (canonical: ${base.full})`);
+                    hasError = true;
+                } else {
+                    console.log(`OK: ${file} identical (${canonicalDir} == ${dir})`);
+                }
+            }
+        }
+    }
+
+    for (const { region, files } of REGION_FAMILIES) {
+        const [canonicalFile, ...otherFiles] = files;
+        const base = extractRegion(canonicalFile, region);
         if (!base.ok) {
-            console.error(`FAIL: canonical copy missing: ${path.join(canonicalDir, file)}`);
+            console.error(`FAIL: ${base.reason}`);
             hasError = true;
             continue;
         }
-        for (const dir of otherDirs) {
-            const other = read(dir, file);
+        for (const file of otherFiles) {
+            const other = extractRegion(file, region);
             if (!other.ok) {
-                console.error(`FAIL: copy missing: ${path.join(dir, file)}`);
+                console.error(`FAIL: ${other.reason}`);
                 hasError = true;
                 continue;
             }
             if (other.content !== base.content) {
-                console.error(`FAIL: ${file} diverged between ${canonicalDir} and ${dir}`);
+                console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
                 console.error(`      reconcile both copies (canonical: ${base.full})`);
                 hasError = true;
             } else {
-                console.log(`OK: ${file} identical (${canonicalDir} == ${dir})`);
+                console.log(`OK: region '${region}' identical (${canonicalFile} == ${file})`);
             }
         }
     }
+
+    if (hasError) {
+        process.exit(1);
+    }
+    console.log('All shared-module parity checks passed.');
 }
 
-for (const { region, files } of REGION_FAMILIES) {
-    const [canonicalFile, ...otherFiles] = files;
-    const base = extractRegion(canonicalFile, region);
-    if (!base.ok) {
-        console.error(`FAIL: ${base.reason}`);
-        hasError = true;
-        continue;
-    }
-    for (const file of otherFiles) {
-        const other = extractRegion(file, region);
-        if (!other.ok) {
-            console.error(`FAIL: ${other.reason}`);
-            hasError = true;
-            continue;
-        }
-        if (other.content !== base.content) {
-            console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
-            console.error(`      reconcile both copies (canonical: ${base.full})`);
-            hasError = true;
-        } else {
-            console.log(`OK: region '${region}' identical (${canonicalFile} == ${file})`);
-        }
-    }
+// Exported so scripts/check-near-duplicate-modules.js can share this single
+// allowlist source instead of hand-maintaining a second copy of it (#760).
+// Still directly runnable as a script (`node scripts/check-shared-modules.js`),
+// which is how CI and test-check-shared-modules.js's spawnSync invoke it.
+if (require.main === module) {
+    main();
 }
 
-if (hasError) {
-    process.exit(1);
-}
-console.log('All shared-module parity checks passed.');
+module.exports = { FAMILIES, REGION_FAMILIES, main };
