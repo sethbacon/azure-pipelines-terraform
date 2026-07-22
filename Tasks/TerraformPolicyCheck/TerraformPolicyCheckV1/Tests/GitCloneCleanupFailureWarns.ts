@@ -10,13 +10,13 @@ const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 const FIXED_UUID = 'fixed-cleanupfail-uuid';
 const cloneDir = path.join(os.tmpdir(), `policy-repo-${FIXED_UUID}`);
 
-const testDir = path.join(os.tmpdir(), 'tpc-cleanupfail');
-fs.rmSync(testDir, { recursive: true, force: true });
+// Unique per-run temp dir via fs.mkdtempSync instead of a predictable os.tmpdir()
+// path, to avoid the insecure-temp-file symlink-race class (CodeQL js/insecure-temporary-file).
+const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-cleanupfail-'));
 fs.rmSync(cloneDir, { recursive: true, force: true });
 // The task writes its results file with O_EXCL; with a mocked fixed UUID a
 // leftover from a previous local run would collide, so remove it up front.
 fs.rmSync(path.join(os.tmpdir(), `policy-results-${FIXED_UUID}.txt`), { force: true });
-fs.mkdirSync(testDir, { recursive: true });
 // Pre-create the clone target so the post-clone existence check passes (clone is mocked).
 fs.mkdirSync(cloneDir, { recursive: true });
 const planFile = path.join(testDir, 'plan.json');

@@ -6,9 +6,9 @@ import fs = require('fs');
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const dir = path.join(os.tmpdir(), 'tdr-scrub-before-unlink');
-fs.rmSync(dir, { recursive: true, force: true });
-fs.mkdirSync(dir, { recursive: true });
+// Unique per-run temp dir via fs.mkdtempSync instead of a predictable os.tmpdir()
+// path, to avoid the insecure-temp-file symlink-race class (CodeQL js/insecure-temporary-file).
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdr-scrub-before-unlink-'));
 const planFile = path.join(dir, 'plan.json');
 fs.writeFileSync(
   planFile,
