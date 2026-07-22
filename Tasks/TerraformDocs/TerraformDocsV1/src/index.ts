@@ -4,6 +4,12 @@ import fs = require('fs');
 import path = require('path');
 import { buildTerraformDocsArgs, buildModulePathArgs, sanitizeConfigFile, TerraformDocsConfig } from './args-builder';
 
+// Upper bound on terraform-docs stdout+stderr buffered to classify an --output-check
+// failure and fold crash detail into the error message (mirrors the #632 / CWE-400
+// output caps). terraform-docs' diagnostics are tiny, so a modest cap is ample while
+// still refusing to grow one JS string unboundedly on a misbehaving binary.
+const MAX_CAPTURED_TOOL_BYTES = 64 * 1024; // 64 KiB
+
 async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
 
@@ -49,12 +55,39 @@ async function run() {
         // notification, or the pipeline's Result column) can tell 'the docs are
         // stale, regenerate them' apart from 'terraform-docs crashed' without
         // needing the interleaved raw tool stdout/stderr above in the log.
+        //
+        // Both outcomes exit non-zero, so the exit code alone cannot tell them apart.
+        // Capture stdout+stderr and treat it as 'outdated' ONLY when terraform-docs
+        // actually emitted its out-of-date signal; any OTHER non-zero exit is a genuine
+        // crash (bad config, unreadable module, a missing --output-file, ...) that must
+        // surface AS a failure with the captured detail folded in -- both so an
+        // --output-check crash is not mislabeled 'docs are outdated' (#767) and so a
+        // plain (non-check) failure carries terraform-docs' own error text rather than
+        // just an exit code. Capture is byte-bounded (mirroring the #632 / CWE-400
+        // output caps) and the listeners are additive, so the raw tool output is still
+        // echoed to the build log above.
+        let captured = '';
+        let capturedBytes = 0;
+        const capture = (data: string | Buffer): void => {
+            if (capturedBytes >= MAX_CAPTURED_TOOL_BYTES) return;
+            const text = data.toString();
+            capturedBytes += Buffer.byteLength(text);
+            captured += text;
+        };
+        toolRunner.on('stdout', capture);
+        toolRunner.on('stderr', capture);
+
         const exitCode = await toolRunner.execAsync(<IExecOptions>{ ignoreReturnCode: true });
         if (exitCode !== 0) {
-            if (config.outputCheck) {
+            if (config.outputCheck && /is out of date/i.test(captured)) {
                 throw new Error(tasks.loc('TerraformDocsOutdated', config.outputFile || config.modulePath));
             }
-            throw new Error(tasks.loc('TerraformDocsFailed', exitCode));
+            const detail = captured.trim();
+            throw new Error(
+                detail
+                    ? tasks.loc('TerraformDocsFailedDetail', exitCode, detail)
+                    : tasks.loc('TerraformDocsFailed', exitCode),
+            );
         }
 
         if (config.outputFile) {
