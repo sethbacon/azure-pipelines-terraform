@@ -441,6 +441,11 @@ describe('private-publisher', () => {
             );
         });
 
+        it('throws instead of interpolating a malformed module id into the sync/link urls (#768)', () => {
+            assert.throws(() => priv.syncUrl('https://r.example.com', '../admin'), /PrivateModuleIdInvalid/);
+            assert.throws(() => priv.linkUrl('https://r.example.com', 'mod-1?x=1'), /PrivateModuleIdInvalid/);
+        });
+
         it('builds the create and link bodies (system = provider; defaults applied)', () => {
             assert.deepStrictEqual(
                 JSON.parse(priv.createBody({ namespace: 'aceo', name: 'networking-vpc', provider: 'aws', version: '1.0.0' })),
@@ -457,6 +462,25 @@ describe('private-publisher', () => {
                     default_branch: 'main', tag_pattern: 'v*',
                 },
             );
+        });
+    });
+
+    describe('isValidModuleId', () => {
+        it('accepts existing test-fixture-style ids and UUIDs', () => {
+            assert.strictEqual(priv.isValidModuleId('abc-123'), true);
+            assert.strictEqual(priv.isValidModuleId('mod-1'), true);
+            assert.strictEqual(priv.isValidModuleId('mod-9'), true);
+            assert.strictEqual(priv.isValidModuleId('3fa85f64-5717-4562-b3fc-2c963f66afa6'), true);
+        });
+
+        it('rejects path traversal, URL metacharacters, whitespace, and empty/oversized values (#768)', () => {
+            assert.strictEqual(priv.isValidModuleId('../admin'), false);
+            assert.strictEqual(priv.isValidModuleId('mod-1/../scm'), false);
+            assert.strictEqual(priv.isValidModuleId('mod-1?x=1'), false);
+            assert.strictEqual(priv.isValidModuleId('mod-1#frag'), false);
+            assert.strictEqual(priv.isValidModuleId('mod 1'), false);
+            assert.strictEqual(priv.isValidModuleId(''), false);
+            assert.strictEqual(priv.isValidModuleId('a'.repeat(129)), false);
         });
     });
 
@@ -596,6 +620,30 @@ describe('private-publisher', () => {
                 () => new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true, timeoutSeconds: 0 }, noop).publish(),
                 (err: Error) => /Timed out after 0s|PrivateWaitTimedOut/.test(err.message) && !/ECONNRESET/.test(err.message),
             );
+        });
+
+        it('rejects a malicious module id returned by the registry before syncing (#768)', async () => {
+            const { client, calls } = fakeClient([
+                { status: 200, body: '{"id":"../../admin/modules/mod-1","versions":[]}' },
+            ]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, opts, noop).publish(),
+                /PrivateModuleIdInvalid/,
+            );
+            // Only the GET happened -- the invalid id must never reach a sync/link URL.
+            assert.strictEqual(calls.length, 1);
+        });
+
+        it('rejects a malicious module id returned by module creation before linking (#768)', async () => {
+            const { client, calls } = fakeClient([
+                { status: 404, body: '{}' },                            // GET module
+                { status: 201, body: '{"id":"mod-9/../../scm?x=1"}' },  // POST create returns a hostile id
+            ]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
+                /PrivateModuleIdInvalid/,
+            );
+            assert.strictEqual(calls.length, 2);
         });
     });
 });

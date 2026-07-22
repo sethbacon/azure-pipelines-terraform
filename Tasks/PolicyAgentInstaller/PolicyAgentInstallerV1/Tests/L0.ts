@@ -284,4 +284,18 @@ describe('PolicyAgentInstaller Test Suite', function () {
     expectFailure('InvalidVersionFail');
     expectFailure('OpaRegistryInsecureUrl');
     expectFailure('OpaRegistryEmptySha256RequireChecksum');
+
+    it('registry host resolves to a private address: should reject on the DEFAULT (no allowlist) path (#769)', async () => {
+        const tp = path.join(__dirname, 'OpaRegistryHostResolvesPrivate.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
 });

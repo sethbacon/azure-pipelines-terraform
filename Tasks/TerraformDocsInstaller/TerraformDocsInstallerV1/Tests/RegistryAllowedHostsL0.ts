@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseAllowedHosts, isRegistryHostAllowed } from '../src/registry-allowlist';
+import { parseAllowedHosts, isRegistryHostAllowed, resolvesToPrivateOrLinkLocalAddress } from '../src/registry-allowlist';
 
 /**
  * Direct unit tests for the optional registry download_url host allowlist.
@@ -44,6 +44,33 @@ describe('registry download_url host allowlist', function () {
 
     it('rejects when the allowlist is non-empty and nothing matches', () => {
       assert.strictEqual(isRegistryHostAllowed('attacker.example.net', ['storage.example.com']), false);
+    });
+  });
+
+  describe('resolvesToPrivateOrLinkLocalAddress', () => {
+    it('returns true when the host resolves to a private/link-local address (#769)', async () => {
+      const lookup = async () => [{ address: '169.254.169.254' }];
+      assert.strictEqual(await resolvesToPrivateOrLinkLocalAddress('attacker.example.net', lookup), true);
+    });
+
+    it('returns false when every resolved address is public', async () => {
+      const lookup = async () => [{ address: '93.184.216.34' }];
+      assert.strictEqual(await resolvesToPrivateOrLinkLocalAddress('storage.example.com', lookup), false);
+    });
+
+    it('returns true when only one of several resolved addresses is private', async () => {
+      const lookup = async () => [{ address: '93.184.216.34' }, { address: '10.0.0.5' }];
+      assert.strictEqual(await resolvesToPrivateOrLinkLocalAddress('attacker.example.net', lookup), true);
+    });
+
+    it('checks an IPv6 private/link-local resolved address too', async () => {
+      const lookup = async () => [{ address: 'fe80::1' }];
+      assert.strictEqual(await resolvesToPrivateOrLinkLocalAddress('attacker.example.net', lookup), true);
+    });
+
+    it('propagates a lookup failure (e.g. NXDOMAIN) instead of misreporting it as private', async () => {
+      const lookup = async () => { throw new Error('ENOTFOUND attacker.example.net'); };
+      await assert.rejects(resolvesToPrivateOrLinkLocalAddress('attacker.example.net', lookup), /ENOTFOUND/);
     });
   });
 });

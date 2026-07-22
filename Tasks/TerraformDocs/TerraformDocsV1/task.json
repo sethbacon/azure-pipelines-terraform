@@ -152,6 +152,7 @@
   ],
   "messages": {
     "TerraformDocsFailed": "terraform-docs failed with exit code %s.",
+    "TerraformDocsFailedDetail": "terraform-docs failed with exit code %s: %s",
     "TerraformDocsOutdated": "Generated documentation is out of date (outputCheck is enabled) for '%s'. Run terraform-docs locally with the same formatter/config and commit the update.",
     "GeneratedFile": "terraform-docs documentation written to: %s"
   }

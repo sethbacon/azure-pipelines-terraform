@@ -395,6 +395,25 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('registry host resolves to a private address: should reject on the DEFAULT (no allowlist) path (#769)', async () => {
+        // download_url's host is not a literal private IP -- isPrivateOrLinkLocalHost
+        // alone would miss it -- but the mocked dns module resolves it to the cloud
+        // metadata address 169.254.169.254. No registryAllowedHosts is set, proving
+        // this DNS-resolution check runs on the DEFAULT path, not just when an
+        // allowlist is configured.
+        const tp = path.join(__dirname, 'RegistryHostResolvesPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     // --- Mirror download source ---
 
     it('mirror custom URL: should download from mirror at HashiCorp path structure', async () => {

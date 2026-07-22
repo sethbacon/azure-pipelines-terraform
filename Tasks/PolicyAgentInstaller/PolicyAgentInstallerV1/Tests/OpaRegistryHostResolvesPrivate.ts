@@ -2,10 +2,11 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// Registry returns an empty sha256 and requireChecksum is explicitly disabled.
-// The install proceeds but must emit a warning that local verification was skipped.
-// With the fail-closed default (requireChecksum defaults to true) this is fatal — see
-// OpaRegistryEmptySha256RequireChecksum for that path — so this scenario opts out.
+// registryAllowedHosts is NOT set (the default path). download_url's host is
+// an ordinary-looking DNS name -- not a literal private IP, so
+// isPrivateOrLinkLocalHost alone would miss it -- but it resolves (via the
+// mocked dns module below) to the cloud metadata address 169.254.169.254. The
+// task must still reject before downloading (#769).
 const tp = path.join(__dirname, 'RunInstaller.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
@@ -14,28 +15,26 @@ tr.setInput('version', '1.17.1');
 tr.setInput('downloadSource', 'registry');
 tr.setInput('registryUrl', 'https://registry.example.com');
 tr.setInput('registryMirrorName', 'opa');
-tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
-
-// dns: storage.example.com is a fictional test host with no real DNS record;
-// mock it to a public (non-private/link-local) address so the #769
-// resolvesToPrivateOrLinkLocalAddress check passes without a real network
-// lookup, instead of failing with a real ENOTFOUND in this offline test run.
-tr.registerMock('dns', {
-    promises: {
-        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
-    }
-});
 
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
         if (url.includes('/terraform/binaries/opa/versions/1.17.1/linux/amd64')) {
-            return { download_url: 'https://storage.example.com/signed/opa?sig=abc', sha256: '' };
+            return {
+                download_url: 'https://attacker.example.net/signed/opa?sig=abc',
+                sha256: 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233'
+            };
         }
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
     fetchText: async (url: string) => { throw new Error('Registry path should not fetch text: ' + url); }
+});
+
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '169.254.169.254', family: 4 }]
+    }
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
@@ -50,12 +49,14 @@ tr.registerMock('fs', {
 
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
-    createHash: () => ({ update: () => ({ digest: () => 'unused-no-local-verification' }) })
+    createHash: () => ({ update: () => ({ digest: () => 'should-not-be-reached' }) })
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: () => null,
-    downloadTool: async () => '/tmp/opa-download',
+    downloadTool: async () => {
+        throw new Error('downloadTool should not be reached for a download_url host that resolves to a private address');
+    },
     extractZip: async () => { throw new Error('extractZip should not be called for OPA'); },
     cacheDir: async () => '/tmp/opa-cached',
     cleanVersion: (v: string) => v,

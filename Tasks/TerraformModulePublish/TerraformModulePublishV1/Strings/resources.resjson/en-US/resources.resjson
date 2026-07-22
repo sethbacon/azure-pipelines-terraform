@@ -25,6 +25,7 @@
   "loc.messages.HcpPollingFailed": "Polling version status failed, will retry: %s",
   "loc.messages.PrivateResolveModuleFailed": "Failed to resolve module (HTTP %s): %s",
   "loc.messages.PrivateNoModuleId": "Registry response did not include a module id.",
+  "loc.messages.PrivateModuleIdInvalid": "Registry returned a module id '%s' that is not a valid identifier; refusing to use it in an admin API request.",
   "loc.messages.PrivateTriggerSyncFailed": "Failed to trigger sync (HTTP %s): %s",
   "loc.messages.PrivateSyncTriggered": "Sync triggered for %s/%s/%s.",
   "loc.messages.PrivateSyncTriggeredVersion": "Sync triggered for version %s.",

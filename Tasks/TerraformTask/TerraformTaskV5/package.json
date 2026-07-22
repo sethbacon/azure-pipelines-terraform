@@ -11,7 +11,7 @@
     "compile:tests": "tsc -p tsconfig.tests.json",
     "compile:all": "npm run compile && npm run compile:tests",
     "posttest:coverage": "node ../../../scripts/check-per-file-coverage.js",
-    "lint": "npx eslint src/"
+    "lint": "npx eslint src/ Tests/"
   },
   "author": "",
   "license": "ISC",

@@ -5,7 +5,7 @@
 
 An Azure DevOps extension for installing and running Terraform in build and release pipelines, supporting Azure, AWS, GCP, and OCI.
 
-This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for AWS, GCP, and OCI, flexible installer download sources, a structured Terraform results tab (Plan/Apply/State pivots, redacted), SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
+This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/microsoft/azure-pipelines-terraform) (originally `ms-devlabs.custom-terraform-tasks`), published as **`sethbacon.pipeline-tasks-terraform`**. It adds new commands, backend/provider decoupling, Workload Identity Federation for Azure, AWS, GCP, and OCI, flexible installer download sources, a structured Terraform results tab (Plan/Apply/State pivots, redacted), SARIF output for the policy-check and drift-report tasks, and security hardening. It is designed to be installed **side-by-side** with the Microsoft DevLabs extension — it uses a distinct extension ID and distinct service connection type names.
 
 ---
 
@@ -540,11 +540,24 @@ Azure uses the standard **Azure Resource Manager** service connection built into
 
 ## Workload Identity Federation
 
-AWS, GCP, and OCI support Workload Identity Federation — no static credentials are stored in the service connection. Azure DevOps issues an OIDC token that is exchanged for temporary cloud credentials at runtime.
+Azure, AWS, GCP, and OCI all support Workload Identity Federation — no static credentials are stored in the service connection. For AWS/GCP/OCI, Azure DevOps issues an OIDC token that the task exchanges for temporary cloud credentials at runtime. Azure is different: the **AzureRM service connection itself** is the WIF federation (set its own authentication method to Workload Identity federation) — there is no separate `environmentAuthSchemeAzureRM` input or cloud-side OIDC provider to configure.
 
+- [Azure WIF Setup Guide](docs/setup/azure-wif-setup.md)
 - [AWS WIF Setup Guide](docs/setup/aws-wif-setup.md)
 - [GCP WIF Setup Guide](docs/setup/gcp-wif-setup.md)
 - [OCI WIF Setup Guide](docs/setup/oci-wif-setup.md)
+
+### Azure WIF — quick reference
+
+```yaml
+- task: PipelineTerraformTask@5
+  inputs:
+    provider: azurerm
+    command: plan
+    environmentServiceNameAzureRM: my-azure-service-connection
+```
+
+There is no `environmentAuthSchemeAzureRM` input — the service connection's own configured authentication method (Workload Identity Federation, in this example) is what the task uses.
 
 ### AWS WIF — quick reference
 
@@ -701,7 +714,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history of changes since the fork.
 
-See [docs/initiatives/smoke-fuzz-testing-plan.md](docs/initiatives/smoke-fuzz-testing-plan.md) for **planned** work to add a real-terraform behavioral smoke harness and a property/fuzz test layer over the security-critical parsers/sanitizers.
+TerraformTaskV5 ships a **real-terraform behavioral smoke harness** (`npm run test:smoke`) that runs the compiled task end-to-end against a real `terraform` binary on a local backend (no cloud, no mocking); it is a required CI gate — `Build and Test V5 Smoke` on Linux and Windows. See [docs/initiatives/smoke-fuzz-testing-plan.md](docs/initiatives/smoke-fuzz-testing-plan.md) for its design and for the still-**planned** property/fuzz test layer over the security-critical parsers/sanitizers.
 
 ---
 

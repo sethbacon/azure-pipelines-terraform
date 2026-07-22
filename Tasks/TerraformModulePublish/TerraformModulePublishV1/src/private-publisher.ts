@@ -34,6 +34,25 @@ export function trimTrailingSlash(url: string): string {
     return url.replace(/\/+$/, '');
 }
 
+/**
+ * Shape-check for the registry's module id before it is trusted enough to
+ * interpolate into an admin API URL path segment. terraform-registry-backend
+ * generates this id as a database primary key (module_repository.go issues
+ * `INSERT INTO modules (...) RETURNING id`), typically a UUID, but this check
+ * intentionally accepts any bounded alphanumeric/dash/underscore token rather
+ * than pinning to the UUID shape specifically — it exists to reject
+ * path-traversal and URL-metacharacter payloads (`/`, `..`, `?`, `#`,
+ * whitespace, control characters), not to police the backend's id format.
+ * Mirrors the isValidSysId belt-and-suspenders discipline already used for
+ * ServiceNow sys_ids (image-rewrite.ts, #606): validated once where it is
+ * parsed out of an untrusted registry response and again at the point of
+ * interpolation, so a compromised or misbehaving registry cannot smuggle a
+ * path segment or query string into an admin endpoint (#768).
+ */
+export function isValidModuleId(id: string): boolean {
+    return /^[A-Za-z0-9_-]{1,128}$/.test(id);
+}
+
 export function moduleUrl(base: string, c: ModuleCoordinates): string {
     return (
         `${trimTrailingSlash(base)}/api/v1/modules/` +
@@ -42,7 +61,10 @@ export function moduleUrl(base: string, c: ModuleCoordinates): string {
 }
 
 export function syncUrl(base: string, moduleId: string): string {
-    return `${trimTrailingSlash(base)}/api/v1/admin/modules/${moduleId}/scm/sync`;
+    if (!isValidModuleId(moduleId)) {
+        throw new Error(tasks.loc('PrivateModuleIdInvalid', moduleId));
+    }
+    return `${trimTrailingSlash(base)}/api/v1/admin/modules/${encodeURIComponent(moduleId)}/scm/sync`;
 }
 
 /** Admin endpoint that creates (or returns) a module record without a version file. */
@@ -52,7 +74,10 @@ export function createUrl(base: string): string {
 
 /** Admin endpoint that links a module to its SCM source repository. */
 export function linkUrl(base: string, moduleId: string): string {
-    return `${trimTrailingSlash(base)}/api/v1/admin/modules/${moduleId}/scm`;
+    if (!isValidModuleId(moduleId)) {
+        throw new Error(tasks.loc('PrivateModuleIdInvalid', moduleId));
+    }
+    return `${trimTrailingSlash(base)}/api/v1/admin/modules/${encodeURIComponent(moduleId)}/scm`;
 }
 
 /** Body for the create-module-record call. The registry's `system` is our `provider`. */
@@ -108,6 +133,9 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
         if (!moduleId) {
             throw new Error(tasks.loc('PrivateNoModuleId'));
         }
+        if (!isValidModuleId(moduleId)) {
+            throw new Error(tasks.loc('PrivateModuleIdInvalid', moduleId));
+        }
 
         const syncResp = await this.http('POST', syncUrl(registryUrl, moduleId), authHeader);
         if (syncResp.status !== 202) {
@@ -150,6 +178,9 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
         const moduleId = parseJson<ModuleResponse>(createResp.body).id;
         if (!moduleId) {
             throw new Error(tasks.loc('PrivateCreateResponseNoModuleId'));
+        }
+        if (!isValidModuleId(moduleId)) {
+            throw new Error(tasks.loc('PrivateModuleIdInvalid', moduleId));
         }
         this.log(tasks.loc('PrivateModuleRecordCreated', namespace, name, provider));
 
