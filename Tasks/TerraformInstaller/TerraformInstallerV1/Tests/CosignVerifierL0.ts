@@ -1,5 +1,9 @@
 import { describe, it, afterEach } from 'mocha';
 import assert = require('assert');
+import fs = require('fs');
+import os = require('os');
+import path = require('path');
+import crypto = require('crypto');
 import tasks = require('azure-pipelines-task-lib/task');
 import { buildOpenTofuCertIdentityRegexp, verifyCosignSignature } from '../src/cosign-verifier';
 import { isVerificationFailure } from '../src/verification-failure';
@@ -242,6 +246,75 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, false),
             /fetch failed for OpenTofu verification/,
         );
+    });
+
+    // #550: an operator-pinned cosignSha256 verifies the RESOLVED binary itself,
+    // closing the ambient-PATH trust gap (a PATH-write attacker could otherwise
+    // shadow `cosign` with an always-succeeding stub).
+    describe('cosignSha256 pin (#550)', () => {
+        let tmpDirToClean: string;
+
+        afterEach(() => {
+            if (tmpDirToClean) {
+                try { fs.rmSync(tmpDirToClean, { recursive: true, force: true }); } catch { /* already removed */ }
+            }
+        });
+
+        it('succeeds when the resolved cosign binary matches the pinned SHA256', async () => {
+            stubLogging();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-pin-test-'));
+            tmpDirToClean = tmpDir;
+            const tmpCosignPath = path.join(tmpDir, 'cosign-fake-binary');
+            const content = Buffer.from('fake cosign binary content for a hash test');
+            fs.writeFileSync(tmpCosignPath, content);
+            const expectedHash = crypto.createHash('sha256').update(content).digest('hex');
+
+            t.which = () => tmpCosignPath;
+            hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+            t.tool = (_path: string) => ({
+                arg() { return this; },
+                exec: async () => 0,
+            });
+
+            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, expectedHash);
+        });
+
+        it('throws a VerificationFailure when the resolved cosign binary does not match the pinned SHA256', async () => {
+            stubLogging();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-pin-test-'));
+            tmpDirToClean = tmpDir;
+            const tmpCosignPath = path.join(tmpDir, 'cosign-fake-binary');
+            fs.writeFileSync(tmpCosignPath, Buffer.from('the real, expected cosign binary content'));
+
+            t.which = () => tmpCosignPath;
+            hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+            t.tool = (_path: string) => ({
+                arg() { return this; },
+                exec: async () => 0,
+            });
+
+            const wrongHash = 'a'.repeat(64);
+            await assert.rejects(
+                verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, wrongHash),
+                (err: unknown) => {
+                    assert.ok(isVerificationFailure(err), 'a cosign hash mismatch must be a typed VerificationFailure (fail closed)');
+                    assert.match((err as Error).message, /does not match the pinned cosignSha256/);
+                    return true;
+                },
+            );
+        });
+
+        it('does not compute or check any hash when cosignSha256 is left unset (default, unchanged behavior)', async () => {
+            stubLogging();
+            t.which = () => '/usr/bin/cosign'; // a path that does not exist -- proves no fs read is attempted
+            hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+            t.tool = (_path: string) => ({
+                arg() { return this; },
+                exec: async () => 0,
+            });
+
+            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+        });
     });
     /* eslint-enable @typescript-eslint/no-explicit-any */
 });

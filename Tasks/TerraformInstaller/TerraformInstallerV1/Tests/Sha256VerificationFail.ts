@@ -12,7 +12,18 @@ tr.setInput('registryMirrorName', 'terraform');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => '/tmp'
+});
+
+// dns: storage.example.com is a fictional test host with no real DNS record;
+// mock it to a public (non-private/link-local) address so the #769
+// resolvesToPrivateOrLinkLocalAddress check passes without a real network
+// lookup, instead of failing with a real ENOTFOUND in this offline test run.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
 });
 
 // http-client: registry returns a specific expected hash
@@ -31,6 +42,13 @@ tr.registerMock('./http-client', {
     },
     fetchText: async (url: string) => {
         throw new Error('fetchText should not be called for registry download. Called with: ' + url);
+    },
+    DOWNLOAD_TIMEOUT_MS: 600000,
+    // downloadToFile now replaces tools.downloadTool() on the DEFAULT (no
+    // allowlist) path too (#729 follow-up); simulate a clean, non-redirected
+    // download so the SHA256-mismatch check below still runs.
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(url).hostname);
     }
 });
 
@@ -45,20 +63,24 @@ tr.registerMock('./cosign-verifier', {
     verifyCosignSignature: async () => { }
 });
 
-// fs: readFileSync returns some content
+// fs: createReadStream feeds verifySha256's streaming hash (#728); readFileSync
+// stays for anything else (e.g. GPG paths) that might still read the file whole.
 tr.registerMock('fs', {
     chmodSync: (_path: string, _mode: string) => { },
-    readFileSync: (_path: string) => Buffer.from('tampered-zip-content')
+    readFileSync: (_path: string) => Buffer.from('tampered-zip-content'),
+    createReadStream: (_path: string) => require('stream').Readable.from(Buffer.from('tampered-zip-content'))
 });
 
-// crypto: returns a DIFFERENT hash than what the registry provided → mismatch
+// crypto: createHash returns a real Writable (satisfying pipeline()'s destination
+// contract, per #728's streaming refactor) with a DIFFERENT digest than what the
+// registry provided -> mismatch.
 tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid-1234',
-    createHash: (_algorithm: string) => ({
-        update: (_data: any) => ({
-            digest: (_encoding: string) => 'wrong_hash_that_does_not_match_xyz789'
-        })
-    })
+    createHash: (_algorithm: string) => {
+        const hash: any = new (require('stream').Writable)({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
+        hash.digest = (_encoding: string) => 'wrong_hash_that_does_not_match_xyz789';
+        return hash;
+    }
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {

@@ -298,4 +298,18 @@ describe('PolicyAgentInstaller Test Suite', function () {
             );
         }, tr);
     });
+
+    it('registry default path redirects to a private/metadata address: should reject the redirect hop (#729 follow-up)', async () => {
+        const tp = path.join(__dirname, 'OpaRegistryDefaultPathRedirectToPrivate.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check on the redirect hop. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
 });

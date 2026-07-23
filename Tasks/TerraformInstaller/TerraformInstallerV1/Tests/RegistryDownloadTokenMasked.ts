@@ -16,7 +16,8 @@ tr.setInput('registryMirrorName', 'terraform');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => '/tmp'
 });
 
 // dns: storage.example.com is a fictional test host with no real DNS record;
@@ -63,7 +64,17 @@ tr.registerMock('./http-client', {
         }
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
-    fetchText: async (url: string) => { throw new Error('Registry path should not fetch SHA256SUMS text: ' + url); }
+    fetchText: async (url: string) => { throw new Error('Registry path should not fetch SHA256SUMS text: ' + url); },
+    DOWNLOAD_TIMEOUT_MS: 600000,
+    // downloadToFile now replaces tools.downloadTool() on the DEFAULT (no
+    // allowlist) path too (#729 follow-up) -- simulate a clean, non-redirected
+    // download by invoking isHostAllowed once with the URL's own host (no
+    // private/link-local address, so it passes) and not writing anything, the
+    // same way downloadTool is stubbed below; fs.createReadStream is mocked to
+    // always return fake-zip-content regardless of path.
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(url).hostname);
+    }
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });

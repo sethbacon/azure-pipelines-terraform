@@ -34,7 +34,15 @@ tr.registerMock('./http-client', {
         }
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
-    fetchText: async (url: string) => { throw new Error('Registry path should not fetch text: ' + url); }
+    fetchText: async (url: string) => { throw new Error('Registry path should not fetch text: ' + url); },
+    DOWNLOAD_TIMEOUT_MS: 600000,
+    // downloadToFile now replaces tools.downloadTool() on the DEFAULT (no
+    // allowlist) path too (#729 follow-up); simulate a clean, non-redirected
+    // download so the empty-sha256+requireChecksum fail-closed check below
+    // still runs.
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(url).hostname);
+    }
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
