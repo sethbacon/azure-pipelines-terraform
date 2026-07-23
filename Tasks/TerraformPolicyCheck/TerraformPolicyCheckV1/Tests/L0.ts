@@ -21,6 +21,8 @@ import './OutputCapL0';
 import './GitAuthEnvL0';
 // Direct unit tests for the bounded subprocess execution wrapper (#782).
 import './ExecTimeoutL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT emergency cleanup (#775).
+import './SignalHandlerL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 

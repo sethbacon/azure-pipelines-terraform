@@ -21,6 +21,8 @@ import './FailOnCallbackErrorDefaultL0';
 import './SecureTempL0';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT emergency summary-file scrub (#775).
+import './SignalHandlerL0';
 
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {
