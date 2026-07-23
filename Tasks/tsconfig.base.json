@@ -1,0 +1,24 @@
+// Shared tsconfig base for every task package's tsconfig.json (issue #409).
+// Mirrors the Tasks/eslint.base.mjs factory pattern: a single source of truth
+// for the compilerOptions duplicated identically across all 11 tasks.
+//
+// NOTE: "include" is deliberately NOT here. TypeScript resolves a config's
+// "include"/"exclude"/"files" paths relative to the file that DECLARES them,
+// not the file that extends it (confirmed via the TypeScript docs and a live
+// empirical test: an "include" here would resolve to Tasks/src/**/*, which
+// doesn't exist for any task, and every task's build would fail with
+// TS18003 "No inputs were found"). Each task's own tsconfig.json keeps its
+// "include": ["src/**/*"] for this reason.
+//
+// "target" is also deliberately NOT here, since it's the one setting that
+// genuinely differs (TerraformTaskV5 uses ES2020; every other task uses ES6)
+// -- each task's tsconfig.json sets it explicitly as a per-task override.
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "skipLibCheck": true,
+        "strict": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true
+    }
+}

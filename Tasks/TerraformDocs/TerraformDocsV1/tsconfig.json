@@ -1,16 +1,9 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES6",
-    "module": "commonjs",
-    "skipLibCheck": true,
-    "strict": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true
+    "target": "ES6"
   },
   "include": [
     "src/**/*"
-  ],
-  "exclude": [
-    "Tests"
   ]
 }
