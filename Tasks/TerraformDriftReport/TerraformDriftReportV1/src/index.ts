@@ -52,6 +52,46 @@ async function run(): Promise<void> {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
     // Hoisted so the finally can optionally clean it up (see cleanupSummaryFile).
     let summaryFile: string | undefined;
+
+    // #775: Node terminates immediately on an unhandled SIGTERM/SIGINT without
+    // running the try/finally below, so a pipeline cancellation mid-run would
+    // otherwise leave the writeSecretFile'd summary (which can hold sensitive plan
+    // values) on disk -- scrubbed only by the agent's end-of-job temp purge, a
+    // plain delete rather than a secure overwrite, and not at all when
+    // Agent.TempDirectory is unset and os.tmpdir() is used. On a cancellation there
+    // is no downstream step left to read summaryFilePath, so scrub+delete it
+    // unconditionally here (the normal-completion path below keeps the opt-in
+    // cleanupSummaryFile gate). Registering a signal listener suppresses Node's
+    // default terminate-on-signal behavior, so each handler must also re-raise the
+    // signal with its default disposition. Mirrors TerraformTaskV5's index.ts.
+    const emergencyCleanup = () => {
+        if (summaryFile && fs.existsSync(summaryFile)) {
+            try {
+                scrubFile(summaryFile);
+            } catch { /* best-effort scrub before the unlink below */ }
+            try {
+                fs.unlinkSync(summaryFile);
+            } catch { /* best-effort: the agent temp purge is the backstop */ }
+        }
+    };
+    const handleTerminationSignal = (signal: NodeJS.Signals) => {
+        emergencyCleanup();
+        process.removeListener(signal, handleTerminationSignal);
+        process.kill(process.pid, signal);
+    };
+    process.on('SIGTERM', handleTerminationSignal);
+    process.on('SIGINT', handleTerminationSignal);
+    process.on('uncaughtException', (err) => {
+        emergencyCleanup();
+        tasks.setResult(tasks.TaskResult.Failed, `Uncaught exception: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+    });
+    process.on('unhandledRejection', (reason) => {
+        emergencyCleanup();
+        tasks.setResult(tasks.TaskResult.Failed, `Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+        process.exit(1);
+    });
+
     try {
         const planFile = path.resolve(tasks.getInput('planJsonFile', true)!);
         const planStat = fs.existsSync(planFile) ? fs.statSync(planFile) : undefined;
@@ -195,6 +235,8 @@ async function run(): Promise<void> {
                 tasks.warning(`Failed to clean up summary file ${summaryFile}: ${err}`);
             }
         }
+        process.removeListener('SIGTERM', handleTerminationSignal);
+        process.removeListener('SIGINT', handleTerminationSignal);
     }
 }
 

@@ -26,6 +26,32 @@ async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
     const tempDirs: string[] = [];
 
+    // #775: Node terminates immediately on an unhandled SIGTERM/SIGINT without
+    // running the try/finally below, so a pipeline cancellation mid-run would
+    // otherwise leave the cloned (possibly private) policy repo and any generated
+    // Sentinel config dir on disk, relying solely on the agent's end-of-job temp
+    // purge. Registering a signal listener suppresses Node's default
+    // terminate-on-signal behavior, so each handler must clean up AND re-raise the
+    // signal with its default disposition so the process still dies promptly.
+    // Mirrors TerraformTaskV5's index.ts.
+    const handleTerminationSignal = (signal: NodeJS.Signals) => {
+        cleanup(tempDirs);
+        process.removeListener(signal, handleTerminationSignal);
+        process.kill(process.pid, signal);
+    };
+    process.on('SIGTERM', handleTerminationSignal);
+    process.on('SIGINT', handleTerminationSignal);
+    process.on('uncaughtException', (err) => {
+        cleanup(tempDirs);
+        tasks.setResult(tasks.TaskResult.Failed, `Uncaught exception: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+    });
+    process.on('unhandledRejection', (reason) => {
+        cleanup(tempDirs);
+        tasks.setResult(tasks.TaskResult.Failed, `Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+        process.exit(1);
+    });
+
     try {
         const engine = tasks.getInput('engine') || 'opa';
 
@@ -71,6 +97,8 @@ async function run() {
         tasks.setResult(tasks.TaskResult.Failed, error instanceof Error ? error.message : String(error));
     } finally {
         cleanup(tempDirs);
+        process.removeListener('SIGTERM', handleTerminationSignal);
+        process.removeListener('SIGINT', handleTerminationSignal);
     }
 }
 
