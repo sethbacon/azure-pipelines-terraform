@@ -572,11 +572,50 @@
         },
         {
             "name": "awsRegion",
-            "type": "string",
+            "type": "pickList",
             "label": "AWS Region",
             "required": true,
             "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock && command != test",
-            "helpMarkDown": "AWS region for the provider. E.g. us-east-1"
+            "helpMarkDown": "AWS region for the provider. E.g. us-east-1. Not yet listed? Type the region code directly.",
+            "properties": {
+                "EditableOptions": "True"
+            },
+            "options": {
+                "us-east-1": "US East (N. Virginia)",
+                "us-east-2": "US East (Ohio)",
+                "us-west-1": "US West (N. California)",
+                "us-west-2": "US West (Oregon)",
+                "af-south-1": "Africa (Cape Town)",
+                "ap-east-1": "Asia Pacific (Hong Kong)",
+                "ap-east-2": "Asia Pacific (Taipei)",
+                "ap-south-1": "Asia Pacific (Mumbai)",
+                "ap-south-2": "Asia Pacific (Hyderabad)",
+                "ap-northeast-1": "Asia Pacific (Tokyo)",
+                "ap-northeast-2": "Asia Pacific (Seoul)",
+                "ap-northeast-3": "Asia Pacific (Osaka)",
+                "ap-southeast-1": "Asia Pacific (Singapore)",
+                "ap-southeast-2": "Asia Pacific (Sydney)",
+                "ap-southeast-3": "Asia Pacific (Jakarta)",
+                "ap-southeast-4": "Asia Pacific (Melbourne)",
+                "ap-southeast-5": "Asia Pacific (Malaysia)",
+                "ap-southeast-6": "Asia Pacific (New Zealand)",
+                "ap-southeast-7": "Asia Pacific (Thailand)",
+                "ca-central-1": "Canada (Central)",
+                "ca-west-1": "Canada West (Calgary)",
+                "eu-central-1": "Europe (Frankfurt)",
+                "eu-central-2": "Europe (Zurich)",
+                "eu-west-1": "Europe (Ireland)",
+                "eu-west-2": "Europe (London)",
+                "eu-west-3": "Europe (Paris)",
+                "eu-north-1": "Europe (Stockholm)",
+                "eu-south-1": "Europe (Milan)",
+                "eu-south-2": "Europe (Spain)",
+                "il-central-1": "Israel (Tel Aviv)",
+                "mx-central-1": "Mexico (Central)",
+                "me-south-1": "Middle East (Bahrain)",
+                "me-central-1": "Middle East (UAE)",
+                "sa-east-1": "South America (São Paulo)"
+            }
         },
         {
             "name": "awsSessionName",
@@ -677,11 +716,60 @@
         },
         {
             "name": "ociWifRegion",
-            "type": "string",
+            "type": "pickList",
             "label": "OCI Region",
             "required": true,
             "visibleRule": "provider = oci && environmentAuthSchemeOCI = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock && command != test",
-            "helpMarkDown": "OCI region identifier. E.g. us-ashburn-1"
+            "helpMarkDown": "OCI region identifier. E.g. us-ashburn-1. Not yet listed? Type the region identifier directly.",
+            "properties": {
+                "EditableOptions": "True"
+            },
+            "options": {
+                "us-ashburn-1": "US East (Ashburn)",
+                "us-phoenix-1": "US West (Phoenix)",
+                "us-chicago-1": "US Midwest (Chicago)",
+                "us-sanjose-1": "US West (San Jose)",
+                "ca-montreal-1": "Canada Southeast (Montreal)",
+                "ca-toronto-1": "Canada Southeast (Toronto)",
+                "sa-saopaulo-1": "Brazil East (Sao Paulo)",
+                "sa-vinhedo-1": "Brazil Southeast (Vinhedo)",
+                "sa-santiago-1": "Chile Central (Santiago)",
+                "sa-valparaiso-1": "Chile West (Valparaiso)",
+                "sa-bogota-1": "Colombia Central (Bogota)",
+                "mx-queretaro-1": "Mexico Central (Queretaro)",
+                "mx-monterrey-1": "Mexico Northeast (Monterrey)",
+                "eu-paris-1": "France Central (Paris)",
+                "eu-marseille-1": "France South (Marseille)",
+                "eu-frankfurt-1": "Germany Central (Frankfurt)",
+                "eu-milan-1": "Italy Northwest (Milan)",
+                "eu-turin-1": "Italy North (Turin)",
+                "eu-amsterdam-1": "Netherlands Northwest (Amsterdam)",
+                "eu-madrid-1": "Spain Central (Madrid)",
+                "eu-madrid-3": "Spain Central (Madrid 3)",
+                "eu-stockholm-1": "Sweden Central (Stockholm)",
+                "eu-zurich-1": "Switzerland North (Zurich)",
+                "uk-london-1": "UK South (London)",
+                "uk-cardiff-1": "UK West (Newport)",
+                "il-jerusalem-1": "Israel Central (Jerusalem)",
+                "me-abudhabi-1": "UAE Central (Abu Dhabi)",
+                "me-dubai-1": "UAE East (Dubai)",
+                "me-riyadh-1": "Saudi Arabia Central (Riyadh)",
+                "me-jeddah-1": "Saudi Arabia West (Jeddah)",
+                "af-casablanca-1": "Morocco West (Casablanca)",
+                "af-johannesburg-1": "South Africa Central (Johannesburg)",
+                "ap-mumbai-1": "India West (Mumbai)",
+                "ap-hyderabad-1": "India South (Hyderabad)",
+                "ap-singapore-1": "Singapore (Singapore)",
+                "ap-singapore-2": "Singapore West (Singapore)",
+                "ap-batam-1": "Indonesia North (Batam)",
+                "ap-kulai-2": "Malaysia West 2 (Kulai)",
+                "ap-seoul-1": "South Korea Central (Seoul)",
+                "ap-chuncheon-1": "South Korea North (Chuncheon)",
+                "ap-tokyo-1": "Japan East (Tokyo)",
+                "ap-osaka-1": "Japan Central (Osaka)",
+                "ap-sydney-1": "Australia East (Sydney)",
+                "ap-melbourne-1": "Australia Southeast (Melbourne)"
+            }
         },
         {
             "name": "ociWifIdentityDomainUrl",
@@ -744,10 +832,10 @@
         },
         {
             "name": "backendAzureRmResourceGroupName",
-            "type": "string",
+            "type": "pickList",
             "label": "Resource group",
             "required": false,
-            "helpMarkDown": "The name of the resource group which contains the storage account. (Only required for URI lookup)",
+            "helpMarkDown": "The name of the resource group which contains the storage account. (Only required for URI lookup) Populated dynamically from the selected Azure Backend Service Connection; you can also type a value not yet listed.",
             "groupName": "backendAzureRm",
             "properties": {
                 "EditableOptions": "True"
@@ -755,10 +843,10 @@
         },
         {
             "name": "backendAzureRmStorageAccountName",
-            "type": "string",
+            "type": "pickList",
             "label": "Storage account",
             "required": true,
-            "helpMarkDown": "The name of the storage account which contains the Azure Blob container.",
+            "helpMarkDown": "The name of the storage account which contains the Azure Blob container. Populated dynamically once a resource group is selected above; you can also type a value not yet listed.",
             "groupName": "backendAzureRm",
             "properties": {
                 "EditableOptions": "True"
@@ -766,10 +854,10 @@
         },
         {
             "name": "backendAzureRmContainerName",
-            "type": "string",
+            "type": "pickList",
             "label": "Container",
             "required": true,
-            "helpMarkDown": "The name of the Azure Blob container in which to store the Terraform remote state file.",
+            "helpMarkDown": "The name of the Azure Blob container in which to store the Terraform remote state file. Populated dynamically once a storage account is selected above; you can also type a value not yet listed.",
             "groupName": "backendAzureRm",
             "properties": {
                 "EditableOptions": "True"
@@ -837,12 +925,51 @@
         },
         {
             "name": "backendAWSRegion",
-            "type": "string",
+            "type": "pickList",
             "label": "AWS Region",
             "required": true,
             "visibleRule": "backendAuthSchemeAWS = WorkloadIdentityFederation",
-            "helpMarkDown": "AWS region where the S3 bucket resides. E.g. us-east-1",
-            "groupName": "backendAWS"
+            "helpMarkDown": "AWS region where the S3 bucket resides. E.g. us-east-1. Not yet listed? Type the region code directly.",
+            "groupName": "backendAWS",
+            "properties": {
+                "EditableOptions": "True"
+            },
+            "options": {
+                "us-east-1": "US East (N. Virginia)",
+                "us-east-2": "US East (Ohio)",
+                "us-west-1": "US West (N. California)",
+                "us-west-2": "US West (Oregon)",
+                "af-south-1": "Africa (Cape Town)",
+                "ap-east-1": "Asia Pacific (Hong Kong)",
+                "ap-east-2": "Asia Pacific (Taipei)",
+                "ap-south-1": "Asia Pacific (Mumbai)",
+                "ap-south-2": "Asia Pacific (Hyderabad)",
+                "ap-northeast-1": "Asia Pacific (Tokyo)",
+                "ap-northeast-2": "Asia Pacific (Seoul)",
+                "ap-northeast-3": "Asia Pacific (Osaka)",
+                "ap-southeast-1": "Asia Pacific (Singapore)",
+                "ap-southeast-2": "Asia Pacific (Sydney)",
+                "ap-southeast-3": "Asia Pacific (Jakarta)",
+                "ap-southeast-4": "Asia Pacific (Melbourne)",
+                "ap-southeast-5": "Asia Pacific (Malaysia)",
+                "ap-southeast-6": "Asia Pacific (New Zealand)",
+                "ap-southeast-7": "Asia Pacific (Thailand)",
+                "ca-central-1": "Canada (Central)",
+                "ca-west-1": "Canada West (Calgary)",
+                "eu-central-1": "Europe (Frankfurt)",
+                "eu-central-2": "Europe (Zurich)",
+                "eu-west-1": "Europe (Ireland)",
+                "eu-west-2": "Europe (London)",
+                "eu-west-3": "Europe (Paris)",
+                "eu-north-1": "Europe (Stockholm)",
+                "eu-south-1": "Europe (Milan)",
+                "eu-south-2": "Europe (Spain)",
+                "il-central-1": "Israel (Tel Aviv)",
+                "mx-central-1": "Mexico (Central)",
+                "me-south-1": "Middle East (Bahrain)",
+                "me-central-1": "Middle East (UAE)",
+                "sa-east-1": "South America (São Paulo)"
+            }
         },
         {
             "name": "backendAWSSessionName",
@@ -1013,6 +1140,24 @@
         }
     ],
     "dataSourceBindings": [
+        {
+            "target": "backendAzureRmResourceGroupName",
+            "endpointId": "$(backendServiceArm)",
+            "endpointUrl": "{{{endpoint.url}}}subscriptions/{{{endpoint.subscriptionId}}}/resourcegroups?api-version=2019-05-01",
+            "resultSelector": "jsonpath:$.value[*].name"
+        },
+        {
+            "target": "backendAzureRmStorageAccountName",
+            "endpointId": "$(backendServiceArm)",
+            "endpointUrl": "{{{endpoint.url}}}subscriptions/{{{endpoint.subscriptionId}}}/resourceGroups/$(backendAzureRmResourceGroupName)/providers/Microsoft.Storage/storageAccounts?api-version=2019-04-01",
+            "resultSelector": "jsonpath:$.value[*].name"
+        },
+        {
+            "target": "backendAzureRmContainerName",
+            "endpointId": "$(backendServiceArm)",
+            "endpointUrl": "{{{endpoint.url}}}subscriptions/{{{endpoint.subscriptionId}}}/resourceGroups/$(backendAzureRmResourceGroupName)/providers/Microsoft.Storage/storageAccounts/$(backendAzureRmStorageAccountName)/blobServices/default/containers?api-version=2019-04-01",
+            "resultSelector": "jsonpath:$.value[*].name"
+        },
         {
             "target": "backendAWSBucketName",
             "endpointId": "$(backendServiceAWS)",
