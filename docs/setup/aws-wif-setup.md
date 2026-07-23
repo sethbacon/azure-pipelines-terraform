@@ -131,7 +131,7 @@ At runtime, the task:
 
 The temporary credentials have a maximum lifetime of 1 hour, which is sufficient for any Terraform operation.
 
-> **Security note:** the task mints the same Azure DevOps OIDC token (ADO's default `api://AzureADTokenV2` audience) for every cloud — it does not set a per-cloud custom audience. The IAM role's trust-policy `:aud` and `:sub` conditions (Step 2) are therefore the security boundary: they **must** pin the audience and the exact service-connection `sub` so that only this org/project/service connection can assume the role.
+> **Audience scoping:** the task mints the same Azure DevOps OIDC token (ADO's default `api://AzureADTokenV2` audience) for every cloud — it does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. The IAM role's trust-policy `:aud` and `:sub` conditions (Step 2) are therefore the security boundary: they **must** pin the audience and the exact service-connection `sub` so that only this org/project/service connection can assume the role. This is an operator responsibility, not something the task enforces on your behalf.
 
 ## Troubleshooting
 
