@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { buildStateDigest } from '../../src/results/state-digest';
-import { DigestBuildMeta } from '../../src/results/plan-digest';
+import { DigestBuildMeta } from '../../src/results/digest-common';
 import { serializeDigest } from '../../src/results/redact';
 import { MAX_STATE_RESOURCES, MAX_STATE_ATTRS_PER_RESOURCE, MAX_OUTPUTS } from '../../src/results/caps';
 

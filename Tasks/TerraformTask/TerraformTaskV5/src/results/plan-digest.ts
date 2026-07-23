@@ -23,30 +23,12 @@ import {
   MAX_ATTR_CHANGES_PER_RESOURCE,
   MAX_OUTPUTS,
   MAX_DRIFT,
-  MAX_NOTES,
   SOFT_MAX_DIGEST_BYTES,
   HARD_MAX_DIGEST_BYTES,
 } from './caps';
 import { redactValue, newRedactContext, deepEqual, capDigestBytes, RedactContext } from './redact';
 import { sanitizeAttachmentName } from './secret-scrub';
-
-/** Identity/provenance a caller supplies; kept out of the raw Terraform JSON. */
-export interface DigestBuildMeta {
-  taskVersion: string;
-  toolName: 'terraform' | 'opentofu';
-  name: string;
-  workingDirectory?: string;
-  stage?: string;
-  job?: string;
-  /** Injected/agent-provided timestamp — never Date.now() (§2.6). */
-  createdIso: string;
-}
-
-/** Optional test seam for the digest-level byte ceilings; production omits it. */
-export interface DigestByteLimits {
-  softMaxBytes?: number;
-  hardMaxBytes?: number;
-}
+import { DigestBuildMeta, DigestByteLimits, capNotes } from './digest-common';
 
 /** Plan-specific build options (destroy marker + the byte-cap test seam). */
 export interface PlanDigestOptions extends DigestByteLimits {
@@ -363,13 +345,4 @@ function finalizeTruncation(digest: PlanDigest, ctx: RedactContext): void {
     digest.truncated = true;
     digest.truncationNotes = capNotes(ctx.notes);
   }
-}
-
-// truncationNotes cap (§3): a pathological plan can generate one note per capped
-// resource, so bound the array itself. Keep the first MAX_NOTES and collapse the
-// remainder into a single count note so the truncation stays observable.
-export function capNotes(notes: string[]): string[] {
-  if (notes.length <= MAX_NOTES) return [...notes];
-  const dropped = notes.length - MAX_NOTES;
-  return [...notes.slice(0, MAX_NOTES), `truncation notes capped at ${MAX_NOTES} (${dropped} more not shown)`];
 }

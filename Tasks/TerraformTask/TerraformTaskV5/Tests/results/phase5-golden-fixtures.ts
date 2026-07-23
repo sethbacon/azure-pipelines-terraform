@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildPlanDigest, DigestBuildMeta } from '../../src/results/plan-digest';
+import { buildPlanDigest } from '../../src/results/plan-digest';
+import { DigestBuildMeta } from '../../src/results/digest-common';
 import { buildStateDigest } from '../../src/results/state-digest';
 import { serializeDigest } from '../../src/results/redact';
 

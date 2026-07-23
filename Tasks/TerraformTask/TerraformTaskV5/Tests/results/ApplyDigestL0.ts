@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { buildApplyDigest, parseNdjsonLines } from '../../src/results/apply-digest';
-import { DigestBuildMeta } from '../../src/results/plan-digest';
+import { DigestBuildMeta } from '../../src/results/digest-common';
 import { MAX_DIAGNOSTICS, MAX_OUTPUTS, MAX_RESOURCES } from '../../src/results/caps';
 
 const META: DigestBuildMeta = {
