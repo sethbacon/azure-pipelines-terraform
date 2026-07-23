@@ -368,7 +368,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     if (agent === "sentinel") {
         const zipFileName = `sentinel_${version}_${osPlatform}_${arch}.zip`;
         const downloadUrl = `${mirrorBaseUrl}/${version}/${zipFileName}`;
-        const zipPath = await downloadTo(downloadUrl, `sentinel-${version}-${uuidV4()}.zip`);
+        const zipPath = await downloadFromMirrorUrl(downloadUrl, `sentinel-${version}-${uuidV4()}.zip`);
 
         const sha256SumsUrl = `${mirrorBaseUrl}/${version}/sentinel_${version}_SHA256SUMS`;
         const verified = await verifyMirrorChecksum(zipPath, sha256SumsUrl, zipFileName);
@@ -377,7 +377,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
 
     const assetName = getOpaAssetName();
     const downloadUrl = `${mirrorBaseUrl}/${version}/${assetName}`;
-    const binaryPath = await downloadTo(downloadUrl, `opa-${version}-${uuidV4()}${isWindows ? '.exe' : ''}`);
+    const binaryPath = await downloadFromMirrorUrl(downloadUrl, `opa-${version}-${uuidV4()}${isWindows ? '.exe' : ''}`);
 
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
     const sha256Url = `${downloadUrl}.sha256`;
@@ -437,6 +437,51 @@ async function downloadTo(url: string, fileName: string): Promise<string> {
         // the interpolated message (no-op for the official releases/GitHub URLs) (#586).
         throw new Error(tasks.loc("PolicyAgentDownloadFailed", redactUrlUserInfo(url), exception));
     }
+}
+
+/**
+ * Mirror-only download path (#799, follow-up to #729). mirrorBaseUrl is an
+ * operator-configured input (unlike the registry path's dynamically-returned
+ * download_url), but a compromised/misconfigured mirror SERVICE could still
+ * redirect the actual download at a private/link-local address (notably the
+ * cloud metadata service). Checks the initial host up front, then re-validates
+ * every redirect hop via downloadToFile() -- unlike downloadTo() above (used
+ * for the official/GitHub path, left unchanged), which calls
+ * tools.downloadTool() and follows redirects with no way to re-validate them,
+ * the same underlying gap #729 closed for the registry path. An operator
+ * running a legitimate mirror on a private/internal address (a real,
+ * pre-existing use case -- the registry path's own registryAllowedHosts
+ * exists for exactly this reason) can opt in via mirrorAllowedHosts,
+ * mirroring the registry path's allowlist shape exactly.
+ */
+async function downloadFromMirrorUrl(url: string, fileName: string): Promise<string> {
+    const mirrorAllowedHosts = parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false));
+    const initialHost = new URL(url).hostname;
+    if (mirrorAllowedHosts.length > 0) {
+        if (!isRegistryHostAllowed(initialHost, mirrorAllowedHosts)) {
+            throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", initialHost, mirrorAllowedHosts.join(', ')));
+        }
+    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
+        throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", initialHost));
+    }
+    const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+    const destPath = path.join(destDir, fileName);
+    try {
+        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+            if (mirrorAllowedHosts.length > 0) {
+                if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
+                    throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
+                }
+            } else if (isPrivateOrLinkLocalHost(hostname)) {
+                throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
+            }
+        });
+    } catch (exception) {
+        // A mirror download URL can embed operator basic-auth userinfo; strip it from
+        // the interpolated message (#586).
+        throw new Error(tasks.loc("PolicyAgentDownloadFailed", redactUrlUserInfo(url), exception));
+    }
+    return destPath;
 }
 
 /** Copies a raw downloaded binary into a fresh directory under its canonical name. */

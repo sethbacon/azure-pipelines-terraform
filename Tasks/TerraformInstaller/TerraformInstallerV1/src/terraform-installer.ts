@@ -333,10 +333,41 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // Mirror must serve files at the same path structure as releases.hashicorp.com/terraform
     const downloadUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_${osPlatform}_${arch}.zip`;
 
+    // Baseline SSRF protection (#799, follow-up to #729): mirrorBaseUrl is an
+    // operator-configured input (unlike the registry path's dynamically-returned
+    // download_url), but a compromised/misconfigured mirror SERVICE could still
+    // redirect the actual download at a private/link-local address (notably the
+    // cloud metadata service). Check the initial host up front, then re-validate
+    // every redirect hop via downloadToFile() below -- tools.downloadTool() (the
+    // prior implementation) follows redirects with no way to re-validate them,
+    // the same underlying gap #729 closed for the registry path. An operator
+    // running a legitimate mirror on a private/internal address (a real,
+    // pre-existing use case -- the registry path's own registryAllowedHosts
+    // exists for exactly this reason) can opt in via mirrorAllowedHosts,
+    // mirroring the registry path's allowlist shape exactly.
+    const mirrorAllowedHosts = parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false));
+    const initialHost = new URL(downloadUrl).hostname;
+    if (mirrorAllowedHosts.length > 0) {
+        if (!isRegistryHostAllowed(initialHost, mirrorAllowedHosts)) {
+            throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", initialHost, mirrorAllowedHosts.join(', ')));
+        }
+    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
+        throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", initialHost));
+    }
+
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
-    let zipPath: string;
+    const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+    const zipPath = path.join(destDir, fileName);
     try {
-        zipPath = await tools.downloadTool(downloadUrl, fileName);
+        await downloadToFile(downloadUrl, zipPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+            if (mirrorAllowedHosts.length > 0) {
+                if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
+                    throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
+                }
+            } else if (isPrivateOrLinkLocalHost(hostname)) {
+                throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
+            }
+        });
     } catch (exception) {
         // downloadUrl embeds mirrorBaseUrl (possibly with userinfo); strip it from the
         // interpolated message (the userinfo is also setSecret-masked above) (#586).

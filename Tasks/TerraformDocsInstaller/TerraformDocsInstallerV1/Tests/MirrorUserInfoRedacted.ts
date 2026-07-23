@@ -17,9 +17,26 @@ tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
+// dns: the mirror host is a fake test domain; mock it to a public (non-private/
+// link-local) address so the #799 initial-host check passes without a real
+// network lookup.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
+
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => { throw new Error('Mirror path should not fetch json: ' + url); },
-    fetchTextAllow404: async () => null // no .sha256sum; requireChecksum=false -> warn + proceed
+    fetchTextAllow404: async () => null, // no .sha256sum; requireChecksum=false -> warn + proceed
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        // The actual download must retain the credential to reach the mirror.
+        if (!url.includes('user:s3cr3t@artifacts.example.com')) {
+            throw new Error('mirror download URL must retain the basic-auth userinfo; got: ' + url);
+        }
+        isHostAllowed(new URL(url).hostname);
+    },
+    DOWNLOAD_TIMEOUT_MS: 30000
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
@@ -36,12 +53,8 @@ tr.registerMock('crypto', {
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: () => null,
-    downloadTool: async (url: string) => {
-        // The actual download must retain the credential to reach the mirror.
-        if (!url.includes('user:s3cr3t@artifacts.example.com')) {
-            throw new Error('mirror download URL must retain the basic-auth userinfo; got: ' + url);
-        }
-        return '/tmp/terraform-docs-download.tar.gz';
+    downloadTool: async () => {
+        throw new Error('downloadTool should not be called for a mirror download -- downloadToFile must be used (#799)');
     },
     extractTar: async () => '/tmp/terraform-docs-extracted',
     extractZip: async () => { throw new Error('extractZip should not be called on Linux'); },
