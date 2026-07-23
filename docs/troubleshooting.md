@@ -59,7 +59,7 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 **Fix:**
 
-- Each token request has a 30-second timeout. The task retries up to **3 times** with exponential backoff (200 ms, then 400 ms between attempts), so worst-case total delay is around **90 seconds** before the task fails.
+- Each token request has a 30-second timeout. The task retries up to **3 times** with decorrelated-jitter backoff (AWS-style "exponential backoff and jitter": each wait is randomized between the 200 ms base delay and 3× the previous wait, capped at 30 seconds), so worst-case total delay is around **90 seconds** before the task fails — dominated by the per-attempt 30-second timeouts, not the sub-timeout backoff waits.
 - `Timed out acquiring federated token` indicates the HTTPS call itself did not return — check agent network connectivity to the Azure DevOps API, proxy configuration, and firewall rules.
 - `Failed to acquire federated token: HTTP 4xx/5xx` indicates a server-side response — check that the service connection ID is still valid and that the pipeline identity is allowed to use it.
 - `SYSTEM_OIDCREQUESTURI is not set` means the pipeline is running on an agent or in a context that does not expose the OIDC request endpoint. Only **yaml pipelines on Microsoft-hosted agents (and properly configured self-hosted agents)** receive this variable.
