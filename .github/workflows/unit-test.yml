@@ -122,6 +122,27 @@ jobs:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
         run: node src/index.js
+      # The smoke check above only proves the compiled module graph loads
+      # under Node 20 -- with no ADO inputs, the task's own try/catch always
+      # short-circuits into a caught failure before any real command,
+      # credential, or verification logic executes (issue #720). This task is
+      # the single most security-critical one in the repo (multi-cloud WIF/
+      # OIDC token exchange, GPG/cosign verification, TLS transports), so run
+      # the REAL, input-populated mocha assertion suite under Node 20 too, not
+      # just a load-only check -- closing the behavioral-parity gap for the
+      # highest-value component. mocha, nyc and typescript's own package.json
+      # `engines` fields all explicitly support Node 20 (this task's own
+      # `engines: >=24` only describes the officially-supported contributor
+      # baseline; it doesn't block `npm run` against already-installed
+      # node_modules), so this is expected to behave identically to the Node
+      # 24 run above -- if it doesn't, that is exactly the Node-20-specific
+      # divergence this issue exists to catch. The other 10 tasks keep only
+      # the cheaper load-only smoke check above (issue #720's own agreed
+      # scope); this additional real-test step is deliberately scoped to
+      # TerraformTaskV5 only, to avoid materially increasing CI time
+      # across every task.
+      - name: Run real unit tests under Node 20 (#720)
+        run: npm test
 
   # Real-terraform behavioral smoke harness (#719). Kept as a SEPARATE job from
   # build-and-test-v5 above (not folded into test:coverage) so the normal mock
