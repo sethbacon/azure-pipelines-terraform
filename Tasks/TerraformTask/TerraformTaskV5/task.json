@@ -461,6 +461,15 @@
             "helpMarkDown": "When the output command's JSON file is detected to contain one or more Terraform outputs declared `sensitive = true` (see the sensitive-output warning), delete it automatically at the end of this step -- even though 'Delete the output JSON file at task end' (cleanupOutputFile) is off -- rather than leaving cleartext sensitive values on disk for the rest of the job relying solely on the agent's end-of-job temp directory purge. Has no effect when cleanupOutputFile is already enabled (the file is always deleted then) or when the output contains no sensitive values (the general retain-by-default behavior described above is unchanged). Disable this only if a downstream step in the SAME job still needs to read this specific file's sensitive value from disk via jsonOutputVariablesPath."
         },
         {
+            "name": "cleanupShowFileIfSensitive",
+            "type": "boolean",
+            "label": "Delete the show output file at task end if it contains sensitive values",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "command = show",
+            "helpMarkDown": "When `show` with JSON output to a file (Output to = file) writes a plan whose `planned_values` outputs or resource changes are detected to contain values declared `sensitive = true`, delete that file automatically at the end of this step rather than leaving cleartext sensitive values on disk. Unlike the `output` command's file (written under `Agent.TempDirectory`), the `show` file lands at the path you choose in 'Output filename' -- by default inside the working directory -- so a step that publishes the working directory as an artifact would otherwise sweep up its cleartext values. Has no effect when the shown plan contains no sensitive values. Disable this only if a downstream step in the SAME job still needs to read this specific file from disk via showFilePath; even then, the file is still scrubbed and deleted on a build cancellation, where no downstream reader remains."
+        },
+        {
             "name": "failOnSensitiveOutputs",
             "type": "boolean",
             "label": "Fail when sensitive outputs would be retained",

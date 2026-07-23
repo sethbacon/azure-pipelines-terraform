@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { buildApplyDigest } from '../../src/results/apply-digest';
+import { buildApplyDigest, parseNdjsonLines } from '../../src/results/apply-digest';
 import { DigestBuildMeta } from '../../src/results/plan-digest';
 import { MAX_DIAGNOSTICS, MAX_OUTPUTS, MAX_RESOURCES } from '../../src/results/caps';
 
@@ -13,6 +13,47 @@ const META: DigestBuildMeta = {
 function line(o: unknown): string {
   return JSON.stringify(o);
 }
+
+// #781: the single tolerant NDJSON parser now shared by apply-digest's own
+// builder and base-terraform-command-handler.ts's error-extraction / console-echo
+// passes. Directly unit-tested here so the three former inline copies' agreed
+// behavior (skip blanks, strip CR, drop malformed/non-object lines, count them)
+// is pinned in one place.
+describe('parseNdjsonLines (#781)', () => {
+  it('returns only object events and skips blank lines', () => {
+    const ndjson = ['', line({ a: 1 }), '   ', line({ b: 2 }), ''].join('\n');
+    const { events, malformed } = parseNdjsonLines(ndjson);
+    assert.deepStrictEqual(events, [{ a: 1 }, { b: 2 }]);
+    assert.strictEqual(malformed, 0);
+  });
+
+  it('strips a trailing CR before parsing (CRLF streams)', () => {
+    const ndjson = `${line({ a: 1 })}\r\n${line({ b: 2 })}\r`;
+    const { events, malformed } = parseNdjsonLines(ndjson);
+    assert.deepStrictEqual(events, [{ a: 1 }, { b: 2 }]);
+    assert.strictEqual(malformed, 0);
+  });
+
+  it('counts and drops a line that fails to JSON.parse', () => {
+    const ndjson = [line({ a: 1 }), '{ not valid json', line({ b: 2 })].join('\n');
+    const { events, malformed } = parseNdjsonLines(ndjson);
+    assert.deepStrictEqual(events, [{ a: 1 }, { b: 2 }]);
+    assert.strictEqual(malformed, 1);
+  });
+
+  it('counts and drops a syntactically-valid but non-object line (bare number/string/null)', () => {
+    const ndjson = ['5', '"hi"', 'null', line({ a: 1 })].join('\n');
+    const { events, malformed } = parseNdjsonLines(ndjson);
+    assert.deepStrictEqual(events, [{ a: 1 }]);
+    assert.strictEqual(malformed, 3);
+  });
+
+  it('returns empty for a non-string input', () => {
+    const { events, malformed } = parseNdjsonLines(undefined as unknown as string);
+    assert.deepStrictEqual(events, []);
+    assert.strictEqual(malformed, 0);
+  });
+});
 
 describe('buildApplyDigest', () => {
   it('parses a successful stream: resources, durations, outcome, summary, outputs', () => {
