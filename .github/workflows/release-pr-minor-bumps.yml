@@ -10,7 +10,7 @@ name: Auto-bump Release PR Minor Versions
 # Minor bumps" guard is the final defense.
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
     branches: [main]
 
 permissions:

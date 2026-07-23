@@ -55,7 +55,7 @@ Closes #12
 
 **[CONTRIBUTING.md → Release process](CONTRIBUTING.md#release-process) is the single authoritative reference.** release-please opens a **Release PR** that bumps the extension version and changelog. Per-task `task.json` `Minor` bumps are applied automatically and triple-enforced (auto-bump workflow, PR merge gate, tag-time guard) — never hand-edit them, and never bump an already-bumped task again (no double-increment). Merging the Release PR pushes the `vX.Y.Z` tag, and `release.yml` then runs full CI, builds and signs the `.vsix`, and publishes it to the VS Marketplace via GitHub OIDC federated to Microsoft Entra.
 
-The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval. This is verified automatically by the `verify-marketplace-environment-protection` job in `weekly-security.yml`, which fails the scheduled run (filing an issue) if the required-reviewer rule is missing, removed, or the environment itself no longer exists.
+The `marketplace` environment (Settings → Environments) must have (1) at least one required reviewer so every VS Marketplace publish gets human approval, and (2) a deployment branch/ref policy so a publish can only run from an approved branch or tag (e.g. `main` / `v*`) even after a reviewer approves. Both are verified automatically by the `verify-marketplace-environment-protection` job in `weekly-security.yml` — which fails the scheduled run (filing an issue) if either rule, or the environment itself, is missing or removed — and, fail-closed at publish time, by the matching guard step in `release.yml`.
 
 ## Publisher Registration
 
