@@ -78,7 +78,29 @@ jobs:
               return;
             }
 
-            core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) configured.`);
+            // #780: a required-reviewers rule alone still lets the publish deploy
+            // from ANY ref -- an unreviewed feature branch or a fork branch -- once
+            // a reviewer approves that one run. Also require a deployment branch/ref
+            // policy so only an approved branch/tag (e.g. main / v*) can ever reach
+            // the marketplace publish. The environments API returns
+            // deployment_branch_policy as null when unrestricted, or
+            // { protected_branches, custom_branch_policies } booleans when a policy
+            // is set (one of the two is true).
+            const branchPolicy = env.deployment_branch_policy;
+            const hasDeploymentBranchPolicy = Boolean(
+              branchPolicy && (branchPolicy.protected_branches === true || branchPolicy.custom_branch_policies === true)
+            );
+
+            if (!hasDeploymentBranchPolicy) {
+              core.setFailed(
+                `The '${ENVIRONMENT}' GitHub Environment has no deployment branch/ref policy configured, ` +
+                `so a marketplace publish could run from an unapproved ref even with reviewer approval. ` +
+                `Configure it under Settings -> Environments -> ${ENVIRONMENT} -> Deployment branches and tags.`
+              );
+              return;
+            }
+
+            core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) and a deployment branch/ref policy configured.`);
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
