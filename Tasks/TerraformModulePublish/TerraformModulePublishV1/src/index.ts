@@ -18,6 +18,25 @@ function parseTimeout(): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 180;
 }
 
+/**
+ * skipTlsVerify only makes sense for a private/internal registry fronted by a CA
+ * the agent doesn't trust -- there is never a legitimate reason to disable TLS
+ * verification against a well-known PUBLIC registry endpoint, which is exactly
+ * the on-path MITM scenario #588 flags. A malformed registryUrl is left alone
+ * here; it surfaces its own clear error later when the publisher tries to use it.
+ */
+function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void {
+    let hostname: string;
+    try {
+        hostname = new URL(registryUrl).hostname.toLowerCase();
+    } catch {
+        return;
+    }
+    if (hostname === 'terraform.io' || hostname.endsWith('.terraform.io')) {
+        throw new Error(tasks.loc('SkipTlsVerifyPublicRegistryRejected', registryUrl));
+    }
+}
+
 function buildPublisher(): RegistryPublisher {
     const registryType = requireInput('registryType') as RegistryType;
     const coordinates = {
@@ -32,12 +51,16 @@ function buildPublisher(): RegistryPublisher {
     if (registryType === 'private') {
         // skipTlsVerify is an accepted, opt-in last resort for an internal registry
         // fronted by a private CA the agent does not trust. It is deliberately
-        // guarded, not silent: the apiKey is setSecret-masked below, the warning
-        // names the exact consequence, and createHttpsClient still hard-enforces the
-        // https:// scheme (see http.ts / https-client.ts) so the bearer is never sent
-        // over a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
+        // guarded, not silent: rejected outright against a known public registry
+        // host (#588, assertSkipTlsVerifyNotAgainstPublicRegistry above), the
+        // apiKey is setSecret-masked below, the warning names the exact
+        // consequence, and createHttpsClient still hard-enforces the https://
+        // scheme (see http.ts / https-client.ts) so the bearer is never sent over
+        // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
+        const registryUrl = requireInput('registryUrl');
         if (skipTlsVerify) {
+            assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
         }
         const apiKey = requireInput('apiKey');
@@ -50,7 +73,7 @@ function buildPublisher(): RegistryPublisher {
         // fast-fail-and-retry cadence.
         return new PrivateRegistryPublisher(createHttpsClient(!skipTlsVerify), {
             ...coordinates,
-            registryUrl: requireInput('registryUrl'),
+            registryUrl,
             apiKey,
             waitForPublish,
             timeoutSeconds,

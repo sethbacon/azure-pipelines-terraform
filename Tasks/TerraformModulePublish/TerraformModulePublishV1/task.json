@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "14",
+        "Minor": "15",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -249,6 +249,7 @@
     "messages": {
         "InputRequired": "Input '%s' is required.",
         "SkipTlsVerifyEnabled": "skipTlsVerify is enabled: TLS certificate validation is DISABLED for the private registry connection, so the API key can be captured by an on-path attacker impersonating the registry. Use only for an internal registry fronted by a private CA the agent does not trust; prefer installing that CA via NODE_EXTRA_CA_CERTS instead.",
+        "SkipTlsVerifyPublicRegistryRejected": "Refusing to disable TLS certificate validation (skipTlsVerify) against '%s', which resolves to a known public Terraform registry host (*.terraform.io). Disabling TLS verification is only appropriate for a private/internal registry fronted by a CA the agent does not trust -- there is no legitimate reason to disable it against a public endpoint.",
         "UnsupportedRegistryType": "Unsupported registryType '%s'. Expected 'hcp' or 'private'.",
         "RegistryNonJsonResponse": "Registry returned a non-JSON response body: %s",
         "TransientHttpRetry": "Transient HTTP %s from registry; retrying (%s/%s).",
