@@ -75,6 +75,13 @@ const SECURITY_TIER = new Set([
     // fail-closed redaction core standing between raw plan/state values and a
     // build-attachment-visible (not secret-masked) pipeline artifact.
     'Tasks/TerraformTask/TerraformTaskV5/src/results/redact.js',
+    // Freeform-text safety for apply/state diagnostics: known-secret literal
+    // removal + PEM/high-entropy heuristic (scrubSecrets), plus CRLF/logging-
+    // command injection stripping for the attachment name (sanitizeAttachmentName).
+    // The single-copy producer-side sibling of redact.js -- the last redaction
+    // layer before diagnostic text becomes a build-visible (not secret-masked)
+    // attachment; belongs in the same tier as redact.js it sits beside.
+    'Tasks/TerraformTask/TerraformTaskV5/src/results/secret-scrub.js',
     // Owner-only 0600 + O_EXCL (Unix) / restrictive icacls DACL (Windows)
     // secure-temp-file primitive guarding WIF/OCI credential material.
     // Byte-identical parity family across all four listed tasks (Batch E
