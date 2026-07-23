@@ -4,7 +4,7 @@ import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializ
 import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
 import { replaceSecretFile, scrubFile, writeSecretFile } from './secure-temp';
 import { buildPlanDigest, DigestBuildMeta } from './results/plan-digest';
-import { buildApplyDigest, ApplyDigestOptions } from './results/apply-digest';
+import { buildApplyDigest, ApplyDigestOptions, parseNdjsonLines } from './results/apply-digest';
 import { buildStateDigest } from './results/state-digest';
 import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
@@ -792,7 +792,24 @@ export abstract class BaseTerraformCommandHandler {
             // Detect destroy changes in JSON plan output
             if (outputFormat === "json") {
                 this.detectDestroyChanges(commandOutput.stdout);
-                this.warnIfSensitiveOutputs(commandOutput.stdout, showFilePath);
+                const hasSensitive = this.warnIfSensitiveOutputs(commandOutput.stdout, showFilePath);
+                // #802: a `show -json` file lands at the operator-chosen `filename`
+                // (by default inside the working directory, unlike output()'s
+                // Agent.TempDirectory temp file), so a "publish the working directory"
+                // artifact step could sweep up its cleartext sensitive values. Mirror
+                // output()'s #650 handling: when the file contains sensitive content,
+                // auto-register it for NORMAL-completion scrub+delete
+                // (cleanupShowFileIfSensitive, default true) unless the operator opts
+                // out because a downstream step in the SAME job still needs to read
+                // it -- in which case it still gets the emergency-only scrub+delete on
+                // a cancellation, where no legitimate downstream reader remains.
+                if (hasSensitive) {
+                    if (tasks.getBoolInput('cleanupShowFileIfSensitive', false)) {
+                        this.tempFiles.push(showFilePath);
+                    } else {
+                        this.emergencyOnlyTempFiles.push(showFilePath);
+                    }
+                }
             }
 
             result = commandOutput.code;
@@ -1314,16 +1331,9 @@ export abstract class BaseTerraformCommandHandler {
     private extractApplyErrorDiagnostics(ndjson: string): string[] {
         const knownSecrets = EnvironmentVariableHelper.getTrackedSecretValues();
         const summaries: string[] = [];
-        for (const rawLine of ndjson.split('\n')) {
-            const line = rawLine.replace(/\r$/, '').trim();
-            if (!line) continue;
-            let event: unknown;
-            try {
-                event = JSON.parse(line);
-            } catch {
-                continue;
-            }
-            if (!event || typeof event !== 'object') continue;
+        // Shared tolerant NDJSON parse (#781): yields only object events, dropping
+        // malformed/non-object lines exactly as this pass did inline before.
+        for (const event of parseNdjsonLines(ndjson).events) {
             const diagnostic = (event as Record<string, unknown>).diagnostic;
             if (!diagnostic || typeof diagnostic !== 'object') continue;
             const d = diagnostic as Record<string, unknown>;
@@ -1352,16 +1362,12 @@ export abstract class BaseTerraformCommandHandler {
      * separately (see #678) and neutralized via echoSafeConsoleLine().
      */
     private echoApplyMessages(ndjson: string): void {
-        for (const rawLine of ndjson.split('\n')) {
-            const line = rawLine.replace(/\r$/, '').trim();
-            if (!line) continue;
-            try {
-                const event = JSON.parse(line);
-                if (event && typeof event === 'object' && typeof event['@message'] === 'string') {
-                    this.echoSafeConsoleLine(event['@message']);
-                }
-            } catch {
-                // ignore -- see doc comment above.
+        // Shared tolerant NDJSON parse (#781): yields only object events, silently
+        // dropping malformed lines exactly as this pass did inline before.
+        for (const event of parseNdjsonLines(ndjson).events) {
+            const message = (event as Record<string, unknown>)['@message'];
+            if (typeof message === 'string') {
+                this.echoSafeConsoleLine(message);
             }
         }
     }
@@ -1801,7 +1807,12 @@ export abstract class BaseTerraformCommandHandler {
                 tasks.debug(`Set pipeline variable TF_OUT_${key}${isSecret ? ' (secret)' : ''}`);
             }
         } catch (err) {
-            tasks.debug(`Could not parse terraform output as JSON for pipeline variables: ${err}`);
+            // #783: a parse failure here silently populates ZERO TF_OUT_* variables,
+            // which a downstream step reads as empty/undefined with no explanation.
+            // Surface it at warning (visible by default), matching the sibling
+            // detectDestroyChanges / warnIfSensitiveOutputs handlers rather than the
+            // System.Debug-only visibility this previously had.
+            tasks.warning(`Could not parse terraform output as JSON for pipeline variables; no TF_OUT_* variables were set: ${err}`);
         }
     }
 
@@ -1839,14 +1850,19 @@ export abstract class BaseTerraformCommandHandler {
      * captured stdout, so a strict failure throws before anything reaches the
      * console at all rather than merely warning after the fact.
      */
-    private warnIfSensitiveOutputs(jsonOutput: string, filePath: string | undefined): void {
+    private warnIfSensitiveOutputs(jsonOutput: string, filePath: string | undefined): boolean {
         let plan: { planned_values?: { outputs?: unknown }, resource_changes?: unknown };
         try {
             plan = JSON.parse(jsonOutput);
         } catch (error) {
             tasks.warning(`Could not parse terraform plan for sensitive-output detection; the sensitive-value safety warning did not run: ${String(error)}`);
-            return;
+            return false;
         }
+
+        // #802: track whether the plan carries ANY sensitive content (outputs or
+        // resource attributes) so the show() outputTo=file path can auto-register
+        // the just-written file for scrub+delete, mirroring output()'s #650 handling.
+        let sensitive = false;
 
         // Check for sensitive values in planned_values outputs. maskHasSensitiveLeaf
         // shares its "mask === true at any depth" predicate with the WP-1 redaction
@@ -1858,6 +1874,7 @@ export abstract class BaseTerraformCommandHandler {
                 .filter(([, v]) => maskHasSensitiveLeaf((v as { sensitive?: unknown }).sensitive))
                 .map(([k]) => k);
             if (sensitiveKeys.length > 0) {
+                sensitive = true;
                 if (tasks.getBoolInput('failOnSensitiveOutputs', false)) {
                     if (filePath) {
                         this.tempFiles.push(filePath);
@@ -1883,6 +1900,7 @@ export abstract class BaseTerraformCommandHandler {
                 maskHasSensitiveLeaf(rc.change?.after_sensitive)
             );
             if (sensitiveResources.length > 0) {
+                sensitive = true;
                 if (filePath) {
                     tasks.warning(`Terraform plan contains ${sensitiveResources.length} resource(s) with sensitive attributes. The output file may contain unredacted secrets.`);
                 } else {
@@ -1890,6 +1908,8 @@ export abstract class BaseTerraformCommandHandler {
                 }
             }
         }
+
+        return sensitive;
     }
 
     /**
@@ -1918,7 +1938,11 @@ export abstract class BaseTerraformCommandHandler {
         try {
             outputs = JSON.parse(jsonOutput);
         } catch (error) {
-            tasks.debug(`Could not parse terraform output as JSON for sensitive-output detection: ${error}`);
+            // #783: escalate from debug to warning so a failed sensitivity check is
+            // visible by default, matching the sibling warnIfSensitiveOutputs /
+            // detectDestroyChanges handlers -- an unparseable output means this
+            // safety check silently did not run over a file that may hold secrets.
+            tasks.warning(`Could not parse terraform output as JSON for sensitive-output detection; the sensitive-value safety warning did not run: ${error}`);
             return false;
         }
         if (!outputs || typeof outputs !== 'object') return false;

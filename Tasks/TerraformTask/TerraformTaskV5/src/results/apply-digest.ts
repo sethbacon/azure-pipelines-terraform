@@ -220,24 +220,37 @@ export function buildApplyDigest(ndjson: string, meta: DigestBuildMeta, options?
 
 // ---- parsing / accumulation helpers ----
 
-function parseNdjson(ndjson: string, ctx: RedactContext): unknown[] {
-  const out: unknown[] = [];
-  if (typeof ndjson !== 'string') return out;
-  const lines = ndjson.split('\n');
+/**
+ * Tolerantly parses an NDJSON stream into its object events: splits on newlines,
+ * strips a trailing CR, skips blank lines, JSON.parses each, and silently drops
+ * any line that fails to parse or is not a JSON object (counting them). This is
+ * the single shared implementation of the "split NDJSON, skip malformed lines"
+ * loop that apply's digest builder here and base-terraform-command-handler.ts's
+ * lighter-weight error-extraction / console-echo passes all need to agree on
+ * (#781); callers that don't care about the malformed count simply ignore it.
+ */
+export function parseNdjsonLines(ndjson: string): { events: unknown[]; malformed: number } {
+  const events: unknown[] = [];
   let malformed = 0;
-  for (const rawLine of lines) {
+  if (typeof ndjson !== 'string') return { events, malformed };
+  for (const rawLine of ndjson.split('\n')) {
     const line = rawLine.replace(/\r$/, '').trim();
     if (line === '') continue;
     try {
       const parsed = JSON.parse(line);
-      if (parsed && typeof parsed === 'object') out.push(parsed);
+      if (parsed && typeof parsed === 'object') events.push(parsed);
       else malformed++;
     } catch {
       malformed++;
     }
   }
+  return { events, malformed };
+}
+
+function parseNdjson(ndjson: string, ctx: RedactContext): unknown[] {
+  const { events, malformed } = parseNdjsonLines(ndjson);
   if (malformed > 0) ctx.notes.push(`skipped ${malformed} malformed apply event line(s)`);
-  return out;
+  return events;
 }
 
 function ensureAcc(map: Map<string, ResAcc>, address: string, action: ApplyResource['action'], order: number): ResAcc {

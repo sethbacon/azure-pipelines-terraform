@@ -2194,6 +2194,56 @@ describe('Terraform Test Suite', function () {
         fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
+    it('aws show -json to file auto-scrubs+deletes a sensitive plan file at normal step end (#802)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AWSShowSensitiveAutoCleanup.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-show-sensitive-autocleanup-test');
+        const showFile = path.join(workingDirectory, 'plan.json');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(!fs.existsSync(showFile), `expected the sensitive show file to be scrubbed+deleted at normal step end (#802), but it still exists: ${showFile}`);
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
+    });
+
+    it('aws show -json to file with cleanupShowFileIfSensitive=false retains the sensitive plan file at normal step end (#802 opt-out)', async () => {
+        let tp = path.join(__dirname, './ShowTests/AWSShowSensitiveAutoCleanupOptOut.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-show-sensitive-autocleanup-optout-test');
+        const showFile = path.join(workingDirectory, 'plan.json');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(fs.existsSync(showFile), `expected the sensitive show file to be retained when opted out (#802), but it was deleted: ${showFile}`);
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
+    });
+
+    it('aws output with malformed -json warns (not debug) for both sensitive-detection and TF_OUT_* export (#783)', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputMalformedJsonWarns.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (a parse failure is a warning, not an error)');
+            assert(
+                tr.warningIssues.some((w) => w.includes('no TF_OUT_* variables were set')),
+                'setOutputVariables parse failure should surface a warning (not debug-only). warnings: ' + tr.warningIssues,
+            );
+            assert(
+                tr.warningIssues.some((w) => w.includes('sensitive-value safety warning did not run')),
+                'warnIfSensitiveOutputFile parse failure should surface a warning (not debug-only). warnings: ' + tr.warningIssues,
+            );
+        }, tr);
+        fs.rmSync(path.join(os.tmpdir(), 'tf-output-malformed-json-warns-agenttemp'), { recursive: true, force: true });
+    });
+
     /* terraform custom tests */
 
     it('azure custom command to console should succeed', async () => {
