@@ -44,14 +44,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 
 ### Install Terraform
 
-```yaml
-- task: PipelineTerraformInstaller@1
-  displayName: 'Install Terraform'
-  inputs:
-    terraformVersion: 'latest'
-```
-
-To pin a specific version:
+Pin an explicit version for reproducible, supply-chain-hardened builds (recommended):
 
 ```yaml
 - task: PipelineTerraformInstaller@1
@@ -60,13 +53,22 @@ To pin a specific version:
     terraformVersion: '1.11.3'
 ```
 
-### Init, Plan, and Apply with AzureRM (Workload Identity Federation)
+Or use `latest` to resolve the newest release at run time (convenient, but the resolved version *number* is only as trustworthy as the release oracle it comes from):
 
 ```yaml
 - task: PipelineTerraformInstaller@1
   displayName: 'Install Terraform'
   inputs:
     terraformVersion: 'latest'
+```
+
+### Init, Plan, and Apply with AzureRM (Workload Identity Federation)
+
+```yaml
+- task: PipelineTerraformInstaller@1
+  displayName: 'Install Terraform 1.11.3'
+  inputs:
+    terraformVersion: '1.11.3'
 
 - task: PipelineTerraformTask@5
   displayName: 'Terraform Init'
