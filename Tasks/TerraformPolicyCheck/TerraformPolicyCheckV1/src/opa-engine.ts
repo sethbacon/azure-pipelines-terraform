@@ -2,6 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { PolicyResult, PolicyCase } from './types';
 import { attachBoundedCapture } from './output-cap';
+import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
 
 /**
  * Evaluates OPA policies against Terraform plan/state JSON using `opa exec`.
@@ -32,8 +33,14 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
     });
 
     // opa exec returns 0 even when the decision contains violations; we gate on the
-    // parsed result, not the exit code.
-    const code = await tool.execAsync(<IExecOptions>{ ignoreReturnCode: true });
+    // parsed result, not the exit code. Bounded by a wall-clock deadline (#782): the
+    // byte-cap above stops an OOM but not a hang, so a misbehaving opa or a
+    // pathological bundle is killed rather than blocking until the ADO job timeout.
+    const code = await execWithTimeout(
+        tool,
+        <IExecOptions>{ ignoreReturnCode: true },
+        tasks.loc('PolicyEngineTimedOut', 'opa exec', TOOL_EXEC_TIMEOUT_MS),
+    );
     capture.assertWithinCap();
 
     // A non-zero exit is a real failure (bad bundle, malformed input, opa crash),

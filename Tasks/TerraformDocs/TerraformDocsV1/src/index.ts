@@ -3,6 +3,7 @@ import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import fs = require('fs');
 import path = require('path');
 import { buildTerraformDocsArgs, buildModulePathArgs, sanitizeConfigFile, TerraformDocsConfig } from './args-builder';
+import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
 
 // Upper bound on terraform-docs stdout+stderr buffered to classify an --output-check
 // failure and fold crash detail into the error message (mirrors the #632 / CWE-400
@@ -77,7 +78,11 @@ async function run() {
         toolRunner.on('stdout', capture);
         toolRunner.on('stderr', capture);
 
-        const exitCode = await toolRunner.execAsync(<IExecOptions>{ ignoreReturnCode: true });
+        const exitCode = await execWithTimeout(
+            toolRunner,
+            <IExecOptions>{ ignoreReturnCode: true },
+            tasks.loc('TerraformDocsTimedOut', TOOL_EXEC_TIMEOUT_MS),
+        );
         if (exitCode !== 0) {
             if (config.outputCheck && /is out of date/i.test(captured)) {
                 throw new Error(tasks.loc('TerraformDocsOutdated', config.outputFile || config.modulePath));

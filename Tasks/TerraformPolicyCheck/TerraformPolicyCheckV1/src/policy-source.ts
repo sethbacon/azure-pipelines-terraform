@@ -74,6 +74,34 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     return policyDir;
 }
 
+/**
+ * Builds the per-invocation git config ENV VARS (git >= 2.31) that carry the
+ * clone credential for a private policy repo.
+ *
+ * - The Authorization header is delivered via `GIT_CONFIG_*` env rather than a
+ *   `-c http.extraheader=...` argv item, so the token never appears in the child
+ *   process's command line (readable via ps / /proc/<pid>/cmdline by other
+ *   processes on a shared agent).
+ * - `http.followRedirects` is disabled (#779): git applies `http.extraheader` to
+ *   EVERY HTTP request and, with the default `followRedirects=initial`, re-sends
+ *   that header when the initial smart-HTTP request is redirected to a DIFFERENT
+ *   host. Because the header is not host-scoped, a `policyRepoUrl` pointed at a
+ *   host that issues a cross-host redirect would otherwise forward the
+ *   `Authorization: Basic <PAT>` to the redirect target. Disabling redirect
+ *   following for the authenticated clone keeps the credential pinned to the
+ *   originally-configured host. (Unauthenticated clones never call this and keep
+ *   git's default redirect behavior — there is no credential to protect.)
+ */
+export function buildGitAuthEnv(basic: string): Record<string, string> {
+    return {
+        GIT_CONFIG_COUNT: '2',
+        GIT_CONFIG_KEY_0: 'http.extraheader',
+        GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+        GIT_CONFIG_KEY_1: 'http.followRedirects',
+        GIT_CONFIG_VALUE_1: 'false',
+    };
+}
+
 async function cloneRepo(url: string, ref: string, token: string | undefined, cloneDir: string): Promise<void> {
     const gitPath = tasks.which('git', true);
     const isSha = /^[0-9a-fA-F]{40}$/.test(ref);
@@ -83,13 +111,7 @@ async function cloneRepo(url: string, ref: string, token: string | undefined, cl
         tasks.setSecret(token);
         const basic = Buffer.from(`:${token}`).toString('base64');
         tasks.setSecret(basic);
-        // Pass the credential to git via per-invocation config ENV VARS (git >= 2.31)
-        // instead of `-c http.extraheader=...` on argv, so the token never appears in
-        // the child process's command line (readable via ps / /proc/<pid>/cmdline by
-        // other processes on a shared agent).
-        authEnv['GIT_CONFIG_COUNT'] = '1';
-        authEnv['GIT_CONFIG_KEY_0'] = 'http.extraheader';
-        authEnv['GIT_CONFIG_VALUE_0'] = `Authorization: Basic ${basic}`;
+        Object.assign(authEnv, buildGitAuthEnv(basic));
     }
 
     if (isSha) {

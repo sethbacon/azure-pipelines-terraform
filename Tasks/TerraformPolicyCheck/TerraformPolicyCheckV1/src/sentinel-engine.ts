@@ -6,6 +6,7 @@ import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyResult, PolicyCase } from './types';
 import { attachBoundedCapture } from './output-cap';
+import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
 
 /**
  * Evaluates Sentinel policies against Terraform plan JSON.
@@ -51,7 +52,14 @@ export async function runSentinel(
     let stdout = '';
     const capture = attachBoundedCapture(tool, (_stream, text) => { stdout += text; });
 
-    const code = await tool.execAsync(<IExecOptions>{ cwd: workingDir, ignoreReturnCode: true });
+    // Bounded by a wall-clock deadline (#782): the byte-cap above stops an OOM but
+    // not a hang, so a misbehaving sentinel or a pathological policy set is killed
+    // rather than blocking until the ADO job timeout.
+    const code = await execWithTimeout(
+        tool,
+        <IExecOptions>{ cwd: workingDir, ignoreReturnCode: true },
+        tasks.loc('PolicyEngineTimedOut', 'sentinel apply', TOOL_EXEC_TIMEOUT_MS),
+    );
     capture.assertWithinCap();
 
     if (code === 3 || code === 9) {

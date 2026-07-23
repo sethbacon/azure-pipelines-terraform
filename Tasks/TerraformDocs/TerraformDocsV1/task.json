@@ -14,7 +14,7 @@
   "demands": [],
   "version": {
     "Major": "1",
-    "Minor": "7",
+    "Minor": "8",
     "Patch": "0"
   },
   "minimumAgentVersion": "4.265.1",
@@ -154,6 +154,7 @@
     "TerraformDocsFailed": "terraform-docs failed with exit code %s.",
     "TerraformDocsFailedDetail": "terraform-docs failed with exit code %s: %s",
     "TerraformDocsOutdated": "Generated documentation is out of date (outputCheck is enabled) for '%s'. Run terraform-docs locally with the same formatter/config and commit the update.",
+    "TerraformDocsTimedOut": "terraform-docs exceeded its %s ms wall-clock timeout and was terminated. This usually indicates a hung invocation (e.g. on a very large or cyclic module graph).",
     "GeneratedFile": "terraform-docs documentation written to: %s"
   }
 }

@@ -6,5 +6,6 @@
   "loc.messages.InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
   "loc.messages.InvalidPolicyRepoRef": "Invalid policy repo ref rejected: %s. Refs must not start with '-' and may contain only letters, digits, '.', '_', '/', and '-'.",
   "loc.messages.PolicySubdirOutsideRepo": "Policy subdirectory escapes the cloned repository: %s",
-  "loc.messages.PolicyRepoCloneTimedOut": "Cloning the policy repository timed out after %s ms."
+  "loc.messages.PolicyRepoCloneTimedOut": "Cloning the policy repository timed out after %s ms.",
+  "loc.messages.PolicyEngineTimedOut": "The %s process exceeded its %s ms wall-clock timeout and was terminated. This usually indicates a hung or pathological policy evaluation (e.g. a malformed bundle or a runaway policy); inspect the policy set and input."
 }
