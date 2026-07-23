@@ -232,6 +232,22 @@ const FAMILIES = [
         // change at all (it reuses PlanDigest via the optional `planMode`
         // field). No new family was needed for Phase 5.
     },
+    {
+        // Wall-clock deadline wrapper for a local subprocess (execWithTimeout +
+        // the shared TOOL_EXEC_TIMEOUT_MS ceiling): a Promise.race deadline that
+        // kills the child on timeout, generalizing policy-source.ts's git-clone
+        // pattern for the policy-engine (opa/sentinel) and terraform-docs
+        // invocations that previously had only an output-byte cap and no
+        // wall-clock bound (#782). A drift here could silently drop the timeout in
+        // one task while the other keeps failing fast, so keep byte-identical.
+        dirs: [
+            'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src',
+            'Tasks/TerraformDocs/TerraformDocsV1/src',
+        ],
+        modules: [
+            'exec-timeout.ts',
+        ],
+    },
 ];
 
 // These two families are deliberately NOT merged into one shared client, even

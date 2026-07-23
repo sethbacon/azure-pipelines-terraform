@@ -4,6 +4,8 @@ import * as path from 'path';
 
 // Direct unit tests for the argument builder.
 import './ArgsBuilderL0';
+// Direct unit tests for the bounded subprocess execution wrapper (#782).
+import './ExecTimeoutL0';
 
 describe('TerraformDocs Test Suite', function () {
 

@@ -17,6 +17,10 @@ import './SentinelConfigDirRegistrationL0';
 import './SecureTempL0';
 // Direct unit tests for the bounded engine-output capture guard (#632).
 import './OutputCapL0';
+// Direct unit tests for the git-clone credential env + redirect scoping (#779).
+import './GitAuthEnvL0';
+// Direct unit tests for the bounded subprocess execution wrapper (#782).
+import './ExecTimeoutL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
