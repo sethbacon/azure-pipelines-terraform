@@ -2156,6 +2156,44 @@ describe('Terraform Test Suite', function () {
         fs.rmSync(agentTempDirectory, { recursive: true, force: true });
     });
 
+    it('aws output with a sensitive output is auto-cleaned up at normal step end by default (#650)', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputSensitiveAutoCleanup.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-output-sensitive-autocleanup-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-sensitive-autocleanup-agenttemp');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'should still warn about the sensitive output. warnings: ' + tr.warningIssues
+            );
+            const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
+            assert.strictEqual(remaining.length, 0, `expected the sensitive output JSON file to be auto-cleaned up by default (#650), found: ${remaining.join(', ')}`);
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
+    });
+
+    it('aws output with cleanupOutputFileIfSensitive=false retains a sensitive output file at normal step end (#650 opt-out)', async () => {
+        let tp = path.join(__dirname, './OutputTests/AWSOutputSensitiveAutoCleanupOptOut.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        const workingDirectory = path.join(os.tmpdir(), 'tf-output-sensitive-autocleanup-optout-test');
+        const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-sensitive-autocleanup-optout-agenttemp');
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            const files = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
+            assert.strictEqual(files.length, 1, `expected the sensitive output file to be retained when opted out (#650), found: ${files.join(', ')}`);
+        }, tr);
+        fs.rmSync(workingDirectory, { recursive: true, force: true });
+        fs.rmSync(agentTempDirectory, { recursive: true, force: true });
+    });
+
     /* terraform custom tests */
 
     it('azure custom command to console should succeed', async () => {

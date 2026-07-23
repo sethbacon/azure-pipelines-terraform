@@ -15,7 +15,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "286",
+        "Minor": "287",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -449,7 +449,16 @@
             "defaultValue": "false",
             "required": false,
             "visibleRule": "command = output",
-            "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. The file is written under the agent temp directory (`Agent.TempDirectory`), which the agent purges at the end of the job; it is retained until then by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable. Enable this to delete it at the end of this step instead, e.g. when the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself."
+            "helpMarkDown": "Delete the JSON file written by the output command (containing every output's real value, including any marked sensitive) when this step finishes. The file is written under the agent temp directory (`Agent.TempDirectory`), which the agent purges at the end of the job; it is retained until then by default so downstream steps can read it via the `jsonOutputVariablesPath` output variable -- unless it contains a Terraform output declared `sensitive = true`, see 'Delete the output JSON file at task end if it contains sensitive values' below. Enable this to delete it at the end of this step instead, e.g. when the step only needs the auto-set `TF_OUT_*` pipeline variables and not the file itself."
+        },
+        {
+            "name": "cleanupOutputFileIfSensitive",
+            "type": "boolean",
+            "label": "Delete the output JSON file at task end if it contains sensitive values",
+            "defaultValue": "true",
+            "required": false,
+            "visibleRule": "command = output",
+            "helpMarkDown": "When the output command's JSON file is detected to contain one or more Terraform outputs declared `sensitive = true` (see the sensitive-output warning), delete it automatically at the end of this step -- even though 'Delete the output JSON file at task end' (cleanupOutputFile) is off -- rather than leaving cleartext sensitive values on disk for the rest of the job relying solely on the agent's end-of-job temp directory purge. Has no effect when cleanupOutputFile is already enabled (the file is always deleted then) or when the output contains no sensitive values (the general retain-by-default behavior described above is unchanged). Disable this only if a downstream step in the SAME job still needs to read this specific file's sensitive value from disk via jsonOutputVariablesPath."
         },
         {
             "name": "failOnSensitiveOutputs",
@@ -509,7 +518,7 @@
             "type": "boolean",
             "defaultValue": "false",
             "label": "Use ID Token Generation as a fallback for older provider versions",
-            "helpMarkDown": "Choose whether to use ID Token generation as a fallback for older provider versions. Warning this setting may result in unexpected timeouts.",
+            "helpMarkDown": "Choose whether to use ID Token generation as a fallback for older provider versions. Warning this setting may result in unexpected timeouts.<br><br>Security note: when **false** (the default), the task exports the broader ADO pipeline OIDC access token (`ARM_OIDC_REQUEST_TOKEN`) into the terraform process environment for the whole run so the provider can refresh it as needed -- inherited by any `local-exec` provisioner or `external` data source the configuration runs. Setting this to **true** instead generates a single-use, narrower-scoped `ARM_OIDC_TOKEN` up front. For pipelines running untrusted or third-party modules/providers on shared agents, prefer **true**. See [Token modes and exposure](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/docs/setup/azure-wif-setup.md#token-modes-and-exposure).",
             "groupName": "providerAzureRm"
         },
         {
@@ -702,7 +711,7 @@
             "type": "boolean",
             "defaultValue": "false",
             "label": "Use ID Token Generation as a fallback for older backend versions",
-            "helpMarkDown": "Choose whether to use ID Token generation as a fallback for older backend versions. Warning this setting may result in unexpected timeouts.",
+            "helpMarkDown": "Choose whether to use ID Token generation as a fallback for older backend versions. Warning this setting may result in unexpected timeouts.<br><br>Security note: when **false** (the default), the task exports the broader ADO pipeline OIDC access token (`ARM_OIDC_REQUEST_TOKEN`) into the terraform process environment for the whole run so the backend can refresh it as needed -- inherited by any `local-exec` provisioner or `external` data source the configuration runs. Setting this to **true** instead generates a single-use, narrower-scoped `ARM_OIDC_TOKEN` up front. For pipelines running untrusted or third-party modules/providers on shared agents, prefer **true**. See [Token modes and exposure](https://github.com/sethbacon/azure-pipelines-terraform/blob/main/docs/setup/azure-wif-setup.md#token-modes-and-exposure).",
             "groupName": "backendAzureRm"
         },
         {
