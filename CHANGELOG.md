@@ -4,6 +4,37 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.12.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.11.1...v1.12.0) (2026-07-23)
+
+
+### Features
+
+* **TaskV5:** dynamic AzureRM resource pickers + AWS/OCI region pickLists ([#818](https://github.com/sethbacon/azure-pipelines-terraform/issues/818)) ([aae33c8](https://github.com/sethbacon/azure-pipelines-terraform/commit/aae33c87ffb8e0581f241c860def10f9a9d4f329)), closes [#796](https://github.com/sethbacon/azure-pipelines-terraform/issues/796)
+
+
+### Bug Fixes
+
+* audit-2026-07-22 remediation - installer resolve/verify hardening: registry response shape guard + opt-in fail-closed re-verification ([#790](https://github.com/sethbacon/azure-pipelines-terraform/issues/790), [#778](https://github.com/sethbacon/azure-pipelines-terraform/issues/778)) ([#807](https://github.com/sethbacon/azure-pipelines-terraform/issues/807)) ([57d63f1](https://github.com/sethbacon/azure-pipelines-terraform/commit/57d63f1fe033cb64bc722d760223ebf26affb117))
+* audit-2026-07-22 remediation - mirror download SSRF/redirect-to-private-address protection ([#799](https://github.com/sethbacon/azure-pipelines-terraform/issues/799)) ([#806](https://github.com/sethbacon/azure-pipelines-terraform/issues/806)) ([0eb1742](https://github.com/sethbacon/azure-pipelines-terraform/commit/0eb17420e7411d10c62c53be1745b59cca39ada6))
+* audit-2026-07-22 remediation - output-file auto-cleanup + WIF token help ([#650](https://github.com/sethbacon/azure-pipelines-terraform/issues/650), [#761](https://github.com/sethbacon/azure-pipelines-terraform/issues/761)) ([#803](https://github.com/sethbacon/azure-pipelines-terraform/issues/803)) ([323a546](https://github.com/sethbacon/azure-pipelines-terraform/commit/323a5463c0b554d0548f8df102fffec2e29f34a0))
+* audit-2026-07-22 remediation - policy-repo clone redirect scoping + wall-clock timeout on local policy/docs subprocesses ([#779](https://github.com/sethbacon/azure-pipelines-terraform/issues/779), [#782](https://github.com/sethbacon/azure-pipelines-terraform/issues/782)) ([#808](https://github.com/sethbacon/azure-pipelines-terraform/issues/808)) ([b33b8be](https://github.com/sethbacon/azure-pipelines-terraform/commit/b33b8bed306631df770371878b28d1840153c9b4))
+* audit-2026-07-22 remediation - reject skipTlsVerify against public registry + WIF audience-scoping docs ([#588](https://github.com/sethbacon/azure-pipelines-terraform/issues/588), [#609](https://github.com/sethbacon/azure-pipelines-terraform/issues/609)) ([#804](https://github.com/sethbacon/azure-pipelines-terraform/issues/804)) ([16f1678](https://github.com/sethbacon/azure-pipelines-terraform/commit/16f167855dd6319c9ab6ba7cfaa34ad60922f903))
+* audit-2026-07-22 remediation - shared tsconfig base + real Node20 test for TerraformTaskV5 ([#409](https://github.com/sethbacon/azure-pipelines-terraform/issues/409), [#720](https://github.com/sethbacon/azure-pipelines-terraform/issues/720)) ([#805](https://github.com/sethbacon/azure-pipelines-terraform/issues/805)) ([914fc5f](https://github.com/sethbacon/azure-pipelines-terraform/commit/914fc5fb3912fceff4069dd52f288fca1c65af4c))
+* audit-2026-07-22 remediation - SIGTERM/SIGINT emergency cleanup for the drift-report and policy-check tasks ([#775](https://github.com/sethbacon/azure-pipelines-terraform/issues/775)) ([#810](https://github.com/sethbacon/azure-pipelines-terraform/issues/810)) ([467bd3c](https://github.com/sethbacon/azure-pipelines-terraform/commit/467bd3ccd826d8cc337250a889af1a681ff6f1db))
+* audit-2026-07-22 remediation - SSRF redirect revalidation + cosign SHA256 pin ([#729](https://github.com/sethbacon/azure-pipelines-terraform/issues/729), [#550](https://github.com/sethbacon/azure-pipelines-terraform/issues/550)) ([#800](https://github.com/sethbacon/azure-pipelines-terraform/issues/800)) ([1ba41bd](https://github.com/sethbacon/azure-pipelines-terraform/commit/1ba41bdebb7b0682c3718ab6b1506e3a678884b5))
+* audit-2026-07-22 remediation - TerraformTaskV5 handler hardening: shared NDJSON parser, warn-escalation, sensitive show-file auto-cleanup ([#781](https://github.com/sethbacon/azure-pipelines-terraform/issues/781), [#783](https://github.com/sethbacon/azure-pipelines-terraform/issues/783), [#802](https://github.com/sethbacon/azure-pipelines-terraform/issues/802)) ([#809](https://github.com/sethbacon/azure-pipelines-terraform/issues/809)) ([8badc4d](https://github.com/sethbacon/azure-pipelines-terraform/commit/8badc4daeb64048612c5e2f9b9d19b25b667e678))
+
+
+### Documentation
+
+* clarify the release is a public Marketplace listing ([#817](https://github.com/sethbacon/azure-pipelines-terraform/issues/817)) ([ad0990e](https://github.com/sethbacon/azure-pipelines-terraform/commit/ad0990e3e3a9cf998920106f7081320c6e649eb2)), closes [#795](https://github.com/sethbacon/azure-pipelines-terraform/issues/795)
+* correct OIDC backoff, output-var list, plan-summary reuse, audit gate, port heritage ([#814](https://github.com/sethbacon/azure-pipelines-terraform/issues/814)) ([4cb6364](https://github.com/sethbacon/azure-pipelines-terraform/commit/4cb63644cc61ec2c07dda367f3146a985461eec3)), closes [#787](https://github.com/sethbacon/azure-pipelines-terraform/issues/787) [#791](https://github.com/sethbacon/azure-pipelines-terraform/issues/791) [#792](https://github.com/sethbacon/azure-pipelines-terraform/issues/792) [#793](https://github.com/sethbacon/azure-pipelines-terraform/issues/793) [#794](https://github.com/sethbacon/azure-pipelines-terraform/issues/794)
+
+
+### Refactor
+
+* **digest:** extract shared digest-builder types/helper to a neutral module ([#815](https://github.com/sethbacon/azure-pipelines-terraform/issues/815)) ([2eadc2a](https://github.com/sethbacon/azure-pipelines-terraform/commit/2eadc2a843928082ee50797e01f14222accec853)), closes [#789](https://github.com/sethbacon/azure-pipelines-terraform/issues/789)
+
 ## [1.11.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.11.0...v1.11.1) (2026-07-22)
 
 
