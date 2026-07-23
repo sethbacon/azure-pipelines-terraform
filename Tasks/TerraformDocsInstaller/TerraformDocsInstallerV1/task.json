@@ -93,6 +93,14 @@
       "defaultValue": "true",
       "required": false,
       "helpMarkDown": "When enabled (default), fail if a SHA256 checksum is not available for the requested version/platform. Note: terraform-docs publishes no GPG/cosign signature, so this checksum is a same-origin transport-integrity check, not independent-authenticity verification (see SECURITY.md). Disable only for mirrors or registries that do not publish checksums. Also controls tool-cache re-verification on persistent/self-hosted agents: when enabled, a cached tool that carries no local integrity marker (cached by an older installer version, or by a job that ran with verification disabled) is re-downloaded and re-verified before use, degrading to a warning only when the source is unreachable (offline/air-gapped agents keep working). Avoid mixing requireChecksum values across jobs that share an agent's tool cache."
+    },
+    {
+      "name": "requireOnlineReverification",
+      "type": "boolean",
+      "label": "Fail closed if an unmarked cache entry cannot be re-verified online",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "When enabled, a tool-cache hit that has no local integrity marker and requires online re-verification (requireChecksum=true) FAILS the task if the configured source cannot be reached to re-verify, instead of degrading to a warning and using the unverified cached binary. Default (false) preserves the availability-first behavior that keeps offline/air-gapped cache reuse working. Enable on shared persistent self-hosted agents where you prefer an availability loss over trusting a cache entry an earlier job may have populated without verification. Has no effect when requireChecksum is false (re-verification is skipped) or on a cache entry that already carries an integrity marker (verified locally, offline)."
     }
   ],
   "restrictions": {
@@ -146,6 +154,7 @@
     "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
     "ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",
     "CachedToolReverificationUnavailable": "Could not re-verify cached %s: %s. Proceeding with the cached executable — expected for offline/air-gapped agents; set requireChecksum to false to skip the attempt and silence this warning.",
+    "CachedToolReverificationSourceUnreachable": "Could not re-verify cached %s: %s. requireOnlineReverification is enabled, so the task fails closed rather than trusting an unverified cache entry. Ensure the configured source is reachable, or disable requireOnlineReverification to fall back to using the cached executable with a warning.",
     "CachedToolReverificationMismatch": "Cached %s does not match the freshly downloaded, verified release (verified: %s, cached: %s). The cached copy was either never verified or has been altered since caching; clear the agent's tool cache for this version and re-run.",
     "CachedToolReverified": "Cached %s re-verified against the freshly downloaded, verified release; integrity marker written for future cache hits."
   }
