@@ -12,6 +12,8 @@ import { TLS_CERT, TLS_KEY } from './loopback-tls';
 import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
+// Contract test pinning the shared https-client's no-destination-host-restriction design (#785).
+import './HttpsClientHostHandlingByDesignL0';
 
 const noop = (): void => {
     /* suppress log output during tests */

@@ -7,8 +7,8 @@
     "compile": "tsc -b tsconfig.json",
     "compile:tests": "tsc -p tsconfig.tests.json",
     "compile:all": "npm run compile && npm run compile:tests",
-    "test": "npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts",
-    "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --require ts-node/register --require ./Tests/coverage-warmup.cjs Tests/L0.ts",
+    "test": "npm run compile:all && mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts",
+    "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --forbid-pending --require ts-node/register --require ./Tests/coverage-warmup.cjs Tests/L0.ts",
     "posttest:coverage": "node ../../../scripts/check-per-file-coverage.js",
     "lint": "npx eslint src/ Tests/"
   },
