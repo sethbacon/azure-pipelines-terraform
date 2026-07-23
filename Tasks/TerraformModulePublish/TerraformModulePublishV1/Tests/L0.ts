@@ -813,6 +813,62 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         }
     });
 
+    it('rejects skipTlsVerify against a known public Terraform registry host (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishSkipTlsVerifyPublicRegistryRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('SkipTlsVerifyPublicRegistryRejected'),
+                'should fail with the public-registry rejection error. stdout: ' + tr.stdout,
+            );
+            assert.ok(
+                !tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
+                'must reject BEFORE reaching the skipTlsVerify warning, not warn-then-proceed',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('does not falsely reject a private registry host that merely contains "terraform.io" as a substring (#588 lookalike-safety)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishSkipTlsVerifyLookalikeHostAllowed.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
+                'should still warn (legitimate skipTlsVerify usage), not reject',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('rejects skipTlsVerify against the bare apex terraform.io domain, not just subdomains (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishSkipTlsVerifyApexDomainRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('SkipTlsVerifyPublicRegistryRejected'),
+                'should fail with the public-registry rejection error. stdout: ' + tr.stdout,
+            );
+            assert.ok(
+                !tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
+                'must reject BEFORE reaching the skipTlsVerify warning, not warn-then-proceed',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
     it('masks the hcpToken and routes to the HCP publisher', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpToken.js'));
         await tr.runAsync();

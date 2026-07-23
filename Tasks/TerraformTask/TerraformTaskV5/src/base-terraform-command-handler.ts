@@ -211,10 +211,13 @@ export abstract class BaseTerraformCommandHandler {
     backendConfig: Map<string, string>;
     protected tempFiles: string[];
     // Files scrubbed+deleted ONLY on a SIGTERM/cancellation (emergencyCleanupTempFiles),
-    // never on normal step completion: the retained `terraform output -json` file
+    // never on normal step completion: a retained `terraform output -json` file
     // when cleanupOutputFile is off, which downstream steps still read via
     // jsonOutputVariablesPath during the same job but has no legitimate reader once
-    // the job is cancelled (#650).
+    // the job is cancelled (#650). Since #650's auto-cleanup fix, this now only holds
+    // the output file when it has NO sensitive values, or the operator explicitly
+    // opted out via cleanupOutputFileIfSensitive=false -- a sensitive-containing file
+    // is registered in `tempFiles` instead (normal-completion cleanup) by default.
     protected emergencyOnlyTempFiles: string[] = [];
     private secureFileId: string | null = null;
     // Path of the downloaded secure var file, retained so it can be scrubbed
@@ -570,9 +573,10 @@ export abstract class BaseTerraformCommandHandler {
      * End-of-step cleanup (normal completion). Scrubs+deletes every tracked temp
      * file and the secure var file. Deliberately does NOT touch
      * {@link emergencyOnlyTempFiles} -- those (a retained `terraform output -json`
-     * file when cleanupOutputFile is off) must survive a normal step so
-     * downstream steps can still read them via the documented output-variable
-     * contract; they are cleaned only on cancellation (#650).
+     * file when cleanupOutputFile is off AND it either has no sensitive values or
+     * the operator opted out via cleanupOutputFileIfSensitive=false) must survive
+     * a normal step so downstream steps can still read them via the documented
+     * output-variable contract; they are cleaned only on cancellation (#650).
      */
     public cleanupTempFiles(): void {
         this.scrubAndUnlink(this.tempFiles);
@@ -585,7 +589,7 @@ export abstract class BaseTerraformCommandHandler {
      * ParentCommandHandler.emergencyCleanup). Cleans everything
      * {@link cleanupTempFiles} does, PLUS {@link emergencyOnlyTempFiles}: on a
      * cancellation there is no legitimate downstream reader left for a retained
-     * output file, so its cleartext (possibly `sensitive = true`) values are
+     * (non-sensitive, or explicitly opted-out) output file, so its values are
      * scrubbed+deleted then rather than left on a reused self-hosted agent's
      * temp dir until job end (#650).
      */
@@ -841,17 +845,23 @@ export abstract class BaseTerraformCommandHandler {
 
         this.writeCommandOutputFile(jsonOutputVariablesFilePath, commandOutput.stdout);
         tasks.setVariable('jsonOutputVariablesPath', jsonOutputVariablesFilePath, false, true);
-        this.warnIfSensitiveOutputFile(commandOutput.stdout, jsonOutputVariablesFilePath);
+        const hasSensitiveOutputs = this.warnIfSensitiveOutputFile(commandOutput.stdout, jsonOutputVariablesFilePath);
 
-        if (tasks.getBoolInput('cleanupOutputFile', false)) {
+        // #650: a file containing sensitive output values is auto-registered for
+        // NORMAL-completion scrub+delete (cleanupOutputFileIfSensitive, default
+        // true) even when the general-purpose cleanupOutputFile wasn't requested
+        // -- unless the operator explicitly opts out (e.g. a downstream step in
+        // the SAME job still needs to read this specific sensitive value from
+        // disk). Otherwise, cleanupOutputFile is off: the file must survive a
+        // NORMAL step so downstream steps can still read it via the
+        // jsonOutputVariablesPath contract, but on a cancellation there is no
+        // legitimate downstream reader left -- register it for the
+        // emergency-only scrub+delete path so its cleartext values aren't left
+        // on a reused self-hosted agent's temp dir until job end.
+        if (tasks.getBoolInput('cleanupOutputFile', false) ||
+            (hasSensitiveOutputs && tasks.getBoolInput('cleanupOutputFileIfSensitive', false))) {
             this.tempFiles.push(jsonOutputVariablesFilePath);
         } else {
-            // cleanupOutputFile is off: the file must survive a NORMAL step so
-            // downstream steps can still read it via the jsonOutputVariablesPath
-            // contract, but on a cancellation there is no legitimate downstream
-            // reader left -- register it for the emergency-only scrub+delete path
-            // so its cleartext (possibly `sensitive = true`) values aren't left on
-            // a reused self-hosted agent's temp dir until job end (#650).
             this.emergencyOnlyTempFiles.push(jsonOutputVariablesFilePath);
         }
 
@@ -1896,30 +1906,44 @@ export abstract class BaseTerraformCommandHandler {
      * file is registered for end-of-step deletion first so the failure
      * doesn't leave the cleartext values behind. With `cleanupOutputFile` set
      * the file is deleted at step end anyway, so strict mode stays a warning.
+     *
+     * Returns whether the parsed output contained at least one `sensitive =
+     * true` value (and this call did not already throw) -- the caller (the
+     * `output()` command) uses this to decide whether to also auto-register
+     * the file for normal-completion cleanup via `cleanupOutputFileIfSensitive`
+     * (#650), independent of this function's own warn/throw behavior.
      */
-    private warnIfSensitiveOutputFile(jsonOutput: string, filePath: string): void {
+    private warnIfSensitiveOutputFile(jsonOutput: string, filePath: string): boolean {
         let outputs: unknown;
         try {
             outputs = JSON.parse(jsonOutput);
         } catch (error) {
             tasks.debug(`Could not parse terraform output as JSON for sensitive-output detection: ${error}`);
-            return;
+            return false;
         }
-        if (!outputs || typeof outputs !== 'object') return;
+        if (!outputs || typeof outputs !== 'object') return false;
 
         const sensitiveKeys = Object.entries(outputs)
             .filter(([, def]) => (def as { sensitive?: boolean }).sensitive === true)
             .map(([key]) => key);
-        if (sensitiveKeys.length === 0) return;
+        if (sensitiveKeys.length === 0) return false;
 
         if (tasks.getBoolInput('failOnSensitiveOutputs', false) && !tasks.getBoolInput('cleanupOutputFile', false)) {
             this.tempFiles.push(filePath);
             throw new Error(tasks.loc('OutputSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
         }
+        // #650: state the actual outcome accurately -- with cleanupOutputFileIfSensitive
+        // defaulting to true, this file is normally already slated for deletion, so telling
+        // every caller to "set cleanupOutputFile" regardless would be stale/misleading now
+        // that cleanup is opt-OUT rather than opt-in for the sensitive case.
+        const willAutoCleanup = tasks.getBoolInput('cleanupOutputFile', false) || tasks.getBoolInput('cleanupOutputFileIfSensitive', false);
         tasks.warning(
             `${filePath} contains ${sensitiveKeys.length} sensitive output(s) in cleartext (${sensitiveKeys.join(', ')}). ` +
-            `Ensure this file is not published as a pipeline artifact. Set 'cleanupOutputFile' to remove it automatically ` +
-            `at the end of this step if downstream steps don't need to read it from disk.`
+            `Ensure this file is not published as a pipeline artifact. ` +
+            (willAutoCleanup
+                ? `This file will be deleted automatically at the end of this step.`
+                : `Set 'cleanupOutputFileIfSensitive' (or 'cleanupOutputFile') to remove it automatically at the end of this step if downstream steps don't need to read it from disk.`)
         );
+        return true;
     }
 }
