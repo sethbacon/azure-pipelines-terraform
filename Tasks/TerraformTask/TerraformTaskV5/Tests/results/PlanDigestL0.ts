@@ -1,5 +1,6 @@
 import * as assert from 'assert';
-import { buildPlanDigest, DigestBuildMeta, capNotes } from '../../src/results/plan-digest';
+import { buildPlanDigest } from '../../src/results/plan-digest';
+import { DigestBuildMeta, capNotes } from '../../src/results/digest-common';
 import { MAX_RESOURCES, MAX_ATTR_CHANGES_PER_RESOURCE, MAX_OUTPUTS, MAX_DRIFT, MAX_NOTES } from '../../src/results/caps';
 
 const META: DigestBuildMeta = {

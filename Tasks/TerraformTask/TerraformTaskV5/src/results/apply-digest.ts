@@ -14,7 +14,7 @@ import { ApplyDigest, ApplyResource, Diagnostic, OutputChange } from './digest-s
 import { MAX_RESOURCES, MAX_DIAGNOSTICS, MAX_OUTPUTS, SOFT_MAX_DIGEST_BYTES, HARD_MAX_DIGEST_BYTES } from './caps';
 import { redactValue, newRedactContext, capDigestBytes, RedactContext } from './redact';
 import { scrubSecrets, sanitizeAttachmentName } from './secret-scrub';
-import { DigestBuildMeta, DigestByteLimits, capNotes } from './plan-digest';
+import { DigestBuildMeta, DigestByteLimits, capNotes } from './digest-common';
 
 /** Apply-specific build options (diagnostic handling + the byte-cap test seam). */
 export interface ApplyDigestOptions extends DigestByteLimits {

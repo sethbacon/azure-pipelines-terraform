@@ -29,7 +29,7 @@ import {
   HARD_MAX_DIGEST_BYTES,
 } from './caps';
 import { redactValue, newRedactContext, capDigestBytes, RedactContext } from './redact';
-import { DigestBuildMeta, DigestByteLimits, capNotes } from './plan-digest';
+import { DigestBuildMeta, DigestByteLimits, capNotes } from './digest-common';
 import { sanitizeAttachmentName } from './secret-scrub';
 
 // State has no unknown/after-apply values — everything is materialized (spec
