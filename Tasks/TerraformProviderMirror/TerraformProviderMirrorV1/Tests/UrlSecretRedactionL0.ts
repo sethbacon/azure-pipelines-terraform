@@ -9,12 +9,17 @@ import {
 } from '../src/url-secret-redaction';
 
 /**
- * Direct tests for the shared url-secret-redaction module (byte-identical copy
- * across the three installer tasks and this task, gated by
- * scripts/check-shared-modules.js). This task only exercises the userinfo path
- * at runtime (mirrorUrl), so these tests cover the whole module directly to
- * keep its coverage honest here — the same guarantee the installers get from
- * their download-path scenarios.
+ * Direct unit tests for the shared url-secret-redaction module (#776). This file
+ * is byte-identical across the four tasks that consume the module — the three
+ * installer tasks (Terraform, terraform-docs, policy-agent) and
+ * TerraformProviderMirror — mirroring the module itself, which is a byte-identical
+ * parity family gated by scripts/check-shared-modules.js and held to the
+ * SECURITY_FLOOR (plus the #777 functions/branches floors) by
+ * scripts/check-per-file-coverage.js. Exercising the whole module DIRECTLY here
+ * (not only through each task's own download/mirror integration scenarios) keeps
+ * every copy's per-file coverage uniformly high, so a credential-redaction
+ * regression can't slip through a task whose integration scenarios happen to
+ * exercise fewer of these branches.
  */
 describe('url-secret-redaction', () => {
     describe('extractUrlTokenSecrets', () => {

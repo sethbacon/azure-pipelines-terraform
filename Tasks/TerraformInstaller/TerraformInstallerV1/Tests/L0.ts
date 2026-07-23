@@ -20,7 +20,7 @@ import './InstallerHelpersL0';
 import './RegistryAllowedHostsL0';
 // Direct unit tests for the shared registry-version-resolver module (#681).
 import './RegistryVersionResolverL0';
-// Direct unit tests for the operator-URL userinfo redaction helpers (#586).
+// Direct unit tests for the shared url-secret-redaction module (#776).
 import './UrlSecretRedactionL0';
 
 describe('TerraformInstaller Test Suite', function () {

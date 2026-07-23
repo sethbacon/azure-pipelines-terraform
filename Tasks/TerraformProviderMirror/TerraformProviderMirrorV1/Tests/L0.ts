@@ -4,6 +4,7 @@ import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
+// Direct unit tests for the shared url-secret-redaction module (#776).
 import './UrlSecretRedactionL0';
 // Direct unit tests for this task's copy of the secure-temp writer (#628).
 import './SecureTempL0';

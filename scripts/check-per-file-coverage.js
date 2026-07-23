@@ -48,6 +48,22 @@ const DEFAULT_FLOOR = 60;
 // floor for this tier, not a target the code hasn't reached yet.
 const SECURITY_FLOOR = 80;
 
+// The LINES floor above still lets a SECURITY_TIER file ship with whole
+// functions or large conditional branches never executed by any test (issue
+// #777): lines can be fully hit by a single happy-path call that never enters
+// an OS-specific chmod/DACL path, an error branch, or an unused helper. Every
+// SECURITY_TIER file is therefore ALSO held to a functions- and a branches-
+// coverage floor. Chosen from the real per-file numbers on main (2026-07-23):
+// the lowest tiered functions% is 60 (hcp-terraform-command-handler.js) and
+// the lowest tiered branches% is 57.14 (secure-temp.js in three tasks), so 50
+// is a real, non-aspirational floor below the current worst tiered file for
+// each metric — it catches a genuine functions/branches collapse without
+// churning on files that are merely thin. DEFAULT_FLOOR (non-tiered) files keep
+// the lines-only gate; they legitimately include type-only and thin glue files
+// whose functions/branches numbers are noisy and low by nature.
+const SECURITY_FUNCTIONS_FLOOR = 50;
+const SECURITY_BRANCHES_FLOOR = 50;
+
 // Files held to SECURITY_FLOOR instead of DEFAULT_FLOOR: the credential-
 // handling, trust-verification, and redaction modules the Recommendation in
 // issue #655 names, plus every byte-identical parity-family copy of each
@@ -143,6 +159,20 @@ const SECURITY_TIER = new Set([
     // transport and uri-scheme-guard.js validator in this same pipeline.
     'Tasks/PublishKbArticle/PublishKbArticleV1/src/auth.js',
     'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.js',
+
+    // Issue #776: the shared pre-signed-URL / operator-mirror-URL credential
+    // redaction module (CWE-532) standing between a registry download_url or a
+    // userinfo-bearing mirror URL and the (non-secret-masked) build log. It is
+    // byte-identical across all four consuming tasks (scripts/check-shared-
+    // modules.js) and is the direct sibling of the already-tiered redact.js /
+    // uri-scheme-guard.js redaction modules, yet was left at DEFAULT_FLOOR --
+    // where three of the four copies sat ~20 branch-points below
+    // TerraformProviderMirror's until #776 ported its thorough
+    // UrlSecretRedactionL0 suite to all four.
+    'Tasks/TerraformInstaller/TerraformInstallerV1/src/url-secret-redaction.js',
+    'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/url-secret-redaction.js',
+    'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/url-secret-redaction.js',
+    'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/url-secret-redaction.js',
 ]);
 
 // Files allowed BELOW their applicable floor (DEFAULT_FLOOR, or SECURITY_FLOOR
@@ -173,13 +203,17 @@ const EXCEPTIONS = {
 
 // Pure classifier. Inputs:
 //   taskRel      — repo-relative task dir, e.g. 'Tasks/Foo/FooV1'
-//   files        — [{ rel, pct, covered, total }] for this task's instrumented files
-//   defaultFloor — the per-file floor for non-exception, non-tiered files
-//   securityFloor — the higher per-file floor for SECURITY_TIER files
+//   files        — [{ rel, pct, covered, total, funcsPct, funcsCovered,
+//                  funcsTotal, branchPct, branchCovered, branchTotal }] for this
+//                  task's instrumented files
+//   defaultFloor — the per-file LINES floor for non-exception, non-tiered files
+//   securityFloor — the higher per-file LINES floor for SECURITY_TIER files
+//   securityFunctionsFloor — the per-file FUNCTIONS floor for SECURITY_TIER files (#777)
+//   securityBranchesFloor — the per-file BRANCHES floor for SECURITY_TIER files (#777)
 //   securityTier — the repo-global SECURITY_TIER set (of instrumented-file paths)
 //   exceptions   — the repo-global EXCEPTIONS map (filtered to taskRel internally)
 // Returns { failures: string[], oks: string[] } — failures non-empty means fail.
-function evaluate({ taskRel, files, defaultFloor, securityFloor, securityTier, exceptions }) {
+function evaluate({ taskRel, files, defaultFloor, securityFloor, securityFunctionsFloor, securityBranchesFloor, securityTier, exceptions }) {
     const taskExceptions = Object.fromEntries(
         Object.entries(exceptions).filter(([file]) => file.startsWith(`${taskRel}/`)),
     );
@@ -187,7 +221,7 @@ function evaluate({ taskRel, files, defaultFloor, securityFloor, securityTier, e
     const failures = [];
     const oks = [];
 
-    for (const { rel, pct, covered, total } of files) {
+    for (const { rel, pct, covered, total, funcsPct, funcsCovered, funcsTotal, branchPct, branchCovered, branchTotal } of files) {
         // A tiered file's OWN floor — used both to gate non-exception files and,
         // for an exception file, to decide whether it has become stale. Using
         // the file's real tier here (rather than always defaultFloor) is what
@@ -213,11 +247,35 @@ function evaluate({ taskRel, files, defaultFloor, securityFloor, securityTier, e
             }
             continue;
         }
+        const fileFailures = [];
         if (pct < applicableFloor) {
-            failures.push(
+            fileFailures.push(
                 `${rel}: lines ${pct}% is below the ${applicableFloor}% ${isSecurityTier ? 'security-tier' : 'per-file'} floor (${covered}/${total}). ` +
                 'Add tests, or add a reviewed entry to EXCEPTIONS in scripts/check-per-file-coverage.js.',
             );
+        }
+        // #777: a SECURITY_TIER file is additionally held to a functions- and a
+        // branches-coverage floor, so it cannot pass with whole functions or
+        // conditional branches never executed while its lines number looks fine.
+        // A lines-EXCEPTIONS file is a reviewed, lines-focused carve-out handled
+        // in the branch above (no tiered file is excepted today); DEFAULT_FLOOR
+        // files keep the lines-only gate.
+        if (isSecurityTier) {
+            if (funcsPct < securityFunctionsFloor) {
+                fileFailures.push(
+                    `${rel}: functions ${funcsPct}% is below the ${securityFunctionsFloor}% security-tier functions floor (${funcsCovered}/${funcsTotal}). ` +
+                    'Add tests that call the uncovered function(s).',
+                );
+            }
+            if (branchPct < securityBranchesFloor) {
+                fileFailures.push(
+                    `${rel}: branches ${branchPct}% is below the ${securityBranchesFloor}% security-tier branches floor (${branchCovered}/${branchTotal}). ` +
+                    'Add tests that exercise the uncovered branch(es).',
+                );
+            }
+        }
+        if (fileFailures.length) {
+            failures.push(...fileFailures);
         } else {
             oks.push(`OK ${rel}: ${pct}%${isSecurityTier ? ' (security tier)' : ''}`);
         }
@@ -251,6 +309,12 @@ function filesFromSummary(summary) {
             pct: metrics.lines.pct,
             covered: metrics.lines.covered,
             total: metrics.lines.total,
+            funcsPct: metrics.functions.pct,
+            funcsCovered: metrics.functions.covered,
+            funcsTotal: metrics.functions.total,
+            branchPct: metrics.branches.pct,
+            branchCovered: metrics.branches.covered,
+            branchTotal: metrics.branches.total,
         });
     }
     return files;
@@ -274,6 +338,8 @@ function main() {
         files: filesFromSummary(summary),
         defaultFloor: DEFAULT_FLOOR,
         securityFloor: SECURITY_FLOOR,
+        securityFunctionsFloor: SECURITY_FUNCTIONS_FLOOR,
+        securityBranchesFloor: SECURITY_BRANCHES_FLOOR,
         securityTier: SECURITY_TIER,
         exceptions: EXCEPTIONS,
     });
@@ -288,7 +354,7 @@ function main() {
     console.log(`check-per-file-coverage: all files in ${taskRel} meet the per-file floor.`);
 }
 
-module.exports = { evaluate, DEFAULT_FLOOR, SECURITY_FLOOR, SECURITY_TIER, EXCEPTIONS };
+module.exports = { evaluate, DEFAULT_FLOOR, SECURITY_FLOOR, SECURITY_FUNCTIONS_FLOOR, SECURITY_BRANCHES_FLOOR, SECURITY_TIER, EXCEPTIONS };
 
 if (require.main === module) {
     main();
