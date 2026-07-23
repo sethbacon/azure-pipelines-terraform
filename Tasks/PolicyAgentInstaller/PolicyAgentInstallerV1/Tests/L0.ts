@@ -73,6 +73,44 @@ describe('PolicyAgentInstaller Test Suite', function () {
     // accepted (the air-gapped escape hatch), not refused by the default baseline.
     expectSuccess('MirrorAllowedHostAccept');
 
+    // #786: end-to-end Sentinel GPG-signature scenarios mirroring TerraformInstallerV1's
+    // terraform GPG scenario set (the underlying gpg-verifier.ts is byte-identical, but
+    // only the terraform path previously had task-flow-level bad/missing-signature proof).
+    it('SentinelGpgSignatureUnavailable — a missing .sig with requireGpgSignature=false succeeds with a warning', async () => {
+        const tp = path.join(__dirname, 'SentinelGpgSignatureUnavailable.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('SentinelGpgVerificationFail — an invalid SHA256SUMS signature fails the task closed', async () => {
+        const tp = path.join(__dirname, 'SentinelGpgVerificationFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => /GPG signature/i.test(e)),
+                'should fail via the GPG signature check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('SentinelGpgSignatureRequiredButMissing — a missing .sig fails when requireGpgSignature is in effect', async () => {
+        const tp = path.join(__dirname, 'SentinelGpgSignatureRequiredButMissing.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => /GPG signature file unavailable/i.test(e)),
+                'should fail via the required-but-missing GPG signature check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     it('OpaOfficialChecksumSkip warns when the .sha256 is unavailable', async () => {
         const tp = path.join(__dirname, 'OpaOfficialChecksumSkip.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
