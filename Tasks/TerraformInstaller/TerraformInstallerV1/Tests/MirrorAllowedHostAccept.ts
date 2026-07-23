@@ -2,13 +2,20 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// Reuses the generic MirrorCustomUrlSuccessL0 entry (runs downloadTerraform).
-const tp = path.join(__dirname, 'MirrorCustomUrlSuccessL0.js');
+// #799 follow-up: mirrorAllowedHosts is set and the mirror host is a PRIVATE IP
+// address that would otherwise be refused by the default baseline check --
+// proving an operator running a legitimate mirror on a private/internal
+// address (e.g. an air-gapped environment) can opt back in, mirroring the
+// registry path's registryAllowedHosts escape hatch exactly.
+const tp = path.join(__dirname, 'MirrorAllowedHostAcceptL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'mirror');
-tr.setInput('mirrorBaseUrl', 'https://artifacts.example.com/hashicorp/terraform');
+tr.setInput('mirrorBaseUrl', 'https://10.0.5.10/hashicorp/terraform');
+tr.setInput('mirrorAllowedHosts', '10.0.5.10');
+tr.setInput('requireChecksum', 'false');
+tr.setInput('requireGpgSignature', 'false');
 
 tr.registerMock('os', {
   type: () => 'Windows_NT',
@@ -16,42 +23,26 @@ tr.registerMock('os', {
   tmpdir: () => '/tmp'
 });
 
-// dns: the mirror host is a fake test domain; mock it to a public (non-private/
-// link-local) address so the #799 initial-host check passes without a real
-// network lookup, reaching the checksum-fetch failure this test exercises.
-tr.registerMock('dns', {
-  promises: {
-    lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
-  }
-});
-
-// A NON-404 mirror SHA256SUMS fetch failure (e.g. a 5xx after the retries baked into
-// http-client) must be FATAL, not classified as "checksum absent". fetchTextAllow404
-// returns null ONLY for a genuine 404; here it throws, so the install must fail closed
-// even though requireChecksum / requireGpgSignature are left at their (true) defaults.
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => {
     throw new Error('fetchJson should not be called for mirror download. Called with: ' + url);
   },
-  fetchTextAllow404: async () => {
-    throw new Error('HTTP 503 fetching SHA256SUMS (server error, exhausted retries)');
-  },
-  // Mirror downloads now go through downloadToFile (#799); simulate a benign
-  // successful download so the checksum-fetch failure under test is reached.
+  fetchTextAllow404: async () => null, // no SHA256SUMS; requireChecksum=false -> warn + proceed
   downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+    // Genuinely exercises the isHostAllowed callback terraform-installer.ts
+    // builds (real isRegistryHostAllowed logic against mirrorAllowedHosts),
+    // proving the pinned private-IP host is accepted rather than refused by
+    // the default baseline private/link-local check.
     isHostAllowed(new URL(url).hostname);
   },
   DOWNLOAD_TIMEOUT_MS: 30000
 });
 
-tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 tr.registerMock('undici', { ProxyAgent: class { } });
-tr.registerMock('./gpg-verifier', {
-  verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => { }
-});
-tr.registerMock('./cosign-verifier', {
-  verifyCosignSignature: async () => { }
-});
+tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { } });
+tr.registerMock('./cosign-verifier', { verifyCosignSignature: async () => { } });
+
+tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
   findLocalTool: (_toolName: string, _version: string) => null,

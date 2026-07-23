@@ -300,7 +300,7 @@ async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promi
     }
     const assetName = getAssetName(version);
     const downloadUrl = `${mirrorBaseUrl}/${version}/${assetName}`;
-    const archivePath = await downloadTo(downloadUrl, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);
+    const archivePath = await downloadFromMirrorUrl(downloadUrl, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);
 
     const sha256Url = `${mirrorBaseUrl}/${version}/terraform-docs-v${version}.sha256sum`;
     const verified = await verifyChecksumOrSkip(archivePath, sha256Url, assetName, "mirror");
@@ -344,6 +344,51 @@ async function downloadTo(url: string, fileName: string): Promise<string> {
         // the interpolated message (no-op for the official GitHub release URLs) (#586).
         throw new Error(tasks.loc("TerraformDocsDownloadFailed", redactUrlUserInfo(url), exception));
     }
+}
+
+/**
+ * Mirror-only download path (#799, follow-up to #729). mirrorBaseUrl is an
+ * operator-configured input (unlike the registry path's dynamically-returned
+ * download_url), but a compromised/misconfigured mirror SERVICE could still
+ * redirect the actual download at a private/link-local address (notably the
+ * cloud metadata service). Checks the initial host up front, then re-validates
+ * every redirect hop via downloadToFile() -- unlike downloadTo() above (used
+ * for the official/GitHub path, left unchanged), which calls
+ * tools.downloadTool() and follows redirects with no way to re-validate them,
+ * the same underlying gap #729 closed for the registry path. An operator
+ * running a legitimate mirror on a private/internal address (a real,
+ * pre-existing use case -- the registry path's own registryAllowedHosts
+ * exists for exactly this reason) can opt in via mirrorAllowedHosts,
+ * mirroring the registry path's allowlist shape exactly.
+ */
+async function downloadFromMirrorUrl(url: string, fileName: string): Promise<string> {
+    const mirrorAllowedHosts = parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false));
+    const initialHost = new URL(url).hostname;
+    if (mirrorAllowedHosts.length > 0) {
+        if (!isRegistryHostAllowed(initialHost, mirrorAllowedHosts)) {
+            throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", initialHost, mirrorAllowedHosts.join(', ')));
+        }
+    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
+        throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", initialHost));
+    }
+    const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+    const destPath = path.join(destDir, fileName);
+    try {
+        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+            if (mirrorAllowedHosts.length > 0) {
+                if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
+                    throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
+                }
+            } else if (isPrivateOrLinkLocalHost(hostname)) {
+                throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
+            }
+        });
+    } catch (exception) {
+        // A mirror download URL can embed operator basic-auth userinfo; strip it from
+        // the interpolated message (#586).
+        throw new Error(tasks.loc("TerraformDocsDownloadFailed", redactUrlUserInfo(url), exception));
+    }
+    return destPath;
 }
 
 export function parseSha256(sha256SumsContent: string, fileName: string): string {

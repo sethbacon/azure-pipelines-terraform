@@ -69,6 +69,9 @@ describe('PolicyAgentInstaller Test Suite', function () {
     expectSuccess('RegistrySentinelSuccess');
     expectSuccess('MirrorSentinelSuccess');
     expectSuccess('MirrorOpaSuccess');
+    // #799: a private-IP mirror host explicitly pinned via mirrorAllowedHosts is
+    // accepted (the air-gapped escape hatch), not refused by the default baseline.
+    expectSuccess('MirrorAllowedHostAccept');
 
     it('OpaOfficialChecksumSkip warns when the .sha256 is unavailable', async () => {
         const tp = path.join(__dirname, 'OpaOfficialChecksumSkip.js');
@@ -309,6 +312,34 @@ describe('PolicyAgentInstaller Test Suite', function () {
             assert(
                 tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
                 'should fail via the private-address check on the redirect hop. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('mirror host is a private/link-local address: should reject before downloading (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorHostIsPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('MirrorDownloadHostIsPrivate')),
+                'should fail via the mirror private-address check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('mirror download redirects to a private/metadata address: should reject the redirect hop (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorRedirectToPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('MirrorDownloadHostIsPrivate')),
+                'should fail via the mirror private-address check on the redirect hop. errors: ' + tr.errorIssues,
             );
         }, tr);
     });

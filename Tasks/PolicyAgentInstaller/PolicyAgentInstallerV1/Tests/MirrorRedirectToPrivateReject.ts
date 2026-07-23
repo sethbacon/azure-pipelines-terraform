@@ -2,37 +2,34 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
+// #799 (follow-up to #729): mirrorBaseUrl's own host is benign, but the (simulated)
+// download follows a redirect to the cloud metadata address 169.254.169.254 --
+// proving the mirror path re-validates every redirect hop via downloadToFile, not
+// just the initial host (mirrors the registry path's #729 follow-up fix).
 const tp = path.join(__dirname, 'RunInstaller.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-tr.setInput('policyAgent', 'sentinel');
-tr.setInput('version', '0.40.0');
+tr.setInput('policyAgent', 'opa');
+tr.setInput('version', '1.17.1');
 tr.setInput('downloadSource', 'mirror');
 tr.setInput('mirrorBaseUrl', 'https://mirror.example.com');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
-// dns: the mirror host is a fake test domain; mock it to a public (non-private/
-// link-local) address so the #799 initial-host check passes without a real
-// network lookup, reaching the checksum-fetch failure this test exercises.
+// dns: the mirror host itself is benign (this test is about the REDIRECT hop,
+// not the initial host); mock it to a public address so the initial-host check
+// passes without a real network lookup, reaching the downloadToFile call.
 tr.registerMock('dns', {
   promises: {
     lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
   }
 });
 
-// A NON-404 mirror SHA256SUMS fetch failure (e.g. a 5xx after http-client retries)
-// must be FATAL, not treated as "checksum absent". fetchTextAllow404 returns null
-// ONLY for a genuine 404; here it throws, so the Sentinel install must fail closed.
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => { throw new Error('Mirror path should not call fetchJson: ' + url); },
-  fetchTextAllow404: async () => {
-    throw new Error('HTTP 503 fetching SHA256SUMS (server error, exhausted retries)');
-  },
   downloadToFile: async (_url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
-    // Mirror downloads now go through downloadToFile (#799); simulate a benign
-    // successful download so the checksum-fetch failure under test is reached.
-    isHostAllowed(new URL(_url).hostname);
+    // Simulate a redirect hop landing on the cloud metadata service.
+    isHostAllowed('169.254.169.254');
   },
   DOWNLOAD_TIMEOUT_MS: 30000
 });
@@ -42,27 +39,27 @@ tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { } });
 
 tr.registerMock('fs', {
   chmodSync: () => { },
-  readFileSync: () => Buffer.from('fake-zip')
+  readFileSync: () => Buffer.from('fake-binary')
 });
 
 tr.registerMock('crypto', {
   randomUUID: () => 'test-uuid',
-  createHash: () => ({ update: () => ({ digest: () => 'deadbeef' }) })
+  createHash: () => ({ update: () => ({ digest: () => 'should-not-be-reached' }) })
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
   findLocalTool: () => null,
   downloadTool: async () => {
-    throw new Error('downloadTool should not be called for a mirror download -- downloadToFile must be used (#799)');
+    throw new Error('downloadTool should not be reached -- downloadToFile must be used so every redirect hop is re-validated');
   },
-  extractZip: async () => '/tmp/sentinel-extracted',
-  cacheDir: async () => '/tmp/sentinel-cached',
+  extractZip: async () => { throw new Error('extractZip should not be called for OPA'); },
+  cacheDir: async () => '/tmp/opa-cached',
   cleanVersion: (v: string) => v,
   prependPath: () => { }
 });
 
 const a: ma.TaskLibAnswers = {
-  find: { '/tmp/sentinel-cached': ['/tmp/sentinel-cached/sentinel'] }
+  find: { '/tmp/opa-cached': ['/tmp/opa-cached/opa'] }
 };
 tr.setAnswers(a);
 tr.run();

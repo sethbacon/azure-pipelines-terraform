@@ -78,6 +78,15 @@
       "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as the official releases (e.g. https://artifacts.example.com/terraform-docs, serving {base}/{version}/terraform-docs-v{version}-{os}-{arch}.{ext})."
     },
     {
+      "name": "mirrorAllowedHosts",
+      "type": "string",
+      "label": "Allowed mirror download hosts",
+      "defaultValue": "",
+      "required": false,
+      "visibleRule": "downloadSource = mirror",
+      "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the mirror download is permitted to use (e.g. mirror.example.com, or *.internal.example.com to allow any subdomain). When empty (default), a mirror host that is a private/link-local address (e.g. the cloud metadata service) is refused. Set this to explicitly allow a legitimate private/internal mirror -- including one on a private IP -- for an air-gapped or otherwise network-isolated environment."
+    },
+    {
       "name": "requireChecksum",
       "type": "boolean",
       "label": "Require checksum verification",
@@ -132,6 +141,8 @@
     "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
     "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
     "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
+    "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
+    "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",
     "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
     "ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",
     "CachedToolReverificationUnavailable": "Could not re-verify cached %s: %s. Proceeding with the cached executable — expected for offline/air-gapped agents; set requireChecksum to false to skip the attempt and silence this warning.",

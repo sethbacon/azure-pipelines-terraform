@@ -16,9 +16,17 @@ tr.setInput('requireGpgSignature', 'false');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => '/tmp'
 });
-
+// dns: the mirror host is a fake test domain; mock it to a public (non-private/
+// link-local) address so the #799 initial-host check passes without a real
+// network lookup, reaching the downloadToFile call this test exercises.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
 // http-client: mirror download — fetchText for SHA256SUMS will fail (unavailable), which is caught and warned
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
@@ -28,7 +36,19 @@ tr.registerMock('./http-client', {
         // Mirror SHA256SUMS is genuinely absent (404) — fetchTextAllow404 returns
         // null; with requireChecksum=false the installer warns and proceeds.
         return null;
-    }
+    },
+    downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        // Mirror downloads now go through downloadToFile (#799), not
+        // tools.downloadTool, so every redirect hop is re-validated --
+        // isHostAllowed() is called here exactly as the real implementation
+        // calls it for the initial host. Also verify the mirror URL structure.
+        const expectedUrl = 'https://artifacts.example.com/hashicorp/terraform/1.9.8/terraform_1.9.8_windows_amd64.zip';
+        if (url !== expectedUrl) {
+            throw new Error('Unexpected download URL: ' + url + '. Expected: ' + expectedUrl);
+        }
+        isHostAllowed(new URL(url).hostname);
+    },
+    DOWNLOAD_TIMEOUT_MS: 30000
 });
 
 tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
@@ -45,13 +65,8 @@ tr.registerMock('./cosign-verifier', {
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => null,
-    downloadTool: async (url: string, _fileName: string) => {
-        // Verify the mirror URL has the correct structure
-        const expectedUrl = 'https://artifacts.example.com/hashicorp/terraform/1.9.8/terraform_1.9.8_windows_amd64.zip';
-        if (url !== expectedUrl) {
-            throw new Error('Unexpected download URL: ' + url + '. Expected: ' + expectedUrl);
-        }
-        return '/tmp/terraform.zip';
+    downloadTool: async (_url: string, _fileName: string) => {
+        throw new Error('downloadTool should not be called for a mirror download -- downloadToFile must be used (#799)');
     },
     extractZip: async (_zipPath: string) => '/tmp/terraform-extracted',
     cacheDir: async (_srcPath: string, _tool: string, _version: string) => '/tmp/terraform-cached',

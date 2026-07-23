@@ -12,6 +12,15 @@ tr.setInput('mirrorBaseUrl', 'https://mirror.example.com');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
+// dns: the mirror host is a fake test domain; mock it to a public (non-private/
+// link-local) address so the #799 initial-host check passes without a real
+// network lookup.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
+
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
 tr.registerMock('./http-client', {
@@ -21,7 +30,13 @@ tr.registerMock('./http-client', {
             return `${EXPECTED_SHA256}  opa_linux_amd64\n`;
         }
         throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
-    }
+    },
+    downloadToFile: async (_url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        // Mirror downloads now go through downloadToFile (#799), not
+        // tools.downloadTool -- simulate a benign successful download.
+        isHostAllowed(new URL(_url).hostname);
+    },
+    DOWNLOAD_TIMEOUT_MS: 30000
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
@@ -45,7 +60,9 @@ tr.registerMock('crypto', {
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: () => null,
-    downloadTool: async () => '/tmp/opa-download',
+    downloadTool: async () => {
+        throw new Error('downloadTool should not be called for a mirror download -- downloadToFile must be used (#799)');
+    },
     extractZip: async () => { throw new Error('extractZip should not be called for OPA'); },
     cacheDir: async () => '/tmp/opa-cached',
     cleanVersion: (v: string) => v,

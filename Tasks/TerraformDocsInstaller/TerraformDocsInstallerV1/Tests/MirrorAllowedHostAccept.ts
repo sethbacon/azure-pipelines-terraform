@@ -2,38 +2,29 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
+// #799 follow-up: mirrorAllowedHosts is set and the mirror host is a PRIVATE IP
+// address that would otherwise be refused by the default baseline check --
+// proving an operator running a legitimate mirror on a private/internal
+// address (e.g. an air-gapped environment) can opt back in, mirroring the
+// registry path's registryAllowedHosts escape hatch exactly.
 const tp = path.join(__dirname, 'RunInstaller.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('version', '0.24.0');
 tr.setInput('downloadSource', 'mirror');
-tr.setInput('mirrorBaseUrl', 'https://artifacts.example.com/terraform-docs');
+tr.setInput('mirrorBaseUrl', 'https://10.0.5.10/terraform-docs');
+tr.setInput('mirrorAllowedHosts', '10.0.5.10');
+tr.setInput('requireChecksum', 'false');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
-// dns: the mirror host is a fake test domain; mock it to a public (non-private/
-// link-local) address so the #799 initial-host check passes without a real
-// network lookup.
-tr.registerMock('dns', {
-  promises: {
-    lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
-  }
-});
-
-const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
-
 tr.registerMock('./http-client', {
   fetchJson: async (url: string) => { throw new Error('Mirror path should not fetch json: ' + url); },
-  fetchTextAllow404: async (url: string) => {
-    if (url.endsWith('.sha256sum')) {
-      return `${EXPECTED_SHA256}  terraform-docs-v0.24.0-linux-amd64.tar.gz\n`;
-    }
-    throw new Error('Unexpected fetchTextAllow404 URL: ' + url);
-  },
-  downloadToFile: async (_url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
-    // Mirror downloads now go through downloadToFile (#799); simulate a benign
-    // successful download.
-    isHostAllowed(new URL(_url).hostname);
+  fetchTextAllow404: async () => null, // no .sha256sum; requireChecksum=false -> warn + proceed
+  downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+    // Genuinely exercises the isHostAllowed callback against mirrorAllowedHosts,
+    // proving the pinned private-IP host is accepted.
+    isHostAllowed(new URL(url).hostname);
   },
   DOWNLOAD_TIMEOUT_MS: 30000
 });
@@ -42,16 +33,12 @@ tr.registerMock('undici', { ProxyAgent: class { } });
 
 tr.registerMock('fs', {
   chmodSync: () => { },
-  createReadStream: () => require('stream').Readable.from(Buffer.from('fake-archive'))
+  readFileSync: () => Buffer.from('fake-archive')
 });
 
 tr.registerMock('crypto', {
   randomUUID: () => 'test-uuid',
-  createHash: () => {
-    const hash: any = new (require('stream').Writable)({ write(_c: any, _e: any, cb: any) { cb(); } });
-    hash.digest = () => EXPECTED_SHA256;
-    return hash;
-  }
+  createHash: () => ({ update: () => ({ digest: () => 'unused' }) })
 });
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {

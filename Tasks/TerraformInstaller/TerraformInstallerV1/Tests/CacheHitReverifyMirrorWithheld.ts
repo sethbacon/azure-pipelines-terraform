@@ -20,7 +20,17 @@ tr.setInput('requireGpgSignature', 'true');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
-    arch: () => 'x64'
+    arch: () => 'x64',
+    tmpdir: () => '/tmp'
+});
+
+// dns: the mirror host is a fake test domain; mock it to a public (non-private/
+// link-local) address so the #799 initial-host check passes without a real
+// network lookup, reaching the reverify-classification logic under test.
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
 });
 
 tr.registerMock('./http-client', {
@@ -31,7 +41,13 @@ tr.registerMock('./http-client', {
         throw new Error('fetchText should not be called: use fetchTextAllow404. Called with: ' + url);
     },
     // Genuine 404 for the required SHA256SUMS -> reachable mirror withholding material.
-    fetchTextAllow404: async (_url: string) => null
+    fetchTextAllow404: async (_url: string) => null,
+    // Mirror downloads now go through downloadToFile (#799); simulate a benign
+    // successful download so the reverify-classification logic under test runs.
+    downloadToFile: async (_url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
+        isHostAllowed(new URL(_url).hostname);
+    },
+    DOWNLOAD_TIMEOUT_MS: 30000
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
@@ -56,7 +72,9 @@ tr.registerMock('crypto', {
 
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: (_toolName: string, _version: string) => '/tmp/terraform-cached',
-    downloadTool: async (_url: string, _fileName: string) => '/tmp/terraform-reverify.zip',
+    downloadTool: async (_url: string, _fileName: string) => {
+        throw new Error('downloadTool should not be called for a mirror download -- downloadToFile must be used (#799)');
+    },
     extractZip: async (_zipPath: string) => {
         throw new Error('extractZip must not be reached when required material is withheld');
     },

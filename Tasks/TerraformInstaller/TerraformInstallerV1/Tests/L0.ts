@@ -459,6 +459,59 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('mirror host is a private/link-local address: should reject before downloading (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorHostIsPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => e.includes('MirrorDownloadHostIsPrivate')),
+                'should fail via the mirror private-address check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('mirror host resolves to a private address: should reject via DNS-resolution check, not just literal-IP (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorHostResolvesPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => e.includes('MirrorDownloadHostIsPrivate')),
+                'should fail via the mirror private-address check on the resolved address. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('mirror download redirects to a private/metadata address: should reject the redirect hop (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorRedirectToPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => e.includes('MirrorDownloadHostIsPrivate')),
+                'should fail via the mirror private-address check on the redirect hop. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('mirror allowed host: should succeed when a private-IP mirror host is explicitly pinned via mirrorAllowedHosts (#799)', async () => {
+        const tp = path.join(__dirname, 'MirrorAllowedHostAccept.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
     it('registry insecure download_url: should reject a non-https pre-signed URL', async () => {
         const tp = path.join(__dirname, 'RegistryInsecureUrlReject.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
