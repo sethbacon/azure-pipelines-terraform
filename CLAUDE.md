@@ -327,7 +327,7 @@ Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.
 - `execution` targets `Node24` with a `Node20_1` fallback across all tasks — Node 24 is preferred, and the `Node20_1` handler (re-added 2026-07-05, #380) lets older on-prem/air-gapped agents that lack the Node 24 runner degrade gracefully instead of failing to find a handler. A task's `Minor` must be bumped for agents to re-fetch a handler change
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
-- Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `showFilePath`, `customFilePath`
+- Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `destroyChangesPresent`, `showFilePath`, `customFilePath`
 
 ## Development Workflow
 

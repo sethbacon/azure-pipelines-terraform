@@ -128,3 +128,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE
 ```
+
+---
+
+## Origin: internal Python scripts (same author)
+
+`PublishKbArticleV1` and `Markdown2HtmlV1` are TypeScript ports of pre-existing
+Python tooling by this project's author — `publish_kb_article.py` (ServiceNow
+knowledge-base publishing) and `md2html_converter.py` (Markdown-to-HTML
+rendering) — carried over to preserve their established behavior. These are the
+author's own prior work, not third-party dependencies; they are recorded here,
+alongside the design inspirations above, so the provenance of those two tasks is
+not lost.
