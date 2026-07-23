@@ -42,7 +42,35 @@ export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]):
  * environment is unaffected.
  */
 export function isPrivateOrLinkLocalHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  let host = hostname.toLowerCase();
+  // Strip an optional port suffix before the address checks below. WHATWG
+  // URL.host (unlike .hostname) includes an explicit non-default port, and
+  // downloadToFile's per-redirect-hop callback is invoked with .host -- so a
+  // redirect Location like https://10.0.0.5:8443/ would otherwise bypass
+  // every check below (the IPv4 regex is fully anchored and never matches a
+  // 'digits.digits.digits.digits:port' string) (#729 follow-up). A bracketed
+  // IPv6 literal (`[addr]` or `[addr]:port`) is unwrapped by locating the
+  // matching `]` rather than assuming it is the final character.
+  if (host.startsWith('[')) {
+    const closeBracket = host.indexOf(']');
+    host = closeBracket >= 0 ? host.slice(1, closeBracket) : host.slice(1);
+  } else {
+    // A BARE (unbracketed) IPv6 address always has at least 2 colons (the
+    // '::' shorthand, or 2+ literal ':' separators between hextets) -- e.g.
+    // the loopback '::1' returned verbatim by Node's dns.lookup(), which the
+    // sibling resolvesToPrivateOrLinkLocalAddress check feeds in with no
+    // brackets and no port at all. A REAL 'host:port'/'ipv4:port' string has
+    // exactly ONE colon. Only strip when there is exactly one, so a bare
+    // IPv6 literal (however many colons) is never misread as 'address:port'
+    // and truncated into something that no longer matches the checks below.
+    const colonCount = (host.match(/:/g) || []).length;
+    if (colonCount === 1) {
+      const lastColon = host.lastIndexOf(':');
+      if (/^\d+$/.test(host.slice(lastColon + 1))) {
+        host = host.slice(0, lastColon);
+      }
+    }
+  }
   if (host === 'localhost') {
     return true;
   }

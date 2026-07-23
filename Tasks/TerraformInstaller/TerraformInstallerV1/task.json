@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "240",
+        "Minor": "241",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -107,6 +107,15 @@
             "required": false,
             "visibleRule": "binary = tofu",
             "helpMarkDown": "When enabled (default), fail the install if cosign is not available on the agent or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. Install cosign on the agent (e.g. sigstore/cosign-installer) to satisfy this. Set to false only to fall back to checksum-only verification on agents without cosign."
+        },
+        {
+            "name": "cosignSha256",
+            "type": "string",
+            "label": "Pinned cosign binary SHA256 (optional)",
+            "defaultValue": "",
+            "required": false,
+            "visibleRule": "binary = tofu",
+            "helpMarkDown": "Optional. cosign is discovered via a PATH lookup and is never itself integrity-verified by default, so a prior step that prepends a directory to PATH could shadow it with a stub that always reports success. If you provision cosign from a known, integrity-verified source, set this to its exact SHA256 to pin and verify the resolved binary before it is trusted -- a mismatch fails the install. Leave empty (default) to keep the existing ambient-PATH trust behavior unchanged."
         },
         {
             "name": "requireChecksum",

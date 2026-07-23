@@ -414,6 +414,24 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('registry default path redirects to a private/metadata address: should reject the redirect hop (#729 follow-up)', async () => {
+        // registryAllowedHosts is unset (default path). The initial download_url
+        // host is benign, but the (simulated) download follows a redirect to the
+        // cloud metadata address -- proving the default path now re-validates
+        // every hop via downloadToFile, not just the initial host.
+        const tp = path.join(__dirname, 'RegistryDefaultPathRedirectToPrivateReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check on the redirect hop. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     // --- Mirror download source ---
 
     it('mirror custom URL: should download from mirror at HashiCorp path structure', async () => {
