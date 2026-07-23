@@ -14,8 +14,15 @@
 // "stale" against its OWN tier floor, not always against DEFAULT_FLOOR (which
 // would prematurely flag a still-below-security-floor exception for removal
 // the moment it merely cleared the general 60% bar).
+//
+// It also exercises the FUNCTIONS/BRANCHES floors added by issue #777: a
+// SECURITY_TIER file whose lines clear their floor still fails if its functions
+// or branches coverage falls below the security functions/branches floor; a
+// non-tiered file is NOT subject to those floors; and a tiered EXCEPTIONS file
+// (a reviewed lines-focused carve-out) is not additionally failed on
+// functions/branches.
 
-const { evaluate, DEFAULT_FLOOR, SECURITY_FLOOR, SECURITY_TIER, EXCEPTIONS } = require('./check-per-file-coverage.js');
+const { evaluate, DEFAULT_FLOOR, SECURITY_FLOOR, SECURITY_FUNCTIONS_FLOOR, SECURITY_BRANCHES_FLOOR, SECURITY_TIER, EXCEPTIONS } = require('./check-per-file-coverage.js');
 
 let failed = false;
 function check(name, cond, extra) {
@@ -30,13 +37,20 @@ function check(name, cond, extra) {
 
 const TASK = 'Tasks/Foo/FooV1';
 // file rel + metrics helper, always task-scoped like the real coverage keys.
-const f = (rel, pct, covered = 1, total = 1) => ({ rel: `${TASK}/${rel}`, pct, covered, total });
+// funcsPct/branchPct default to 100 so the pre-#777 cases (which only care about
+// lines) never trip the new functions/branches security-tier floors.
+const f = (rel, pct, covered = 1, total = 1, funcsPct = 100, branchPct = 100) => ({
+    rel: `${TASK}/${rel}`,
+    pct, covered, total,
+    funcsPct, funcsCovered: 1, funcsTotal: 1,
+    branchPct, branchCovered: 1, branchTotal: 1,
+});
 const ex = (rel, floor, note = 'test') => ({ [`${TASK}/${rel}`]: { floor, note } });
 // Every case below is unrelated to tiering unless it opts in via `tier`, so a
 // shared default keeps the pre-#655 cases unchanged.
 const NO_TIER = new Set();
 const run = (files, exceptions = {}, tier = NO_TIER) =>
-    evaluate({ taskRel: TASK, files, defaultFloor: DEFAULT_FLOOR, securityFloor: SECURITY_FLOOR, securityTier: tier, exceptions });
+    evaluate({ taskRel: TASK, files, defaultFloor: DEFAULT_FLOOR, securityFloor: SECURITY_FLOOR, securityFunctionsFloor: SECURITY_FUNCTIONS_FLOOR, securityBranchesFloor: SECURITY_BRANCHES_FLOOR, securityTier: tier, exceptions });
 
 // --- Case 1: everything above the default floor, no exceptions -> no failures. ---
 {
@@ -155,7 +169,73 @@ const run = (files, exceptions = {}, tier = NO_TIER) =>
     );
 }
 
-// --- Case 12: the live EXCEPTIONS map is well-formed. ---
+// --- Case 12a (#777): a SECURITY_TIER file whose LINES clear the floor but
+// whose FUNCTIONS coverage is below the security functions floor fails, with a
+// message naming functions (not lines). ---
+{
+    const tier = new Set([`${TASK}/src/critical.js`]);
+    const { failures } = run([f('src/critical.js', 95, 19, 20, SECURITY_FUNCTIONS_FLOOR - 10, 100)], {}, tier);
+    check(
+        'SECURITY_TIER file below the functions floor (lines OK) fails on functions',
+        failures.length === 1 && failures[0].includes('critical.js') && failures[0].includes(`${SECURITY_FUNCTIONS_FLOOR}% security-tier functions floor`),
+        failures,
+    );
+}
+
+// --- Case 12b (#777): a SECURITY_TIER file whose LINES and FUNCTIONS clear
+// their floors but whose BRANCHES coverage is below the security branches floor
+// fails, with a message naming branches. ---
+{
+    const tier = new Set([`${TASK}/src/critical.js`]);
+    const { failures } = run([f('src/critical.js', 95, 19, 20, 100, SECURITY_BRANCHES_FLOOR - 10)], {}, tier);
+    check(
+        'SECURITY_TIER file below the branches floor (lines/functions OK) fails on branches',
+        failures.length === 1 && failures[0].includes('critical.js') && failures[0].includes(`${SECURITY_BRANCHES_FLOOR}% security-tier branches floor`),
+        failures,
+    );
+}
+
+// --- Case 12c (#777): a NON-tiered file with poor functions/branches coverage
+// is NOT subject to the functions/branches floors (they apply to SECURITY_TIER
+// only) — as long as its lines clear DEFAULT_FLOOR it passes. ---
+{
+    const { failures } = run([f('src/glue.js', 95, 19, 20, 5, 5)]);
+    check(
+        'non-tiered file with low functions/branches passes (floors are tier-only)',
+        failures.length === 0,
+        failures,
+    );
+}
+
+// --- Case 12d (#777): a SECURITY_TIER file below ALL THREE floors reports one
+// failure per metric (lines + functions + branches), not just the first. ---
+{
+    const tier = new Set([`${TASK}/src/critical.js`]);
+    const { failures } = run([f('src/critical.js', 30, 3, 10, 30, 30)], {}, tier);
+    check(
+        'SECURITY_TIER file below lines, functions and branches reports all three',
+        failures.length === 3
+        && failures.some((x) => x.includes('security-tier floor'))
+        && failures.some((x) => x.includes('security-tier functions floor'))
+        && failures.some((x) => x.includes('security-tier branches floor')),
+        failures,
+    );
+}
+
+// --- Case 12e (#777): a tiered EXCEPTIONS file (a reviewed, lines-focused
+// carve-out) is judged only on its lines exception floor — its poor
+// functions/branches coverage does NOT additionally fail it. ---
+{
+    const tier = new Set([`${TASK}/src/critical.js`]);
+    const { failures, oks } = run([f('src/critical.js', 75, 15, 20, 5, 5)], ex('src/critical.js', 70), tier);
+    check(
+        'tiered EXCEPTIONS file is not additionally failed on functions/branches',
+        failures.length === 0 && oks.some((x) => x.startsWith('exempt') && x.includes('critical.js')),
+        { failures, oks },
+    );
+}
+
+// --- Case 13: the live EXCEPTIONS map is well-formed. ---
 {
     const entries = Object.entries(EXCEPTIONS);
     const wellFormed = entries.length > 0 && entries.every(([k, v]) =>
@@ -165,7 +245,7 @@ const run = (files, exceptions = {}, tier = NO_TIER) =>
     check('live EXCEPTIONS entries are well-formed (task-scoped .js path, floor below its applicable tier, has note)', wellFormed, EXCEPTIONS);
 }
 
-// --- Case 13: the live SECURITY_TIER set is well-formed (task-scoped .js
+// --- Case 14: the live SECURITY_TIER set is well-formed (task-scoped .js
 // paths, matching the same convention as EXCEPTIONS). ---
 {
     const wellFormed = SECURITY_TIER.size > 0
