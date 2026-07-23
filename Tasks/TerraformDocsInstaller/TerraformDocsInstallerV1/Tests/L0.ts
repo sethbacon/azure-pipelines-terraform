@@ -130,6 +130,23 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
+  it('cache hit, no marker, source unreachable, requireOnlineReverification=true: fails closed instead of degrading (#778)', async () => {
+    const tp = path.join(__dirname, 'CacheHitHashUnavailableStrict.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.failed, 'task should have failed closed');
+      assert(
+        tr.errorIssues.some((e) => e.includes('CachedToolReverificationSourceUnreachable')),
+        'should fail via the strict-mode source-unreachable error. errors: ' + tr.errorIssues
+      );
+      assert(
+        tr.warningIssues.every((w) => !w.includes('CachedToolReverificationUnavailable')),
+        'must NOT also emit the degrade-with-warning message when failing closed. warnings: ' + tr.warningIssues
+      );
+    }, tr);
+  });
+
   it('cache hit, no marker: re-downloads, matches, writes the integrity marker', async () => {
     const tp = path.join(__dirname, 'CacheHitReverifyPass.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

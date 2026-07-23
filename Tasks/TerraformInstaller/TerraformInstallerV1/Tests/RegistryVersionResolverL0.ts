@@ -69,6 +69,19 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
       );
     });
 
+    it('throws a clear diagnostic on a syntactically-valid but non-object 2xx body instead of a raw TypeError (#790)', async () => {
+      // fetchJson parses any valid JSON value (a bare null/number/string) and
+      // casts it straight to T; without the shape guard, dereferencing
+      // data.version on a null body would throw "Cannot read properties of
+      // null" rather than this actionable message.
+      globalThis.fetch = (async () => new Response('null', { status: 200 })) as unknown as typeof globalThis.fetch;
+
+      await assert.rejects(
+        resolveVersionFromRegistry('https://registry.example.com', 'terraform'),
+        /non-object/,
+      );
+    });
+
     it('propagates a fetch failure (network error / non-2xx) rather than silently resolving', async () => {
       globalThis.fetch = (async () => new Response('server error', { status: 500 })) as unknown as typeof globalThis.fetch;
 

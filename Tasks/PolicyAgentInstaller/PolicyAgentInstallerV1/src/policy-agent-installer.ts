@@ -637,6 +637,14 @@ async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string,
         if (isVerificationFailure(err)) {
             throw err;
         }
+        // #778: on a shared persistent agent an operator can opt into failing
+        // closed rather than degrading to an unverified cache entry when a
+        // required re-verification cannot reach the source. Default (false)
+        // preserves the availability-first degrade-with-warning behavior that
+        // keeps offline/air-gapped cache reuse working.
+        if (tasks.getBoolInput("requireOnlineReverification", false)) {
+            throw new Error(tasks.loc("CachedToolReverificationSourceUnreachable", toolLabel, err instanceof Error ? err.message : String(err)));
+        }
         tasks.warning(tasks.loc("CachedToolReverificationUnavailable", toolLabel, err instanceof Error ? err.message : String(err)));
         return;
     } finally {

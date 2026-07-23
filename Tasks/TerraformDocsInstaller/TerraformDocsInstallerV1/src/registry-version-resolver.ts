@@ -38,6 +38,14 @@ export async function resolveVersionFromRegistry(registryUrl: string, mirrorName
   console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
   const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
   const data = await fetchJson<{ version: string }>(latestUrl);
+  // fetchJson() guards against a non-JSON body, but casts a successfully-parsed
+  // value straight to T with no shape check -- a syntactically valid but
+  // unexpected 2xx body (a bare null, number, or string) would otherwise make
+  // the data.version dereference below throw a raw, undiagnosed TypeError
+  // instead of this clear, actionable message (#790).
+  if (typeof data !== 'object' || data === null) {
+    throw new Error(`Registry API returned an unexpected (non-object) response from ${latestUrl}`);
+  }
   if (!data.version) {
     throw new Error(`Registry API returned invalid response: missing version field from ${latestUrl}`);
   }
