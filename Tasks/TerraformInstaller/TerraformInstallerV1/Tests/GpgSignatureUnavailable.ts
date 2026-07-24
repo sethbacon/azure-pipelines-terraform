@@ -31,7 +31,6 @@ tr.registerMock('./http-client', {
 tr.registerMock('undici', { ProxyAgent: class { } });
 
 // gpg-verifier: mock .sig file unavailable — should warn but not fail
-let gpgWarningIssued = false;
 tr.registerMock('./gpg-verifier', {
     verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string) => {
         // Simulate graceful degradation: no error thrown, just returns

@@ -54,15 +54,6 @@ function writeTmpDir(files: Record<string, string>): string {
     return dir;
 }
 
-// Normalise whitespace for comparison: collapse runs, strip trailing spaces
-function normalise(s: string): string {
-    return s
-        .replace(/\r\n/g, '\n')
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
-
 // ---------------------------------------------------------------------------
 // parseFrontMatter
 // ---------------------------------------------------------------------------
