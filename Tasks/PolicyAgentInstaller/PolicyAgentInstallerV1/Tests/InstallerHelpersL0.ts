@@ -34,12 +34,49 @@ describe('policy-agent-installer: checksum parsing & verification', () => {
         assert.throws(() => parseSha256(`${HASH}  some_other_file`, 'missing'), /SHA256 checksum not found for missing/);
     });
 
-    it('parseFirstSha256 extracts the first 64-hex digest', () => {
-        assert.strictEqual(parseFirstSha256(`${HASH}  opa_linux_amd64`), HASH);
+    it('parseFirstSha256 extracts the digest for the named asset', () => {
+        assert.strictEqual(parseFirstSha256(`${HASH}  opa_linux_amd64`, 'opa_linux_amd64'), HASH);
+    });
+
+    it('parseFirstSha256 accepts a bare single-line digest with no filename (OPA\'s real per-asset .sha256 format) (#834)', () => {
+        // OPA's actual per-asset .sha256 file contains just the hex digest, with
+        // no filename on the line at all -- must still be accepted (whole-line
+        // anchored), not just the named multi-asset "SHA256SUMS" shape.
+        assert.strictEqual(parseFirstSha256(`${HASH}\n`, 'opa_linux_amd64'), HASH);
     });
 
     it('parseFirstSha256 throws on a body with no digest', () => {
-        assert.throws(() => parseFirstSha256('not a checksum'), /SHA256 checksum not found/);
+        assert.throws(() => parseFirstSha256('not a checksum', 'opa_linux_amd64'), /SHA256 checksum not found/);
+    });
+
+    it('parseFirstSha256 rejects a digest present only for a different asset (#834)', () => {
+        // The line-anchored, filename-bound match must not fall back to any
+        // 64-hex run in the body -- only a line whose trailing filename equals
+        // the requested asset counts.
+        assert.throws(
+            () => parseFirstSha256(`${HASH}  opa_linux_arm64\n`, 'opa_linux_amd64'),
+            /SHA256 checksum not found for opa_linux_amd64/,
+        );
+    });
+
+    it('parseFirstSha256 rejects a 64-hex run embedded in unrelated text (#834)', () => {
+        // Previously the unanchored /[a-fA-F0-9]{64}/ regex matched this; the
+        // anchored ^<64hex>\s+\*?<filename>$ match must not.
+        assert.throws(
+            () => parseFirstSha256(`some preamble mentions ${HASH} inline, not a checksum line\n`, 'opa_linux_amd64'),
+            /SHA256 checksum not found for opa_linux_amd64/,
+        );
+    });
+
+    it('parseFirstSha256 rejects a truncated prefix of a longer (e.g. sha512) digest (#834)', () => {
+        // A 128-hex sha512 digest followed by whitespace + filename must not be
+        // silently accepted by matching only its first 64 hex characters --
+        // the anchored regex requires whitespace immediately after exactly 64
+        // hex characters, which a 128-hex run never satisfies.
+        assert.throws(
+            () => parseFirstSha256(`${'a'.repeat(128)}  opa_linux_amd64\n`, 'opa_linux_amd64'),
+            /SHA256 checksum not found for opa_linux_amd64/,
+        );
     });
 
     it('verifySha256 passes when the file hash matches', async () => {

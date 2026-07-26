@@ -2,11 +2,14 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// #799 (follow-up to #729): mirrorBaseUrl's own host is benign, but the (simulated)
-// download follows a redirect to the cloud metadata address 169.254.169.254 --
-// proving the mirror path re-validates every redirect hop via downloadToFile, not
-// just the initial host (mirrors the registry path's #729 follow-up fix).
-const tp = path.join(__dirname, 'MirrorRedirectToPrivateRejectL0.js');
+// #769: mirrorBaseUrl's own host is benign, but the redirect hop's Location host
+// is an ordinary-looking DNS name (not a literal private IP) that resolves (via
+// the mocked dns module below) to the cloud metadata address 169.254.169.254.
+// Proves the mirror path's per-redirect-hop guard now also performs DNS
+// resolution, mirroring the initial-host check, instead of only catching a
+// literal private/link-local host/IP redirect target (see the sibling literal-IP
+// MirrorRedirectToPrivateReject test).
+const tp = path.join(__dirname, 'MirrorRedirectDnsResolvesPrivateRejectL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('terraformVersion', '1.9.8');
@@ -18,12 +21,17 @@ tr.registerMock('os', {
   arch: () => 'x64',
   tmpdir: () => '/tmp'
 });
-// dns: the mirror host itself is benign (this test is about the REDIRECT hop,
-// not the initial host); mock it to a public address so the initial-host check
-// passes without a real network lookup, reaching the downloadToFile call.
+// dns: artifacts.example.com (the initial mirror host) resolves to a public
+// address so that check passes; redirect.example.com (the simulated redirect
+// hop's host) resolves to the cloud metadata address, proving the per-hop check
+// performs its own DNS resolution rather than only checking for a literal
+// private/link-local IP string.
 tr.registerMock('dns', {
   promises: {
-    lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    lookup: async (host: string, _opts: any) =>
+      host === 'redirect.example.com'
+        ? [{ address: '169.254.169.254', family: 4 }]
+        : [{ address: '203.0.113.10', family: 4 }]
   }
 });
 tr.registerMock('./http-client', {
@@ -31,10 +39,8 @@ tr.registerMock('./http-client', {
     throw new Error('fetchJson should not be called for mirror download. Called with: ' + url);
   },
   downloadToFile: async (_url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void | Promise<void>) => {
-    // Simulate a redirect hop landing on the cloud metadata service. isHostAllowed
-    // is async (it may itself perform a DNS lookup, #769) so it must be awaited
-    // here for its rejection to propagate through this mock.
-    await isHostAllowed('169.254.169.254');
+    // Simulate a redirect hop to a DNS name that resolves to the cloud metadata service.
+    await isHostAllowed('redirect.example.com');
   },
   DOWNLOAD_TIMEOUT_MS: 30000
 });

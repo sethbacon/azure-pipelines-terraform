@@ -178,7 +178,7 @@ export async function fetchWithTimeout<T>(
     url: string,
     timeoutMs: number,
     consume: (response: Response) => Promise<T>,
-    isRedirectHostAllowed: (originHost: string, next: URL) => boolean = (originHost, next) =>
+    isRedirectHostAllowed: (originHost: string, next: URL) => boolean | Promise<boolean> = (originHost, next) =>
         next.host === originHost || isGithubAssetRedirect(originHost, next),
 ): Promise<T> {
     if (!url.startsWith('https://')) {
@@ -203,7 +203,7 @@ export async function fetchWithTimeout<T>(
             if (next.protocol !== 'https:') {
                 throw new HttpError(tasks.loc("InsecureUrlRejected", next.toString()), false);
             }
-            if (!isRedirectHostAllowed(originHost, next)) {
+            if (!(await isRedirectHostAllowed(originHost, next))) {
                 throw new HttpError(`Refusing to follow an off-host redirect (${originHost} -> ${next.host}) while fetching ${url}.`, false);
             }
             currentUrl = next.toString();
@@ -234,12 +234,12 @@ export async function downloadToFile(
     url: string,
     destPath: string,
     timeoutMs: number,
-    isHostAllowed: (hostname: string) => void,
+    isHostAllowed: (hostname: string) => void | Promise<void>,
 ): Promise<void> {
     // Validate the initial URL's own host before any network call --
     // fetchWithTimeout's redirect-validator callback below only re-checks
     // subsequent Location targets, never the URL it was first called with.
-    isHostAllowed(new URL(url).hostname);
+    await isHostAllowed(new URL(url).hostname);
     try {
         await fetchWithTimeout(
             url,
@@ -253,9 +253,13 @@ export async function downloadToFile(
                 }
                 await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(destPath));
             },
-            (_originHost, next) => {
+            async (_originHost, next) => {
                 // Re-validate every redirect hop against the same allowlist (#679).
-                isHostAllowed(next.host);
+                // isHostAllowed may itself perform an async DNS lookup (e.g. the
+                // installers' default-path check also resolves the hostname via
+                // resolvesToPrivateOrLinkLocalAddress), so await it here rather
+                // than assuming it is synchronous (#769).
+                await isHostAllowed(next.host);
                 return true;
             },
         );

@@ -249,15 +249,15 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
             // private/link-local address (notably the cloud metadata service) -- the
             // initial-host check above only covers the first hop. Route through the
             // same manual-redirect downloadToFile() used on the allowlist path,
-            // re-checking every hop against isPrivateOrLinkLocalHost. This is a
-            // synchronous literal-IP/hostname check (unlike the initial-host check,
-            // it does not also perform a DNS lookup per hop), so a redirect Location
-            // that is a DNS name resolving to a private address is not caught here --
-            // only a literal private/link-local host/IP is.
+            // re-checking every hop against BOTH isPrivateOrLinkLocalHost and
+            // resolvesToPrivateOrLinkLocalAddress -- mirroring the initial-host
+            // check above -- so a redirect Location that is a DNS name resolving to
+            // a private/metadata address is caught per-hop too, not only a literal
+            // private/link-local host/IP (#769).
             const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
             filePath = path.join(destDir, fileName);
-            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
-                if (isPrivateOrLinkLocalHost(hostname)) {
+            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
+                if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
                     throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", hostname));
                 }
             });
@@ -374,12 +374,17 @@ async function downloadFromMirrorUrl(url: string, fileName: string): Promise<str
     const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
     const destPath = path.join(destDir, fileName);
     try {
-        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
             if (mirrorAllowedHosts.length > 0) {
                 if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
                     throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
                 }
-            } else if (isPrivateOrLinkLocalHost(hostname)) {
+            } else if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
+                // Mirrors the initial-host check above and the registry path's
+                // per-hop fix: also resolve the hop's hostname via DNS so a
+                // redirect Location that is a DNS name resolving to a
+                // private/metadata address is caught too, not only a literal
+                // private/link-local host/IP (#769).
                 throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
             }
         });
