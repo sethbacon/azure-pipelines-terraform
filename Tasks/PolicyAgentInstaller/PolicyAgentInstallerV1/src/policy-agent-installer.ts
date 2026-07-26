@@ -219,7 +219,7 @@ async function downloadOpaOfficial(version: string): Promise<{ path: string; ver
         tasks.warning(`SHA256 verification skipped for OPA download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
     }
-    await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+    await verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName));
     return { path: binaryPath, verified: true };
 }
 
@@ -313,15 +313,15 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
             // private/link-local address (notably the cloud metadata service) -- the
             // initial-host check above only covers the first hop. Route through the
             // same manual-redirect downloadToFile() used on the allowlist path,
-            // re-checking every hop against isPrivateOrLinkLocalHost. This is a
-            // synchronous literal-IP/hostname check (unlike the initial-host check,
-            // it does not also perform a DNS lookup per hop), so a redirect Location
-            // that is a DNS name resolving to a private address is not caught here --
-            // only a literal private/link-local host/IP is.
+            // re-checking every hop against BOTH isPrivateOrLinkLocalHost and
+            // resolvesToPrivateOrLinkLocalAddress -- mirroring the initial-host
+            // check above -- so a redirect Location that is a DNS name resolving to
+            // a private/metadata address is caught per-hop too, not only a literal
+            // private/link-local host/IP (#769).
             const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
             filePath = path.join(destDir, fileName);
-            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
-                if (isPrivateOrLinkLocalHost(hostname)) {
+            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
+                if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
                     throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", hostname));
                 }
             });
@@ -392,7 +392,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
         tasks.warning(`SHA256 verification skipped for mirror download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
     }
-    await verifySha256(binaryPath, parseFirstSha256(sha256Body));
+    await verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName));
     return { path: binaryPath, verified: true };
 }
 
@@ -467,12 +467,17 @@ async function downloadFromMirrorUrl(url: string, fileName: string): Promise<str
     const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
     const destPath = path.join(destDir, fileName);
     try {
-        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
+        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
             if (mirrorAllowedHosts.length > 0) {
                 if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
                     throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
                 }
-            } else if (isPrivateOrLinkLocalHost(hostname)) {
+            } else if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
+                // Mirrors the initial-host check above and the registry path's
+                // per-hop fix: also resolve the hop's hostname via DNS so a
+                // redirect Location that is a DNS name resolving to a
+                // private/metadata address is caught too, not only a literal
+                // private/link-local host/IP (#769).
                 throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
             }
         });
@@ -511,13 +516,28 @@ export function parseSha256(sha256SumsContent: string, fileName: string): string
     throw new VerificationFailure(`SHA256 checksum not found for ${fileName}`);
 }
 
-/** Extracts the first 64-hex digest from a single-asset .sha256 file. */
-export function parseFirstSha256(content: string): string {
-    const match = content.match(/[a-fA-F0-9]{64}/);
-    if (!match) {
-        throw new VerificationFailure("SHA256 checksum not found in .sha256 file");
+/**
+ * Extracts the SHA256 digest for `fileName` from a single-asset .sha256 file
+ * (OPA official/mirror path). OPA's real per-asset .sha256 file contains just
+ * the bare hex digest with no filename, so each line is anchored to be
+ * EXACTLY 64 hex characters (nothing else) — this still rejects hex characters
+ * embedded in unrelated text and a truncated prefix of a longer (e.g. sha512)
+ * digest, since neither is a whole-line 64-hex match. As a defensive fallback
+ * (in case a registry/mirror ever serves the multi-asset "SHA256SUMS" shape
+ * for this URL instead), a hex+filename line is also accepted, bound to the
+ * expected asset filename via parseSha256's ^<64hex>\s+\*?<filename>$ match,
+ * so a checksum present only for a different asset is still rejected.
+ * Previously this matched the first bare 64-hex run ANYWHERE in the body with
+ * no anchoring or filename binding at all (#834).
+ */
+export function parseFirstSha256(content: string, fileName: string): string {
+    for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (/^[a-fA-F0-9]{64}$/.test(trimmed)) {
+            return trimmed;
+        }
     }
-    return match[0];
+    return parseSha256(content, fileName);
 }
 
 export async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
