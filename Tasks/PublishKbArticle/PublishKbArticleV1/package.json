@@ -20,7 +20,8 @@
   "minimumAgentVersion": "3.232.1",
   "dependencies": {
     "azure-pipelines-task-lib": "^5.2.10",
-    "cheerio": "^1.2.0"
+    "cheerio": "^1.2.0",
+    "sanitize-html": "^2.17.6"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^24",
+    "@types/sanitize-html": "^2.16.1",
     "eslint": "^9.0.0",
     "mocha": "^11.2.0",
     "nock": "^14.0.15",

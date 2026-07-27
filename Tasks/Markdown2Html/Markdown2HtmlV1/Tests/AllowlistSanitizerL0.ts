@@ -173,3 +173,37 @@ describe('allowedStyles: the sanitizer layer alone strips dangerous inline CSS (
         assert.ok(!/evil\.example\.com/i.test(out), `color:url() cannot match the anchored value patterns (got: ${out})`);
     });
 });
+
+// #835: an <a target=…> without rel="noopener noreferrer" lets the target
+// page's script reassign window.opener.location (reverse tabnabbing). The
+// shared sanitizer's transformTags forces these tokens onto any anchor that
+// has a target attribute, merging with (not clobbering) any rel already set.
+describe('Allowlist sanitizer — rel=noopener/noreferrer forcing (#835)', () => {
+    it('forces rel="noopener noreferrer" onto an <a target="_blank"> with no existing rel', () => {
+        const $ = cheerio.load(applyAllowlistSanitizer('<a href="https://example.com" target="_blank">link</a>'));
+        const rel = ($('a').attr('rel') ?? '').split(/\s+/);
+        assert.ok(rel.includes('noopener'), `noopener forced (got rel="${$('a').attr('rel')}")`);
+        assert.ok(rel.includes('noreferrer'), `noreferrer forced (got rel="${$('a').attr('rel')}")`);
+        assert.strictEqual($('a').attr('target'), '_blank', 'target preserved');
+    });
+
+    it('merges with an existing rel value rather than overwriting it', () => {
+        const $ = cheerio.load(applyAllowlistSanitizer('<a href="https://example.com" target="_blank" rel="nofollow">link</a>'));
+        const rel = ($('a').attr('rel') ?? '').split(/\s+/);
+        assert.ok(rel.includes('nofollow'), `existing token kept (got rel="${$('a').attr('rel')}")`);
+        assert.ok(rel.includes('noopener'), `noopener merged in (got rel="${$('a').attr('rel')}")`);
+        assert.ok(rel.includes('noreferrer'), `noreferrer merged in (got rel="${$('a').attr('rel')}")`);
+    });
+
+    it('does not add a rel attribute to a link with no target', () => {
+        const $ = cheerio.load(applyAllowlistSanitizer('<a href="https://example.com">link</a>'));
+        assert.strictEqual($('a').attr('rel'), undefined, `no rel added without target (got: ${$('a').attr('rel')})`);
+    });
+
+    it('does not duplicate tokens when rel already contains noopener/noreferrer', () => {
+        const $ = cheerio.load(applyAllowlistSanitizer('<a href="https://example.com" target="_blank" rel="noreferrer noopener">link</a>'));
+        const rel = ($('a').attr('rel') ?? '').split(/\s+/);
+        assert.strictEqual(rel.filter((t) => t === 'noopener').length, 1, `no duplicate noopener (got rel="${$('a').attr('rel')}")`);
+        assert.strictEqual(rel.filter((t) => t === 'noreferrer').length, 1, `no duplicate noreferrer (got rel="${$('a').attr('rel')}")`);
+    });
+});

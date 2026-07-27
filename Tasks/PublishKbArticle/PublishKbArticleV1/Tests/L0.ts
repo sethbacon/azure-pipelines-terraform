@@ -24,6 +24,9 @@ import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
+// Direct unit tests for the shared html-sanitizer.ts allowlist policy and
+// sanitizeHtmlForPublish's full-document <body> extraction/splice (#820/#835).
+import './AllowlistSanitizerL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;
@@ -2459,6 +2462,24 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
                 `kbArticleId output variable should be set from the created article: ${tr.stdout}`,
             );
             assert.ok(/Article Number: KB0099|ArticleNumberLine KB0099/.test(tr.stdout), `should log the created article number: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('RealCreateSanitizesHtmlBody — dryRun=false publishes allowlist-sanitized content, not the raw htmlFile bytes (#820)', async () => {
+        const tp = nodePath.join(__dirname, 'RealCreateSanitizesHtmlBody.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('contentSanitized=true'),
+                `<marquee>, which the denylist alone would have let through, must be stripped before publish: ${tr.stdout}`,
+            );
+            assert.ok(
+                tr.stdout.includes('stylePreserved=true'),
+                `the legitimate head <style> theme must survive the body-only sanitization: ${tr.stdout}`,
+            );
+            assert.ok(/Real content/.test(tr.stdout), `benign content must still be published: ${tr.stdout}`);
         }, tr);
     });
 

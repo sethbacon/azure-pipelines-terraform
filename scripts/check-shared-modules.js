@@ -168,6 +168,24 @@ const FAMILIES = [
         ],
     },
     {
+        // The allowlist HTML sanitizer itself (#820): before this, PublishKbArticle's
+        // raw htmlFile input was only ever DENYLIST-validated (html-validate.ts) and
+        // then published VERBATIM, so a bypass of that denylist reached ServiceNow's
+        // stored-XSS sink unfiltered. Both the KB-publishing pipeline's independent
+        // entry points — Markdown2Html's render-time convertMarkdownToHtml() and
+        // PublishKbArticle's pre-publish sanitizeHtmlForPublish() — must apply the
+        // SAME allowlist policy (including the #835 rel="noopener noreferrer"
+        // forcing on <a target=…>), or a KB article published one way could carry
+        // active content a KB article published the other way would have stripped.
+        dirs: [
+            'Tasks/Markdown2Html/Markdown2HtmlV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'html-sanitizer.ts',
+        ],
+    },
+    {
         // Bounded exponential-backoff retry helper (retryAsync + the 429
         // Retry-After parser). One shared loop replaces the ones that used to be
         // independently open-coded in TokenGenerator (id-token-generator.ts),

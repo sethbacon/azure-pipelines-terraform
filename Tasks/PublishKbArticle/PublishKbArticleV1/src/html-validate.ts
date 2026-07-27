@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { load } from 'cheerio';
 import { normalizeUriForSchemeCheck, isDangerousUriScheme, isDangerousMetaRefresh, URI_BEARING_ATTRIBUTES, DANGEROUS_TAGS, cssHasDangerousConstruct } from './uri-scheme-guard';
+import { sanitizeRenderedHtml } from './html-sanitizer';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /**
@@ -224,3 +225,98 @@ export function readHtmlFile(filePath: string): string {
         fs.closeSync(fd);
     }
 }
+
+/**
+ * Route the operator-supplied `htmlFile` through the shared allowlist sanitizer
+ * (html-sanitizer.ts) before it reaches ServiceNow's `text` field -- a
+ * stored-XSS sink (#820). Previously this content was only ever DENYLIST-
+ * validated (validateHtmlContent above) and then published VERBATIM, so a
+ * bypass of that denylist (the #446/#498/#523/#552/#587/#606 bypass lineage
+ * uri-scheme-guard.ts documents) would have reached ServiceNow unfiltered.
+ * validateHtmlContent() is still called first and is UNCHANGED -- it remains
+ * a useful fail-closed pre-check (a clear "your <script> was rejected" error
+ * is better authoring UX than silently stripping it) -- this function is the
+ * belt-and-suspenders re-serialization layer that makes the actually-published
+ * bytes only ever the enumerated allowlist, regardless of what the denylist
+ * gate misses.
+ *
+ * `htmlFile` is arbitrary operator-supplied content (task.json: "Path to an HTML
+ * file whose contents become the article body") -- it may be a full
+ * `<!DOCTYPE html>...<body>...</body></html>` document (the documented
+ * Markdown2Html -> PublishKbArticle pipeline feeds one in verbatim) OR a bare
+ * fragment, and NONE of it is trusted: the whole file is author-controlled and
+ * every byte can reach the broader KB-reader audience. The head/body split is
+ * therefore done with a REAL parser (cheerio/parse5 -- the SAME parser
+ * validateHtmlContent uses one function above), never a byte-offset regex: a
+ * regex over `<body>`/`</body>` can be fooled by a `<body>`-shaped substring
+ * inside a comment, an attribute value, or an RCDATA element (<title>/
+ * <textarea>) into anchoring on the wrong span, which both silently mangles
+ * legitimate content AND reintroduces the exact parser-differential class #820
+ * exists to eliminate. parse5 also applies the HTML5 tree-construction
+ * algorithm, so any pre-/post-body content a browser would reparent is
+ * normalized into <head>/<body> here identically -- there is no third,
+ * unsanitized region.
+ *
+ * Both regions are sanitized to allowlist strength: the <body> inner HTML goes
+ * through the shared sanitizeRenderedHtml() (guard pre-filter + sanitize-html
+ * allowlist), and the <head> is allowlisted in place to exactly {<title>, safe
+ * <meta>, safe <style>} -- preserving the legitimate, fixed, url-free
+ * Markdown2Html hljs-theme <style> (ServiceNow renders it) while dropping
+ * <script>/<base>/<link>/any unknown element, so the head no longer rests on
+ * the denylist alone.
+ */
+const HEAD_ALLOWED_TAGS = new Set(['title', 'meta', 'style']);
+
+export function sanitizeHtmlForPublish(html: string): string {
+    // Split head/body with the SAME real parser (cheerio/parse5) that
+    // validateHtmlContent uses -- never a byte-offset regex (see the doc comment).
+    const $ = load(html);
+    const sanitizedBody = sanitizeRenderedHtml($('body').html() ?? '');
+
+    // Fragment vs. full-document selects OUTPUT SHAPE only (a fragment keeps its
+    // historical body-fragment form); the security boundary is always the
+    // real-parser split above, so this decision can never leave content
+    // unsanitized -- the body was already fully sanitized regardless.
+    if (!/<(?:!doctype|html|head|body)[\s/>]/i.test(html)) {
+        return sanitizedBody;
+    }
+
+    $('body').html(sanitizedBody);
+
+    // Allowlist the <head> to {title, safe meta, safe style}: drop every other
+    // element (<script>/<base>/<link>/unknown), a dangerous <meta http-equiv=
+    // refresh>, and a <style> whose CSS carries a network-fetching/active
+    // construct -- the fixed, url-free Markdown2Html hljs theme passes and is
+    // preserved -- giving the head body-equal allowlist strength (#820).
+    $('head').children().each((_, el) => {
+        const tag = ($(el).prop('tagName') ?? '').toLowerCase();
+        if (!HEAD_ALLOWED_TAGS.has(tag)) { $(el).remove(); return; }
+        if (tag === 'meta') {
+            const httpEquiv = normalizeUriForSchemeCheck(String($(el).attr('http-equiv') ?? ''));
+            const content = normalizeUriForSchemeCheck(String($(el).attr('content') ?? ''));
+            if (isDangerousMetaRefresh(httpEquiv, content)) { $(el).remove(); return; }
+        }
+        if (tag === 'style' && cssHasDangerousConstruct($(el).text())) { $(el).remove(); }
+    });
+
+    // Strip active-content attributes (on*, dangerous style/URI) from the
+    // structural elements the body-inner allowlist pass does not cover: <html>,
+    // <head>, <body>, and the head children kept above (e.g. a <body onload=...>).
+    $('html, head, body, head > *').each((_, el) => {
+        const attribs = $(el).attr() ?? {};
+        for (const name of Object.keys(attribs)) {
+            const lname = name.toLowerCase();
+            const value = normalizeUriForSchemeCheck(String(attribs[name]));
+            if (lname.startsWith('on')) {
+                $(el).removeAttr(name);
+            } else if (lname === 'style' && cssHasDangerousConstruct(String(attribs[name]))) {
+                $(el).removeAttr(name);
+            } else if (URI_BEARING_ATTRIBUTES.has(lname) && isDangerousUriScheme(value)) {
+                $(el).removeAttr(name);
+            }
+        }
+    });
+
+    return $.html();
+}
+
