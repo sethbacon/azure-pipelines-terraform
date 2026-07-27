@@ -1,0 +1,1060 @@
+
+> terraformtask@1.0.0 test
+> npm run compile:all && mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts
+
+
+> terraformtask@1.0.0 compile:all
+> npm run compile && npm run compile:tests
+
+
+> terraformtask@1.0.0 compile
+> tsc -b tsconfig.json
+
+
+> terraformtask@1.0.0 compile:tests
+> tsc -p tsconfig.tests.json
+
+##vso[task.debug]system.debug=undefined
+##vso[task.debug]DistributedTask.Tasks.Node.SkipDebugLogsWhenDebugModeOff=undefined
+##vso[task.debug]agent.TempDirectory=undefined
+##vso[task.debug]agent.workFolder=undefined
+##vso[task.debug]loading inputs and endpoints
+##vso[task.debug]loaded 0
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.CAInfo=undefined
+##vso[task.debug]Agent.ClientCert=undefined
+##vso[task.debug]Agent.SkipCertValidation=undefined
+
+
+  OCI token exchange ΓÇö URL validation & transport
+    Γ£ö accepts a genuine OCI Identity Domains HTTPS URL
+    Γ£ö accepts OCI government-realm identity hosts
+    Γ£ö rejects a non-HTTPS scheme
+    Γ£ö rejects a host outside the OCI Identity Domains realms
+    Γ£ö rejects a look-alike suffix host
+    Γ£ö rejects a malformed URL
+    Γ£ö rejects before any network call when the domain is invalid
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö posts to the identity domain token endpoint with manual redirect and returns the UPST
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö falls back to the token field when access_token is absent
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö throws when the response omits a token
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö throws a clear, truncated error on a non-JSON 200 response instead of a raw SyntaxError
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö throws on a non-OK response
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö scrubs the reflected subject_token from a non-OK error body (#647)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö scrubs the reflected subject_token from a non-JSON 200 body (#647)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö refuses an opaque redirect from the token endpoint
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö refuses a raw 3xx redirect from the token endpoint
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: Timed out exchanging OIDC token for OCI UPST (30s timeout).. Retrying in 264.4195630836436ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 2 failed: Timed out exchanging OIDC token for OCI UPST (30s timeout).. Retrying in 746.4296093529769ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö maps an abort/timeout to a clear error (1023ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: Failed to exchange OIDC token for OCI UPST: ECONNREFUSED. Retrying in 415.7033086785017ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 2 failed: Failed to exchange OIDC token for OCI UPST: ECONNREFUSED. Retrying in 1071.7708842390962ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö wraps a generic network error (1507ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: Failed to exchange OIDC token for OCI UPST: ECONNRESET. Retrying in 347.90026034570565ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö retries a transient network error then succeeds (#585) (360ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: OCI token exchange failed: HTTP 503 Service Unavailable. Body: busy. Retrying in 226.596856024591ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö retries a transient 5xx then succeeds (#585) (234ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö does not retry a received 4xx (#585)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö does not retry a refused redirect (#585)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: OCI token exchange failed: HTTP 503 Service Unavailable. Body: busy. Retrying in 220.92144022937043ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 2 failed: OCI token exchange failed: HTTP 503 Service Unavailable. Body: busy. Retrying in 577.35230766049ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö gives up after the maximum number of attempts on a persistent 5xx (#585) (812ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: OCI token exchange failed: HTTP 429 Too Many Requests. Body: slow down. Retrying in 255.79316004108824ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö retries a 429 and then succeeds (sibling re-sweep) (268ms)
+##vso[task.debug]Exchanging OIDC JWT for OCI UPST at https://idcs-abc123.identity.oraclecloud.com/oauth2/v1/token
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]OCI token exchange attempt 1 failed: OCI token exchange failed: HTTP 429 Too Many Requests. Body: slow down. Retrying in 1000ms...
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Successfully exchanged OIDC JWT for OCI UPST.
+    Γ£ö honors a capped Retry-After from a 429 over the default backoff (sibling re-sweep) (1003ms)
+
+  OIDC ID token generator ΓÇö retry, timeout & secret handling
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö acquires the federated token, registers it as a secret, and POSTs with the Bearer access token
+    Γ£ö throws when SYSTEM_OIDCREQUESTURI is not set
+    Γ£ö throws when SYSTEM_OIDCREQUESTURI is not an https:// URL (#353)
+    Γ£ö rejects a *.visualstudio.com host when no collection URI vouches for its org (#554)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö accepts an on-prem host that matches the System.CollectionUri host (#493)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö accepts an on-prem host that matches the System.TeamFoundationCollectionUri host (#493)
+    Γ£ö rejects a cross-org *.visualstudio.com host when the collection URI names a different org (#554)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö accepts the collection's own *.visualstudio.com org host (#554)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö still accepts vstoken.dev.azure.com when the collection URI is a *.visualstudio.com org (#554)
+    Γ£ö rejects a *.visualstudio.com host when the collection URI is the dev.azure.com form (#554)
+    Γ£ö rejects a foreign host and never sends the Bearer access token to it (#493)
+    Γ£ö rejects a foreign host even when a collection URI is set for a different host (#493)
+    Γ£ö rejects a lookalike host that merely embeds an allowed suffix (#493)
+    Γ£ö throws when the SystemVssConnection access token is unavailable (1019ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö retries on a transient failure and then succeeds (469ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö gives up after the maximum number of retries and throws the last error (1049ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö throws a clear HTTP error on a non-OK response and does not retry a deterministic 4xx (#353)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö retries a transient 5xx and then gives up after the attempt limit (#353) (1144ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö retries a 429 and then succeeds (#584) (360ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö honors a capped Retry-After from a 429 over the default backoff (#584) (1014ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö throws the localized error when the response omits oidcToken (807ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö maps an abort/timeout to a clear timeout error (1370ms)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö generateIdToken delegates to TokenGenerator.generate
+
+  retry.ts: retryAsync (shared bounded-backoff retry)
+    Γ£ö succeeds after transient failures are retried
+    Γ£ö throws a non-retryable error immediately without further attempts
+    Γ£ö honors the attempt cap and rethrows the last error once exhausted
+    Γ£ö applies decorrelated jitter to the default backoff, seeded from an injectable random source (#692) (61ms)
+    Γ£ö keeps the default (non-injected) jittered delay within [baseDelayMs, maxBackoffMs] on every attempt (111ms)
+    Γ£ö gives up immediately once the maxElapsedMs wall-clock budget is exhausted, even with retries remaining (#692)
+
+  retry.ts: parseRetryAfterMs (429 Retry-After parsing)
+    Γ£ö parses an integer-seconds Retry-After into milliseconds
+    Γ£ö treats invalid/junk input as absent (falls back to backoff)
+    Γ£ö clamps an excessive Retry-After to the cap
+
+  buildProxyFetchOptions
+    Γ£ö returns an empty object when no proxy is configured
+    Γ£ö attaches an undici ProxyAgent dispatcher when a proxy is configured
+    Γ£ö embeds credentials in the proxy URL and masks the password as a secret
+    Γ£ö #684: also masks the percent-encoded form of the password that ends up embedded in the proxy URL
+##vso[task.setsecret]p@ss
+    Γ£ö throws a clear error on a malformed proxy URL instead of an unhandled TypeError
+
+  Secure var-file loader
+    Γ£ö downloadSecureFile delegates to the injected helper, returns the path, and tightens its permissions (49ms)
+    Γ£ö downloadSecureFile fails fast when the download exceeds the timeout (53ms)
+    Γ£ö deleteSecureFile delegates to the injected helper
+    Γ£ö deleteSecureFile scrubs the downloaded file before delegating to the helper (#662)
+##vso[task.issue type=warning;source=TaskInternal;]Failed to delete secure file file-3: Error: boom
+    Γ£ö deleteSecureFile swallows helper errors
+    Γ£ö returns null when no secureVarsFile input is set
+    Γ£ö downloads via the provided loader and returns the -var-file argument
+
+  tightenFilePermissions ΓÇö post-hoc chmod for third-party downloads
+    Γ£ö chmods the file to 0600 when chmod succeeds (no icacls on Unix)
+    Γ£ö re-throws when chmod fails on a non-Windows platform (fail closed)
+##vso[task.debug]Skipping chmod on Windows platform (a restrictive DACL is applied instead).
+    Γ£ö on win32, swallows the chmod failure but still applies the restrictive DACL (#495)
+    Γ£ö on win32, applies the restrictive DACL even when chmod itself did not throw (#495)
+    Γ£ö on win32, fails closed when the icacls restriction cannot be applied (#495)
+
+  writeSecretFile ΓÇö exclusive create + cross-platform permission hardening
+    Γ£ö writes the file with the expected content (mode 0600 on Unix)
+    Γ£ö refuses to overwrite an existing file at the target path (O_EXCL, #484)
+    Γ£ö requests an exclusive create (flag "wx") so a pre-planted symlink cannot be followed (#484) (#757)
+    Γ£ö on win32, restricts the DACL via icacls (inheritance stripped, only the current user granted) (#495)
+    Γ£ö on win32, fails closed when the icacls restriction cannot be applied (#495)
+    Γ£ö does not invoke icacls on non-Windows platforms (#495)
+    Γ£ö on Unix, removes the orphaned file when chmod fails and still fails closed (#634)
+    Γ£ö on win32, removes the orphaned file when the DACL cannot be applied and still fails closed (#634)
+    Γ£ö win32 integration: no broad principal retains access; the current user keeps full control (#495) (69ms)
+
+  replaceSecretFile ΓÇö user-named output paths
+    Γ£ö creates the file when nothing exists at the target (42ms)
+    Γ£ö overwrites a pre-existing regular file (re-run semantics) (42ms)
+    Γ£ö refuses to write through a path reported as a symlink (#484) (#757)
+
+  scrubFile ΓÇö overwrite-before-unlink content scrub (#595)
+    Γ£ö overwrites the file content with zeros of the same length, preserving the file
+    Γ£ö is a no-op for a file that no longer exists
+    Γ£ö is a no-op for an already-empty file
+    Γ£ö does not follow a path reported as a symlink onto a victim file (CWE-59) (#757)
+
+  execWithStdoutCapture ΓÇö bounded stdout capture (#632)
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö returns the full stdout, stderr, and exit code when under the cap
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö kills the child and throws when stdout exceeds the cap, without returning truncated output
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö bounds stderr too but does not fail the call (stderr is diagnostic)
+    Γ£ö exposes a generous production ceiling
+
+  execWithStdoutCapture ΓÇö forced-silent capture (#492) and stderr surfacing (#613)
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö forces silent:true when the caller passes no silent option
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö overrides an explicit silent:false from the caller (forced, not defaulted)
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö still returns the captured streams unchanged under forced silence
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö folds captured stderr into the error when exec rejects
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö keeps the plain error when exec rejects and stderr is empty
+##vso[task.debug]commandTimeoutMinutes=undefined
+    Γ£ö reports the overflow (not the generic rejection) when the kill makes exec reject
+
+  execWithTimeout ΓÇö always-passthrough when no deadline applies
+    Γ£ö passes straight through with no timer when commandTimeoutMinutes is unset
+    Γ£ö passes straight through with no timer when commandTimeoutMinutes is "0"
+
+  execWithTimeout ΓÇö minutes-based deadline success path
+##vso[task.issue type=warning;source=TaskInternal;]Resource file haven't been set, can't find loc string for key: TerraformCommandTimedOut
+    Γ£ö wins the Promise.race and returns the exit code when the command finishes well before the deadline
+
+  execWithTimeout ΓÇö explicit timeoutMs mechanism (shared by az login/account set, #822)
+    Γ£ö kills the child and rejects with the supplied message when a hung command exceeds an explicit timeoutMs
+    Γ£ö does not conflate a non-zero exit code with a timeout when using an explicit timeoutMs
+
+  getCommandTimeoutMinutes ΓÇö input parsing
+    Γ£ö parses commandTimeoutMinutes=undefined as undefined
+    Γ£ö parses commandTimeoutMinutes="" as undefined
+    Γ£ö parses commandTimeoutMinutes="0" as undefined
+    Γ£ö parses commandTimeoutMinutes="-5" as undefined
+    Γ£ö parses commandTimeoutMinutes="not-a-number" as undefined
+    Γ£ö parses commandTimeoutMinutes="5" as 5
+    Γ£ö parses commandTimeoutMinutes="5.7" as 5
+
+  emergency-only temp-file cleanup (#650)
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-emergency-only-x0Kayj\ordinary.json
+    Γ£ö cleanupTempFiles removes ordinary temp files but keeps the emergency-only file
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-emergency-only-pwekvw\ordinary.json
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-emergency-only-pwekvw\output-retained.json
+    Γ£ö emergencyCleanupTempFiles removes both the ordinary and the emergency-only file
+    Γ£ö emergencyCleanupTempFiles is a safe no-op when nothing was tracked
+
+  OCI WIF temp-dir resolution
+    Γ£ö prefers Agent.TempDirectory when the agent provides it
+    Γ£ö falls back to os.tmpdir() when Agent.TempDirectory is unset
+
+  ParentCommandHandler.emergencyCleanup ΓÇö no active handler
+##vso[task.debug]Set environment variable: ARM_CLIENT_SECRET
+##vso[task.debug]Cleared environment variable: ARM_CLIENT_SECRET
+    Γ£ö clears tracked credential env vars even when no handler is active
+
+  resolveToolPath ΓÇö installer terraformLocation vs PATH lookup
+    Γ£ö prefers terraformLocation when it exists on disk and matches the requested binary
+    Γ£ö falls back to PATH lookup when terraformLocation points at a different binary
+    Γ£ö falls back to PATH lookup when terraformLocation no longer exists on disk
+    Γ£ö falls back to PATH lookup when terraformLocation is unset
+##vso[task.issue type=warning;source=TaskInternal;]Resource file haven't been set, can't find loc string for key: TerraformToolNotFound
+    Γ£ö throws when neither terraformLocation nor PATH resolve the binary
+
+  OCI WIF synthetic-config field validation
+    validateOciTenancyOcid
+      Γ£ö accepts a well-formed tenancy OCID
+      Γ£ö rejects a value with an embedded newline (INI key injection)
+      Γ£ö rejects a value that does not start with ocid1.tenancy.
+      Γ£ö rejects embedded INI special characters
+    validateOciRegion
+      Γ£ö accepts a well-formed region
+      Γ£ö rejects a value with an embedded newline
+      Γ£ö rejects uppercase or special characters
+    validateAndEscapeOciParUrl
+      Γ£ö accepts a well-formed https PAR URL unchanged (nothing to escape)
+      Γ£ö rejects a non-URL value
+      Γ£ö rejects a non-HTTPS scheme
+      Γ£ö rejects ${...} Terraform/shell interpolation syntax
+      Γ£ö rejects %{...} Terraform template-directive syntax
+      Γ£ö rejects $(( arithmetic-expansion syntax
+      Γ£ö rejects backtick command-substitution syntax
+      Γ£ö rejects an embedded newline (HCL multi-line string breakout, #548)
+      Γ£ö rejects an embedded carriage return (#548)
+      Γ£ö rejects an embedded tab (#548)
+      Γ£ö backslash-escapes an embedded double-quote (HCL string breakout)
+      Γ£ö backslash-escapes an embedded backslash
+
+  OCI backend config file ΓÇö secret-file write hardening (#545)
+    Γ£ö writes config-<uuid>.tf into the working directory with restrictive permissions
+    Γ£ö registers the generated config file for cleanup (48ms)
+    Γ£ö scrubs the PAR-bearing config file content to zeros before cleanupTempFiles unlinks it (#595) (49ms)
+
+  OCI backend cache cleanup ΓÇö opt-in scrub of .terraform/terraform.tfstate (#675)
+    Γ£ö cleanupTempFiles leaves .terraform/terraform.tfstate content untouched when cleanupOCIBackendCache is unset (permission-tightening is separate -- see afterInit() tests below) (#675) (43ms)
+    Γ£ö scrubs and removes .terraform/terraform.tfstate when cleanupOCIBackendCache is enabled after init (#675) (40ms)
+    Γ£ö also registers the cache for cleanup from handleProvider (apply/destroy as the last step, no handleBackend call)
+    Γ£ö registers the cache for cleanup from handleProvider even when backendOCIConfigGenerate is no (#675 simplification: gated only on cleanupOCIBackendCache)
+
+  OCI backend cache default-secure permission tightening (#675)
+    Γ£ö tightens .terraform/terraform.tfstate to the current user only by DEFAULT (cleanupOCIBackendCache unset) once an OCI PAR backend was generated (75ms)
+    Γ£ö does nothing when no OCI PAR backend was generated this run (backendOCIConfigGenerate=no)
+    Γ£ö is a no-op when the cache file does not exist yet (e.g. init never reached the backend-init phase) (46ms)
+    Γ£ö also tightens permissions when cleanupOCIBackendCache is enabled, before the opt-in scrub removes the cache on cleanup (#675) (82ms)
+
+  OCI init() integration -- afterInit() wiring survives success and failure (#675 follow-up)
+    Γ£ö tightens the OCI PAR backend cache via init() itself when init succeeds -- not just when afterInit() is called directly (100ms)
+    Γ£ö still tightens the cache AND re-throws the ORIGINAL error unmodified when init fails after the backend was already configured (BLOCKING 1) (93ms)
+
+  OCI saved plan file default-secure permission tightening (#675 follow-up)
+    Γ£ö tightens a saved plan file to the current user only for a successful plan/destroy command (BLOCKING 2) (42ms)
+    Γ£ö also tightens a saved plan file when the command that produced it failed (44ms)
+    Γ£ö is a no-op when no plan file was actually written (e.g. the command failed before producing one)
+
+  OCI plan() integration -- a bare commandOptions -out= is tightened even without publishPlanSummary (#675 2nd follow-up)
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö tightens a user-supplied -out= plan file after plan() even when publishPlanSummary is unset (removing the plan()-level fix should fail this test) (45ms)
+
+  OCI custom() integration -- a bare commandOptions -out= is tightened (#675 3rd follow-up)
+    Γ£ö tightens a user-supplied -out= plan file after a successful custom() plan command (removing the custom()-level fix should fail this test) (43ms)
+    Γ£ö still tightens the plan file AND re-throws the ORIGINAL error unmodified when the custom command fails after writing it (45ms)
+
+  getManagedIdentityClientId
+    Γ£ö returns the client ID when the MSI connection carries one
+    Γ£ö returns undefined for a system-assigned identity (field left blank)
+    Γ£ö returns undefined when the field is an empty string
+
+  runAzLogin ΓÇö opt-in az login gate, argv shape & secret masking (#635)
+##vso[task.debug]Agent.ProxyUrl=undefined
+    Γ£ö WIF branch: builds the federated-token argv and masks the token before use
+    Γ£ö ServicePrincipal branch: builds the --password argv and masks the secret before use
+    Γ£ö MSI branch: uses --identity with the user-assigned client id and carries no secret on argv
+    Γ£ö sets the active subscription with a second az invocation when a subscription is provided
+    Γ£ö throws when az login exits non-zero
+    Γ£ö throws an actionable error when the az CLI is not installed
+    Γ£ö does not invoke az login when runAzLogin is omitted (default false)
+    Γ£ö invokes az login when runAzLogin is explicitly enabled
+    Γ£ö bounds az login with an always-on timeout, independent of commandTimeoutMinutes
+    Γ£ö bounds az account set with the same always-on timeout when a subscription is provided
+
+  handleProviderWIF -- OCI WIF config content, fingerprint, secret masking & cleanup ordering (#680)
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö writes a config file with the exact tenancy/region/key_file/fingerprint/security_token_file content, matching the real ephemeral keypair (186ms)
+##vso[task.debug]Cleared environment variable: ARM_TENANT_ID
+##vso[task.debug]Cleared environment variable: ARM_USE_MSI
+##vso[task.debug]Cleared environment variable: ARM_CLIENT_ID
+##vso[task.debug]Cleared environment variable: OCI_CLI_CONFIG_FILE
+##vso[task.debug]Cleared environment variable: OCI_CLI_PROFILE
+##vso[task.debug]Cleared environment variable: OCI_CLI_AUTH
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö setSecret()s every non-boundary line of the real ephemeral private key, plus the OIDC token and the UPST (221ms)
+##vso[task.debug]Cleared environment variable: OCI_CLI_CONFIG_FILE
+##vso[task.debug]Cleared environment variable: OCI_CLI_PROFILE
+##vso[task.debug]Cleared environment variable: OCI_CLI_AUTH
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö leaves already-written secret files cleaned up when a later writeSecretFile call fails (cleanup ordering) (111ms)
+
+  handleProvider -- OCI classic API-key private key masking (#723)
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö masks every non-boundary line of both the raw (ADO spaces-form) and normalized PEM before the key file is written (45ms)
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_user_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Cleared environment variable: TF_VAR_fingerprint
+##vso[task.debug]Cleared environment variable: TF_VAR_private_key_path
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö masks every non-boundary line of an already-multiline (LF) PEM the same way (43ms)
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_user_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Cleared environment variable: TF_VAR_fingerprint
+##vso[task.debug]Cleared environment variable: TF_VAR_private_key_path
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö masks every non-boundary line of a CRLF-delivered PEM the same way (45ms)
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_user_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Cleared environment variable: TF_VAR_fingerprint
+##vso[task.debug]Cleared environment variable: TF_VAR_private_key_path
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö sets TF_VAR_tenancy_ocid/user_ocid/region/fingerprint/private_key_path from the endpoint data parameters (42ms)
+##vso[task.debug]Cleared environment variable: TF_VAR_tenancy_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_user_ocid
+##vso[task.debug]Cleared environment variable: TF_VAR_region
+##vso[task.debug]Cleared environment variable: TF_VAR_fingerprint
+##vso[task.debug]Cleared environment variable: TF_VAR_private_key_path
+    Γ£ö throws before writing any file when the service connection has no privateKey data parameter
+
+  detectBackendCloud
+    Γ£ö maps backend type 'azurerm' to cloud 'azurerm'
+    Γ£ö maps backend type 's3' to cloud 'aws'
+    Γ£ö maps backend type 'gcs' to cloud 'gcp'
+    Γ£ö maps backend type 'cloud' to cloud 'hcp'
+    Γ£ö maps backend type 'remote' to cloud 'hcp'
+##vso[task.debug]Backend detection: backend type 'local' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'local' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'http' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'http' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'oci' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'oci' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'pg' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'pg' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'consul' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'consul' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'kubernetes' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'kubernetes' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: backend type 'oss' has no managed cloud credentials to inject; skipping.
+    Γ£ö returns null for backend type 'oss' (no cloud credentials to inject)
+##vso[task.debug]Backend detection: C:\Users\SBACON1\AppData\Local\Temp\backend-detect-sUfsyO\.terraform\terraform.tfstate has no backend.type; skipping.
+    Γ£ö returns null when .terraform/terraform.tfstate has no backend.type
+##vso[task.debug]Backend detection: no C:\Users\SBACON1\AppData\Local\Temp\backend-detect-qJ9Izl\.terraform\terraform.tfstate found (not yet initialized?); skipping cross-cloud backend credential injection.
+    Γ£ö returns null when .terraform/terraform.tfstate does not exist (not yet initialized)
+##vso[task.debug]Backend detection: no C:\Users\SBACON1\AppData\Local\Temp\backend-detect-03KBa4\.terraform\terraform.tfstate found (not yet initialized?); skipping cross-cloud backend credential injection.
+    Γ£ö returns null when the .terraform directory itself does not exist
+##vso[task.debug]Backend detection: failed to parse C:\Users\SBACON1\AppData\Local\Temp\backend-detect-7wpe0F\.terraform\terraform.tfstate as JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)
+    Γ£ö returns null when terraform.tfstate is malformed JSON
+##vso[task.debug]Backend detection: C:\Users\SBACON1\AppData\Local\Temp\backend-detect-JkpBi7\.terraform\terraform.tfstate is 10485761 bytes, exceeding the 10485760-byte guard; skipping rather than risk an unbounded read.
+    Γ£ö returns null and does not attempt to parse a terraform.tfstate larger than the size guard
+##vso[task.debug]Backend detection: no .terraform\terraform.tfstate found (not yet initialized?); skipping cross-cloud backend credential injection.
+    Γ£ö defaults to the current directory when workingDirectory is empty
+
+  ParentCommandHandler cross-cloud backend credential injection
+##vso[task.debug]Detected 'azurerm' state backend with 'aws' provider on command 'plan'; configuring cross-cloud backend credentials.
+    Γ£ö cross-cloud (aws provider + azurerm backend) plan throws an actionable error naming the detected backend when backend inputs are missing
+    Γ£ö same-cloud (aws provider + s3 backend) does not attempt cross-cloud injection
+    Γ£ö STATE_COMMANDS includes only commands that read/write remote state
+
+  TerraformCommandHandlerAzureRM.configureBackendCredentials (cross-cloud)
+##vso[task.debug]Configuring cross-cloud azurerm backend credentials (environment variables only).
+##vso[task.debug]Set environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Set environment variable: ARM_TENANT_ID
+##vso[task.debug]Set environment variable: ARM_USE_MSI
+##vso[task.debug]Finished configuring cross-cloud azurerm backend credentials for authorization scheme: managedserviceidentity.
+    Γ£ö ManagedServiceIdentity: sets ARM_USE_MSI, ARM_TENANT_ID, and ARM_SUBSCRIPTION_ID
+##vso[task.debug]Cleared environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Cleared environment variable: ARM_TENANT_ID
+##vso[task.debug]Cleared environment variable: ARM_USE_MSI
+##vso[task.debug]Configuring cross-cloud azurerm backend credentials (environment variables only).
+##vso[task.debug]Set environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Set environment variable: ARM_TENANT_ID
+##vso[task.issue type=warning;source=TaskInternal;]Client secret authentication is not secure and will be deprecated in the next major version of this task. Please use Workload identity federation authentication instead.
+##vso[task.debug]Set environment variable: ARM_CLIENT_ID
+##vso[task.debug]Set environment variable: ARM_CLIENT_SECRET (secret)
+##vso[task.debug]Finished configuring cross-cloud azurerm backend credentials for authorization scheme: serviceprincipal.
+    Γ£ö ServicePrincipal: sets ARM_CLIENT_ID, ARM_CLIENT_SECRET, and ARM_TENANT_ID
+##vso[task.debug]Cleared environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Cleared environment variable: ARM_TENANT_ID
+##vso[task.debug]Cleared environment variable: ARM_CLIENT_ID
+##vso[task.debug]Cleared environment variable: ARM_CLIENT_SECRET
+##vso[task.debug]Configuring cross-cloud azurerm backend credentials (environment variables only).
+##vso[task.debug]Set environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Set environment variable: ARM_TENANT_ID
+##vso[task.debug]Set environment variable: ARM_CLIENT_ID
+##vso[task.debug]Set environment variable: ARM_USE_OIDC
+##vso[task.debug]ID token generation fallback is disabled, using ID Token Refresh.
+##vso[task.debug]Set environment variable: ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID
+##vso[task.debug]Set environment variable: ARM_OIDC_AZURE_SERVICE_CONNECTION_ID
+##vso[task.debug]Set environment variable: ARM_OIDC_REQUEST_TOKEN (secret)
+##vso[task.debug]Finished configuring cross-cloud azurerm backend credentials for authorization scheme: workloadidentityfederation.
+    Γ£ö WorkloadIdentityFederation (token refresh): sets ARM_USE_OIDC, ARM_CLIENT_ID, and the ADO request token
+##vso[task.debug]Cleared environment variable: ARM_SUBSCRIPTION_ID
+##vso[task.debug]Cleared environment variable: ARM_TENANT_ID
+##vso[task.debug]Cleared environment variable: ARM_CLIENT_ID
+##vso[task.debug]Cleared environment variable: ARM_USE_OIDC
+##vso[task.debug]Cleared environment variable: ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID
+##vso[task.debug]Cleared environment variable: ARM_OIDC_AZURE_SERVICE_CONNECTION_ID
+##vso[task.debug]Cleared environment variable: ARM_OIDC_REQUEST_TOKEN
+    Γ£ö throws when backendServiceArm is not provided on this step
+
+  TerraformCommandHandlerAWS.configureBackendCredentials (cross-cloud)
+##vso[task.debug]Configuring cross-cloud s3 backend credentials (environment variables only).
+##vso[task.debug]Set environment variable: AWS_ACCESS_KEY_ID
+##vso[task.debug]Set environment variable: AWS_SECRET_ACCESS_KEY (secret)
+##vso[task.debug]Finished configuring cross-cloud s3 backend credentials.
+    Γ£ö ServiceConnection (static credentials): sets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+##vso[task.debug]Cleared environment variable: AWS_ACCESS_KEY_ID
+##vso[task.debug]Cleared environment variable: AWS_SECRET_ACCESS_KEY
+##vso[task.debug]Configuring cross-cloud s3 backend credentials (environment variables only).
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Set environment variable: AWS_ROLE_ARN
+##vso[task.debug]Set environment variable: AWS_WEB_IDENTITY_TOKEN_FILE
+##vso[task.debug]Set environment variable: AWS_REGION
+##vso[task.debug]Set environment variable: AWS_ROLE_SESSION_NAME
+##vso[task.debug]Finished configuring cross-cloud s3 backend credentials.
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\aws-backend-oidc-token-75b8202d-8de9-4c28-ac4e-4ff9f66fc1d1.jwt
+    Γ£ö WorkloadIdentityFederation: sets AWS_ROLE_ARN/AWS_REGION/AWS_WEB_IDENTITY_TOKEN_FILE and writes+cleans a token file (53ms)
+##vso[task.debug]Cleared environment variable: AWS_ROLE_ARN
+##vso[task.debug]Cleared environment variable: AWS_WEB_IDENTITY_TOKEN_FILE
+##vso[task.debug]Cleared environment variable: AWS_REGION
+##vso[task.debug]Cleared environment variable: AWS_ROLE_SESSION_NAME
+    Γ£ö throws for an unrecognized backendAuthSchemeAWS value
+
+  TerraformCommandHandlerGCP.configureBackendCredentials (cross-cloud)
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Set environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Finished configuring cross-cloud gcs backend credentials.
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\credentials-5af87c9d-bfde-44a8-84c3-fc0c0f644c53.json
+    Γ£ö ServiceConnection (static JSON key): sets GOOGLE_BACKEND_CREDENTIALS to a fresh service_account credentials file, masking the key per-line (48ms)
+##vso[task.debug]Cleared environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Set environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Finished configuring cross-cloud gcs backend credentials.
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\gcp-backend-oidc-token-ace42ac4-d5ec-4758-b495-c4ba9e1606d9.jwt
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\gcp-backend-wif-credentials-8bbdd0d9-b49b-4665-a86f-4f9f1812a656.json
+    Γ£ö WorkloadIdentityFederation: sets GOOGLE_BACKEND_CREDENTIALS to a fresh external_account credentials file (87ms)
+##vso[task.debug]Cleared environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+    Γ£ö throws for an unrecognized backendAuthSchemeGCP value
+
+  HCP/OCI/Generic configureBackendCredentials (cross-cloud)
+##vso[task.debug]Configuring cross-cloud HCP backend credentials (environment variables only).
+##vso[task.debug]Set environment variable: TF_TOKEN_app_terraform_io (secret)
+##vso[task.debug]Set environment variable: TF_CLOUD_ORGANIZATION
+##vso[task.debug]Set environment variable: TF_WORKSPACE
+    Γ£ö HCP: sets TF_TOKEN_app_terraform_io, TF_CLOUD_ORGANIZATION, and TF_WORKSPACE
+##vso[task.debug]Cleared environment variable: TF_TOKEN_app_terraform_io
+##vso[task.debug]Cleared environment variable: TF_CLOUD_ORGANIZATION
+##vso[task.debug]Cleared environment variable: TF_WORKSPACE
+##vso[task.debug]Configuring cross-cloud HCP backend credentials (environment variables only).
+    Γ£ö HCP: throws when backendHCPToken is not provided on this step
+##vso[task.debug]OCI backend requires no cross-cloud credential injection (PAR URL is self-authenticating).
+    Γ£ö OCI: is a no-op (no env vars set, does not throw)
+##vso[task.debug]Generic/local backend requires no cross-cloud credential injection (user-managed).
+    Γ£ö Generic: is a no-op (no env vars set, does not throw)
+
+  getBinaryName allowlist
+    Γ£ö defaults to terraform when binaryName is not set
+    Γ£ö accepts tofu
+    Γ£ö rejects terragrunt with a clear error instead of silently disabling cross-cloud backend detection
+    Γ£ö rejects an arbitrary unrecognized binary name
+
+  GCP static-key token_uri validation (#494)
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Set environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Finished configuring cross-cloud gcs backend credentials.
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\credentials-8cf7dece-3141-4805-a073-bfe31c28975f.json
+    Γ£ö accepts the canonical https://oauth2.googleapis.com token endpoint (51ms)
+##vso[task.debug]Cleared environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+##vso[task.debug]Set environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Finished configuring cross-cloud gcs backend credentials.
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\credentials-136adc7d-2149-4dc8-aac5-7e7cc8d1c1d3.json
+    Γ£ö accepts the other allowed host, sts.googleapis.com (46ms)
+##vso[task.debug]Cleared environment variable: GOOGLE_BACKEND_CREDENTIALS
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö rejects a non-Google host
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö rejects a lookalike host that merely ends in googleapis.com without the dot boundary
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö rejects a real but non-allowlisted *.googleapis.com subdomain (#594 narrowing)
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö rejects a non-https scheme even on a Google host
+##vso[task.debug]Configuring cross-cloud gcs backend credentials (environment variable only).
+##vso[task.debug]Agent.TempDirectory=undefined
+    Γ£ö rejects a value that is not a URL at all
+
+  BaseTerraformCommandHandler.validateAuthScheme (hoisted, #591)
+    Γ£ö aws: accepts 'ServiceConnection'
+    Γ£ö aws: accepts 'WorkloadIdentityFederation'
+    Γ£ö aws: rejects an unrecognized scheme with the shared error message
+    Γ£ö gcp: accepts 'ServiceConnection'
+    Γ£ö gcp: accepts 'WorkloadIdentityFederation'
+    Γ£ö gcp: rejects an unrecognized scheme with the shared error message
+    Γ£ö oci: accepts 'ServiceConnection'
+    Γ£ö oci: accepts 'WorkloadIdentityFederation'
+    Γ£ö oci: rejects an unrecognized scheme with the shared error message
+    Γ£ö all three provider handlers produce the byte-identical error message (single shared implementation, not three copies)
+    Γ£ö exposes VALID_AUTH_SCHEMES as exactly ServiceConnection and WorkloadIdentityFederation
+
+  redactValue ΓÇö redaction core
+    non-sensitive values -> {kind:"value"}
+      Γ£ö redacts a primitive string to bounded JSON
+      Γ£ö redacts a number/boolean/null
+      Γ£ö coerces an undefined leaf (attribute absent on one diff side) to JSON null
+      Γ£ö redacts a collection with sorted-key JSON
+    sensitivity sources (┬º5.2.1)
+      Γ£ö after_sensitive:true at a leaf -> {kind:"sensitive"} and the value never appears
+      Γ£ö before_sensitive form (whole-value boolean mask) masks the before value
+      Γ£ö sensitive_values form (shape-parallel object mask) masks nested leaves only
+      Γ£ö output sensitivity (whole-output boolean) masks the whole value
+      Γ£ö partial-sensitive array masks only the sensitive index
+    unknown source (┬º5.2.3)
+      Γ£ö after_unknown:true -> {kind:"unknown"}
+      Γ£ö sensitivity wins over unknown at the same leaf
+      Γ£ö partial-unknown collection substitutes the unknown sentinel
+    FAIL CLOSED on shape mismatch (┬º2.8 ΓÇö the single most important rule)
+      Γ£ö container sensitivity mask over a scalar value -> masked + note
+      Γ£ö container unknown mask over a scalar value -> masked
+      Γ£ö object mask over an array value -> masked
+      Γ£ö array mask over an object value -> masked
+      Γ£ö sensitivity mask array SHORTER than the value array -> masked, no trailing leak
+      Γ£ö unknown mask array of a different length than the value array -> masked
+      Γ£ö a full-length parallel mask array still redacts per element (no false positive)
+      Γ£ö mismatch nested inside a collection masks only that leaf, not the sibling
+    prototype-pollution guard (┬º2.5)
+      Γ£ö drops __proto__ / constructor / prototype keys and never pollutes Object.prototype
+    size cap (┬º6)
+      Γ£ö a value just over the per-value byte cap -> {kind:"omitted",reason:"too-large"}
+      Γ£ö a value exactly at the cap is kept
+    determinism (┬º2.6)
+      Γ£ö identical input -> byte-identical output regardless of key insertion order
+
+  shared serialization / size utilities
+    Γ£ö stableStringify sorts object keys lexicographically at every level
+    Γ£ö utf8ByteLength counts UTF-8 bytes, not code units
+    Γ£ö deepEqual compares JSON structures
+
+  capDigestBytes ΓÇö digest-level byte ceilings (┬º3)
+    Γ£ö within the soft ceiling: returned unchanged
+    Γ£ö over soft ceiling: drops attributeChanges arrays, keeps rows + summary, sets truncated
+    Γ£ö over hard ceiling: collapses to a summary-only digest
+    Γ£ö apply digest over soft ceiling drops diagnostic detail
+    Γ£ö state digest over the REAL soft ceiling: no throw, drops attributes AND outputs, keeps rows + summary (46ms)
+    Γ£ö state digest over hard ceiling: collapses to a state summary-only digest
+    Γ£ö serializeDigest is deterministic pretty JSON
+
+  buildPlanDigest
+    Γ£ö classifies create/update/delete/read/no-op and counts the summary
+    Γ£ö treats a two-element [delete,create] as a replace in the summary (add+destroy+replace)
+    Γ£ö emits ONLY changed attributes, skipping unchanged ones
+    Γ£ö surfaces an unknown after value without ever emitting the before as the after (┬º2.7)
+    Γ£ö sets driftDetected and builds masked drift resources from resource_drift
+    Γ£ö noChanges is true for an empty plan and false when any resource acts
+    Γ£ö masks sensitive output values via the after_sensitive mask
+    Γ£ö derives tool.version from terraform_version and echoes validated meta
+    Γ£ö tolerates malformed / missing input without throwing
+    Γ£ö drops prototype-pollution attribute keys and notes them
+    caps (┬º6)
+      Γ£ö caps attribute changes per resource and notes the remainder
+      Γ£ö caps the resource list by action priority (destroy/replace survive) and notes the count
+      Γ£ö does not set truncated for an ordinary plan within all caps
+      Γ£ö caps the output list and notes the remainder (┬º3 DoS bound)
+      Γ£ö caps the drift list and notes the remainder (┬º3 DoS bound)
+    truncationNotes cap (┬º3 DoS bound)
+      Γ£ö capNotes keeps the first MAX_NOTES and collapses the remainder into one count note
+      Γ£ö capNotes returns a copy unchanged when within the cap
+      Γ£ö a plan that generates more than MAX_NOTES notes bounds truncationNotes
+    normalization / classification branches
+      Γ£ö classifies output actions: update (delete+create), delete, and no-op fallback
+      Γ£ö normalizes non-array / unrecognized actions to ["no-op"]
+      Γ£ö renders replace_paths with indexed and nested segments
+      Γ£ö ignores an action_reason of "none" and non-string types/names
+      Γ£ö drops non-object resource_changes / resource_drift entries
+      Γ£ö detects an unknown leaf nested inside an array (anyTrue array recursion)
+      Γ£ö echoes optional stage/job meta when provided
+      Γ£ö preserves destroy/replace over update/read/no-op when the resource list is capped
+    planMode destroy marker (┬º7.1 ΓÇö destroy reuses PlanDigest)
+      Γ£ö sets planMode="destroy" when the caller passes {mode:"destroy"}
+      Γ£ö leaves planMode absent by default (normal plan, unchanged contract)
+      Γ£ö leaves planMode absent for {mode:"plan"} (default === absent)
+      Γ£ö does NOT infer destroy from an all-delete plan built without the marker
+
+  parseNdjsonLines (#781)
+    Γ£ö returns only object events and skips blank lines
+    Γ£ö strips a trailing CR before parsing (CRLF streams)
+    Γ£ö counts and drops a line that fails to JSON.parse
+    Γ£ö counts and drops a syntactically-valid but non-object line (bare number/string/null)
+    Γ£ö returns empty for a non-string input
+
+  buildApplyDigest
+    Γ£ö parses a successful stream: resources, durations, outcome, summary, outputs
+    Γ£ö computes durationMs from start/complete timestamps (not Date.now)
+    Γ£ö marks a partial failure: outcome failed, appliedBeforeFailure lists completed addresses, errored status set
+    Γ£ö treats an error-severity diagnostic as a failed apply
+    Γ£ö tolerates malformed / partial NDJSON lines (skipped + noted, never throws)
+    Γ£ö masks sensitive outputs from the outputs event
+    Γ£ö derives summary counts from resources when no change_summary event is present
+    Γ£ö does not throw on empty input
+    diagnostics
+      Γ£ö omits detail by default (safe mode) and scrubs the known secret from summary
+      Γ£ö includes scrubbed detail when includeDiagnosticDetail is set
+      Γ£ö does NOT scrub a short low-entropy provider secret from summary with no knownSecrets (documented residual ┬º5.10)
+      Γ£ö omits the whole diagnostics array when includeDiagnostics is false, but still detects failure (┬º5.10 opt-out)
+      Γ£ö caps diagnostics keeping errors first, and notes the remainder
+    caps (┬º3 DoS bounds)
+      Γ£ö caps the outputs list and notes the remainder
+      Γ£ö caps appliedBeforeFailure even when the same address repeats past the cap
+
+  scrubSecrets ΓÇö freeform diagnostic scrub (┬º5.4)
+    Γ£ö removes an explicitly-registered secret literal
+    Γ£ö removes multiple occurrences of a registered secret
+    Γ£ö scrubs a PEM private-key block by heuristic
+    Γ£ö scrubs a long high-entropy base64/hex run by heuristic
+    Γ£ö leaves a benign diagnostic intact (no over-scrubbing)
+    Γ£ö ignores empty / too-short registered secrets (avoids catastrophic over-scrub)
+    Γ£ö returns non-string / empty input unchanged
+
+  sanitizeAttachmentName ΓÇö logging-command / CRLF injection guard (┬º5.6)
+    Γ£ö strips CR/LF and logging-command control characters
+    Γ£ö leaves a clean name unchanged with no note
+    Γ£ö caps an overly long name and notes the truncation
+    Γ£ö falls back to "terraform" when the sanitized name is empty
+    Γ£ö handles a non-string input
+
+  golden fixtures (┬º12.3 regression) + no-leak tripwire (┬º12.4.1)
+    Γ£ö is deterministic: building twice yields byte-identical output
+    plan-noop.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-create.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-replace.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-destroy.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-sensitive.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-multi-provider.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    plan-drift.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    apply-success.ndjson
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+    apply-partial-failure.ndjson
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no known-secret literal into the serialized digest
+
+  buildStateDigest
+    Γ£ö builds a managed resource inventory with redacted current attribute values
+    Γ£ö masks a sensitive_values leaf to {kind:"sensitive"} and never serializes the secret
+    Γ£ö masks a sensitive leaf NESTED inside an object attribute (shape-parallel mask)
+    Γ£ö flattens child_modules into module-prefixed addresses (recursive walk, ┬º7.2)
+    Γ£ö splits managed vs data resources in the summary counts
+    Γ£ö masks a sensitive OUTPUT whole and redacts a plain output (┬º7.3, no action field)
+    Γ£ö never emits {kind:"unknown"} ΓÇö state is fully materialized (┬º7.2)
+    Γ£ö drops prototype-pollution attribute keys and notes them
+    Γ£ö drops a prototype-pollution OUTPUT key and notes it
+    Γ£ö sanitizes the publish name and records an observable note
+    Γ£ö keeps a child module resource under the PARENT path when the child omits its address (no silent reparent to root)
+    Γ£ö is deterministic: building twice yields byte-identical output
+    FAIL CLOSED on shape mismatch (┬º2.8 / ┬º7.2) ΓÇö masks, never leaks
+      Γ£ö a container sensitive_values mask over a scalar value masks fail-closed and notes it
+      Γ£ö an array-length mismatch in the mask masks the whole array fail-closed
+    empty / malformed input
+      Γ£ö empty state -> resourceCount 0, no resources, no throw
+      Γ£ö tolerates a missing values/root_module and non-array resources
+      Γ£ö drops resource entries without a string address
+      Γ£ö defaults a malformed/absent mode to "managed" and coerces missing identity fields
+    caps (┬º7.4)
+      Γ£ö caps the resource list at MAX_STATE_RESOURCES in walk order and notes the count
+      Γ£ö does not truncate exactly at the MAX_STATE_RESOURCES boundary
+      Γ£ö caps attributes per resource alphabetically and notes the remainder
+      Γ£ö caps the output list and notes the remainder
+    envelope / provenance
+      Γ£ö derives tool.version from terraform_version and echoes validated meta
+      Γ£ö falls back to tool version "unknown" when terraform_version is missing
+      Γ£ö echoes optional stage/job meta when provided
+
+  phase 5 golden fixtures (┬º12.3 regression) + no-leak tripwire (┬º12.4.1)
+    Γ£ö is deterministic: building twice yields byte-identical output
+    state-basic.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no planted-secret literal into the serialized digest
+    state-sensitive.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no planted-secret literal into the serialized digest
+    state-child-modules.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no planted-secret literal into the serialized digest
+    plan-destroy.json
+      Γ£ö reproduces the committed golden byte-for-byte
+      Γ£ö leaks no planted-secret literal into the serialized digest
+
+  maskHasSensitiveLeaf
+    Γ£ö is the SAME function the redaction core exports (one implementation, ┬º5.2.7 anti-drift)
+    Γ£ö detects a top-level true
+    Γ£ö returns false for a top-level false / undefined / null
+    Γ£ö detects a true at the first level of an object mask
+    Γ£ö returns false for an object mask with no true leaf
+    Γ£ö detects a true nested two levels deep in an object mask -- the previous one-level scan would have missed this
+    Γ£ö detects a true nested inside an array mask
+    Γ£ö returns false for an empty object or array mask
+
+  index.ts SIGTERM/SIGINT registration -- emergency cleanup then re-raise (#758)
+##vso[task.debug]check path : C:\dev\gh\azure-pipelines-terraform\Tasks\TerraformTask\TerraformTaskV5\task.json
+##vso[task.debug]adding resource file: C:\dev\gh\azure-pipelines-terraform\Tasks\TerraformTask\TerraformTaskV5\task.json
+##vso[task.debug]system.culture=undefined
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-signal-e2e-jGTmZC\fake-credential.json
+    Γ£ö SIGTERM: emergency cleanup deletes the tracked temp file, then the signal is re-raised (53ms)
+##vso[task.issue type=warning;source=TaskInternal;]Resource file has already set to: C:\dev\gh\azure-pipelines-terraform\Tasks\TerraformTask\TerraformTaskV5\task.json
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-signal-e2e-n0cFsS\fake-credential.json
+    Γ£ö SIGINT: emergency cleanup deletes the tracked temp file, then the signal is re-raised (45ms)
+##vso[task.issue type=warning;source=TaskInternal;]Resource file has already set to: C:\dev\gh\azure-pipelines-terraform\Tasks\TerraformTask\TerraformTaskV5\task.json
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-signal-e2e-HvKu1x\fake-credential.json
+##vso[task.debug]task result: Failed
+##vso[task.issue type=error;source=TaskInternal;]Uncaught exception: boom
+##vso[task.complete result=Failed;]Uncaught exception: boom
+    Γ£ö uncaughtException: emergency cleanup deletes the tracked temp file, then the process exits with code 1 (#755 sibling) (49ms)
+##vso[task.issue type=warning;source=TaskInternal;]Resource file has already set to: C:\dev\gh\azure-pipelines-terraform\Tasks\TerraformTask\TerraformTaskV5\task.json
+##vso[task.debug]Cleaned up temp file: C:\Users\SBACON1\AppData\Local\Temp\tf-signal-e2e-sAcDKs\fake-credential.json
+##vso[task.debug]task result: Failed
+##vso[task.issue type=error;source=TaskInternal;]Unhandled rejection: boom
+##vso[task.complete result=Failed;]Unhandled rejection: boom
+    Γ£ö unhandledRejection: emergency cleanup deletes the tracked temp file, then the process exits with code 1 (#755 sibling) (124ms)
+
+  Terraform Test Suite
+    Γ£ö azure init should succeed with no additional args (280ms)
+    Γ£ö azure init should succeed with no additional args and default settings (281ms)
+    Γ£ö azure init should succeed with lower case authentication scheme (274ms)
+    Γ£ö azure init should succeed with missing authentication scheme (350ms)
+    Γ£ö azure init should fail with malformed authentication scheme (1365ms)
+    Γ£ö azure init should succeed with authentication scheme ManagedServiceIdentity (759ms)
+    Γ£ö azure init should set ARM_CLIENT_ID for a user-assigned MSI identity (1108ms)
+    Γ£ö azure init should succeed with authentication scheme ManagedServiceIdentity and DefaultSettings (1221ms)
+    Γ£ö azure init should succeed with authentication scheme WorkloadIdentityFederation (972ms)
+    Γ£ö azure init should succeed with authentication scheme WorkloadIdentityFederation and default settings (978ms)
+    Γ£ö azure init should succeed with authentication scheme WorkloadIdentityFederation and id token fallback (756ms)
+    Γ£ö azure init should succeed with authentication scheme WorkloadIdentityFederation and cli flags (770ms)
+    Γ£ö azure init should succeed with additional args (360ms)
+    Γ£ö azure init should succeed with empty working directory (320ms)
+    Γ£ö azure init should fail with invalid working directory (306ms)
+    Γ£ö aws init should succeed with no additional args (287ms)
+    Γ£ö aws init should succeed with additional args (298ms)
+    Γ£ö aws init should succeed with empty working directory (284ms)
+    Γ£ö aws init should fail with invalid working directory (276ms)
+    Γ£ö gcp init should succeed with no additional args (308ms)
+    Γ£ö gcp init should succeed with additional args (315ms)
+    Γ£ö gcp init should succeed with empty working directory (324ms)
+    Γ£ö gcp init should fail with invalid working directory (310ms)
+    Γ£ö azure validate should succeed with no additional args (278ms)
+    Γ£ö azure validate should succeed with additional args (289ms)
+    Γ£ö azure validate should succeed with empty working directory (269ms)
+    Γ£ö azure validate should fail with invalid working directory (267ms)
+    Γ£ö aws validate should succeed with no additional args (261ms)
+    Γ£ö aws validate should succeed with additional args (259ms)
+    Γ£ö aws validate should succeed with empty working directory (256ms)
+    Γ£ö aws validate should fail with invalid working directory (257ms)
+    Γ£ö gcp validate should succeed with no additional args (300ms)
+    Γ£ö gcp validate should succeed with additional args (282ms)
+    Γ£ö gcp validate should succeed with empty working directory (269ms)
+    Γ£ö gcp validate should fail with invalid working directory (269ms)
+    Γ£ö azure plan should succeed with no additional args (341ms)
+    Γ£ö azure plan should succeed with additional args (338ms)
+    Γ£ö azure plan should fail with invalid working directory (308ms)
+    Γ£ö azure plan should fail with empty working directory (279ms)
+    Γ£ö aws plan should succeed with no additional args (287ms)
+    Γ£ö aws plan should succeed with additional args (279ms)
+    Γ£ö aws plan should fail with invalid working directory (273ms)
+    Γ£ö aws plan should fail with empty working directory (265ms)
+    Γ£ö gcp plan should succeed with no additional args (306ms)
+    Γ£ö gcp plan should succeed with additional args (313ms)
+    Γ£ö gcp plan should fail with invalid working directory (312ms)
+    Γ£ö gcp plan should fail with empty working directory (407ms)
+    Γ£ö azure apply should succeed with no additional args (315ms)
+    Γ£ö azure apply should succeed with authentication scheme ManagedServiceIdentity (298ms)
+    Γ£ö azure apply should succeed with authentication scheme WorkloadIdentityFederation (297ms)
+    Γ£ö azure apply should succeed with additional args with -auto-approve (275ms)
+    Γ£ö azure apply should succeed with additional args without -auto-approve (271ms)
+    Γ£ö azure apply should fail with invalid working directory (269ms)
+    Γ£ö azure apply should fail with empty working directory (395ms)
+    Γ£ö aws apply should succeed with no additional args (288ms)
+    Γ£ö aws apply should succeed with additional args with -auto-approve (518ms)
+    Γ£ö aws apply should succeed with additional args without -auto-approve (311ms)
+    Γ£ö aws apply should fail with invalid working directory (292ms)
+    Γ£ö aws apply should fail with empty working directory (373ms)
+    Γ£ö gcp apply should succeed with no additional args (397ms)
+    Γ£ö gcp apply should succeed with additional args with -auto-approve (351ms)
+    Γ£ö gcp apply should succeed with additional args without -auto-approve (415ms)
+    Γ£ö gcp apply should fail with invalid working directory (1447ms)
+    Γ£ö gcp apply should fail with empty working directory (3060ms)
+    Γ£ö azure destroy should succeed with no additional args (5376ms)
+    Γ£ö azure destroy should succeed with additional args with -auto-approve (4521ms)
+    Γ£ö azure destroy should succeed with additional args without -auto-approve (3172ms)
+    Γ£ö azure destroy should fail with invalid working directory (2000ms)
+    Γ£ö aws destroy should succeed with no additional args (378ms)
+    Γ£ö aws destroy should succeed with additional args with -auto-approve (340ms)
+    Γ£ö aws destroy should succeed with additional args without -auto-approve (301ms)
+    Γ£ö aws destroy should fail with invalid working directory (291ms)
+    Γ£ö gcp destroy should succeed with no additional args (321ms)
+    Γ£ö gcp destroy should succeed with additional args with -auto-approve (314ms)
+    Γ£ö gcp destroy should succeed with additional args without -auto-approve (341ms)
+    Γ£ö gcp destroy should fail with invalid working directory (319ms)
+    Γ£ö oci init should succeed with no additional args (310ms)
+    Γ£ö oci plan should succeed with no additional args (304ms)
+    Γ£ö oci apply should succeed with no additional args (330ms)
+    Γ£ö oci destroy should succeed with no additional args (319ms)
+    Γ£ö oci apply should fail with empty working directory (439ms)
+    Γ£ö oci apply should fail with invalid working directory (347ms)
+    Γ£ö oci apply should succeed with additional args with -auto-approve (316ms)
+    Γ£ö oci apply should succeed with workload identity federation (#695) (326ms)
+    Γ£ö oci plan should fail with empty working directory (320ms)
+    Γ£ö oci destroy should fail with empty working directory (325ms)
+    Γ£ö oci init should fail with invalid PAR URL (274ms)
+    Γ£ö warnIfMultipleProviders should not warn for single provider (280ms)
+    Γ£ö warnIfMultipleProviders should warn correctly for multiple providers (269ms)
+    Γ£ö workspace select should succeed (262ms)
+    Γ£ö workspace list should succeed (260ms)
+    Γ£ö workspace select should fail for nonexistent workspace (257ms)
+    Γ£ö workspace new should succeed (268ms)
+    Γ£ö workspace delete should succeed (256ms)
+    Γ£ö workspace show should succeed (248ms)
+    Γ£ö state list should succeed (260ms)
+    Γ£ö state push should succeed and emit warning (283ms)
+    Γ£ö state show should succeed (288ms)
+    Γ£ö state mv should succeed (290ms)
+    Γ£ö state rm should succeed (299ms)
+    Γ£ö state pull should succeed (301ms)
+    Γ£ö fmt check should succeed when all files are formatted (331ms)
+    Γ£ö fmt check should fail when files need formatting (293ms)
+    Γ£ö fmt check does not misclassify a stderr-only crash as unformatted files (#826) (311ms)
+    Γ£ö get should succeed (326ms)
+    Γ£ö get should fail when module download fails (297ms)
+    Γ£ö generic backend init should succeed with key=value config args (292ms)
+    Γ£ö hcp backend init should succeed with token, organization, and workspace (295ms)
+    Γ£ö aws plan should succeed with workload identity federation (412ms)
+    Γ£ö gcp plan should succeed with workload identity federation (393ms)
+    Γ£ö oci plan should succeed with workload identity federation (333ms)
+    Γ£ö oci plan should fail with an invalid WIF identity domain url (378ms)
+    Γ£ö aws plan should fail with invalid auth scheme (303ms)
+    Γ£ö gcp plan should fail with invalid auth scheme (307ms)
+    Γ£ö oci plan should fail with invalid auth scheme (291ms)
+    Γ£ö azure plan should succeed with -replace flag (300ms)
+    Γ£ö azure apply should succeed with -replace flag (315ms)
+    Γ£ö aws apply should succeed with workload identity federation (348ms)
+    Γ£ö gcp apply should succeed with workload identity federation (390ms)
+    Γ£ö aws destroy should succeed with workload identity federation (343ms)
+    Γ£ö gcp destroy should succeed with workload identity federation (385ms)
+    Γ£ö azure show to console should succeed (300ms)
+    Γ£ö azure show to console with json warns on sensitive outputs and still echoes the content (audit id0) (312ms)
+    Γ£ö azure show to console with json and failOnSensitiveOutputs=true fails BEFORE echoing anything to the console (audit id0) (317ms)
+    Γ£ö azure show to file should succeed (337ms)
+    Γ£ö aws show to console should succeed (312ms)
+    Γ£ö gcp show to console should succeed (349ms)
+    Γ£ö azure output should succeed (339ms)
+    Γ£ö aws output should succeed (348ms)
+    Γ£ö gcp output should succeed (412ms)
+    Γ£ö aws output rejects a control-character-laced value instead of forwarding it unsanitized (347ms)
+    Γ£ö aws output warns when a sensitive output is written to the JSON file (348ms)
+    Γ£ö aws output with cleanupOutputFile=true removes the JSON file after the step finishes (353ms)
+    Γ£ö aws output with failOnSensitiveOutputs=true fails when a sensitive output would be retained, and deletes the file (363ms)
+    Γ£ö aws output with failOnSensitiveOutputs=true still succeeds (warning only) when cleanupOutputFile is also set (357ms)
+    Γ£ö aws output retains the JSON file by default under Agent.TempDirectory (never the working directory) with restrictive permissions (371ms)
+    Γ£ö aws output with a sensitive output is auto-cleaned up at normal step end by default (#650) (351ms)
+    Γ£ö aws output with cleanupOutputFileIfSensitive=false retains a sensitive output file at normal step end (#650 opt-out) (371ms)
+    Γ£ö aws show -json to file auto-scrubs+deletes a sensitive plan file at normal step end (#802) (494ms)
+    Γ£ö aws show -json to file with cleanupShowFileIfSensitive=false retains the sensitive plan file at normal step end (#802 opt-out) (396ms)
+    Γ£ö aws output with malformed -json warns (not debug) for both sensitive-detection and TF_OUT_* export (#783) (366ms)
+    Γ£ö azure custom command to console should succeed (323ms)
+    Γ£ö aws custom command to console should succeed (303ms)
+    Γ£ö azure test command should succeed (294ms)
+    Γ£ö azure test command surfaces TerraformTestFailed with captured detail on a non-zero exit (#826) (294ms)
+    Γ£ö aws test command should succeed (314ms)
+    Γ£ö gcp test command should succeed (356ms)
+    Γ£ö oci test command should succeed (356ms)
+    Γ£ö test command without service connection should succeed (304ms)
+    Γ£ö init with s3 backend and azurerm provider should succeed (297ms)
+    Γ£ö aws provider + azurerm backend plan should succeed via cross-cloud backend credential injection (305ms)
+    Γ£ö aws provider + s3 backend plan should succeed without any azurerm inputs (same-cloud, no injection) (298ms)
+    Γ£ö aws provider + azurerm backend plan should fail with an actionable error when azurerm backend inputs are missing (297ms)
+    Γ£ö aws init should succeed with workload identity federation (421ms)
+    Γ£ö gcp init should succeed with workload identity federation (543ms)
+    Γ£ö oci validate should succeed (412ms)
+    Γ£ö oci show to console should succeed (433ms)
+    Γ£ö azure import should succeed (320ms)
+    Γ£ö azure import should succeed with terraform variables (316ms)
+    Γ£ö azure force-unlock should succeed (313ms)
+    Γ£ö azure show to file with json should detect sensitive outputs and destroy changes (398ms)
+    Γ£ö azure show to file with json detects sensitivity nested under after_sensitive that a one-level scan would miss (design ┬º5.2.7 regression) (376ms)
+    Γ£ö azure show to file with json and failOnSensitiveOutputs=true fails on sensitive outputs, and deletes the file (379ms)
+    Γ£ö azure plan should succeed with terraform variables (301ms)
+    Γ£ö azure apply should succeed with terraform variables (312ms)
+    Γ£ö azure destroy should succeed with terraform variables (300ms)
+    Γ£ö azure plan should succeed with parallelism (320ms)
+    Γ£ö azure apply should succeed with parallelism (331ms)
+    Γ£ö azure init should succeed with lockfile readonly (315ms)
+    Γ£ö fmt check with diff should succeed (292ms)
+    Γ£ö azure test should succeed with filter and junit (297ms)
+    Γ£ö azure refresh should succeed (302ms)
+    Γ£ö azure refresh should succeed with var-file and target (284ms)
+    Γ£ö azure plan should succeed with var-file (286ms)
+    Γ£ö azure plan should succeed with target resources (367ms)
+    Γ£ö azure plan should succeed and publish plan results as attachment (353ms)
+    Γ£ö azure plan publish results attachment survives temp-file cleanup (418ms)
+    Γ£ö azure plan rejects a -json flag in commandOptions combined with publishPlanResults, before running terraform (#492 follow-up) (719ms)
+    Γ£ö azure plan publish results attachment is written with restrictive permissions (#547) (454ms)
+    Γ£ö a publishPlanResults-only run emits the byte-identical raw attachment and no summary attachment (backward-compat regression, design ┬º12.3) (408ms)
+    Γ£ö azure plan neutralizes a ##vso[...]-shaped line embedded in the human-readable plan text before echoing to the console (audit id9) (750ms)
+    Γ£ö passes the legacy terraform-plan-results attachment name raw (task-lib escapes it), not through sanitizeAttachmentName (compat regression) (910ms)
+    Γ£ö azure plan should succeed and publish a redacted structured plan summary attachment (760ms)
+    Γ£ö publishPlanSummary rejects logging-command injection characters in the attachment name (723ms)
+    Γ£ö plan honors a user-supplied -out= in commandOptions (no second injected -out=), builds the digest from the user plan, and leaves the user file after cleanup (#612) (656ms)
+    Γ£ö azure apply should succeed and publish a redacted structured apply summary attachment, echoing @message to the console (431ms)
+    Γ£ö azure apply neutralizes a ##vso[...]-shaped line embedded in an @message before echoing to the console (#678) (449ms)
+    Γ£ö azure apply with publishApplyResults still fails the task on a non-zero exit code, and still attaches the failed-outcome summary (421ms)
+    Γ£ö azure apply with includeDiagnostics unset publishes a structured apply summary with NO diagnostics (safe default, opt-in) (419ms)
+    Γ£ö azure apply of a saved plan (positional plan file) with publishApplyResults places -json BEFORE the plan file (#613) (383ms)
+    Γ£ö azure apply structured path surfaces terraform stderr on a non-zero exit instead of swallowing it (#613) (391ms)
+    Γ£ö azure destroy should succeed and publish a redacted structured plan summary attachment with planMode "destroy" (451ms)
+    Γ£ö azure destroy with publishPlanSummary still fails the task on a non-zero exit code, and still attaches the destroy summary (422ms)
+    Γ£ö a destroy run without publishPlanSummary emits no terraform-plan-summary attachment (backward-compat regression) (368ms)
+    Γ£ö destroy honors a user-supplied -out= in commandOptions (no second injected -out=) (#612 sibling) (390ms)
+    Γ£ö azure show should succeed and publish a redacted structured state summary attachment (368ms)
+    Γ£ö publishStateResults rejects logging-command injection characters in the attachment name (373ms)
+    Γ£ö a show run without publishStateResults emits no terraform-state-summary attachment (backward-compat regression) (396ms)
+    Γ£ö publishStateResults has no effect on a planfile show (positional-argument heuristic gate) (378ms)
+    Γ£ö unknown provider should fail with descriptive error (380ms)
+    Γ£ö EnvironmentVariableHelper should set, track, re-register, and clear variables (188ms)
+    Γ£ö EnvironmentVariableHelper should handle empty name and value gracefully (183ms)
+    Γ£ö emergencyCleanup should clear tracked environment variables (182ms)
+    Γ£ö RESOURCE_ADDRESS_RE should accept valid and reject invalid addresses (271ms)
+    Γ£ö parseVarFileTokens/parseTargetTokens keep space-containing values as single tokens (218ms)
+    Γ£ö normalizePem should normalize valid keys and reject malformed input (184ms)
+
+
+  606 passing (2m)
+
+EXITCODE=0

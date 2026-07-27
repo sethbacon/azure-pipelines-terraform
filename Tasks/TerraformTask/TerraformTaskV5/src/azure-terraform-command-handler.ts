@@ -6,6 +6,20 @@ import { EnvironmentVariableHelper } from "./environment-variables";
 import { generateIdToken } from './id-token-generator';
 
 /**
+ * Wall-clock bound for `az login`/`az account set` (#822, CWE-1088) -- ALWAYS
+ * ON, independent of the opt-in `commandTimeoutMinutes` input, because these
+ * are fast auxiliary calls (themselves opt-in via `runAzLogin`, for
+ * local-exec provisioners/external data sources) with no user-facing timeout
+ * knob of their own. Before this fix, a hung `az login --identity` against an
+ * unreachable instance-metadata endpoint (managed identity) blocked the job
+ * indefinitely with no task-level diagnostic at all -- not even opt-in, unlike
+ * the main terraform command path. 2 minutes comfortably covers a slow but
+ * healthy login/account-set while still failing fast on a genuine hang.
+ */
+export const AZ_LOGIN_TIMEOUT_MINUTES = 2;
+export const AZ_LOGIN_TIMEOUT_MS = AZ_LOGIN_TIMEOUT_MINUTES * 60_000;
+
+/**
  * Reads the user-assigned managed identity's client ID from an MSI-scheme
  * service connection, if the connection carries one. Returns undefined for a
  * system-assigned identity (the connection's "Service Principal Id" field is
@@ -209,7 +223,12 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         if (subscriptionId) {
             const setTool: ToolRunner = tasks.tool(azPath);
             setTool.arg(["account", "set", "--subscription", subscriptionId]);
-            await setTool.execAsync(<IExecOptions>{ silent: true });
+            await this.execWithTimeout(
+                setTool,
+                <IExecOptions>{ silent: true },
+                AZ_LOGIN_TIMEOUT_MS,
+                tasks.loc("TerraformAzLoginTimedOut", AZ_LOGIN_TIMEOUT_MINUTES),
+            );
         }
 
         tasks.debug("az login completed successfully.");
@@ -222,7 +241,12 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
      * exec-and-check sequence verbatim (#732).
      */
     private async execAzLogin(loginTool: ToolRunner): Promise<void> {
-        const loginResult = await loginTool.execAsync(<IExecOptions>{ silent: true });
+        const loginResult = await this.execWithTimeout(
+            loginTool,
+            <IExecOptions>{ silent: true },
+            AZ_LOGIN_TIMEOUT_MS,
+            tasks.loc("TerraformAzLoginTimedOut", AZ_LOGIN_TIMEOUT_MINUTES),
+        );
         if (loginResult !== 0) {
             throw new Error(`az login failed with exit code ${loginResult}`);
         }

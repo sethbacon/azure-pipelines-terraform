@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import tasks = require('azure-pipelines-task-lib/task');
-import { TerraformCommandHandlerAzureRM } from '../src/azure-terraform-command-handler';
+import { TerraformCommandHandlerAzureRM, AZ_LOGIN_TIMEOUT_MS } from '../src/azure-terraform-command-handler';
+import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
 
 /**
@@ -220,5 +221,49 @@ describe('runAzLogin — opt-in az login gate, argv shape & secret masking (#635
 
         assert.strictEqual(runAzLoginArgs.length, 1, 'az login must run once when the input is true');
         assert.strictEqual(runAzLoginArgs[0][0], 'managedserviceidentity', 'passes the resolved auth scheme through');
+    });
+
+    /* --- always-on timeout wiring (#822) --- */
+
+    it('bounds az login with an always-on timeout, independent of commandTimeoutMinutes', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a protected method
+        const proto = BaseTerraformCommandHandler.prototype as any;
+        const original = proto.execWithTimeout;
+        const calls: unknown[][] = [];
+        proto.execWithTimeout = function (this: BaseTerraformCommandHandler, ...args: unknown[]) {
+            calls.push(args);
+            return original.apply(this, args);
+        };
+        try {
+            const handler = new TerraformCommandHandlerAzureRM();
+            await (handler as any).runAzLogin('managedserviceidentity', 'sc-1', '');
+        } finally {
+            proto.execWithTimeout = original;
+        }
+
+        assert.strictEqual(calls.length, 1, 'az login must invoke execWithTimeout exactly once');
+        assert.strictEqual(calls[0][2], AZ_LOGIN_TIMEOUT_MS, 'az login must pass the always-on explicit timeout, not commandTimeoutMinutes');
+        assert.strictEqual(calls[0][3], 'TerraformAzLoginTimedOut', 'az login must pass the TerraformAzLoginTimedOut loc message');
+    });
+
+    it('bounds az account set with the same always-on timeout when a subscription is provided', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a protected method
+        const proto = BaseTerraformCommandHandler.prototype as any;
+        const original = proto.execWithTimeout;
+        const calls: unknown[][] = [];
+        proto.execWithTimeout = function (this: BaseTerraformCommandHandler, ...args: unknown[]) {
+            calls.push(args);
+            return original.apply(this, args);
+        };
+        try {
+            const handler = new TerraformCommandHandlerAzureRM();
+            await (handler as any).runAzLogin('managedserviceidentity', 'sc-1', 'sub-999');
+        } finally {
+            proto.execWithTimeout = original;
+        }
+
+        assert.strictEqual(calls.length, 2, 'login + account set, each individually bounded');
+        assert.strictEqual(calls[1][2], AZ_LOGIN_TIMEOUT_MS, 'account set must pass the same always-on explicit timeout');
+        assert.strictEqual(calls[1][3], 'TerraformAzLoginTimedOut', 'account set must pass the TerraformAzLoginTimedOut loc message');
     });
 });

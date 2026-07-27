@@ -196,6 +196,17 @@ export function relativeWorkingDirectoryForDigest(workingDirectory: string): str
 export const MAX_CAPTURED_STDOUT_BYTES = 100 * 1024 * 1024; // 100 MB
 
 /**
+ * Upper bound on the stdout/stderr captured by fmt()/test() purely to build a
+ * clearer failure message (#826) -- deliberately much smaller than
+ * {@link MAX_CAPTURED_STDOUT_BYTES}, which bounds a `-json` plan/state/apply
+ * digest capture that can legitimately be very large. `fmt -check`'s file
+ * list and terraform's own CLI diagnostics are always small; this just keeps
+ * a misbehaving/verbose run from growing the buffer unreasonably before the
+ * message is built.
+ */
+export const MAX_CAPTURED_MESSAGE_BYTES = 64 * 1024; // 64 KiB
+
+/**
  * Single abstract base carrying every terraform sub-command (init/plan/apply/...)
  * plus the auth/temp-file plumbing shared by all provider handlers. The size is a
  * deliberate cohesion trade-off: the provider subclasses (azure/aws/gcp/oci/hcp/
@@ -430,6 +441,139 @@ export abstract class BaseTerraformCommandHandler {
 
     // --- Core infrastructure ---
 
+    /**
+     * Reads the optional `commandTimeoutMinutes` input and returns the
+     * configured minutes, or `undefined` when unset/0/invalid -- the default,
+     * fully backward-compatible "unbounded" behavior every existing call site
+     * and test relies on (#822).
+     */
+    protected getCommandTimeoutMinutes(): number | undefined {
+        const raw = tasks.getInput("commandTimeoutMinutes", false);
+        const minutes = parseInt(raw || '0', 10);
+        return Number.isFinite(minutes) && minutes > 0 ? minutes : undefined;
+    }
+
+    /**
+     * Wraps a ToolRunner's execAsync with a wall-clock deadline (#822,
+     * CWE-1088). azure-pipelines-task-lib's execAsync only bounds output
+     * byte-size (this file's own MAX_CAPTURED_STDOUT_BYTES cap) -- never
+     * wall-clock time -- so a stalled provider plugin or a network partition
+     * to a remote state backend/lock service blocks the job indefinitely with
+     * no task-level diagnostic, relying solely on the ADO job-level timeout
+     * (unbounded by default on a self-hosted agent). Mirrors the Promise.race +
+     * killChildProcess pattern already shipped in
+     * TerraformPolicyCheckV1/TerraformDocsV1's exec-timeout.ts, kept as a
+     * TaskV5-local method (not a shared-module copy) -- every TaskV5 call site
+     * funnels through this ONE method or {@link execWithStdoutCapture} (which
+     * itself delegates here), so there is no second implementation to keep
+     * byte-identical across a shared-module family the way the
+     * single-call-site docs/policy tasks need.
+     *
+     * Two ways to get a deadline:
+     *  - `explicitTimeoutMs` + `explicitTimeoutMessage`: an ALWAYS-ON bound the
+     *    caller controls directly, independent of the opt-in
+     *    `commandTimeoutMinutes` input -- used by azure-terraform-command-
+     *    handler.ts's `az login`/`az account set` calls (a hung `az login
+     *    --identity` against an unreachable instance-metadata endpoint used to
+     *    block the job indefinitely with NO bound at all, opt-in or
+     *    otherwise). Caller must supply both or neither -- there is no
+     *    sensible default message for an arbitrary caller-chosen duration.
+     *  - Omitted (every pre-existing call site, the main terraform command
+     *    path): falls back to the `commandTimeoutMinutes` input. When that is
+     *    unset/0/invalid (the default), this is a pure passthrough to
+     *    `tool.execAsync(options)` -- no timer, no Promise.race -- so every
+     *    pre-existing call site's behavior is byte-for-byte unchanged.
+     */
+    protected async execWithTimeout(
+        tool: ToolRunner,
+        options: IExecOptions,
+        explicitTimeoutMs?: number,
+        explicitTimeoutMessage?: string,
+    ): Promise<number> {
+        let timeoutMs: number;
+        let timeoutMessage: string;
+        if (explicitTimeoutMs !== undefined) {
+            timeoutMs = explicitTimeoutMs;
+            timeoutMessage = explicitTimeoutMessage!;
+        } else {
+            const minutes = this.getCommandTimeoutMinutes();
+            if (!minutes) {
+                return tool.execAsync(options);
+            }
+            timeoutMs = minutes * 60_000;
+            timeoutMessage = tasks.loc('TerraformCommandTimedOut', minutes);
+        }
+        let timer: NodeJS.Timeout | undefined;
+        const deadline = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                try { tool.killChildProcess('SIGKILL'); } catch { /* best-effort: child may already be gone */ }
+                reject(new Error(timeoutMessage));
+            }, timeoutMs);
+        });
+        const exec = tool.execAsync(options);
+        // Swallow a late rejection from the killed child once the deadline has
+        // already won the race below -- otherwise it surfaces as an unhandled
+        // promise rejection.
+        exec.catch(() => { /* intentionally ignored */ });
+        try {
+            return await Promise.race([exec, deadline]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    /**
+     * Throws a command-specific loc-keyed failure, folding any captured
+     * stderr/diagnostic detail lines underneath it (#821). plan()/apply()/
+     * destroy()/fmt()/test() each independently hand-wrote this exact "does
+     * the loc message need a detail block or not" formatting -- and the two
+     * historical fixes #821 cites as evidence of the resulting cost (#749,
+     * #750) were both really about WHICH detail to fold in, not this
+     * formatting step, which is now the one place a future fix to fold in a
+     * new/different detail source needs to change. `details` may be empty
+     * (destroy()'s real -auto-approve exec has no captured output to fold in
+     * today) -- an empty/all-blank array reduces to the bare loc message,
+     * byte-identical to a plain `throw new Error(tasks.loc(...))`.
+     */
+    private throwCommandFailure(locKey: string, code: number, details: string[] = []): never {
+        const detail = details.filter(line => line).join('\n');
+        throw new Error(detail
+            ? `${tasks.loc(locKey, code)}\n${detail}`
+            : tasks.loc(locKey, code));
+    }
+
+    /**
+     * Attaches ADDITIVE stdout/stderr listeners to `tool`, accumulating each
+     * stream into its OWN buffer under one shared byte budget, for fmt()/
+     * test()'s failure-message building (#826). Deliberately separate from
+     * {@link execWithStdoutCapture}, which forces `silent: true` (suppressing
+     * the live console echo fmt/test have always had) and is sized for a
+     * `-json` digest, not a small diagnostic message. Keeping the two streams
+     * separate (rather than one merged buffer) lets a caller tell "the tool
+     * reported X on stdout" apart from "it reported Y on stderr" -- fmt() uses
+     * this to avoid misclassifying a stderr-only crash as `-check`'s
+     * stdout-only unformatted-file listing. Must be called BEFORE
+     * execWithTimeout/execAsync -- the mock and real ToolRunner both emit
+     * these events synchronously during exec, before it resolves.
+     */
+    private captureMessageStreams(tool: ToolRunner): { stdout(): string; stderr(): string } {
+        let capturedStdout = '';
+        let capturedStderr = '';
+        let capturedBytes = 0;
+        const makeCapture = (append: (text: string) => void) => (data: string | Buffer): void => {
+            if (capturedBytes >= MAX_CAPTURED_MESSAGE_BYTES) return;
+            const text = data.toString();
+            capturedBytes += Buffer.byteLength(text);
+            append(text);
+        };
+        tool.on('stdout', makeCapture(text => { capturedStdout += text; }));
+        tool.on('stderr', makeCapture(text => { capturedStderr += text; }));
+        return {
+            stdout: () => capturedStdout,
+            stderr: () => capturedStderr,
+        };
+    }
+
     protected async execWithStdoutCapture(
         terraformTool: ToolRunner,
         options: IExecOptions,
@@ -493,7 +637,7 @@ export abstract class BaseTerraformCommandHandler {
         // redaction (see echoApplyMessages() and plan()'s post-capture echo).
         let code: number;
         try {
-            code = await terraformTool.execAsync({ ...options, silent: true });
+            code = await this.execWithTimeout(terraformTool, { ...options, silent: true });
         } catch (err) {
             // A caller without ignoreReturnCode reaches here on a non-zero exit
             // (or spawn failure). If the overflow guard killed the child, report
@@ -726,7 +870,7 @@ export abstract class BaseTerraformCommandHandler {
         let result: number | undefined;
         let initError: unknown;
         try {
-            result = await terraformTool.execAsync(<IExecOptions>{
+            result = await this.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: initCommand.workingDirectory
             });
         } catch (error) {
@@ -978,7 +1122,7 @@ export abstract class BaseTerraformCommandHandler {
             // apply; the plan echo was the sibling path it never covered).
             this.echoSafeConsoleLine(planStdout);
         } else {
-            result = await terraformTool.execAsync(<IExecOptions>{
+            result = await this.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
             });
@@ -1027,9 +1171,7 @@ export abstract class BaseTerraformCommandHandler {
             // On the silent publishPlanResults path terraform's own error text
             // (stderr) no longer reaches the log via the ToolRunner echo -- fold
             // it into the failure exactly like apply() does (#613).
-            throw new Error(planStderr
-                ? `${tasks.loc("TerraformPlanFailed", result)}\n${planStderr}`
-                : tasks.loc("TerraformPlanFailed", result));
+            this.throwCommandFailure("TerraformPlanFailed", result, planStderr ? [planStderr] : []);
         }
         // A successful plan may still write warnings to stderr; with the silent
         // capture they would otherwise vanish -- pass them through at debug level
@@ -1205,7 +1347,7 @@ export abstract class BaseTerraformCommandHandler {
         let customError: unknown;
         try {
             if (outputTo === "console") {
-                result = await terraformTool.execAsync(<IExecOptions>{
+                result = await this.execWithTimeout(terraformTool, <IExecOptions>{
                     cwd: customCommand.workingDirectory
                 });
             } else if (outputTo === "file") {
@@ -1265,7 +1407,7 @@ export abstract class BaseTerraformCommandHandler {
         await this.warnIfMultipleProviders();
 
         if (!publishApplyResults) {
-            return terraformTool.execAsync(<IExecOptions>{
+            return this.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: applyCommand.workingDirectory
             });
         }
@@ -1300,10 +1442,7 @@ export abstract class BaseTerraformCommandHandler {
             // error-severity diagnostic summaries from the NDJSON alongside
             // stderr.
             const errorDiagnostics = this.extractApplyErrorDiagnostics(commandOutput.stdout);
-            const detailLines = [...errorDiagnostics, ...(stderr ? [stderr] : [])];
-            throw new Error(detailLines.length > 0
-                ? `${tasks.loc("TerraformApplyFailed", commandOutput.code)}\n${detailLines.join('\n')}`
-                : tasks.loc("TerraformApplyFailed", commandOutput.code));
+            this.throwCommandFailure("TerraformApplyFailed", commandOutput.code, [...errorDiagnostics, ...(stderr ? [stderr] : [])]);
         }
         // A successful apply may still write warnings to stderr; pass them through
         // at debug level (they are not part of the NDJSON the digest is built from).
@@ -1495,7 +1634,7 @@ export abstract class BaseTerraformCommandHandler {
         }
 
         if (!publishPlanSummary) {
-            return terraformTool.execAsync(<IExecOptions>{
+            return this.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: destroyCommand.workingDirectory
             });
         }
@@ -1506,7 +1645,7 @@ export abstract class BaseTerraformCommandHandler {
         // pattern for the same reason (design D2). Destroy still auto-approves
         // and still fails the task on a non-zero exit exactly as the
         // non-structured path above.
-        const result = await terraformTool.execAsync(<IExecOptions>{
+        const result = await this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: destroyCommand.workingDirectory,
             ignoreReturnCode: true,
         });
@@ -1521,7 +1660,7 @@ export abstract class BaseTerraformCommandHandler {
         await this.publishPlanSummaryAttachment(planFilePath!, destroyCommand.workingDirectory, publishPlanSummary, tempDir, 'destroy');
 
         if (result !== 0) {
-            throw new Error(tasks.loc("TerraformDestroyFailed", result));
+            this.throwCommandFailure("TerraformDestroyFailed", result);
         }
         return result;
     }
@@ -1552,7 +1691,7 @@ export abstract class BaseTerraformCommandHandler {
         }));
         this.appendTerraformVariables(planTool);
 
-        const result = await planTool.execAsync(<IExecOptions>{
+        const result = await this.execWithTimeout(planTool, <IExecOptions>{
             cwd: workingDirectory,
             ignoreReturnCode: true,
         });
@@ -1599,7 +1738,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const terraformTool = this.terraformToolHandler.createToolRunner(validateCommand);
 
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: validateCommand.workingDirectory
         });
     }
@@ -1619,7 +1758,7 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(workspaceCommand);
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: workspaceCommand.workingDirectory
         });
     }
@@ -1643,14 +1782,15 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(stateCommand);
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: stateCommand.workingDirectory
         });
     }
 
     public async fmt(): Promise<number> {
+        const fmtCheck = tasks.getBoolInput("fmtCheck", false);
         let args = "";
-        if (tasks.getBoolInput("fmtCheck", false)) { args += " -check"; }
+        if (fmtCheck) { args += " -check"; }
         if (tasks.getBoolInput("fmtRecursive", false)) { args += " -recursive"; }
         if (tasks.getBoolInput("fmtDiff", false)) { args += " -diff"; }
         const commandOptions = this.getCommandOptions();
@@ -1662,9 +1802,39 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(fmtCommand);
-        return terraformTool.execAsync(<IExecOptions>{
-            cwd: fmtCommand.workingDirectory
+
+        // #826: stdout and stderr are captured into SEPARATE buffers (not one
+        // shared buffer) via ADDITIVE listeners -- not execWithStdoutCapture,
+        // which forces `silent: true` and would suppress the live console echo
+        // this command has always had -- so a non-zero exit can be
+        // differentiated instead of the bare ToolRunner default, mirroring
+        // TerraformDocsV1's --output-check handling. `-check` reports
+        // unformatted files as a plain filename-per-line list on STDOUT with no
+        // error diagnostic (confirmed by this task's own FmtFail fixture); a
+        // genuine crash (bad HCL, permissions, ...) writes its diagnostic to
+        // STDERR instead and produces no stdout -- so "not formatted" is keyed
+        // off stdout specifically, not merely "was ANYTHING captured" (which
+        // previously misclassified a stderr-only crash as unformatted files).
+        // Any other non-zero exit falls back to a generic message with BOTH
+        // captured streams folded in, same as plan()/apply()'s existing
+        // stderr-fold precedent (#613).
+        const capture = this.captureMessageStreams(terraformTool);
+
+        const code = await this.execWithTimeout(terraformTool, <IExecOptions>{
+            cwd: fmtCommand.workingDirectory,
+            ignoreReturnCode: true,
         });
+
+        if (code !== 0) {
+            if (fmtCheck) {
+                const files = splitNonEmptyLines(capture.stdout());
+                if (files.length > 0) {
+                    throw new Error(tasks.loc("TerraformFmtNotFormatted", files.length));
+                }
+            }
+            this.throwCommandFailure("TerraformFmtFailed", code, [capture.stdout().trim(), capture.stderr().trim()]);
+        }
+        return code;
     }
 
     public async test(): Promise<number> {
@@ -1687,16 +1857,44 @@ export abstract class BaseTerraformCommandHandler {
             const testCommand = this.createAuthCommand("test", commandOptions);
             const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
             await this.handleProvider(testCommand);
-            return terraformTool.execAsync(<IExecOptions>{
-                cwd: testCommand.workingDirectory
-            });
+            return this.runTestCommand(terraformTool, testCommand.workingDirectory);
         }
 
         const testCommand = this.createBaseCommand("test", commandOptions);
         const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
-        return terraformTool.execAsync(<IExecOptions>{
-            cwd: testCommand.workingDirectory
+        return this.runTestCommand(terraformTool, testCommand.workingDirectory);
+    }
+
+    /**
+     * Runs `terraform test` with bounded stdout/stderr capture (ADDITIVE
+     * listeners -- not execWithStdoutCapture, so the live console echo this
+     * command has always had is preserved) so a non-zero exit's failure
+     * message carries the actual terraform detail instead of the bare
+     * ToolRunner default (#826) -- mirrors plan()/apply()'s existing
+     * stderr-fold precedent (#613). Unlike fmt()'s `-check` case, `terraform
+     * test` has no single well-known machine-checkable marker distinguishing
+     * "tests ran and some failed" from "the test command itself crashed" in
+     * its human-readable output, so this does not attempt to synthesize a
+     * pass/fail count -- it surfaces the captured detail either way, which is
+     * the actionable improvement the issue asks for without guessing at an
+     * unverified output format. Streams are captured separately (mirroring
+     * fmt()'s #826 fix) purely so a verbose stdout test report can't crowd a
+     * genuinely useful stderr diagnostic out of the shared byte budget --
+     * both are still folded into the one TerraformTestFailed message either
+     * way; there is no classification/message-choice difference like fmt()'s.
+     */
+    private async runTestCommand(terraformTool: ToolRunner, workingDirectory: string): Promise<number> {
+        const capture = this.captureMessageStreams(terraformTool);
+
+        const code = await this.execWithTimeout(terraformTool, <IExecOptions>{
+            cwd: workingDirectory,
+            ignoreReturnCode: true,
         });
+
+        if (code !== 0) {
+            this.throwCommandFailure("TerraformTestFailed", code, [capture.stdout().trim(), capture.stderr().trim()]);
+        }
+        return code;
     }
 
     public async get(): Promise<number> {
@@ -1706,7 +1904,7 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(getCommand);
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: getCommand.workingDirectory
         });
     }
@@ -1731,7 +1929,7 @@ export abstract class BaseTerraformCommandHandler {
 
         await this.handleProvider(importCommand);
 
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: importCommand.workingDirectory
         });
     }
@@ -1748,7 +1946,7 @@ export abstract class BaseTerraformCommandHandler {
 
         const unlockCommand = this.createBaseCommand("force-unlock", args);
         const terraformTool = this.terraformToolHandler.createToolRunner(unlockCommand);
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: unlockCommand.workingDirectory
         });
     }
@@ -1767,7 +1965,7 @@ export abstract class BaseTerraformCommandHandler {
 
         await this.handleProvider(refreshCommand);
 
-        return terraformTool.execAsync(<IExecOptions>{
+        return this.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: refreshCommand.workingDirectory
         });
     }

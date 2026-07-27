@@ -15,7 +15,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "287",
+        "Minor": "288",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -182,6 +182,14 @@
             "label": "Additional command arguments",
             "helpMarkDown": "Any additional arguments for the selected command such as '-option=value' or '-flag'. Multiple options can also be provided delimited by spaces.<br><br>Examples:<br>-out=tfplan (for terraform plan)<br>tfplan -auto-approve (for terraform apply)",
             "required": false
+        },
+        {
+            "name": "commandTimeoutMinutes",
+            "type": "string",
+            "label": "Command timeout (minutes)",
+            "defaultValue": "0",
+            "required": false,
+            "helpMarkDown": "Maximum wall-clock time, in minutes, to wait for the terraform/az CLI to finish before it is killed and the step fails. Guards against a hung or deadlocked subprocess (e.g. a stalled provider plugin, an unreachable state backend, or an `az login` that never returns) blocking the job indefinitely. Set to 0 (the default) to disable and rely solely on the pipeline/agent's own job timeout."
         },
         {
             "name": "publishPlanResults",
