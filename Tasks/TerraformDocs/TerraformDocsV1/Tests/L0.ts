@@ -6,6 +6,8 @@ import * as path from 'path';
 import './ArgsBuilderL0';
 // Direct unit tests for the bounded subprocess execution wrapper (#782).
 import './ExecTimeoutL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT cancellation handling (#775).
+import './SignalHandlerL0';
 
 describe('TerraformDocs Test Suite', function () {
 

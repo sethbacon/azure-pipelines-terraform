@@ -14,6 +14,34 @@ const MAX_CAPTURED_TOOL_BYTES = 64 * 1024; // 64 KiB
 async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
 
+    // #775: unlike TerraformDriftReportV1/TerraformPolicyCheckV1/TerraformTaskV5
+    // (whose SIGTERM/SIGINT pattern this mirrors), this task writes no sensitive
+    // temp file, so cleanup() is a deliberate no-op -- the handler is still
+    // registered so a cancelled run dies promptly instead of lingering
+    // (registering a signal listener suppresses Node's default terminate-on-
+    // signal behavior, so the signal must be re-raised with its default
+    // disposition after cleanup) and so a future addition of temp-file handling
+    // here inherits the same cancellation discipline instead of silently
+    // missing it.
+    const cleanup = (): void => { /* No sensitive temp file/state to clean up today. */ };
+    const handleTerminationSignal = (signal: NodeJS.Signals) => {
+        cleanup();
+        process.removeListener(signal, handleTerminationSignal);
+        process.kill(process.pid, signal);
+    };
+    process.on('SIGTERM', handleTerminationSignal);
+    process.on('SIGINT', handleTerminationSignal);
+    process.on('uncaughtException', (err) => {
+        cleanup();
+        tasks.setResult(tasks.TaskResult.Failed, `Uncaught exception: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+    });
+    process.on('unhandledRejection', (reason) => {
+        cleanup();
+        tasks.setResult(tasks.TaskResult.Failed, `Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+        process.exit(1);
+    });
+
     try {
         const config: TerraformDocsConfig = {
             formatter: tasks.getInput('formatter', true)!,
@@ -104,6 +132,9 @@ async function run() {
         tasks.setResult(tasks.TaskResult.Succeeded, '');
     } catch (error) {
         tasks.setResult(tasks.TaskResult.Failed, error instanceof Error ? error.message : String(error));
+    } finally {
+        process.removeListener('SIGTERM', handleTerminationSignal);
+        process.removeListener('SIGINT', handleTerminationSignal);
     }
 }
 

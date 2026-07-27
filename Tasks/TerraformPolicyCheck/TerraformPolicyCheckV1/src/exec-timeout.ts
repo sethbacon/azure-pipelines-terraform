@@ -29,7 +29,7 @@ export async function execWithTimeout(
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      tool.killChildProcess();
+      tool.killChildProcess('SIGKILL');
       reject(new Error(timeoutMessage));
     }, timeoutMs);
   });

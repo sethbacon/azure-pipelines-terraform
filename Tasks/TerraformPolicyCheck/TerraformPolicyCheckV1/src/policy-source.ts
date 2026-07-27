@@ -151,7 +151,7 @@ async function execGit(tool: ToolRunner, extraEnv: Record<string, string> = {}):
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-            tool.killChildProcess();
+            tool.killChildProcess('SIGKILL');
             reject(new Error(tasks.loc('PolicyRepoCloneTimedOut', GIT_TIMEOUT_MS)));
         }, GIT_TIMEOUT_MS);
     });
