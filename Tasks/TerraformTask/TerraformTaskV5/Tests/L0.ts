@@ -18,6 +18,7 @@ import './SecureFileLoaderL0';
 import './SecureTempL0';
 // Direct unit tests for the bounded stdout-capture guard (#632).
 import './ExecStdoutCaptureL0';
+import './ExecWithTimeoutL0';
 // Direct unit tests for the emergency-only output-file cleanup split (#650).
 import './EmergencyOnlyCleanupL0';
 // Direct unit tests for OCI WIF temp-dir resolution (Agent.TempDirectory).
@@ -1624,6 +1625,32 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    it('fmt check does not misclassify a stderr-only crash as unformatted files (#826)', async () => {
+        let tp = path.join(__dirname, './FmtTests/FmtCheckCrash.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('FmtCheckCrashL0 should have succeeded.'), 'Should have printed: FmtCheckCrashL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('fmt check surfaces the unformatted-files message, not a generic failure (#826)', async () => {
+        let tp = path.join(__dirname, './FmtTests/FmtCheckNotFormatted.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('FmtCheckNotFormattedL0 should have succeeded.'), 'Should have printed: FmtCheckNotFormattedL0 should have succeeded.');
+        }, tr);
+    });
+
     /* terraform get tests */
 
     it('get should succeed', async () => {
@@ -2287,6 +2314,19 @@ describe('Terraform Test Suite', function () {
             assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
             assert(tr.errorIssues.length === 0, 'should have no errors');
             assert(tr.stdOutContained('AzureTestSuccessL0 should have succeeded.'), 'Should have printed: AzureTestSuccessL0 should have succeeded.');
+        }, tr);
+    });
+
+    it('azure test command surfaces TerraformTestFailed with captured detail on a non-zero exit (#826)', async () => {
+        let tp = path.join(__dirname, './TestCommandTests/AzureTestFail.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('AzureTestFailL0 should have succeeded.'), 'Should have printed: AzureTestFailL0 should have succeeded.');
         }, tr);
     });
 
