@@ -7,7 +7,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch: {}
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      ref:
+        description: >-
+          Commit SHA or ref to check out (defaults to github.sha when
+          omitted). Lets a caller (e.g. release.yml's guard-validated
+          release pipeline) pin every job in this reusable workflow to an
+          exact commit instead of a mutable tag/branch name (#485).
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,9 +25,11 @@ jobs:
   check-versions:
     name: Check Version Consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Validate version fields
         run: node scripts/check-versions.js
@@ -51,9 +62,11 @@ jobs:
   check-shared-modules:
     name: Check Shared Module Parity
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Validate shared installer modules are identical
         run: node scripts/check-shared-modules.js
@@ -65,6 +78,7 @@ jobs:
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -97,6 +112,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-task-v5-${{ matrix.os }}
+          path: Tasks/TerraformTask/TerraformTaskV5/coverage/
+          retention-days: 7
       # Every task.json in this repo declares a Node20_1 execution handler
       # alongside Node24 (see CLAUDE.md's task.json Schema Key Points) so older
       # on-prem/air-gapped agents without the Node 24 runner can still invoke
@@ -153,6 +175,7 @@ jobs:
   build-and-test-v5-smoke:
     name: Build and Test V5 Smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -163,6 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -185,6 +209,7 @@ jobs:
     needs: build-and-test-v5-smoke
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Verify all V5 smoke matrix legs passed
         if: needs.build-and-test-v5-smoke.result != 'success'
@@ -193,6 +218,7 @@ jobs:
   build-and-test-installer-v1:
     name: Build and Test Installer V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -203,6 +229,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -221,6 +248,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-installer-v1-${{ matrix.os }}
+          path: Tasks/TerraformInstaller/TerraformInstallerV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -233,6 +267,7 @@ jobs:
   build-and-test-mirror-v1:
     name: Build and Test Provider Mirror V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -243,6 +278,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -261,6 +297,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-provider-mirror-v1-${{ matrix.os }}
+          path: Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -273,6 +316,7 @@ jobs:
   build-and-test-publish-v1:
     name: Build and Test Module Publish V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -283,6 +327,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -301,6 +346,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-module-publish-v1-${{ matrix.os }}
+          path: Tasks/TerraformModulePublish/TerraformModulePublishV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -313,6 +365,7 @@ jobs:
   build-and-test-policy-installer-v1:
     name: Build and Test Policy Agent Installer V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -323,6 +376,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -341,6 +395,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-policy-agent-installer-v1-${{ matrix.os }}
+          path: Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -353,6 +414,7 @@ jobs:
   build-and-test-policy-check-v1:
     name: Build and Test Policy Check V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -363,6 +425,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -381,6 +444,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-policy-check-v1-${{ matrix.os }}
+          path: Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -393,6 +463,7 @@ jobs:
   build-and-test-driftreport-v1:
     name: Build and Test Drift Report V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -403,6 +474,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -421,6 +493,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-drift-report-v1-${{ matrix.os }}
+          path: Tasks/TerraformDriftReport/TerraformDriftReportV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -433,6 +512,7 @@ jobs:
   build-and-test-docs-installer-v1:
     name: Build and Test terraform-docs Installer V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -443,6 +523,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -461,6 +542,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-docs-installer-v1-${{ matrix.os }}
+          path: Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -473,6 +561,7 @@ jobs:
   build-and-test-docs-v1:
     name: Build and Test terraform-docs V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -483,6 +572,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -501,6 +591,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-terraform-docs-v1-${{ matrix.os }}
+          path: Tasks/TerraformDocs/TerraformDocsV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -513,6 +610,7 @@ jobs:
   build-and-test-markdown2html-v1:
     name: Build and Test Markdown2Html V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -523,6 +621,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -541,6 +640,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-markdown2html-v1-${{ matrix.os }}
+          path: Tasks/Markdown2Html/Markdown2HtmlV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -553,6 +659,7 @@ jobs:
   build-and-test-publishkbarticle-v1:
     name: Build and Test Publish KB Article V1 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -563,6 +670,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -581,6 +689,13 @@ jobs:
         run: npm run compile
       - name: Run unit tests with coverage
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-publish-kb-article-v1-${{ matrix.os }}
+          path: Tasks/PublishKbArticle/PublishKbArticleV1/coverage/
+          retention-days: 7
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
@@ -593,6 +708,7 @@ jobs:
   build-and-test-tab:
     name: Build and Test Tab (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -600,6 +716,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -617,6 +734,13 @@ jobs:
         run: npx --no-install tsc -p src/tab/tsconfig.json --noEmit
       - name: Run tab unit tests
         run: npm run test:tab
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-tab-${{ matrix.os }}
+          path: coverage/
+          retention-days: 7
 
   # Stable required-status-check context for the Tab tests. Branch protection
   # on main pins the bare "Build and Test Tab" context, but the matrix job
@@ -632,6 +756,7 @@ jobs:
     needs: build-and-test-tab
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Verify all Tab matrix legs passed
         if: needs.build-and-test-tab.result != 'success'
@@ -640,9 +765,11 @@ jobs:
   actionlint:
     name: Lint GitHub Actions
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Install actionlint
         shell: bash
@@ -667,11 +794,13 @@ jobs:
   zizmor:
     name: Scan Workflows (zizmor)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - name: Download and verify zizmor
         shell: bash
