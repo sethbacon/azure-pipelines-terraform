@@ -163,6 +163,16 @@ azure-pipelines-terraform/
 | `proxy-config.ts`                      | Builds `fetch()` options routing the OIDC/OCI outbound HTTPS calls through the agent's configured proxy (`Agent.ProxyUrl`/`Agent.ProxyUsername`/`Agent.ProxyPassword`) |
 | `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers |
 
+### Manifest (`task.json`) size & organization convention
+
+`TerraformTaskV5/task.json` is by far the largest task manifest (~1,200 lines vs. <330 for every other task), because it declares several cloud provider/backend combinations plus the dynamic AzureRM/AWS/OCI pickers in one task. That size is expected, but the manifest gets no compiler/lint support the way `.ts` does, so keep it reviewable as it grows:
+
+- Group every input under a `groupName` (e.g. `providerAzureRm`, `backendAWS`, `backendGCP`) and keep a provider's inputs contiguous with its group.
+- Put dynamic pickList lookups in the `dataSourceBindings` block, keyed by the target input — do not inline lookup logic elsewhere.
+- Prefer a `visibleRule` on an existing input over adding a new input when an input can simply be shown conditionally.
+
+New inputs should extend an existing group rather than adding a parallel section, so the manifest grows proportionally to real capability rather than becoming an unreviewable flat list (#836).
+
 ### Structured plan/apply results (`src/results/`)
 
 Builds the redacted JSON digests published to the **Terraform** tab (see `docs/design/plan-apply-digest-spec.md` for the frozen schema/redaction contract):
