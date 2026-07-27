@@ -812,16 +812,16 @@ jobs:
         # no runtime Python dependencies (requires_dist is empty per the PyPI
         # JSON API), so verifying the single wheel it resolves to is
         # sufficient. Checksum from
-        # https://pypi.org/pypi/zizmor/1.26.1/json (manylinux_2_28_x86_64
+        # https://pypi.org/pypi/zizmor/1.28.0/json (manylinux_2_28_x86_64
         # wheel, matching this job's ubuntu-latest x86_64 runner).
         run: |
           set -euo pipefail
-          curl -sSfLO https://files.pythonhosted.org/packages/a8/2b/61ab13d45d6ce57ef5a08bb3246981f62e30bb4938098b17bb7b88110b79/zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl
-          echo "6a958d8a0941d7e1d0de8436670b5cb7fc64c8028b4d16e3f519ccc77f953cef  zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl" | sha256sum -c -
+          curl -sSfLO https://files.pythonhosted.org/packages/5b/b4/f823bd2a1ba6dc432fdcbd249d4c442ce79bd137d34d986fce5c181f2800/zizmor-1.28.0-py3-none-manylinux_2_28_x86_64.whl
+          echo "ae2cab67ce713e760e0d1b61ad749d374693ea2b310337aab11cd446748267f3  zizmor-1.28.0-py3-none-manylinux_2_28_x86_64.whl" | sha256sum -c -
       # Online audits (ref-version-mismatch, impostor-commit, known-vulnerable
       # actions) use GITHUB_TOKEN; the rest (unpinned-uses, template-injection,
       # excessive-permissions) run regardless. Pinned for a deterministic gate.
       - name: Run zizmor
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pipx run --spec ./zizmor-1.26.1-py3-none-manylinux_2_28_x86_64.whl zizmor .github/workflows/
+        run: pipx run --spec ./zizmor-1.28.0-py3-none-manylinux_2_28_x86_64.whl zizmor .github/workflows/
