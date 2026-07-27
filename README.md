@@ -163,6 +163,8 @@ Shown on all commands except `init`/`validate`/`workspace`/`state`/`fmt`/`get`/`
 | `ociWifIdentityDomainUrl`                  | OCI      | — (required for WIF)    | URL of the OCI Identity Domain configured for OIDC federation.                                                                                                                                                                                |
 | `ociWifClientId`                           | OCI      | — (required for WIF)    | Client ID of the Identity Domains application configured to accept OIDC tokens from Azure DevOps.                                                                                                                                             |
 
+> **Least-privilege note (static credentials).** The default `ServiceConnection` value of `environmentAuthSchemeAWS` / `environmentAuthSchemeGCP` (and their `backendAuthSchemeAWS` / `backendAuthSchemeGCP` backend equivalents) authenticates with a long-lived static access key / service-account key. Unlike a WIF-derived session token, a leaked static key does not expire — prefer `WorkloadIdentityFederation` where available, and where static credentials are unavoidable, scope the underlying IAM user (AWS) or service account (GCP) to least-privilege permissions. Each WIF path ships a worked least-privilege example under [`docs/setup/`](docs/setup/); the static-credential path relies on this guidance.
+
 #### Backend configuration inputs (`init` only)
 
 Shown when `command = init`. The `azurerm`/`s3`/`gcs`/`oci` field groups are shown based on the selected `provider` (not `backendType`); the `hcp` and `generic` groups are shown based on `backendType` — see [Backend Types](#backend-types).
@@ -630,7 +632,7 @@ There is no `environmentAuthSchemeAzureRM` input — the service connection's ow
 | AWS service connection type                    | `AWSServiceEndpoint`                                           | `PTTAWSServiceEndpoint`                                               |
 | GCP service connection type                    | `GoogleCloudServiceEndpoint`                                   | `PTTGoogleCloudServiceEndpoint`                                       |
 | OCI service connection type                    | `OCIServiceEndpoint`                                           | `PTTOCIServiceEndpoint`                                               |
-| Azure backend resource group/storage dropdowns | Dynamic API lookups                                            | Free-text strings                                                     |
+| Azure backend resource group/storage dropdowns | Dynamic API lookups                                            | Dynamic API lookups (dynamic pickList dropdowns via `dataSourceBindings`)                                                     |
 | Side-by-side install                           | N/A                                                            | Yes — distinct extension ID and service connection types              |
 
 ---

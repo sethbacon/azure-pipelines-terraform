@@ -155,6 +155,13 @@ azure-pipelines-terraform/
 | `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
 | `secure-temp.ts`                     | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
 | `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
+| `generic-terraform-command-handler.ts` | `TerraformCommandHandlerGeneric` — generic backend (`backendType: generic`) wired via `-backend-config` file/args |
+| `hcp-terraform-command-handler.ts`     | `TerraformCommandHandlerHCP` — HCP Terraform / Terraform Cloud backend (sets `TF_TOKEN_app_terraform_io` from `backendHCPToken`) |
+| `backend-detection.ts`                 | Maps a Terraform `backend.type` (from `.terraform/terraform.tfstate`) to the cloud whose credentials the backend needs — enables cross-cloud state-backend credential injection (bounded state-file read) |
+| `oci-token-exchange.ts`                | Exchanges the ADO OIDC token for an OCI UPST (User Principal Session Token) — the second hop of the OCI WIF flow; classifies retryable vs. deterministic failures + capped `Retry-After` |
+| `pem-normalizer.ts`                    | Normalizes a single-line ADO-delivered PEM private key to RFC 7468 format and validates it via `crypto.createPrivateKey()` (OCI and GCP private-key auth) |
+| `proxy-config.ts`                      | Builds `fetch()` options routing the OIDC/OCI outbound HTTPS calls through the agent's configured proxy (`Agent.ProxyUrl`/`Agent.ProxyUsername`/`Agent.ProxyPassword`) |
+| `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers |
 
 ### Structured plan/apply results (`src/results/`)
 
