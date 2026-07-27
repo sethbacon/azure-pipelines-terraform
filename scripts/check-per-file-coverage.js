@@ -121,6 +121,12 @@ const SECURITY_TIER = new Set([
     // sanitizer/validator layers (byte-identical parity family, #446 lineage)...
     'Tasks/Markdown2Html/Markdown2HtmlV1/src/uri-scheme-guard.js',
     'Tasks/PublishKbArticle/PublishKbArticleV1/src/uri-scheme-guard.js',
+    // ...the shared ALLOWLIST re-serialization sanitizer itself (#820): the
+    // core defense that guarantees published KB-article bytes are only ever
+    // what the allowlist in html-sanitizer.js permits, regardless of what a
+    // denylist gate misses. Byte-identical parity family, same as above.
+    'Tasks/Markdown2Html/Markdown2HtmlV1/src/html-sanitizer.js',
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/html-sanitizer.js',
     // ...and the independent fail-closed HTML validator itself (the `force`-input
     // bypass path's gate).
     'Tasks/PublishKbArticle/PublishKbArticleV1/src/html-validate.js',

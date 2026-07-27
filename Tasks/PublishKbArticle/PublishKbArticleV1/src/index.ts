@@ -9,7 +9,7 @@ import {
     changeWorkflowState,
     findArticleBySourceKey,
 } from './servicenow-client';
-import { validateHtmlContent, readHtmlFile } from './html-validate';
+import { validateHtmlContent, readHtmlFile, sanitizeHtmlForPublish } from './html-validate';
 import { emitArticleOutput, findKbArticleJson, readFrontMatterKey, sanitizeForSingleLineEcho } from './manifest';
 import { DryRunPlan, PlannedAction, formatDryRunReport } from './dry-run';
 import { processArticleImages } from './attachments';
@@ -153,6 +153,12 @@ async function planAction(instance: string, headers: Record<string, string>, kbI
     if (htmlFile) {
         articleContent = readHtmlFile(htmlFile);
         validateHtmlContent(articleContent, force);
+        // #820: re-serialize through the shared allowlist sanitizer before this
+        // content is published to ServiceNow's `text` field (a stored-XSS sink).
+        // validateHtmlContent above remains a fail-closed pre-check (authoring UX);
+        // this is the belt-and-suspenders layer that guarantees the published bytes
+        // are only ever what the allowlist in html-sanitizer.ts permits.
+        articleContent = sanitizeHtmlForPublish(articleContent);
     }
 
     if (readKeyFrom) {
