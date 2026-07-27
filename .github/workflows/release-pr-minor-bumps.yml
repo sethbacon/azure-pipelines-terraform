@@ -28,6 +28,7 @@ jobs:
   auto-bump:
     name: Auto-bump task Minor versions
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Only the release-please Release PR, and only when it lives in this repo
     # (never a fork — a fork PR has no access to the App key, and we must not
     # push back to a fork's branch). release-please names its branch
