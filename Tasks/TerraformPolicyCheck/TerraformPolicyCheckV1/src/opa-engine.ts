@@ -15,7 +15,7 @@ import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
  */
 export async function runOpa(opaPath: string, policyDir: string, inputFile: string): Promise<PolicyResult> {
     const decisionPath = tasks.getInput('decisionPath') || 'terraform/deny';
-    const failMode = tasks.getInput('failMode') || 'nonEmpty';
+    const failMode = validateFailMode(tasks.getInput('failMode') || 'nonEmpty');
 
     const tool = tasks.tool(opaPath);
     tool.arg('exec');
@@ -75,6 +75,26 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
     }
 
     return { passed, violations, cases, rawOutput: stdout };
+}
+
+const FAIL_MODES = new Set(['nonEmpty', 'defined']);
+
+/**
+ * failMode selects which shape extractViolations expects from the OPA decision
+ * below (a collection of violations vs. a defined/truthy scalar). ADO does not
+ * enforce picklist values at runtime, and an unrecognized value previously fell
+ * through silently to the 'nonEmpty' branch -- so a typo'd failMode could pass a
+ * scalar-decision policy that was never actually evaluated as intended, opening
+ * the gate rather than failing loudly. Constrain it to the exact set this engine
+ * understands, mirroring sentinel-engine.ts's validateEnforcementLevel.
+ */
+export function validateFailMode(mode: string): string {
+    if (!FAIL_MODES.has(mode)) {
+        throw new Error(
+            `Invalid failMode '${mode}': must be one of nonEmpty, defined.`
+        );
+    }
+    return mode;
 }
 
 function extractViolations(decision: unknown, failMode: string, decisionPath: string): string[] {

@@ -12,8 +12,9 @@ import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from '../src/exec-timeout';
 /** Fake ToolRunner whose execAsync resolution is controlled per-test. */
 class FakeTool {
     public killed = false;
+    public killSignal: number | NodeJS.Signals | undefined;
     constructor(private readonly behavior: () => Promise<number>) { }
-    killChildProcess(): void { this.killed = true; }
+    killChildProcess(signal?: number | NodeJS.Signals): void { this.killed = true; this.killSignal = signal; }
     execAsync(_options?: IExecOptions): Promise<number> { return this.behavior(); }
 }
 
@@ -44,6 +45,7 @@ describe('execWithTimeout — bounded subprocess execution (#782)', function () 
             /engine-timed-out/,
         );
         assert.strictEqual(fake.killed, true, 'must kill the hung child on timeout');
+        assert.strictEqual(fake.killSignal, 'SIGKILL', 'must kill with SIGKILL, not the default SIGTERM, so a hung child cannot ignore/catch it');
     });
 
     it('propagates the underlying execAsync rejection (e.g. tool-not-found) without masking it as a timeout', async () => {
