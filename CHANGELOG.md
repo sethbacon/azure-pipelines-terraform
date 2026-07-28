@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.12.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.0...v1.12.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* allowlist-sanitize KB HTML (raw htmlFile re-serialization + rel=noopener) ([#846](https://github.com/sethbacon/azure-pipelines-terraform/issues/846)) ([b3f0766](https://github.com/sethbacon/azure-pipelines-terraform/commit/b3f0766c5916a799ea0b8b42b500e4a10390f2b1)), closes [#820](https://github.com/sethbacon/azure-pipelines-terraform/issues/820) [#835](https://github.com/sethbacon/azure-pipelines-terraform/issues/835)
+* cancellation cleanup, SIGKILL timeouts, and OPA failMode allowlist ([#845](https://github.com/sethbacon/azure-pipelines-terraform/issues/845)) ([e71b212](https://github.com/sethbacon/azure-pipelines-terraform/commit/e71b2124e8ada58b16d14c32ba6d8369e2699d01)), closes [#775](https://github.com/sethbacon/azure-pipelines-terraform/issues/775) [#825](https://github.com/sethbacon/azure-pipelines-terraform/issues/825) [#827](https://github.com/sethbacon/azure-pipelines-terraform/issues/827)
+* force diff ^8.0.3 override to clear jsdiff DoS advisory; document OSV residuals ([#849](https://github.com/sethbacon/azure-pipelines-terraform/issues/849)) ([b2770ba](https://github.com/sethbacon/azure-pipelines-terraform/commit/b2770ba2169710ae18a147d0f6c54eeda382232f)), closes [#842](https://github.com/sethbacon/azure-pipelines-terraform/issues/842)
+* installer per-redirect-hop DNS SSRF guard + checksum anchoring ([#769](https://github.com/sethbacon/azure-pipelines-terraform/issues/769), [#834](https://github.com/sethbacon/azure-pipelines-terraform/issues/834)) ([#837](https://github.com/sethbacon/azure-pipelines-terraform/issues/837)) ([4a8d563](https://github.com/sethbacon/azure-pipelines-terraform/commit/4a8d5636149aa6804bfd042d98b4097f15a39aec))
+* recommend Workload Identity Federation in AWS/GCP auth help text; document task.json convention ([#848](https://github.com/sethbacon/azure-pipelines-terraform/issues/848)) ([92780f8](https://github.com/sethbacon/azure-pipelines-terraform/commit/92780f8216769340c96b9baa9254361e94247255)), closes [#833](https://github.com/sethbacon/azure-pipelines-terraform/issues/833) [#836](https://github.com/sethbacon/azure-pipelines-terraform/issues/836)
+* **TaskV5:** wall-clock timeouts, base-handler de-duplication, fmt/test error clarity ([#841](https://github.com/sethbacon/azure-pipelines-terraform/issues/841)) ([a1a1d3f](https://github.com/sethbacon/azure-pipelines-terraform/commit/a1a1d3fe8857384fba530cf9bb77059d8cce4702)), closes [#821](https://github.com/sethbacon/azure-pipelines-terraform/issues/821) [#822](https://github.com/sethbacon/azure-pipelines-terraform/issues/822) [#826](https://github.com/sethbacon/azure-pipelines-terraform/issues/826)
+
+
+### Documentation
+
+* correct DevLabs table, CLAUDE.md file map, static-cred least-privilege, ARM_OIDC residual ([#847](https://github.com/sethbacon/azure-pipelines-terraform/issues/847)) ([1609a6f](https://github.com/sethbacon/azure-pipelines-terraform/commit/1609a6fca1374c8c904c681046b97a82ac20c557)), closes [#829](https://github.com/sethbacon/azure-pipelines-terraform/issues/829) [#830](https://github.com/sethbacon/azure-pipelines-terraform/issues/830) [#831](https://github.com/sethbacon/azure-pipelines-terraform/issues/831) [#832](https://github.com/sethbacon/azure-pipelines-terraform/issues/832)
+
 ## [1.12.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.11.1...v1.12.0) (2026-07-23)
 
 
