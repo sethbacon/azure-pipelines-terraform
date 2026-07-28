@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.12.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.1...v1.12.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* **release:** bump rimraf to ^6 so build:release works with brace-expansion 5.x ([#850](https://github.com/sethbacon/azure-pipelines-terraform/issues/850)) ([b322e19](https://github.com/sethbacon/azure-pipelines-terraform/commit/b322e1944860bc1894e281225534d4b77759c7f2))
+
 ## [1.12.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.0...v1.12.1) (2026-07-27)
 
 
