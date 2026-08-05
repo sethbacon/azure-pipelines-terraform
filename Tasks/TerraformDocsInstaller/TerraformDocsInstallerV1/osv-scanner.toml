@@ -1,0 +1,16 @@
+# GHSA-w5hq-g745-h8pq (uuid, moderate) -- accepted, no safe fix available.
+# Reached transitively through azure-pipelines-tool-lib, whose latest release
+# (2.0.12) still pins uuid ^3.3.2 with no uuid-free line to move to. The flaw
+# is confined to v3()/v5()/v6() when passed an external output buffer;
+# tool-lib only calls v4() (random, no buffer), so the vulnerable path is
+# never exercised here. Forcing a fixed uuid (11.1.1+) via npm "overrides"
+# would break tool-lib's v3-era require('uuid/v4') import style, so it is
+# deliberately not overridden -- see SECURITY.md's "Standing OSV residuals"
+# section. Already dismissed as accepted-risk in Dependabot (alert #74).
+# Bounded, not open-ended (mirrors this repo's tfx-cli dependabot.yml ignore
+# convention) -- re-evaluate when this expires or when tool-lib ships a fix,
+# whichever comes first.
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-02-05
+reason = "uuid via azure-pipelines-tool-lib, no fix upstream (tool-lib pins ^3.3.2); vulnerable v3/v5/v6-with-buffer path unreachable (tool-lib only calls v4); Dependabot alert #74 dismissed as accepted-risk; see SECURITY.md."
