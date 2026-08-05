@@ -21,7 +21,7 @@
   "dependencies": {
     "azure-pipelines-task-lib": "^5.2.10",
     "azure-pipelines-tool-lib": "^2.0.12",
-    "undici": "^6.21.0"
+    "undici": "^6.28.0"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
