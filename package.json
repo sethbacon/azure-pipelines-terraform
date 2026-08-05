@@ -48,8 +48,8 @@
         "semver": "^7.8.5",
         "js-yaml": "^4.2.0",
         "adm-zip": "^0.6.0",
-        "fast-uri": "^3.1.4",
-        "brace-expansion": "5.0.8",
+        "fast-uri": "^3.1.5",
+        "brace-expansion": "5.0.9",
         "tar": "7.5.22",
         "postcss": "8.5.23"
     }
