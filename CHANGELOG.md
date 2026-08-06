@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.13.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.2...v1.13.0) (2026-08-06)
+
+
+### Features
+
+* **tab:** use Terraform's vocabulary and surface plan imports ([#866](https://github.com/sethbacon/azure-pipelines-terraform/issues/866)) ([d35293d](https://github.com/sethbacon/azure-pipelines-terraform/commit/d35293d7a93d6202eac3e1f49a484498ec53dabf))
+
+
+### Security
+
+* bump postcss to 8.5.23 in Markdown2Html ([#863](https://github.com/sethbacon/azure-pipelines-terraform/issues/863)) ([2891513](https://github.com/sethbacon/azure-pipelines-terraform/commit/2891513abc1c0d0b9a546dc3125a6e4d7c68f985))
+* patch brace-expansion, undici, fast-uri, ip-address (38 alerts) ([#860](https://github.com/sethbacon/azure-pipelines-terraform/issues/860)) ([d8f7b00](https://github.com/sethbacon/azure-pipelines-terraform/commit/d8f7b008a72b283963fdcb4e2ab08a447b5bd652))
+
 ## [1.12.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.1...v1.12.2) (2026-07-28)
 
 
