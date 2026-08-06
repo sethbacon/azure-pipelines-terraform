@@ -101,6 +101,83 @@ describe('buildPlanDigest', () => {
     assert.strictEqual(buildPlanDigest(noop, META).summary.noChanges, true);
   });
 
+  describe('import (change.importing, not an action)', () => {
+    it('counts an import-only resource and does not call the plan "no changes"', () => {
+      const plan = {
+        terraform_version: '1.9.5',
+        resource_changes: [
+          { address: 'r.i', type: 't', name: 'i', provider_name: 'p', change: change({ actions: ['no-op'], before: { x: 1 }, after: { x: 1 }, importing: { id: 'i-abc123' } }) },
+        ],
+        output_changes: {},
+      };
+      const d = buildPlanDigest(plan, META);
+      assert.deepStrictEqual(d.summary, { add: 0, change: 0, destroy: 0, replace: 0, read: 0, import: 1, noChanges: false, driftDetected: false });
+      assert.strictEqual(d.resources[0].importing, true);
+    });
+
+    it('counts an import that also changes in BOTH import and change (the counts overlap)', () => {
+      const plan = {
+        terraform_version: '1.9.5',
+        resource_changes: [
+          { address: 'r.iu', type: 't', name: 'iu', provider_name: 'p', change: change({ actions: ['update'], before: { x: 1 }, after: { x: 2 }, importing: { id: 'i-abc123' } }) },
+        ],
+        output_changes: {},
+      };
+      const d = buildPlanDigest(plan, META);
+      assert.strictEqual(d.summary.import, 1);
+      assert.strictEqual(d.summary.change, 1);
+      assert.strictEqual(d.summary.noChanges, false);
+    });
+
+    it('never leaks the import id, only the flag', () => {
+      const plan = {
+        terraform_version: '1.9.5',
+        resource_changes: [
+          { address: 'r.i', type: 't', name: 'i', provider_name: 'p', change: change({ actions: ['no-op'], importing: { id: 'super-secret-import-id' } }) },
+        ],
+        output_changes: {},
+      };
+      const d = buildPlanDigest(plan, META);
+      assert.ok(!JSON.stringify(d).includes('super-secret-import-id'));
+    });
+
+    it('omits the import count entirely when nothing is imported (pre-import digests stay byte-identical)', () => {
+      const plan = {
+        terraform_version: '1.9.5',
+        resource_changes: [{ address: 'r.c', type: 't', name: 'c', provider_name: 'p', change: change({ actions: ['create'], before: null, after: { x: 1 } }) }],
+        output_changes: {},
+      };
+      const d = buildPlanDigest(plan, META);
+      assert.ok(!('import' in d.summary));
+      assert.strictEqual(d.resources[0].importing, undefined);
+    });
+
+    it('ignores a non-object importing value rather than trusting it', () => {
+      const plan = {
+        terraform_version: '1.9.5',
+        resource_changes: [
+          { address: 'r.x', type: 't', name: 'x', provider_name: 'p', change: change({ actions: ['no-op'], importing: 'yes' }) },
+          { address: 'r.y', type: 't', name: 'y', provider_name: 'p', change: change({ actions: ['no-op'], importing: null }) },
+        ],
+        output_changes: {},
+      };
+      const d = buildPlanDigest(plan, META);
+      assert.ok(!('import' in d.summary));
+      assert.strictEqual(d.summary.noChanges, true);
+    });
+
+    it('keeps imported resources ahead of plain no-ops when the resource cap truncates', () => {
+      const resource_changes = [
+        ...Array.from({ length: MAX_RESOURCES }, (_, i) => ({ address: `r.n${String(i).padStart(5, '0')}`, type: 't', name: `n${i}`, provider_name: 'p', change: change({ actions: ['no-op'] }) })),
+        { address: 'zzz.imported', type: 't', name: 'imported', provider_name: 'p', change: change({ actions: ['no-op'], importing: { id: 'i-1' } }) },
+      ];
+      const d = buildPlanDigest({ terraform_version: '1.9.5', resource_changes, output_changes: {} }, META);
+      assert.strictEqual(d.resources.length, MAX_RESOURCES);
+      assert.ok(d.resources.some((r) => r.address === 'zzz.imported'), 'the imported resource must survive truncation');
+      assert.strictEqual(d.summary.import, 1);
+    });
+  });
+
   it('masks sensitive output values via the after_sensitive mask', () => {
     const plan = {
       terraform_version: '1.9.5',

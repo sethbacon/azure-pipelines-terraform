@@ -614,7 +614,7 @@ function toPlanOverviewItem(item: DigestItem): OverviewItem {
         id: item.id,
         name: item.name,
         status: "ok",
-        counts: { add: s.add, change: s.change, destroy: s.destroy, replace: s.replace, read: s.read },
+        counts: { add: s.add, change: s.change, destroy: s.destroy, replace: s.replace, read: s.read, import: s.import },
         noChanges: s.noChanges,
         driftDetected: s.driftDetected,
         destroyMode: item.digest.planMode === "destroy",
@@ -642,7 +642,7 @@ interface PlanRollup {
 }
 
 function aggregatePlanRollup(items: Array<Extract<DigestItem, { status: "ok" }>>): PlanRollup {
-    const rollup: PlanRollup = { counts: { add: 0, change: 0, destroy: 0, replace: 0, read: 0 }, noChanges: items.length > 0, driftDetected: false };
+    const rollup: PlanRollup = { counts: { add: 0, change: 0, destroy: 0, replace: 0, read: 0, import: 0 }, noChanges: items.length > 0, driftDetected: false };
     for (const item of items) {
         if (item.digest.kind !== "plan") continue;
         const s = item.digest.summary;
@@ -651,6 +651,7 @@ function aggregatePlanRollup(items: Array<Extract<DigestItem, { status: "ok" }>>
         rollup.counts.destroy += s.destroy;
         rollup.counts.replace = (rollup.counts.replace ?? 0) + s.replace;
         rollup.counts.read = (rollup.counts.read ?? 0) + s.read;
+        rollup.counts.import = (rollup.counts.import ?? 0) + (s.import ?? 0);
         rollup.noChanges = rollup.noChanges && s.noChanges;
         rollup.driftDetected = rollup.driftDetected || s.driftDetected;
     }

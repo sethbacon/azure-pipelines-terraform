@@ -116,6 +116,34 @@ describe("parseDigestText — valid v1 digests", () => {
     expect(result.digest.meta.name).toBe("plan-main");
   });
 
+  it("carries the import flag and count through, and treats them as absent when omitted", () => {
+    const withImport = validPlanDigestObj();
+    (withImport.summary as Record<string, unknown>).import = 7;
+    (withImport.resources as Record<string, unknown>[])[0].importing = true;
+    const result = parseDigestText(json(withImport));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.summary.import).toBe(7);
+    expect(result.digest.resources[0].importing).toBe(true);
+
+    const plain = parseDigestText(json(validPlanDigestObj()));
+    expect(plain.ok).toBe(true);
+    if (!plain.ok || plain.digest.kind !== "plan") return;
+    expect(plain.digest.summary.import).toBeUndefined();
+    expect(plain.digest.resources[0].importing).toBeUndefined();
+    // A pre-import digest must not be annotated just for lacking the new field.
+    expect(plain.notes.join(" ")).not.toContain("import");
+  });
+
+  it("does not trust a non-boolean importing value", () => {
+    const obj = validPlanDigestObj();
+    (obj.resources as Record<string, unknown>[])[0].importing = "yes";
+    const result = parseDigestText(json(obj));
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.digest.kind !== "plan") return;
+    expect(result.digest.resources[0].importing).toBeUndefined();
+  });
+
   it("parses a valid v1 apply digest into a typed object", () => {
     const result = parseDigestText(json(validApplyDigestObj()));
     expect(result.ok).toBe(true);

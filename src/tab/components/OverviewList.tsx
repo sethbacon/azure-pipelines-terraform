@@ -61,6 +61,7 @@ export function OverviewList({ items, selectedId, onSelect }: OverviewListProps)
                             {item.destroyMode && <span className="badge badge-destroy">Destroy</span>}
                             {item.counts && (
                                 <React.Fragment>
+                                    {!!item.counts.import && <span className="count count-import">{item.counts.import} import</span>}
                                     <span className="count count-add">+{item.counts.add}</span>
                                     <span className="count count-change">~{item.counts.change}</span>
                                     <span className="count count-destroy">-{item.counts.destroy}</span>

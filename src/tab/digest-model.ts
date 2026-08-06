@@ -476,6 +476,9 @@ function coercePlanDigest(
     destroy: softNumber(summaryObj.value, "destroy", 0, notes, "digest.summary"),
     replace: softNumber(summaryObj.value, "replace", 0, notes, "digest.summary"),
     read: softNumber(summaryObj.value, "read", 0, notes, "digest.summary"),
+    // Optional (absent on pre-import digests and whenever the count is 0), so it must
+    // not go through softNumber — that would note-spam every digest without imports.
+    import: optionalNumber(summaryObj.value, "import"),
     noChanges: softBoolean(summaryObj.value, "noChanges", false, notes, "digest.summary"),
     driftDetected: softBoolean(summaryObj.value, "driftDetected", false, notes, "digest.summary"),
   };
@@ -562,6 +565,7 @@ function coercePlanResource(v: unknown, notes: string[], path: string): PlanReso
     name: softString(v, "name", "", notes, path),
     providerName: softString(v, "providerName", "", notes, path),
     actions,
+    importing: v["importing"] === true || undefined,
     actionReason: optionalString(v, "actionReason"),
     replacePaths: optionalStringArray(v, "replacePaths"),
     attributeChanges,
