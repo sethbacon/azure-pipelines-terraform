@@ -47,6 +47,11 @@ export interface PlanDigest extends DigestEnvelope {
   planMode?: "plan" | "destroy";
   summary: {
     add: number; change: number; destroy: number; replace: number; read: number;
+    // Count of resources being imported (`change.importing` in show -json), mirroring
+    // Terraform's own "Plan: N to import, ..." line. Import is NOT an action: a resource
+    // can be imported AND changed, so this count OVERLAPS add/change/destroy rather than
+    // partitioning them. Optional so pre-import digests/goldens stay valid.
+    import?: number;
     noChanges: boolean;
     driftDetected: boolean;
   };
@@ -59,6 +64,9 @@ export interface PlanResource {
   address: string;                 // e.g. module.db.aws_db_instance.this[0]
   type: string; name: string; providerName: string;
   actions: ("no-op" | "create" | "read" | "update" | "delete" | "replace" | "forget")[];
+  // True when this instance is being imported. Deliberately a flag, not the import ID:
+  // the ID is provider-chosen identity text that would need its own redaction pass.
+  importing?: boolean;
   actionReason?: string;           // e.g. "replace_because_cannot_update"
   replacePaths?: string[];         // attribute paths forcing replacement (from replace_paths)
   attributeChanges: AttrChange[];  // ONLY changed attrs; capped per resource

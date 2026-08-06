@@ -25,6 +25,21 @@ describe("SummaryHeader", () => {
     expect(html).toContain("No changes");
   });
 
+  it("renders the import count ahead of add/change/destroy, matching Terraform's summary line", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="plan-import" kind="plan" counts={{ add: 0, change: 20, destroy: 0, import: 7 }} />
+    );
+    expect(html).toContain("7 to import");
+    expect(html.indexOf("7 to import")).toBeLessThan(html.indexOf("+0"));
+  });
+
+  it("omits the import count when there is nothing to import", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="plan-main" kind="plan" counts={{ add: 1, change: 0, destroy: 0, import: 0 }} />
+    );
+    expect(html).not.toContain("to import");
+  });
+
   it("shows a drift badge when driftDetected is true", () => {
     const html = renderToStaticMarkup(
       <SummaryHeader

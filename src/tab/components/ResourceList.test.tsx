@@ -32,16 +32,24 @@ function callComponent(props: ResourceListProps): React.ReactElement {
 }
 
 describe("ResourceList", () => {
-  it("groups resources by action and shows group headings", () => {
+  it("groups resources by action and labels groups with Terraform's plan-summary vocabulary", () => {
     const resources = [
       resource({ address: "aws_instance.a", actions: ["create"] }),
       resource({ address: "aws_instance.b", actions: ["delete"] }),
       resource({ address: "aws_instance.c", actions: ["update"] }),
+      resource({ address: "aws_instance.d", actions: ["read"] }),
+      resource({ address: "aws_instance.e", actions: ["forget"] }),
+      resource({ address: "aws_instance.f", actions: [] }),
     ];
     const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
-    expect(html).toMatch(/create/i);
-    expect(html).toMatch(/delete/i);
-    expect(html).toMatch(/update/i);
+    expect(html).toContain(">Add (1)</div>");
+    expect(html).toContain(">Destroy (1)</div>");
+    expect(html).toContain(">Change (1)</div>");
+    expect(html).toContain(">Read (1)</div>");
+    expect(html).toContain(">Forget (1)</div>");
+    expect(html).toContain(">No changes (1)</div>");
+    // The raw JSON action names must not leak into the UI.
+    expect(html).not.toMatch(/>(create|delete|update|no-op) \(/);
     expect(html).toContain("aws_instance.a");
     expect(html).toContain("aws_instance.b");
     expect(html).toContain("aws_instance.c");
@@ -51,7 +59,35 @@ describe("ResourceList", () => {
     const resources = [resource({ address: "aws_instance.r", actions: ["replace"], actionReason: "replace_because_cannot_update" })];
     const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
     expect(html).toContain("aws_instance.r");
-    expect(html).toMatch(/replace/i);
+    expect(html).toContain(">Replace (1)</div>");
+  });
+
+  describe("import", () => {
+    it("puts an import-only resource in its own group instead of burying it under No changes", () => {
+      const resources = [
+        resource({ address: "aws_instance.imported", actions: ["no-op"], importing: true }),
+        resource({ address: "aws_instance.untouched", actions: ["no-op"] }),
+      ];
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).toContain(">Import (1)</div>");
+      expect(html).toContain(">No changes (1)</div>");
+    });
+
+    it("leaves an import that also changes in its action group and tags it instead of double-listing it", () => {
+      const resources = [resource({ address: "aws_instance.both", actions: ["update"], importing: true })];
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).toContain(">Change (1)</div>");
+      expect(html).not.toContain(">Import (1)</div>");
+      expect(html).toContain('<span class="badge badge-import">Import</span>');
+      expect(html.match(/data-testid="resource-row-aws_instance\.both"/g)).toHaveLength(1);
+    });
+
+    it("does not tag rows inside the Import group (the heading already says so)", () => {
+      const resources = [resource({ address: "aws_instance.imported", actions: ["no-op"], importing: true })];
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).toContain(">Import (1)</div>");
+      expect(html).not.toContain("badge-import");
+    });
   });
 
   it("filters resources by address substring using the (controlled) search text", () => {

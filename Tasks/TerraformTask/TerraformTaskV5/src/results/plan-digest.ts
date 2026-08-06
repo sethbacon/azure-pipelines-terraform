@@ -58,6 +58,10 @@ interface TfChange {
   before_sensitive?: unknown;
   after_sensitive?: unknown;
   replace_paths?: unknown;
+  // Present (an object carrying the import id) only when the instance is being
+  // imported. Terraform models import as a property of the change, NOT as an
+  // entry in `actions`, so it has to be read separately.
+  importing?: unknown;
 }
 
 const KNOWN_ACTIONS = new Set(['no-op', 'create', 'read', 'update', 'delete', 'replace', 'forget']);
@@ -87,7 +91,7 @@ export function buildPlanDigest(plan: unknown, meta: DigestBuildMeta, options?: 
   const droppedResources = resources.length - MAX_RESOURCES;
   if (droppedResources > 0) {
     resources = [...resources]
-      .sort((a, b) => actionPriority(a.actions) - actionPriority(b.actions) || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0))
+      .sort((a, b) => resourcePriority(a) - resourcePriority(b) || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0))
       .slice(0, MAX_RESOURCES);
     ctx.notes.push(`resource list capped at ${MAX_RESOURCES} (${droppedResources} more not shown)`);
   }
@@ -168,6 +172,7 @@ function buildPlanResource(rc: unknown, ctx: RedactContext): PlanResource | null
   if (typeof r.action_reason === 'string' && r.action_reason && r.action_reason !== 'none') {
     resource.actionReason = r.action_reason;
   }
+  if (change.importing && typeof change.importing === 'object') resource.importing = true;
   const replacePaths = normalizeReplacePaths(change.replace_paths);
   if (replacePaths.length > 0) resource.replacePaths = replacePaths;
   return resource;
@@ -261,10 +266,14 @@ function summarize(resources: PlanResource[]): PlanDigest['summary'] {
   let destroy = 0;
   let replace = 0;
   let read = 0;
+  let importCount = 0;
   let allNoOp = true;
   for (const r of resources) {
     const a = r.actions;
     if (!(a.length === 1 && a[0] === 'no-op')) allNoOp = false;
+    // Counted independently of `actions`: an import can accompany any action,
+    // and an import-only instance still carries actions ['no-op'].
+    if (r.importing) importCount++;
     if (isReplace(a)) {
       replace++;
       add++;
@@ -288,7 +297,18 @@ function summarize(resources: PlanResource[]): PlanDigest['summary'] {
       }
     }
   }
-  return { add, change, destroy, replace, read, noChanges: allNoOp, driftDetected: false };
+  // An import-only plan is all no-ops but is emphatically not "no changes".
+  const summary: PlanDigest['summary'] = {
+    add,
+    change,
+    destroy,
+    replace,
+    read,
+    noChanges: allNoOp && importCount === 0,
+    driftDetected: false,
+  };
+  if (importCount > 0) summary.import = importCount;
+  return summary;
 }
 
 function classifyOutputAction(actions: unknown): OutputChange['action'] {
@@ -310,6 +330,13 @@ function actionPriority(actions: string[]): number {
   if (actions.includes('create')) return 2;
   if (actions.includes('read')) return 3;
   return 4;
+}
+
+// An import-only instance's actions are ['no-op'], which would otherwise make it
+// the first thing dropped by the cap despite being a real pending change.
+function resourcePriority(resource: PlanResource): number {
+  const priority = actionPriority(resource.actions);
+  return resource.importing ? Math.min(priority, 2) : priority;
 }
 
 function normalizeReplacePaths(replacePaths: unknown): string[] {

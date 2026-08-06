@@ -6,6 +6,8 @@ export interface SummaryHeaderCounts {
     destroy: number;
     replace?: number;
     read?: number;
+    /** Overlaps add/change/destroy: import is a property of a change, not an action. */
+    import?: number;
 }
 
 /** State-inventory counts (digest spec §7.2 `StateDigest.summary`) — no change actions. */
@@ -70,6 +72,9 @@ export function SummaryHeader(props: SummaryHeaderProps): JSX.Element {
             ) : (
                 counts && (
                     <div className="summary-header-counts">
+                        {typeof counts.import === "number" && counts.import > 0 && (
+                            <span className="count count-import">{counts.import} to import</span>
+                        )}
                         <span className="count count-add">+{counts.add}</span>
                         <span className="count count-change">~{counts.change}</span>
                         <span className="count count-destroy">-{counts.destroy}</span>
