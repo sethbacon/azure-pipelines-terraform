@@ -1,5 +1,5 @@
 import tl = require('azure-pipelines-task-lib');
-import { parseVarFileTokens, parseTargetTokens, extractOutFlagPath, commandOptionsContainsJsonFlag } from '../../src/base-terraform-command-handler';
+import { parseVarFileTokens, parseTargetTokens, extractOutFlagPath, commandOptionsContainsJsonFlag, hasPositionalCommandArg, splitCommandOptions } from '../../src/base-terraform-command-handler';
 
 let failed = false;
 
@@ -90,6 +90,14 @@ checkOut(extractOutFlagPath('-refresh-only -no-color'), undefined, 'out absent')
 checkOut(extractOutFlagPath('-timeout=5m'), undefined, 'out lookalike not matched');
 // A dangling -out with no following token yields undefined (no crash).
 checkOut(extractOutFlagPath('-out'), undefined, 'out dangling');
+// #875: the EQUALS form with a quoted path used to split at the space inside the
+// quotes and return the truncated 'my', so afterPlanFileWritten() was handed a
+// path that does not exist and silently skipped the OCI plan-file hardening.
+checkOut(extractOutFlagPath('-out="my plan.tfplan"'), 'my plan.tfplan', 'out quoted equals form');
+checkOut(extractOutFlagPath('--out="my plan.tfplan"'), 'my plan.tfplan', 'out quoted equals form double-dash');
+// A fully-quoted flag token is the flag, exactly as ToolRunner passes it on.
+checkOut(extractOutFlagPath('"-out=plan.tfplan"'), 'plan.tfplan', 'out fully-quoted token');
+checkOut(extractOutFlagPath('-refresh-only -out="out dir/plan.tfplan" -no-color'), 'out dir/plan.tfplan', 'out quoted equals form among other flags');
 
 // commandOptionsContainsJsonFlag (#492 follow-up): detect a standalone -json flag
 // so plan()'s publishPlanResults path can fail closed rather than echo raw,
@@ -105,6 +113,25 @@ checkBool(commandOptionsContainsJsonFlag('-refresh-only -no-color'), false, 'jso
 checkBool(commandOptionsContainsJsonFlag('-var=myjsonvalue'), false, 'json lookalike substring in flag value');
 checkBool(commandOptionsContainsJsonFlag('-var-file=json.tfvars'), false, 'json lookalike substring in path');
 checkBool(commandOptionsContainsJsonFlag('"-json-ish"'), false, 'json lookalike token with suffix');
+// #875: a fully-quoted -json is still -json to ToolRunner. Reading it as a
+// literal `"-json"` token missed it and failed OPEN -- the publishPlanResults
+// guard exists precisely to stop raw NDJSON reaching the console.
+checkBool(commandOptionsContainsJsonFlag('"-json"'), true, 'json fully-quoted token');
+
+// hasPositionalCommandArg (#875): the same mis-split made the fragment
+// `plan.tfplan"` look like a positional plan-file argument, so a `show` with a
+// quoted -out= wrongly skipped the state-summary attachment.
+checkBool(hasPositionalCommandArg('-out="my plan.tfplan"'), false, 'quoted equals form is not positional');
+checkBool(hasPositionalCommandArg('-no-color tfplan.out'), true, 'genuine positional still detected');
+checkBool(hasPositionalCommandArg('-refresh-only -no-color'), false, 'flags only');
+
+// splitCommandOptions must agree with task-lib's ToolRunner._argStringToArray,
+// which is the parser that actually builds the argv these helpers reason about.
+check(splitCommandOptions('-out="my plan.tfplan"'), ['-out=my plan.tfplan'], 'split quoted equals form');
+check(splitCommandOptions('-out "my plan.tfplan"'), ['-out', 'my plan.tfplan'], 'split quoted space form');
+check(splitCommandOptions('a  b'), ['a', 'b'], 'split collapses repeated spaces');
+check(splitCommandOptions('""'), [''], 'split empty quoted token');
+check(splitCommandOptions('-var="a=\\"quoted\\""'), ['-var=a="quoted"'], 'split backslash-escaped quote inside quotes');
 
 if (failed) {
     tl.setResult(tl.TaskResult.Failed, 'Command arg token parsing failed');
