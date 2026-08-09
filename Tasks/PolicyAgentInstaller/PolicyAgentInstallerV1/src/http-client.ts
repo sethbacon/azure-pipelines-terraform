@@ -241,6 +241,13 @@ export async function fetchWithTimeout<T>(
  * arbitrary host (#679). `isHostAllowed` should throw with a caller-specific
  * message on a disallowed host rather than returning a bare boolean, so the
  * error text can name the actual offending host/allowlist.
+ *
+ * Wrapped in the same withRetry() as fetchJson/fetchText/fetchBuffer* (#879):
+ * this is by far the largest and longest request the installer makes, so a
+ * transient 5xx/socket failure here used to fail the whole task while a blip
+ * on a tiny metadata GET was retried. See attemptDownloadToFile for the
+ * per-attempt retry-safety design (clean destination state, re-run host
+ * authorization, never retry an authorization rejection).
  */
 export async function downloadToFile(
     url: string,
@@ -248,10 +255,43 @@ export async function downloadToFile(
     timeoutMs: number,
     isHostAllowed: (hostname: string) => void | Promise<void>,
 ): Promise<void> {
+    await withRetry(() => attemptDownloadToFile(url, destPath, timeoutMs, isHostAllowed));
+}
+
+/**
+ * A single downloadToFile attempt. Safe to retry: it clears any partial file a
+ * PRIOR attempt left behind before opening its own write stream (a retry must
+ * never resume into / append onto a truncated download), and re-runs
+ * isHostAllowed from scratch for the initial host and every redirect hop (a
+ * retry must never reuse a stale authorization decision or skip it on a later
+ * attempt). isHostAllowed's rejection is reclassified as a non-retryable
+ * HttpError by assertHostAllowed below -- an egress-authorization rejection is
+ * a deterministic security decision, never a transient network condition, and
+ * retrying it would waste the download's retry budget and could give a
+ * DNS-rebinding host repeated chances within one run to flip from rejected to
+ * allowed.
+ */
+async function attemptDownloadToFile(
+    url: string,
+    destPath: string,
+    timeoutMs: number,
+    isHostAllowed: (hostname: string) => void | Promise<void>,
+): Promise<void> {
+    // Best-effort: clear whatever a prior failed attempt left at destPath so
+    // this attempt starts from a clean, empty state. fs.createWriteStream's
+    // default 'w' flag already truncates on open, so this is defense-in-depth
+    // that makes the clean-state guarantee explicit rather than implicit.
+    try {
+        fs.unlinkSync(destPath);
+    } catch {
+        // Nothing to remove (the common case, including the very first
+        // attempt) or removal itself failed; either way let the write stream
+        // open below surface any real problem.
+    }
     // Validate the initial URL's own host before any network call --
     // fetchWithTimeout's redirect-validator callback below only re-checks
     // subsequent Location targets, never the URL it was first called with.
-    await isHostAllowed(new URL(url).hostname);
+    await assertHostAllowed(isHostAllowed, new URL(url).hostname);
     try {
         await fetchWithTimeout(
             url,
@@ -271,7 +311,7 @@ export async function downloadToFile(
                 // installers' default-path check also resolves the hostname via
                 // resolvesToPrivateOrLinkLocalAddress), so await it here rather
                 // than assuming it is synchronous (#769).
-                await isHostAllowed(next.host);
+                await assertHostAllowed(isHostAllowed, next.host);
                 return true;
             },
         );
@@ -279,8 +319,8 @@ export async function downloadToFile(
         // A write-stream failure partway through (disk full, permission
         // denied) leaves a truncated file at destPath; a non-2xx/host-
         // rejection failure never opens the write stream at all. Best-effort
-        // remove whatever partial file might exist so a caller never mistakes
-        // it for a complete, verifiable download.
+        // remove whatever partial file might exist so a caller (or the next
+        // retry attempt) never mistakes it for a complete, verifiable download.
         try {
             fs.unlinkSync(destPath);
         } catch {
@@ -289,6 +329,20 @@ export async function downloadToFile(
             // way this must not mask the real error above.
         }
         throw err;
+    }
+}
+
+/**
+ * Invokes the caller's egress-authorization callback and reclassifies any
+ * rejection as a non-retryable HttpError, so withRetry's default "an unknown
+ * error is transient" classification can never apply to it -- see
+ * attemptDownloadToFile's doc comment for why that matters.
+ */
+async function assertHostAllowed(isHostAllowed: (hostname: string) => void | Promise<void>, hostname: string): Promise<void> {
+    try {
+        await isHostAllowed(hostname);
+    } catch (err) {
+        throw new HttpError(err instanceof Error ? err.message : String(err), false);
     }
 }
 
