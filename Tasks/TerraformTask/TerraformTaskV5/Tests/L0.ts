@@ -20,6 +20,8 @@ import './SecureFileLoaderL0';
 import './SecureTempL0';
 // Direct unit tests for the bounded stdout-capture guard (#632).
 import './ExecStdoutCaptureL0';
+// Table-driven CLASS test for the output-boundary defect class (batch E).
+import './OutputBoundaryClassL0';
 import './ExecWithTimeoutL0';
 // Direct unit tests for the emergency-only output-file cleanup split (#650).
 import './EmergencyOnlyCleanupL0';

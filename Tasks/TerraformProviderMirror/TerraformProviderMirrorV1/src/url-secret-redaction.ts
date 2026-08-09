@@ -154,9 +154,20 @@ export function extractUrlUserInfoSecrets(url: string): string[] {
  * when there is no userinfo to strip.
  */
 export function redactUrlUserInfo(url: string): string {
-    const userInfo = rawUserInfo(url);
-    if (userInfo === null) return url;
-    const authorityStart = url.indexOf('://') + 3;
+    // Neutralize C0/DEL control characters BEFORE anything else. This value is
+    // echoed into pipeline output variables (packerDownloadedFrom /
+    // terraformDownloadedFrom / terraformDocsDownloadedFrom /
+    // policyAgentDownloadedFrom), and setVariable emits
+    // `##vso[task.setvariable variable=x]VALUE` -- a CR/LF inside VALUE forges a
+    // second logging command on the next line. Upstream `new URL()` validation
+    // does NOT catch it: the WHATWG parser silently STRIPS tab/CR/LF while
+    // parsing, so 'https://ex\nample.com' validates cleanly while the raw input
+    // string the callers keep passing around still carries the newline. Stripping
+    // first also keeps the index arithmetic below aligned with the value returned.
+    const safeUrl = url.replace(/[\u0000-\u001F\u007F]/g, '');
+    const userInfo = rawUserInfo(safeUrl);
+    if (userInfo === null) return safeUrl;
+    const authorityStart = safeUrl.indexOf('://') + 3;
     // authorityStart + userInfo.length points at the delimiting '@'; +1 drops it.
-    return url.slice(0, authorityStart) + url.slice(authorityStart + userInfo.length + 1);
+    return safeUrl.slice(0, authorityStart) + safeUrl.slice(authorityStart + userInfo.length + 1);
 }
