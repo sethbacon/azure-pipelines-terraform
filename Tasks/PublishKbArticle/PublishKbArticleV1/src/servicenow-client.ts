@@ -1,11 +1,13 @@
 import { snRequest, withRetry, nonIdempotentCreateRetryError } from './servicenow-http';
 import tasks = require('azure-pipelines-task-lib/task');
 
-const WORKFLOW_STATE_MAP: Record<string, string> = {
-    draft: 'draft',
-    review: 'review',
-    publish: 'published',
-};
+// A Map (not an object literal) so workflowState='__proto__'/'constructor'/etc.
+// can never resolve to an inherited Object.prototype member instead of undefined.
+const WORKFLOW_STATE_MAP: ReadonlyMap<string, string> = new Map([
+    ['draft', 'draft'],
+    ['review', 'review'],
+    ['publish', 'published'],
+]);
 
 export interface KbArticle {
     sys_id: string;
@@ -126,7 +128,7 @@ export async function createKnowledgeArticle(
         kb_knowledge_base: kbId,
         short_description: title,
         text: text,
-        workflow_state: WORKFLOW_STATE_MAP[workflowState] ?? workflowState,
+        workflow_state: WORKFLOW_STATE_MAP.get(workflowState) ?? workflowState,
         author: author,
     };
 
@@ -198,7 +200,7 @@ export async function updateKnowledgeArticle(
     }
 
     if (workflowState) {
-        payload['workflow_state'] = WORKFLOW_STATE_MAP[workflowState] ?? workflowState;
+        payload['workflow_state'] = WORKFLOW_STATE_MAP.get(workflowState) ?? workflowState;
     }
     if (author) payload['author'] = author;
 
@@ -246,18 +248,20 @@ export async function changeWorkflowState(
     articleId: string,
     workflowState: string,
 ): Promise<KbArticle> {
-    const STATE_VALUE_MAP: Record<string, string> = {
-        draft: 'draft',
-        review: 'review',
-        publish: 'published',
-    };
+    // A Map (not an object literal) so workflowState='__proto__'/'constructor'/etc.
+    // can never resolve to an inherited Object.prototype member instead of undefined.
+    const STATE_VALUE_MAP: ReadonlyMap<string, string> = new Map([
+        ['draft', 'draft'],
+        ['review', 'review'],
+        ['publish', 'published'],
+    ]);
 
     // encodeURIComponent guards the path segment: an unencoded articleId containing
     // '/', '?', or '#' could otherwise alter the effective REST path/query.
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge/${encodeURIComponent(articleId)}`;
     const response = await withRetry(() => snRequest('PATCH', url, {
         headers,
-        body: { workflow_state: STATE_VALUE_MAP[workflowState] ?? workflowState },
+        body: { workflow_state: STATE_VALUE_MAP.get(workflowState) ?? workflowState },
     }), {
         log: (message) => console.log(`[WARN] ${message}`),
     });
