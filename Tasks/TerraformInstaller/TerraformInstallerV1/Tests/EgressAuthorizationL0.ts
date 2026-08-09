@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { assertEgressHostAllowed, EgressHostMessages } from '../src/registry-allowlist';
+import { assertEgressHostAllowed, isRegistryHostAllowed, parseAllowedHosts, EgressHostMessages } from '../src/registry-allowlist';
 import { validateUrlPathSegment } from '../src/url-path-segment';
 import { downloadToFile } from '../src/http-client';
 
@@ -427,6 +427,70 @@ describe('egress authorization (class test #161/#188/#191/#200/#201)', function 
                 }
             });
         }
+    });
+
+    /**
+     * Table F. The allowlist arm's own matching strength (#888). The `*.` pin is
+     * the operator's mechanism for constraining a compromised registry, and it
+     * has always documented TLS wildcard-SAN semantics (exactly one label).
+     * Rows go RED if the single-label check in isRegistryHostAllowed is dropped
+     * back to a bare suffix match, or if entry validation stops rejecting a pin
+     * that spans a whole public suffix.
+     */
+    describe('F. allowlist pins match only as broadly as they are documented to (#888)', () => {
+        const MATCH_ROWS: Array<{ what: string; host: string; entry: string; allowed: boolean }> = [
+            { what: 'the motivating single-label bucket case', host: 'mybucket.s3.amazonaws.com', entry: '*.s3.amazonaws.com', allowed: true },
+            { what: 'a deeper subdomain the operator did not pin', host: 'attacker.tenant.example.com', entry: '*.example.com', allowed: false },
+            { what: 'a deeper subdomain under the bucket pin', host: 'a.mybucket.s3.amazonaws.com', entry: '*.s3.amazonaws.com', allowed: false },
+            { what: 'the bare host behind a wildcard pin', host: 's3.amazonaws.com', entry: '*.s3.amazonaws.com', allowed: false },
+            { what: 'a host merely ending in the pinned suffix', host: 'evil-s3.amazonaws.com', entry: '*.s3.amazonaws.com', allowed: false },
+            { what: 'an exact pin', host: 'storage.example.com', entry: 'storage.example.com', allowed: true },
+            { what: 'a sibling of an exact pin', host: 'other.example.com', entry: 'storage.example.com', allowed: false },
+        ];
+        for (const row of MATCH_ROWS) {
+            it(`${row.allowed ? 'allows' : 'refuses'} ${row.what}`, () => {
+                assert.strictEqual(isRegistryHostAllowed(row.host, [row.entry]), row.allowed);
+            });
+        }
+
+        const ENTRY_ROWS: Array<{ what: string; raw: string; valid: boolean; normalizedTo?: string }> = [
+            { what: 'an ordinary hostname', raw: 'registry.example.com', valid: true },
+            { what: 'a single-label wildcard over two labels', raw: '*.trusted.example', valid: true },
+            { what: 'an air-gapped mirror pinned by IPv4 literal', raw: '10.0.0.5', valid: true },
+            { what: 'an air-gapped mirror pinned by bracketed IPv6 literal', raw: '[fd00::1]', valid: true },
+            { what: 'a bare single-label host', raw: 'internal-mirror', valid: true },
+            { what: 'an underscore-bearing label from an internal zone', raw: 'my_registry.corp.example', valid: true },
+            { what: 'a wildcard spanning an entire public suffix', raw: '*.com', valid: false },
+            { what: 'a trailing-star pin that would silently match nothing', raw: 'example.com*', valid: false },
+            { what: 'a bare wildcard', raw: '*', valid: false },
+            { what: 'a multi-level wildcard', raw: '*.*.example.com', valid: false },
+            { what: 'a wildcard with no host part', raw: '*.', valid: false },
+            { what: 'an entry carrying a scheme', raw: 'https://registry.example.com', valid: false },
+            { what: 'an entry carrying a path', raw: 'registry.example.com/v1', valid: false },
+        ];
+        for (const row of ENTRY_ROWS) {
+            it(`${row.valid ? 'accepts' : 'rejects'} ${row.what}`, () => {
+                if (row.valid) {
+                    assert.deepStrictEqual(parseAllowedHosts(row.raw), [row.normalizedTo ?? row.raw.toLowerCase()]);
+                } else {
+                    assert.throws(() => parseAllowedHosts(row.raw), /Invalid allowed-hosts entry/);
+                }
+            });
+        }
+
+        it('brackets an unbracketed IPv6 pin so it can actually match a real request host', () => {
+            // WHATWG URL renders an IPv6 host bracketed ('[fd00::1]'), so carrying the
+            // operator's unbracketed spelling verbatim would be a validated-but-dead pin.
+            assert.deepStrictEqual(parseAllowedHosts('fd00::1'), ['[fd00::1]']);
+            assert.strictEqual(isRegistryHostAllowed('[fd00::1]', parseAllowedHosts('fd00::1')), true);
+        });
+
+        it('rejects the whole input when any one entry is unparseable, rather than dropping it', () => {
+            assert.throws(
+                () => parseAllowedHosts('good.example.com,\n*.com'),
+                /Invalid allowed-hosts entry '\*\.com'/,
+            );
+        });
     });
 
     describe('E. every guard message resolves through task.json (#201)', () => {
