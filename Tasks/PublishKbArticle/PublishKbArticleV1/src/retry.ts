@@ -10,6 +10,7 @@
 //   Tasks/TerraformInstaller/TerraformInstallerV1/src/retry.ts
 //   Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/retry.ts
 //   Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/retry.ts
+//   Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/retry.ts
 //
 // CI (scripts/check-shared-modules.js) enforces byte-identity across those
 // copies and fails the build on any divergence, so a hardening change
@@ -20,9 +21,10 @@
 // The retry loops that used to be independently open-coded — the OIDC
 // TokenGenerator (id-token-generator.ts), the registry retryHttp (http.ts), the
 // drift callback postJsonWithRetry (callback.ts), the ServiceNow withRetry
-// (servicenow-http.ts), and the three installer-family fetch clients' withRetry
+// (servicenow-http.ts), the three installer-family fetch clients' withRetry
 // (http-client.ts, shared byte-identically across TerraformInstaller /
-// PolicyAgentInstaller / TerraformDocsInstaller) — now all delegate here. Each
+// PolicyAgentInstaller / TerraformDocsInstaller), and TerraformPolicyCheck's
+// git-clone retry (policy-source.ts, #891) — now all delegate here. Each
 // keeps its own EXACT semantics by supplying predicates, not by sharing one
 // hardcoded policy:
 //

@@ -920,7 +920,11 @@ export abstract class BaseTerraformCommandHandler {
             if (outputFormat === "json") {
                 this.warnIfSensitiveOutputs(commandOutput.stdout, undefined);
             }
-            console.log(commandOutput.stdout);
+            // #869: route through echoSafeConsoleLine, same as plan()/apply() --
+            // captured show output can carry provider/module/remote-state text, and
+            // an unneutralized leading `##vso[...]`/`##[...]` line would otherwise
+            // forge an ADO logging command.
+            this.echoSafeConsoleLine(commandOutput.stdout);
             if (commandOutput.stderr.trim()) {
                 tasks.debug(commandOutput.stderr.trim());
             }
@@ -1399,6 +1403,21 @@ export abstract class BaseTerraformCommandHandler {
                     tasks.setVariable('customFilePath', safeCustomFilePath, false, true);
                 } else {
                     tasks.warning(`customFilePath '${customFilePath}' failed output-variable validation (length/printable-ASCII); skipping the customFilePath output variable.`);
+                }
+                // #868: customCommand is free-form, so its output shape is unknown --
+                // only attempt sensitive-value detection when the operator's own
+                // commandOptions requested -json (mirrors show()'s outputFormat==="json"
+                // gate; custom has no outputFormat input of its own). Always register
+                // the file for cleanup -- normal-completion when sensitive (no dedicated
+                // cleanupCustomFile* opt-out exists, so this defaults to the safer
+                // path), emergency-only otherwise -- since neither collection was ever
+                // populated for this branch before.
+                const hasSensitive = commandOptionsContainsJsonFlag(commandOptions) &&
+                    this.warnIfSensitiveOutputs(commandOutput.stdout, customFilePath);
+                if (hasSensitive) {
+                    this.tempFiles.push(customFilePath);
+                } else {
+                    this.emergencyOnlyTempFiles.push(customFilePath);
                 }
                 result = commandOutput.code;
                 if (result !== 0) {

@@ -230,8 +230,109 @@ export function isDangerousUriScheme(normalizedValue: string): boolean {
   return !(normalizedValue.startsWith('data:image/') && !normalizedValue.startsWith('data:image/svg+xml'));
 }
 
-/** True if a NORMALIZED http-equiv/content pair is a meta-refresh redirect to a dangerous scheme. */
+/**
+ * Extracts the redirect target from a NORMALIZED (see normalizeUriForSchemeCheck)
+ * `<meta http-equiv="refresh">` `content` value, mirroring the WHATWG "shared
+ * declarative refresh steps": leading ASCII digits (plus any trailing digit/dot
+ * run) are the reload time and are skipped, then a `;`/`,`/whitespace separator,
+ * then an OPTIONAL case-insensitive `url` token (loose whitespace around it and
+ * the `=`) precedes the target. If that token isn't there, or doesn't fully
+ * match, a real browser falls back to treating the WHOLE remainder as the
+ * target verbatim -- so a naive `includes('url=')` requirement would miss a
+ * real, working `content="0;https://evil.example/"` redirect that never spells
+ * "url=" at all. A quoted target ends at its own matching quote (or runs to the
+ * end of the string if unclosed); anything after that is discarded, same as the
+ * browser parser. Returns `undefined` when there is no separator/target at all
+ * -- a bare `content="5"` is just a timed reload of the current document, not a
+ * redirect.
+ */
+function extractMetaRefreshTarget(input: string): string | undefined {
+  const isDigit = (c: string): boolean => c >= '0' && c <= '9';
+  const isSpace = (c: string): boolean => c === ' ' || c === '\t' || c === '\n' || c === '\f' || c === '\r';
+  const len = input.length;
+  let pos = 0;
+
+  while (pos < len && isSpace(input[pos])) { pos++; }
+
+  const digitsStart = pos;
+  while (pos < len && isDigit(input[pos])) { pos++; }
+  if (pos === digitsStart && (pos >= len || input[pos] !== '.')) {
+    return undefined; // no leading digits and no '.' either: not a valid refresh directive
+  }
+  while (pos < len && (isDigit(input[pos]) || input[pos] === '.')) { pos++; }
+
+  if (pos >= len || (input[pos] !== ';' && input[pos] !== ',' && !isSpace(input[pos]))) {
+    return undefined; // nothing (valid) follows the time: no target
+  }
+  while (pos < len && isSpace(input[pos])) { pos++; }
+  if (pos < len && (input[pos] === ';' || input[pos] === ',')) {
+    pos++;
+    while (pos < len && isSpace(input[pos])) { pos++; }
+  }
+  if (pos >= len) {
+    return undefined; // separator with nothing after it: no explicit target
+  }
+
+  // Optional "url" + ws + "=" + ws prefix; on any mismatch, targetStart is left
+  // at the position before this attempt, so the whole remainder becomes the
+  // target -- exactly like a real browser's parser falling back.
+  let targetStart = pos;
+  if (input[pos] === 'u') {
+    let p = pos + 1;
+    if (p < len && input[p] === 'r') {
+      p++;
+      if (p < len && input[p] === 'l') {
+        p++;
+        while (p < len && isSpace(input[p])) { p++; }
+        if (p < len && input[p] === '=') {
+          p++;
+          while (p < len && isSpace(input[p])) { p++; }
+          targetStart = p;
+        }
+      }
+    }
+  }
+
+  let target = input.slice(targetStart);
+  const quote = target.charAt(0);
+  if (quote === '"' || quote === '\'') {
+    const closeAt = target.indexOf(quote, 1);
+    target = closeAt === -1 ? target.slice(1) : target.slice(1, closeAt);
+  }
+  return target;
+}
+
+/**
+ * True if a NORMALIZED (see normalizeUriForSchemeCheck) http-equiv/content pair
+ * is a meta-refresh that would automatically navigate the reader to a
+ * DIFFERENT origin. `<base>` is rejected outright above with no content check
+ * because it retargets every relative URL in the document indiscriminately --
+ * a blast radius no content inspection can bound. A meta-refresh's blast
+ * radius is exactly one navigation, to its own parsed target, so unlike
+ * `<base>` it CAN be judged by that target: no parsed target at all
+ * (extractMetaRefreshTarget returns undefined/empty) is just a timed reload or
+ * self-refresh of the current document, and a bare `#fragment` is a
+ * same-document jump -- neither leaves the page. A scheme-less, non-network-path
+ * target (`/moved`, `next.html`) can only resolve within whatever origin serves
+ * this document, so it is no more dangerous than the relative `<a href>` links
+ * this pipeline already allows through unchanged. What IS rejected: a target
+ * carrying an explicit URI scheme (`https:`, `javascript:`, `data:`, any custom
+ * scheme) or a leading `//` / `\\`-style network-path reference (browsers treat
+ * two leading slash-or-backslash characters as an explicit authority for any
+ * special scheme -- the well-known backslash-trick bypass) -- both can hand the
+ * reader's browser to an attacker-controlled origin the instant the page loads,
+ * with no click and no visible link to inspect first, the same silent off-site
+ * redirect harm `<base>` guards against. `javascript:`/`vbscript:` targets are
+ * caught here too (they carry a scheme), in addition to the dedicated
+ * isDangerousUriScheme check used elsewhere.
+ */
 export function isDangerousMetaRefresh(normalizedHttpEquiv: string, normalizedContent: string): boolean {
-  return normalizedHttpEquiv === 'refresh' &&
-    (normalizedContent.includes('javascript:') || normalizedContent.includes('vbscript:'));
+  if (normalizedHttpEquiv !== 'refresh') {
+    return false;
+  }
+  const target = extractMetaRefreshTarget(normalizedContent);
+  if (!target || target.startsWith('#')) {
+    return false;
+  }
+  return /^[/\\]{2}/.test(target) || /^[a-z][a-z0-9+.-]*:/i.test(target);
 }

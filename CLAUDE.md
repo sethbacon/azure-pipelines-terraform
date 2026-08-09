@@ -282,6 +282,7 @@ Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates poli
 | `exec-timeout.ts`    | Wall-clock ceiling for a local policy-engine subprocess — task-lib's `execAsync` bounds captured output size but not time, so a hung engine would otherwise run to the ADO job timeout |
 | `output-cap.ts`      | Bounded stdout/stderr capture (`attachBoundedCapture`) so a runaway engine cannot grow one JS string until the agent OOMs (#632)                                    |
 | `secure-temp.ts`     | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
+| `retry.ts`           | Bounded-backoff retry loop for the policy-repo git clone — byte-identical copy shared with TerraformTaskV5 and the installer family, gated by `scripts/check-shared-modules.js` |
 | `types.ts`           | Shared type definitions for the engines and the orchestrator                                                                                                       |
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
