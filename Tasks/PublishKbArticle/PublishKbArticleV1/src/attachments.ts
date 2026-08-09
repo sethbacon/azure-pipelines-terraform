@@ -151,7 +151,15 @@ export async function deleteAttachment(
     // point their response is parsed -- this is a second, independent layer in
     // case an invalid value ever reached this call some other way.
     const url = `${baseUrl(instance)}/api/now/attachment/${encodeURIComponent(attachmentId)}`;
-    await snRequest('DELETE', url, { headers });
+    // Idempotent by HTTP semantics (DELETE), so retried like every other GET
+    // in this task (#879 class): sibling to listArticleAttachments (GET) and
+    // uploadAttachment (POST) above, this call had no retry wrapper at all. A
+    // repeat against an already-deleted attachment is a benign, definitively-
+    // classified 4xx (never retried by withRetry's default) rather than a
+    // corrupting side effect.
+    await withRetry(() => snRequest('DELETE', url, { headers }), {
+        log: (message) => console.log(`[WARN] ${message}`),
+    });
 }
 
 /** SHA-256 hex hash of a Buffer's bytes (matches the ServiceNow attachment `hash` field). */

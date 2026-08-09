@@ -66,6 +66,10 @@ import './AuthSchemeValidatorL0';
 
 // The credential fail-closed class test (#97 and its siblings).
 import './CredentialFailClosedMatrixL0';
+// Table-driven CLASS test: captured terraform output re-emitted to the console
+// or written to a file without the ##vso neutralizer / sensitivity detection /
+// cleanup registration its sibling code paths apply (#869, #868).
+import './CaptureOutputProtectionClassL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.

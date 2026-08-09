@@ -25,6 +25,8 @@ import './ExecTimeoutL0';
 import './OpaFailModeValidationL0';
 // End-to-end coverage for index.ts's SIGTERM/SIGINT emergency cleanup (#775).
 import './SignalHandlerL0';
+// Class test: git-clone retry coverage (#891).
+import './CloneRetryL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 

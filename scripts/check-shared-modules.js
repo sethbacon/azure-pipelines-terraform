@@ -230,6 +230,10 @@ const FAMILIES = [
         // portable across the fetch+AbortController transport as well), which is
         // why the three installer src dirs now appear in this family. http-client.ts
         // itself stays its own separate family above — only the retry loop is shared.
+        // TerraformPolicyCheck joined this family for #891: cloneRepo's git-clone
+        // was the one network operation in that task with no retry at all (not even
+        // its own open-coded loop) — it now delegates to this same shared retryAsync
+        // rather than growing a ninth bespoke implementation.
         dirs: [
             'Tasks/TerraformTask/TerraformTaskV5/src',
             'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
@@ -238,6 +242,7 @@ const FAMILIES = [
             'Tasks/TerraformInstaller/TerraformInstallerV1/src',
             'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
             'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+            'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src',
         ],
         modules: [
             'retry.ts',
