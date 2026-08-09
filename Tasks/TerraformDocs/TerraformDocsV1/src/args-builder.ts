@@ -24,22 +24,24 @@ export interface TerraformDocsConfig {
  * Keeping this as the single source of truth means an unknown formatter fails
  * fast with a clear error rather than being passed through to the CLI.
  */
-const FORMATTER_SUBCOMMANDS: Record<string, string[]> = {
-    'markdown-table': ['markdown', 'table'],
-    'markdown-document': ['markdown', 'document'],
-    'json': ['json'],
-    'yaml': ['yaml'],
-    'toml': ['toml'],
-    'pretty': ['pretty'],
-    'asciidoc-table': ['asciidoc', 'table'],
-    'asciidoc-document': ['asciidoc', 'document'],
-    'tfvars-hcl': ['tfvars', 'hcl'],
-    'tfvars-json': ['tfvars', 'json'],
-};
+// A Map (not an object literal) so formatter='__proto__'/'constructor'/etc. can
+// never resolve to an inherited Object.prototype member instead of undefined.
+const FORMATTER_SUBCOMMANDS: ReadonlyMap<string, readonly string[]> = new Map([
+    ['markdown-table', ['markdown', 'table']],
+    ['markdown-document', ['markdown', 'document']],
+    ['json', ['json']],
+    ['yaml', ['yaml']],
+    ['toml', ['toml']],
+    ['pretty', ['pretty']],
+    ['asciidoc-table', ['asciidoc', 'table']],
+    ['asciidoc-document', ['asciidoc', 'document']],
+    ['tfvars-hcl', ['tfvars', 'hcl']],
+    ['tfvars-json', ['tfvars', 'json']],
+]);
 
 /** Resolves a picklist formatter option to its terraform-docs subcommand tokens. */
 export function resolveFormatter(formatter: string): string[] {
-    const subcommand = FORMATTER_SUBCOMMANDS[formatter];
+    const subcommand = FORMATTER_SUBCOMMANDS.get(formatter);
     if (!subcommand) {
         throw new Error(`Unsupported terraform-docs formatter: ${formatter}`);
     }

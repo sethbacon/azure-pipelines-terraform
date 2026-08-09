@@ -47,6 +47,19 @@ describe('detectBackendCloud', function () {
     });
   }
 
+  // Class test (issues #884/#897): BACKEND_TYPE_TO_CLOUD is a Map, so a
+  // backend.type equal to an Object.prototype member name must fall through
+  // to the not-found (null) branch exactly like any other unrecognized
+  // backend type, never resolving to an inherited member.
+  const prototypePollutionKeys = ['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty'];
+  for (const backendType of prototypePollutionKeys) {
+    it(`returns null for backend type '${backendType}' (an Object.prototype member, not a real backend)`, () => {
+      const dir = makeWorkingDirectory();
+      writeTfstate(dir, JSON.stringify({ backend: { type: backendType } }));
+      assert.strictEqual(detectBackendCloud(dir), null);
+    });
+  }
+
   const noCredentialBackends = ['local', 'http', 'oci', 'pg', 'consul', 'kubernetes', 'oss'];
   for (const backendType of noCredentialBackends) {
     it(`returns null for backend type '${backendType}' (no cloud credentials to inject)`, () => {

@@ -34,6 +34,7 @@ import './DataImageSvgXmlStrippingL0';
 import './CssEscapeBypassL0';
 import './AllowlistSanitizerL0';
 import './MetaRefreshExternalOriginL0';
+import './PrototypeSafeLookupClassL0';
 
 // ---------------------------------------------------------------------------
 // Helpers

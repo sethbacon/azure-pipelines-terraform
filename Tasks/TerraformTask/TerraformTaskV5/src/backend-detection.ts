@@ -20,13 +20,15 @@ export const MAX_BACKEND_STATE_BYTES = 10 * 1024 * 1024; // 10 MB
  * kubernetes, oci's PAR-based http backend, ...) are intentionally absent —
  * `detectBackendCloud` returns null for them.
  */
-const BACKEND_TYPE_TO_CLOUD: Readonly<Record<string, BackendCloud>> = {
-  azurerm: 'azurerm',
-  s3: 'aws',
-  gcs: 'gcp',
-  cloud: 'hcp',
-  remote: 'hcp',
-};
+// A Map (not an object literal) so a backend.type of '__proto__'/'constructor'/etc.
+// can never resolve to an inherited Object.prototype member instead of undefined.
+const BACKEND_TYPE_TO_CLOUD: ReadonlyMap<string, BackendCloud> = new Map([
+  ['azurerm', 'azurerm'],
+  ['s3', 'aws'],
+  ['gcs', 'gcp'],
+  ['cloud', 'hcp'],
+  ['remote', 'hcp'],
+]);
 
 /**
  * Detects which cloud's credentials the *state backend* needs, by reading the
@@ -104,7 +106,7 @@ export function detectBackendCloud(workingDirectory: string): BackendCloud | nul
     return null;
   }
 
-  const cloud = BACKEND_TYPE_TO_CLOUD[backendType];
+  const cloud = BACKEND_TYPE_TO_CLOUD.get(backendType);
   if (!cloud) {
     tasks.debug(`Backend detection: backend type '${backendType}' has no managed cloud credentials to inject; skipping.`);
     return null;

@@ -29,6 +29,18 @@ describe('args-builder: resolveFormatter', () => {
   it('throws on an unsupported formatter', () => {
     assert.throws(() => resolveFormatter('bogus'), /Unsupported terraform-docs formatter: bogus/);
   });
+
+  // Class test (issues #884/#897): FORMATTER_SUBCOMMANDS is a Map, so a
+  // formatter equal to an Object.prototype member name must fall through to
+  // the same "unsupported formatter" error as any other unrecognized value,
+  // rather than resolving to an inherited member and later throwing a
+  // confusing "subcommand is not iterable" TypeError out of the spread below.
+  const prototypePollutionFormatters = ['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty'];
+  for (const formatter of prototypePollutionFormatters) {
+    it(`throws the same clear error on formatter '${formatter}' (an Object.prototype member, not a real formatter)`, () => {
+      assert.throws(() => resolveFormatter(formatter), new RegExp(`Unsupported terraform-docs formatter: ${formatter}`));
+    });
+  }
 });
 
 describe('args-builder: buildTerraformDocsArgs', () => {

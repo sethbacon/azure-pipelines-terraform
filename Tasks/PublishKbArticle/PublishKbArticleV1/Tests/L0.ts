@@ -30,6 +30,8 @@ import './AllowlistSanitizerL0';
 // This task's behavioural rows of the cross-task output-boundary class table
 // (the structural half lives in TerraformTaskV5/Tests/OutputBoundaryClassL0.ts).
 import './OutputBoundaryClassL0';
+// Prototype-pollution-safe lookup class test (issues #884/#897).
+import './PrototypeSafeLookupClassL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;

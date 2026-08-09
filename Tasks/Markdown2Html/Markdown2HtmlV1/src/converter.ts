@@ -74,12 +74,14 @@ export async function processFrontMatterDriven(
     const headingShift = Number(incOpts['heading-shift'] ?? 0);
     const sectionAnchors = Boolean(incOpts['section-anchors'] ?? false);
 
-    const SEP_MAP: Record<string, string> = {
-        hr: '<hr class="file-divider">',
-        pagebreak: '<div class="page-break" style="page-break-after: always;"></div>',
-        none: '',
-    };
-    const sepHtml = SEP_MAP[separator] ?? '<hr class="file-divider">';
+    // A Map (not an object literal) so separator='__proto__'/'constructor'/etc.
+    // can never resolve to an inherited Object.prototype member instead of undefined.
+    const SEP_MAP: ReadonlyMap<string, string> = new Map([
+        ['hr', '<hr class="file-divider">'],
+        ['pagebreak', '<div class="page-break" style="page-break-after: always;"></div>'],
+        ['none', ''],
+    ]);
+    const sepHtml = SEP_MAP.get(separator) ?? '<hr class="file-divider">';
 
     // Resolve includes
     const includePaths = resolveIncludes(absPrimary, frontMatter);
