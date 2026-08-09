@@ -40,6 +40,18 @@ async function run(): Promise<void> {
         return;
     }
 
+    // #881: the digest attachment must be written via the writeSecretFile hardened
+    // primitive (owner-only 0600 on Unix), not a permission-less fs.writeFileSync --
+    // it is redacted but still plan-derived, like the raw terraform-plan-results
+    // attachment written alongside it.
+    if (process.platform !== 'win32') {
+        const mode = fs.statSync(summaryAttachment.path).mode & 0o777;
+        if (mode !== 0o600) {
+            tl.setResult(tl.TaskResult.Failed, `AzurePlanSuccessPublishSummaryL0: expected the digest attachment to be 0600, got ${mode.toString(8)}.`);
+            return;
+        }
+    }
+
     let digest: { schemaVersion: number; kind: string; resources: Array<{ address: string; actions: string[] }>; summary: { add: number } };
     try {
         digest = JSON.parse(fs.readFileSync(summaryAttachment.path, 'utf-8'));

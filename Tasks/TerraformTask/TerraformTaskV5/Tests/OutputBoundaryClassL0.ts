@@ -163,9 +163,12 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
             'replaceSecretFile must re-create exclusively rather than write through an existing entry'
         );
         // Every command-output write in the handler uses that wrapper, never a
-        // bare fs.writeFileSync into an operator-supplied path.
+        // bare fs.writeFileSync into an operator-supplied path. The digest
+        // attachment write (writeAndAttachDigest) was the one grandfathered
+        // exception here; #881 closed it (now writeSecretFile too), so this must
+        // stay at zero.
         const bareWrites = base.match(/fs\.writeFileSync\(/g) || [];
-        assert.strictEqual(bareWrites.length, 1, 'only the Agent.TempDirectory digest write may use a bare fs.writeFileSync');
+        assert.strictEqual(bareWrites.length, 0, 'no bare fs.writeFileSync may remain in this handler (#881: the digest write must also go through writeSecretFile)');
     });
 
     it('S2 outputArticleInfoToJson — SIBLING PACKAGE: the ServiceNow-supplied article number is constrained to a separator-free basename before it becomes a write path', () => {
