@@ -19,6 +19,11 @@ tr.registerMock('./http-client', {
 tr.registerMock('undici', { ProxyAgent: class { } });
 tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { } });
 
+// NOTE: both digests below are FULL 64-character SHA256 hex strings on purpose. A
+// SHORT (truncated) marker is not a mismatch at all -- it is an UNVERIFIABLE marker,
+// which verifyCachedTool now reports as "no usable marker" instead of failing with a
+// tampering-shaped error (#198); CacheHitTruncatedMarkerDegrades covers that state.
+// This fixture must exercise a genuine, well-formed mismatch.
 // The stored integrity marker does NOT match the (mocked) hash of the cached
 // executable's current on-disk content: the cached copy was modified/corrupted
 // since it was last verified, and the cache-hit re-verification must reject it.
@@ -26,7 +31,7 @@ tr.registerMock('fs', {
     existsSync: (p: string) => p.includes('.installer-verified.sha256'),
     readFileSync: (p: string, _enc?: string) => {
         if (p.includes('.installer-verified.sha256')) {
-            return 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd001122';
+            return 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
         }
         return Buffer.from('tampered-exe-content');
     },
@@ -41,7 +46,7 @@ tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid',
     createHash: () => {
         const hash: any = new (require('stream').Writable)({ write(_c: any, _e: any, cb: any) { cb(); } });
-        hash.digest = () => 'ffffffff00112233aabbccdd00112233aabbccdd00112233aabbccdd001122';
+        hash.digest = () => 'ffffffff00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
         return hash;
     }
 });
