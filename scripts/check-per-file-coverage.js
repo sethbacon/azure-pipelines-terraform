@@ -186,6 +186,54 @@ const SECURITY_TIER = new Set([
     'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/url-secret-redaction.js',
     'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/url-secret-redaction.js',
     'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/url-secret-redaction.js',
+
+    // Issue #880: THE egress-authorization decision (CWE-918) for every
+    // installer download -- the initial registry/mirror download_url host and
+    // every redirect hop route through assertEgressHostAllowed(), whose numeric
+    // address classification is the only always-on control keeping an agent's
+    // download off 169.254.169.254 and RFC1918. Byte-identical across the three
+    // installers (scripts/check-shared-modules.js) and the direct sibling of the
+    // url-secret-redaction.js family tiered just above, yet left at
+    // DEFAULT_FLOOR -- so a regression dropping branch coverage on a whole CIDR
+    // range or the DNS-resolution arm would not fail CI.
+    'Tasks/TerraformInstaller/TerraformInstallerV1/src/registry-allowlist.js',
+    'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/registry-allowlist.js',
+    'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/registry-allowlist.js',
+
+    // Found by re-running #880's own argument as a signature across every
+    // parity-gated shared module rather than only the one the issue named.
+    // url-path-segment.js is the path-traversal guard standing between the
+    // operator's registryMirrorName and an interpolated URL path;
+    // verification-failure.js is the typed error that decides whether a cache
+    // re-verification fails closed or degrades to the cached binary. Both are
+    // byte-identical across the three installers and both sat at DEFAULT_FLOOR.
+    'Tasks/TerraformInstaller/TerraformInstallerV1/src/url-path-segment.js',
+    'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/url-path-segment.js',
+    'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/url-path-segment.js',
+    'Tasks/TerraformInstaller/TerraformInstallerV1/src/verification-failure.js',
+    'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/verification-failure.js',
+    'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/verification-failure.js',
+
+    // #880's first signature enumerated only PARITY-GATED modules, so it was blind
+    // to every security control that happens not to be duplicated. Re-run over ALL
+    // of Tasks/**/src, these eight were the residual — each one decides, constrains,
+    // validates or redacts, and each sat at DEFAULT_FLOOR:
+    //   credential-guards.js       fail-closed credential validation shared by every cloud handler
+    //   secure-file-loader.js      tightens permissions and scrub-deletes a secret-bearing download
+    //   secure-var-file-masking.js registers secure-var-file contents with the masker
+    //   endpoint-data-secret.js    reads ENDPOINT_DATA_* secrets without the debug-log leak
+    //   proxy-config.js            registers proxy credentials before the dispatcher is built
+    //   backend-detection.js       maps an untrusted backend type onto a credential-injection path
+    //   image-rewrite.js           path-containment guard for local <img src> in published KB HTML
+    //   private-publisher.js       validates an untrusted registry moduleId before URL interpolation
+    'Tasks/TerraformTask/TerraformTaskV5/src/credential-guards.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/secure-file-loader.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/secure-var-file-masking.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/endpoint-data-secret.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/proxy-config.js',
+    'Tasks/TerraformTask/TerraformTaskV5/src/backend-detection.js',
+    'Tasks/PublishKbArticle/PublishKbArticleV1/src/image-rewrite.js',
+    'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/private-publisher.js',
 ]);
 
 // Files allowed BELOW their applicable floor (DEFAULT_FLOOR, or SECURITY_FLOOR

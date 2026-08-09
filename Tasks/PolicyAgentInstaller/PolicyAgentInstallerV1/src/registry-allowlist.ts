@@ -11,7 +11,52 @@
 // azure-pipelines-packer extension's PackerInstallerV1/src — apply fixes there too.
 import dns = require('dns');
 
-/** Parses a comma/newline-separated registryAllowedHosts input into a normalized list. */
+/**
+ * One DNS label. Underscores are permitted deliberately: this validates the
+ * operator's PATTERN for obvious nonsense, it does not police DNS legality, and
+ * underscore-bearing labels occur in real internal zones that the exact-match
+ * arm below can legitimately pin.
+ */
+const HOST_LABEL = /^[a-z0-9_](?:[a-z0-9_-]*[a-z0-9_])?$/;
+
+/**
+ * Rejects an allowlist entry that cannot mean what the operator intended,
+ * rather than carrying it as a pin that silently matches nothing
+ * (`example.com*`) or spans an entire public suffix (`*.com`). This is the
+ * operator's only control over a compromised registry, so an unparseable pin
+ * fails the task instead of degrading to a weaker allowlist (#888).
+ *
+ * Returns the entry in the form a runtime host is actually spelled.
+ */
+function assertValidAllowlistEntry(entry: string): string {
+  const isWildcard = entry.startsWith('*.');
+  const host = isWildcard ? entry.slice(2) : entry;
+  const labels = host.split('.');
+  const valid =
+    host.length > 0 &&
+    ((!isWildcard && isIpLiteral(host)) ||
+      ((!isWildcard || labels.length >= 2) && labels.every(label => HOST_LABEL.test(label))));
+  if (!valid) {
+    throw new Error(
+      `Invalid allowed-hosts entry '${entry}'. Expected a hostname such as ` +
+        `'registry.example.com', an IP literal, or a single-label wildcard covering ` +
+        `at least two labels such as '*.s3.amazonaws.com'.`,
+    );
+  }
+  // A WHATWG URL always renders an IPv6 host bracketed, so an unbracketed IPv6
+  // pin would validate here and then never equal a real request's hostname --
+  // the silently-dead pin this validation exists to prevent.
+  if (!isWildcard && !host.startsWith('[') && parseIpv6(bareHost(host)) !== null) {
+    return `[${host}]`;
+  }
+  return entry;
+}
+
+/**
+ * Parses a comma/newline-separated registryAllowedHosts input into a normalized
+ * list, throwing on any entry that is not a valid hostname, IP literal or
+ * wildcard.
+ */
 export function parseAllowedHosts(raw: string | undefined): string[] {
   if (!raw) {
     return [];
@@ -19,20 +64,31 @@ export function parseAllowedHosts(raw: string | undefined): string[] {
   return raw
     .split(/[\n,]/)
     .map(h => h.trim().toLowerCase())
-    .filter(h => h.length > 0);
+    .filter(h => h.length > 0)
+    .map(assertValidAllowlistEntry);
 }
 
 /**
- * Matches a download_url hostname against the allowlist. A `*.` prefix on an
- * allowlist entry matches only its subdomains (not the bare host itself),
- * mirroring TLS wildcard-SAN semantics — useful for registry-controlled
- * storage hosts like *.s3.amazonaws.com.
+ * Matches a download_url hostname against the allowlist. A `*.` prefix matches
+ * EXACTLY ONE label — `*.s3.amazonaws.com` covers `bucket.s3.amazonaws.com` but
+ * neither `a.bucket.s3.amazonaws.com` nor the bare `s3.amazonaws.com` — which is
+ * the TLS wildcard-SAN semantics this control has always documented. A plain
+ * suffix match silently widens an operator's corporate-domain pin to every
+ * subdomain at any depth (#888).
  */
 export function isRegistryHostAllowed(hostname: string, allowedHosts: string[]): boolean {
   const host = hostname.toLowerCase();
-  return allowedHosts.some(allowed =>
-    allowed.startsWith('*.') ? host.endsWith(allowed.slice(1)) : host === allowed,
-  );
+  return allowedHosts.some(allowed => {
+    if (!allowed.startsWith('*.')) {
+      return host === allowed;
+    }
+    const suffix = allowed.slice(1);
+    if (!host.endsWith(suffix)) {
+      return false;
+    }
+    const label = host.slice(0, host.length - suffix.length);
+    return label.length > 0 && !label.includes('.');
+  });
 }
 
 /**
