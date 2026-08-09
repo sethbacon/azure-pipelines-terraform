@@ -45,6 +45,8 @@ jobs:
         run: node scripts/test-check-task-list.js
       - name: Self-test check-per-file-coverage.js
         run: node scripts/test-check-per-file-coverage.js
+      - name: Self-test publish-marketplace.js
+        run: node scripts/test-publish-marketplace.js
       - name: Check for mojibake encoding corruption
         shell: bash
         # Catches recurrence of the UTF-8-decoded-as-Windows-1252 corruption
@@ -76,6 +78,10 @@ jobs:
         run: node scripts/check-near-duplicate-modules.js
       - name: Validate egress authorization (SSRF class signature)
         run: node scripts/check-egress-authorization.js
+      - name: Validate enforced disciplines (documented-but-unenforced class signature)
+        run: node scripts/check-enforced-disciplines.js
+      - name: Self-test check-enforced-disciplines.js
+        run: node scripts/test-check-enforced-disciplines.js
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})

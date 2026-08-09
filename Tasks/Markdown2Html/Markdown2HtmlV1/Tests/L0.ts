@@ -9,6 +9,7 @@ import os = require('os');
 import path = require('path');
 import * as cheerio from 'cheerio';
 import taskLib = require('azure-pipelines-task-lib/task');
+import * as ttm from 'azure-pipelines-task-lib/mock-test';
 
 // Pure-logic modules (no task harness required)
 import { parseFrontMatter } from '../src/frontmatter';
@@ -782,5 +783,56 @@ describe('processFrontMatterDriven', () => {
         const out = path.join(dir, 'out.html');
         const result = await processFrontMatterDriven(path.join(dir, 'basenamedoc.md'), out);
         assert.strictEqual(result.title, 'basenamedoc');
+    });
+});
+
+/**
+ * Entry-point suite (#189, sibling azure-pipelines-packer #189).
+ *
+ * Everything above imports src/ modules directly; nothing loaded src/index.ts,
+ * the file task.json's Node24/Node20_1 execution handlers actually point the ADO
+ * agent at, and .nycrc.json excluded it from the coverage metric on top of that.
+ * These two scenarios run the real entry point under the mock runner — the
+ * success path (filelist mode end to end, htmlFilePath output variable set) and
+ * the fail-closed path — and src/index.js is now measured like every other file.
+ * scripts/check-enforced-disciplines.js fails CI if either property regresses.
+ */
+describe('Markdown2Html entry point (src/index.ts)', function () {
+    before(() => {
+        delete process.env.NODE_OPTIONS;
+        (ttm.MockTestRunner.prototype as unknown as { getNodePath: () => string }).getNodePath = function () {
+            return process.execPath;
+        };
+    });
+
+    it('filelist mode: converts the input file, writes the output and sets htmlFilePath', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointFileList.js'));
+        await tr.runAsync();
+        const outputFile = path.join(__dirname, '.scratch', 'entrypoint-filelist', 'out.html');
+        try {
+            assert.ok(tr.succeeded, 'the entry point should have succeeded. errors: ' + tr.errorIssues + ' stdout: ' + tr.stdout);
+            assert.ok(fs.existsSync(outputFile), 'src/index.ts must write the converted HTML to outputFile');
+            assert.ok(
+                fs.readFileSync(outputFile, 'utf8').includes('Entry Point Heading'),
+                'the written HTML must contain the converted markdown heading'
+            );
+            assert.ok(
+                tr.stdout.includes('htmlFilePath'),
+                'src/index.ts must set the htmlFilePath output variable. stdout: ' + tr.stdout
+            );
+        } finally {
+            fs.rmSync(path.join(__dirname, '.scratch', 'entrypoint-filelist'), { recursive: true, force: true });
+        }
+    });
+
+    it('fails closed when the front-matter primary file does not exist', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointMissingPrimaryFile.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'the entry point must fail closed, not throw or report success. stdout: ' + tr.stdout);
+            assert.ok(tr.errorIssues.length > 0, 'should have an error issue. stdout: ' + tr.stdout);
+        } finally {
+            fs.rmSync(path.join(os.tmpdir(), 'md2html-entrypoint-missing'), { recursive: true, force: true });
+        }
     });
 });
