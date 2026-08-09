@@ -328,6 +328,7 @@ Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to H
 | `highlight-theme.ts`  | Syntax-highlighting theme wiring for `highlight.js`                                         |
 | `document.ts`         | Document model / metadata                                                                   |
 | `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                  |
+| `html-sanitizer.ts`   | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in PublishKbArticleV1, gated by `scripts/check-shared-modules.js` |
 | `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1 |
 | `html-sanitizer.ts`   | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in PublishKbArticleV1 (#820) |
 
@@ -347,6 +348,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `attachments.ts`       | Image-attachment upload/list/sync                                                                                          |
 | `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                          |
 | `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks |
+| `html-sanitizer.ts`    | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in Markdown2HtmlV1, gated by `scripts/check-shared-modules.js` |
 | `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                   |
 | `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                               |
 | `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                       |
@@ -378,7 +380,7 @@ npm install --include=dev
 npm run compile
 
 # For full build + packaging (from repo root)
-npm install --include=dev   # installs tfx-cli, webpack, glob-exec, etc.
+npm install --include=dev   # installs tfx-cli, webpack, etc.
 npm run build:release       # compiles all tasks and bundles with webpack
 npm run package:release     # produces .vsix for sethbacon publisher
 ```
