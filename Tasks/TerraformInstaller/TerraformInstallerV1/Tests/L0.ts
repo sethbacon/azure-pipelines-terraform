@@ -31,6 +31,8 @@ import './EgressAuthorizationL0';
 // every path by which a binary becomes trusted, across ALL THREE installer tasks, plus
 // the failure/edge states of the verification itself.
 import './ArtifactTrustL0';
+// Table-driven class test for the network-retry-coverage defect class (#879/#891).
+import './NetworkRetryClassL0';
 
 describe('TerraformInstaller Test Suite', function () {
 
