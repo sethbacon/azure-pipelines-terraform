@@ -130,6 +130,18 @@ function buildFetchOptions(): RequestInit {
         }
         url.username = proxy.proxyUsername;
         url.password = proxy.proxyPassword ?? "";
+        // url.password is now the WHATWG URL setter's PERCENT-ENCODED form (e.g.
+        // 'p@ss' -> 'p%40ss') — a byte-different string from the raw
+        // proxyPassword already setSecret()'d above. ADO's log masker matches
+        // literal registered strings, not derivations, so this encoded form
+        // (which is what url.toString() below actually embeds in proxyUrl, and
+        // therefore what an undici/ProxyAgent connection-failure message would
+        // surface) needs its own registration too. Matches the derived-form
+        // masking proxy-config.ts and the https-client.ts/servicenow-http.ts
+        // families already do (#684).
+        if (url.password) {
+            tasks.setSecret(url.password);
+        }
         proxyUrl = url.toString();
     }
 

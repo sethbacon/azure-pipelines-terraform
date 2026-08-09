@@ -41,6 +41,9 @@ import './OciWifHandleProviderL0';
 // Direct unit tests for handleProvider's classic (non-WIF, API-key) private
 // key masking guarantees (#723).
 import './OciApiKeyPrivateKeyMaskingL0';
+// Table-driven CLASS test: credential emitted before it was registered as a secret
+// (the packer-extension audit's #185/#195/#186/#193/#66 class, re-enumerated here).
+import './PreMaskingClassL0';
 // Direct unit tests for cross-cloud state backend detection.
 import './BackendDetectionTests/BackendDetectionL0';
 // Direct unit tests for ParentCommandHandler's cross-cloud injection decisions.

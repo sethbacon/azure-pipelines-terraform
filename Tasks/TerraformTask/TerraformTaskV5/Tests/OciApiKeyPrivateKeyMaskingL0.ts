@@ -45,15 +45,26 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
     const setSecretCalls: string[] = [];
     let endpointData: Record<string, string> = {};
 
+    // The private key is no longer read through tasks.getEndpointDataParameter --
+    // that helper debug-logs the value it returns, so it can never carry a secret
+    // (#185). readSecretEndpointDataParameter reads the ENDPOINT_DATA_* variable
+    // the agent actually sets, so the test has to deliver it the same way the
+    // agent does rather than by stubbing the accessor.
+    const PRIVATE_KEY_ENV = 'ENDPOINT_DATA_OCI_PRIVATEKEY';
+    function deliverPrivateKey(value: string | undefined): void {
+        if (value === undefined) delete process.env[PRIVATE_KEY_ENV];
+        else process.env[PRIVATE_KEY_ENV] = value;
+    }
+
     beforeEach(() => {
         setSecretCalls.length = 0;
         endpointData = {
-            privateKey: TEST_OCI_PRIVATE_KEY_SPACES,
             tenancy: 'ocid1.tenancy.oc1..dummy',
             user: 'ocid1.user.oc1..dummy',
             region: 'us-ashburn-1',
             fingerprint: 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99',
         };
+        deliverPrivateKey(TEST_OCI_PRIVATE_KEY_SPACES);
         t.getEndpointDataParameter = (_service: string, key: string) => endpointData[key];
         // No environmentAuthSchemeOCI input configured -> resolveAuthScheme defaults
         // to "ServiceConnection", taking the classic (non-WIF) branch under test.
@@ -64,6 +75,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
     });
 
     afterEach(() => {
+        deliverPrivateKey(undefined);
         t.getEndpointDataParameter = orig.getEndpointDataParameter;
         t.getInput = orig.getInput;
         t.getBoolInput = orig.getBoolInput;
@@ -106,11 +118,17 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
             assert.ok(setSecretCalls.includes(line), `normalized PEM body line must be masked: ${line.slice(0, 12)}...`);
         }
 
+        // The raw key must not be left in process.env: ENDPOINT_DATA_* is not
+        // vaulted by task-lib, so anything still there is inherited by the
+        // terraform child process and every provider plugin it forks (#185).
+        assert.strictEqual(process.env[PRIVATE_KEY_ENV], undefined,
+            'the ENDPOINT_DATA_* private key must be deleted from the environment once read');
+
         handler.cleanupTempFiles();
     });
 
     it('masks every non-boundary line of an already-multiline (LF) PEM the same way', async () => {
-        endpointData.privateKey = TEST_OCI_PRIVATE_KEY_PEM;
+        deliverPrivateKey(TEST_OCI_PRIVATE_KEY_PEM);
 
         const handler = new TerraformCommandHandlerOCI();
         await handler.handleProvider(makeCommand());
@@ -124,7 +142,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
     });
 
     it('masks every non-boundary line of a CRLF-delivered PEM the same way', async () => {
-        endpointData.privateKey = TEST_OCI_PRIVATE_KEY_CRLF;
+        deliverPrivateKey(TEST_OCI_PRIVATE_KEY_CRLF);
 
         const handler = new TerraformCommandHandlerOCI();
         await handler.handleProvider(makeCommand());
@@ -153,7 +171,8 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
     });
 
     it('throws before writing any file when the service connection has no privateKey data parameter', async () => {
-        endpointData = {}; // privateKey (and everything else) missing
+        endpointData = {};
+        deliverPrivateKey(undefined); // privateKey (and everything else) missing
 
         const handler = new TerraformCommandHandlerOCI();
         await assert.rejects(
