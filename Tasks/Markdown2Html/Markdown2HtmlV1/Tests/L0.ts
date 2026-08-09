@@ -33,6 +33,7 @@ import './DangerousTagsRemovalL0';
 import './DataImageSvgXmlStrippingL0';
 import './CssEscapeBypassL0';
 import './AllowlistSanitizerL0';
+import './MetaRefreshExternalOriginL0';
 
 // ---------------------------------------------------------------------------
 // Helpers

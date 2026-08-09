@@ -1017,6 +1017,31 @@ describe('htmlValidate.validateHtmlContent', () => {
         );
     });
 
+    it('throws on a plain external-origin <meta http-equiv="refresh"> with no javascript:/vbscript: token (#889)', () => {
+        // The reported #889 PoC: an https:// redirect target carries neither
+        // token, so the old isDangerousMetaRefresh let it straight through.
+        const html = '<html><head><meta http-equiv="refresh" content="0;url=https://evil.example/"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, false),
+            /<base> elements and <meta http-equiv="refresh">|BaseOrMetaRefreshNotAllowed/,
+        );
+    });
+
+    it('does not throw on a same-document fragment <meta http-equiv="refresh"> (#889)', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="5;url=#section"></head><body><p>x</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does not throw on a relative-path <meta http-equiv="refresh"> ("moved" pattern, #889)', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="5;url=/kb/updated-article"></head><body><p>x</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
+    it('does not throw on a plain timed <meta http-equiv="refresh"> with no target (#889)', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="30"></head><body><p>x</p></body></html>';
+        assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
+    });
+
     it('does not throw on a benign <meta> tag', () => {
         const html = '<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>';
         assert.doesNotThrow(() => htmlValidate.validateHtmlContent(html, false));
@@ -1161,6 +1186,14 @@ describe('htmlValidate.validateHtmlContent', () => {
 
     it('throws on a javascript: <meta http-equiv="refresh"> even when force=true (#446: force no longer bypasses XSS checks)', () => {
         const html = '<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head><body><p>x</p></body></html>';
+        assert.throws(
+            () => htmlValidate.validateHtmlContent(html, true),
+            /<base> elements and <meta http-equiv="refresh">|BaseOrMetaRefreshNotAllowed/,
+        );
+    });
+
+    it('throws on a plain external-origin <meta http-equiv="refresh"> even when force=true (#889)', () => {
+        const html = '<html><head><meta http-equiv="refresh" content="0;url=https://evil.example/"></head><body><p>x</p></body></html>';
         assert.throws(
             () => htmlValidate.validateHtmlContent(html, true),
             /<base> elements and <meta http-equiv="refresh">|BaseOrMetaRefreshNotAllowed/,
