@@ -270,14 +270,25 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
      * produces is a safe, idempotent action, the same "safe even if this
      * working directory turns out not to have an OCI PAR backend after all"
      * reasoning `registerOciBackendCacheForCleanup` above already relies on --
-     * a no-op via the `fs.existsSync` guard if `planFilePath` doesn't exist.
+     * a no-op via the `fs.existsSync` guard if `planFilePath` doesn't exist --
+     * though a successful command whose plan file is missing warns rather than
+     * returning silently, so a mis-derived path cannot quietly disable this.
      *
      * `commandFailed` mirrors afterInit()'s `initFailed`: fail-closed (throws)
      * when the command that produced this plan file succeeded, best-effort/warn
      * (never masks the command's own error) when it did not.
      */
     protected async afterPlanFileWritten(planFilePath: string, commandFailed: boolean): Promise<void> {
-        if (!fs.existsSync(planFilePath)) return;
+        if (!fs.existsSync(planFilePath)) {
+            // After a SUCCESSFUL command the file should be there; its absence means the
+            // path we derived disagrees with what Terraform actually wrote, and the real
+            // plan file keeps the agent's default permissions (#875). On the failure path
+            // an absent plan file is expected, so stay silent there.
+            if (!commandFailed) {
+                tasks.warning(`Could not tighten permissions on the saved Terraform plan file: nothing exists at "${planFilePath}". A plan file saved elsewhere keeps the agent's default permissions and embeds the active backend config, including the OCI PAR bearer URL.`);
+            }
+            return;
+        }
         if (commandFailed) {
             try {
                 tightenFilePermissions(planFilePath);

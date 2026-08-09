@@ -64,6 +64,74 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
 }
 
 /**
+ * Splits `commandOptions` into argv the way ToolRunner's `.line()` does, by
+ * mirroring task-lib's own `_argStringToArray`: a `"` toggles quoting anywhere
+ * in a token (not only at its start) and is stripped, `\` escapes inside
+ * quotes, and only unquoted whitespace separates arguments.
+ *
+ * The helpers below inspect `commandOptions` to make decisions about an argv
+ * that ToolRunner -- not they -- ultimately builds, so any disagreement between
+ * the two parsers is a bug by construction. The previous regex tokenizer only
+ * recognized a token that was quoted in its entirety, so `-out="my plan.tfplan"`
+ * split into `-out="my` + `plan.tfplan"` and every helper drew a different
+ * conclusion than Terraform did (#875).
+ */
+export function splitCommandOptions(commandOptions: string): string[] {
+    const args: string[] = [];
+    let inQuotes = false;
+    let escaped = false;
+    let lastCharWasSpace = true;
+    let arg = '';
+
+    const append = (c: string): void => {
+        // task-lib only treats a backslash as an escape for a double quote.
+        if (escaped && c !== '"') {
+            arg += '\\';
+        }
+        arg += c;
+        escaped = false;
+    };
+
+    // Indexed rather than for..of so surrogate pairs are handled as task-lib does.
+    for (let i = 0; i < commandOptions.length; i++) {
+        const c = commandOptions.charAt(i);
+
+        if (c === ' ' && !inQuotes) {
+            if (!lastCharWasSpace) {
+                args.push(arg);
+                arg = '';
+            }
+            lastCharWasSpace = true;
+            continue;
+        }
+        lastCharWasSpace = false;
+
+        if (c === '"') {
+            if (!escaped) {
+                inQuotes = !inQuotes;
+            } else {
+                append(c);
+            }
+            continue;
+        }
+        if (c === '\\' && escaped) {
+            append(c);
+            continue;
+        }
+        if (c === '\\' && inQuotes) {
+            escaped = true;
+            continue;
+        }
+        append(c);
+    }
+
+    if (!lastCharWasSpace) {
+        args.push(arg.trim());
+    }
+    return args;
+}
+
+/**
  * Best-effort heuristic (Phase 5 §5.5) for whether a `show` command's
  * `commandOptions` carries a positional plan-file argument (e.g. `tfplan.out`,
  * or `-no-color tfplan.out`) as opposed to flags only. Terraform's `show`
@@ -77,26 +145,22 @@ export function parseTargetTokens(targetResources: string | undefined): string[]
  * is a planfile show, so the state-summary attachment is skipped even if
  * `publishStateResults` is set (documented in the task's helpMarkDown).
  *
- * Deliberately NOT a full shell parser -- it recognizes double-quoted tokens
- * (`"a plan file.out"`) but not single quotes or backslash escapes, matching
- * ToolRunner's own `.line()` closely enough for this best-effort gate. A
- * value that isn't a flag (doesn't start with `-`) is treated as positional.
+ * Tokenized with {@link splitCommandOptions}, so quoting is read exactly as
+ * ToolRunner's `.line()` reads it. A value that isn't a flag (doesn't start
+ * with `-`) is treated as positional.
  */
 export function hasPositionalCommandArg(commandOptions: string | undefined): boolean {
     if (!commandOptions) return false;
-    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
-    return tokens.some(t => !t.startsWith('-'));
+    return splitCommandOptions(commandOptions).some(t => !t.startsWith('-'));
 }
 
 /**
  * Returns the plan-file path from a user-supplied `-out=<path>` / `-out <path>`
  * (double-dash `--out` accepted too, as Terraform does) token in
- * `commandOptions`, or undefined if none is present. Uses the SAME best-effort
- * tokenizer as {@link hasPositionalCommandArg} (double-quoted whole tokens are
- * recognized -- and their quotes stripped so the returned path matches what
- * ToolRunner's `.line()` passes to Terraform -- single quotes / backslash
- * escapes / an `-out="quoted value with spaces"` equals-form are not, matching
- * that helper's documented limits).
+ * `commandOptions`, or undefined if none is present. Tokenized with
+ * {@link splitCommandOptions}, so the returned path is byte-for-byte the one
+ * ToolRunner passes to Terraform -- including quoted paths containing spaces,
+ * in both the `-out="a b.tfplan"` and `-out "a b.tfplan"` forms (#875).
  *
  * Used by plan() UNCONDITIONALLY (#675 2nd follow-up) to detect a user-supplied
  * `-out=` so its plan file can be permission-tightened via afterPlanFileWritten()
@@ -112,15 +176,14 @@ export function hasPositionalCommandArg(commandOptions: string | undefined): boo
  */
 export function extractOutFlagPath(commandOptions: string | undefined): string | undefined {
     if (!commandOptions) return undefined;
-    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
-    const stripQuotes = (s: string): string => s.replace(/"/g, '');
+    const tokens = splitCommandOptions(commandOptions);
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         const eq = token.match(/^--?out=(.*)$/);
-        if (eq) return stripQuotes(eq[1]);
+        if (eq) return eq[1];
         if (token === '-out' || token === '--out') {
             const next = tokens[i + 1];
-            if (next !== undefined) return stripQuotes(next);
+            if (next !== undefined) return next;
         }
     }
     return undefined;
@@ -140,8 +203,7 @@ export function extractOutFlagPath(commandOptions: string | undefined): string |
  */
 export function commandOptionsContainsJsonFlag(commandOptions: string | undefined): boolean {
     if (!commandOptions) return false;
-    const tokens = commandOptions.match(/"[^"]*"|\S+/g) || [];
-    return tokens.some((token) => token === '-json' || token === '--json');
+    return splitCommandOptions(commandOptions).some((token) => token === '-json' || token === '--json');
 }
 
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
