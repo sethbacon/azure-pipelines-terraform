@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('latest');
         tl.setResult(tl.TaskResult.Succeeded, 'HashiCorpLatestSuccessL0 should have succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'HashiCorpLatestSuccessL0 failed: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'HashiCorpLatestSuccessL0 failed: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 

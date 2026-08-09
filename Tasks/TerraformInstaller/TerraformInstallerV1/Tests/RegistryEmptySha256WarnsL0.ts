@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.9.8');
         tl.setResult(tl.TaskResult.Succeeded, 'RegistryEmptySha256WarnsL0 succeeded with a skipped-verification warning.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'RegistryEmptySha256WarnsL0 should have succeeded: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'RegistryEmptySha256WarnsL0 should have succeeded: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 

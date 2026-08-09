@@ -11,7 +11,7 @@ async function run() {
         // so the integration test's `tr.failed` assertion catches the regression.
         tl.setResult(tl.TaskResult.Succeeded, 'RegistryInsecureUrlRejectL0 should have rejected the http download_url.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, error.message);
+        tl.setResult(tl.TaskResult.Failed, error instanceof Error ? error.message : String(error));
     }
 }
 

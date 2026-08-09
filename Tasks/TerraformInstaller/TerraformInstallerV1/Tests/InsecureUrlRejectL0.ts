@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.9.8');
         tl.setResult(tl.TaskResult.Failed, 'InsecureUrlRejectL0 should have failed but succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, error.message);
+        tl.setResult(tl.TaskResult.Failed, error instanceof Error ? error.message : String(error));
     }
 }
 

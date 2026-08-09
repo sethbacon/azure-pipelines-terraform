@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.11.6');
         tl.setResult(tl.TaskResult.Succeeded, 'OpenTofuSpecificVersionSuccessL0 should have succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'OpenTofuSpecificVersionSuccessL0 failed: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'OpenTofuSpecificVersionSuccessL0 failed: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 
