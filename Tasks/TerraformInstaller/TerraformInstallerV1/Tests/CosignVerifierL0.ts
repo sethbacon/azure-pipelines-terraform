@@ -316,6 +316,84 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
         });
     });
+
+    // #887: the sha256sums/.sig/.pem verification-input files must prefer
+    // Agent.TempDirectory over a bare os.tmpdir() (job-end purge backstop on a
+    // self-hosted agent), matching terraform-installer.ts's own convention in
+    // this same task, and must land in a freshly created private directory so no
+    // pre-planted path can be followed (CWE-59/377).
+    describe('verification-input temp files (#887)', () => {
+        const origGetVariable = t.getVariable;
+
+        afterEach(() => {
+            t.getVariable = origGetVariable;
+        });
+
+        it('writes the sha256sums/.sig/.pem files under Agent.TempDirectory when set, not bare os.tmpdir()', async () => {
+            stubLogging();
+            t.which = () => '/usr/bin/cosign';
+            const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-tempdir-test-'));
+            try {
+                t.getVariable = (name: string) => (name === 'Agent.TempDirectory' ? scratchDir : undefined);
+                hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+                const args: string[] = [];
+                t.tool = (_path: string) => ({
+                    arg(a: string | string[]) {
+                        if (Array.isArray(a)) { args.push(...a); } else { args.push(a); }
+                        return this;
+                    },
+                    exec: async () => 0,
+                });
+
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+
+                const underScratch = args.filter((a) => a.startsWith(scratchDir));
+                assert.strictEqual(underScratch.length, 3, `expected the sha256sums/.sig/.pem paths under Agent.TempDirectory; got args: ${args.join(', ')}`);
+                for (const p of underScratch) {
+                    assert.ok(!fs.existsSync(p), `verifyCosignSignature must clean up ${p} after a successful run`);
+                }
+            } finally {
+                fs.rmSync(scratchDir, { recursive: true, force: true });
+            }
+        });
+
+        it('writes into a fresh private subdirectory, never a pre-planted path in Agent.TempDirectory (CWE-59/377)', async () => {
+            stubLogging();
+            t.which = () => '/usr/bin/cosign';
+            const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-excl-test-'));
+            try {
+                t.getVariable = (name: string) => (name === 'Agent.TempDirectory' ? scratchDir : undefined);
+                const preplanted = ['sha256sums', 'sha256sums.sig', 'sha256sums.pem']
+                    .map((n) => path.join(scratchDir, n));
+                for (const p of preplanted) { fs.writeFileSync(p, 'pre-existing-content'); }
+
+                const args: string[] = [];
+                t.tool = (_path: string) => ({
+                    arg(a: string | string[]) {
+                        if (Array.isArray(a)) { args.push(...a); } else { args.push(a); }
+                        return this;
+                    },
+                    exec: async () => 0,
+                });
+                hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
+
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+
+                const used = args.filter((a) => a.startsWith(scratchDir));
+                assert.strictEqual(used.length, 3, `expected 3 verification-input paths; got args: ${args.join(', ')}`);
+                for (const p of used) {
+                    assert.ok(!preplanted.includes(p), `must not reuse the pre-planted path ${p}`);
+                    assert.notStrictEqual(path.dirname(p), scratchDir, 'inputs must sit in a per-invocation subdirectory, not Agent.TempDirectory itself');
+                }
+                assert.ok(!fs.existsSync(path.dirname(used[0])), 'the per-invocation directory must be removed after a successful run');
+                for (const p of preplanted) {
+                    assert.strictEqual(fs.readFileSync(p, 'utf8'), 'pre-existing-content', `pre-existing file ${p} must be left untouched`);
+                }
+            } finally {
+                fs.rmSync(scratchDir, { recursive: true, force: true });
+            }
+        });
+    });
     /* eslint-enable @typescript-eslint/no-explicit-any */
 });
 

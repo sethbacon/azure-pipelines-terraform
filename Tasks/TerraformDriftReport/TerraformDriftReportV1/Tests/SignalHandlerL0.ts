@@ -147,6 +147,27 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency summary-file scrub t
         assert.strictEqual(killCalls[0].signal, 'SIGINT');
     });
 
+    it('SIGTERM: emergency cleanup also scrubs+deletes the auto-generated SARIF file when sarifOutput is enabled (#882)', async () => {
+        t.getBoolInput = (name: string) => name === 'sarifOutput';
+
+        require('../src/index');
+        // Same reasoning as loadIndexAndConfirmSummaryWritten: run() is synchronous
+        // through both writeSecretFile (summary) and writeSarif (this test), only
+        // suspending at the first await (the callback POST).
+        await Promise.resolve();
+        const filesBefore = fs.readdirSync(scratchDir);
+        // Count the generated summary by its own name shape -- scratchDir also holds
+        // this test's plan.json input, which is not what the cleanup path targets.
+        assert.strictEqual(filesBefore.filter((f) => f.startsWith('tsm-drift-report-') && f.endsWith('.json')).length, 1, `summary file must exist before the signal; found: ${filesBefore.join(', ')}`);
+        assert.strictEqual(filesBefore.filter((f) => f.endsWith('.sarif')).length, 1, `sarif file must exist before the signal; found: ${filesBefore.join(', ')}`);
+
+        process.emit('SIGTERM', 'SIGTERM');
+
+        const filesAfter = fs.existsSync(scratchDir) ? fs.readdirSync(scratchDir) : [];
+        assert.strictEqual(filesAfter.filter((f) => f.startsWith('tsm-drift-report-') && f.endsWith('.json')).length, 0, 'emergencyCleanup() must still delete the summary file when SIGTERM arrives mid-run');
+        assert.strictEqual(filesAfter.filter((f) => f.endsWith('.sarif')).length, 0, 'emergencyCleanup() must also delete the auto-generated sarif file when SIGTERM arrives mid-run (#882)');
+    });
+
     it('uncaughtException: emergency cleanup scrubs+deletes the summary file, then the process exits 1', async () => {
         await loadIndexAndConfirmSummaryWritten();
 

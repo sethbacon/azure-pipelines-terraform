@@ -1344,11 +1344,15 @@ export abstract class BaseTerraformCommandHandler {
      * `tempFiles`: the agent uploads attachment files asynchronously after
      * reading the ##vso[task.addattachment] line from stdout, so
      * cleanupTempFiles() would unlink the file before the upload (see the
-     * publishPlanResults comment in plan()).
+     * publishPlanResults comment in plan()). Written via the 0600/DACL
+     * secret-file primitive (#881), matching the raw terraform-plan-results
+     * attachment above: the digest is redacted but is still plan/state/apply
+     * -derived, and is published as a build attachment readable by anyone
+     * with build-read.
      */
     private writeAndAttachDigest(kind: 'plan' | 'state' | 'apply', digest: Digest, tempDir: string): void {
         const digestPath = path.join(tempDir, `terraform-${kind}-summary-${uuidV4()}.json`);
-        fs.writeFileSync(digestPath, serializeDigest(digest), 'utf-8');
+        writeSecretFile(digestPath, serializeDigest(digest));
         tasks.addAttachment(`terraform-${kind}-summary`, digest.meta.name, digestPath);
     }
 
