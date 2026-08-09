@@ -166,8 +166,9 @@ The access token is valid for 1 hour, which is sufficient for any Terraform oper
 
 ### "Invalid JWT: Token must be a short-lived token"
 
-- The OIDC token has expired (they are valid for ~5 minutes)
-- This should not happen in normal pipeline execution; if it does, check for delays in the pipeline before the Terraform step
+- The OIDC token has expired. It is short-lived — minutes, not hours; Azure DevOps chooses the exact lifetime and has shortened it before, so do not plan against a specific figure.
+- The task fetches the token once, at the start of the command, and never refetches or refreshes it (`src/id-token-generator.ts` has no expiry or refresh path), so a long delay between token acquisition and the Terraform operation, or a very long-running operation, can outlive it.
+- This should not happen in normal pipeline execution; if it does, check for delays in the pipeline before the Terraform step.
 
 ### Pool or provider not found
 

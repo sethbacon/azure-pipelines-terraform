@@ -164,6 +164,9 @@ azure-pipelines-terraform/
 | `pem-normalizer.ts`                    | Normalizes a single-line ADO-delivered PEM private key to RFC 7468 format and validates it via `crypto.createPrivateKey()` (OCI and GCP private-key auth) |
 | `proxy-config.ts`                      | Builds `fetch()` options routing the OIDC/OCI outbound HTTPS calls through the agent's configured proxy (`Agent.ProxyUrl`/`Agent.ProxyUsername`/`Agent.ProxyPassword`) |
 | `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers |
+| `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant |
+| `endpoint-data-secret.ts`              | Reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value (`ENDPOINT_DATA_*` is not vaulted, unlike `AUTH`/`SECRET`/`INPUT`) |
+| `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them |
 
 ### Manifest (`task.json`) size & organization convention
 
@@ -250,6 +253,8 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 | --------------------- | ---------------------------------------------------------- |
 | `index.ts`            | Entry point — reads inputs, validates URL, writes config   |
 | `config-generator.ts` | Pure function generating HCL `provider_installation` block |
+| `secure-temp.ts`      | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) used for the generated `.terraformrc` |
+| `url-secret-redaction.ts` | Redacts credential-bearing query parameters (Azure `sig=`, AWS `X-Amz-Signature`/`X-Amz-Credential`/`X-Amz-Security-Token`, GCS `X-Goog-*`) and `user:password@` userinfo from a URL before it can reach the build log |
 
 ## TerraformDocsInstaller Task (TerraformDocsInstallerV1)
 
@@ -274,6 +279,10 @@ Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates poli
 | `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override) |
 | `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token delivered as an `http.extraheader` Authorization header via per-invocation `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` env vars, not argv, so it never appears in the child process's command line) |
 | `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                   |
+| `exec-timeout.ts`    | Wall-clock ceiling for a local policy-engine subprocess — task-lib's `execAsync` bounds captured output size but not time, so a hung engine would otherwise run to the ADO job timeout |
+| `output-cap.ts`      | Bounded stdout/stderr capture (`attachBoundedCapture`) so a runaway engine cannot grow one JS string until the agent OOMs (#632)                                    |
+| `secure-temp.ts`     | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
+| `types.ts`           | Shared type definitions for the engines and the orchestrator                                                                                                       |
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
 
@@ -287,6 +296,7 @@ Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terra
 | `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot) |
 | `retry.ts`        | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
 | `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                          |
+| `secure-temp.ts`  | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
 | `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                               |
 
 Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`, `summaryFilePath` (opt-in `cleanupSummaryFile` removes it after use), `sarifFilePath`.
@@ -319,6 +329,7 @@ Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to H
 | `document.ts`         | Document model / metadata                                                                   |
 | `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                  |
 | `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1 |
+| `html-sanitizer.ts`   | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in PublishKbArticleV1 (#820) |
 
 Output variable: `htmlFilePath`.
 
@@ -339,6 +350,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                   |
 | `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                               |
 | `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                       |
+| `html-sanitizer.ts`    | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in Markdown2HtmlV1 (#820) |
 
 Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.
 
