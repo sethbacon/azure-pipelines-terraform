@@ -11,7 +11,7 @@ async function run() {
         // surface as success so the integration test's `tr.failed` assertion catches it.
         tl.setResult(tl.TaskResult.Succeeded, 'RegistryEmptySha256RequireChecksumL0 should have failed closed.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, error.message);
+        tl.setResult(tl.TaskResult.Failed, error instanceof Error ? error.message : String(error));
     }
 }
 

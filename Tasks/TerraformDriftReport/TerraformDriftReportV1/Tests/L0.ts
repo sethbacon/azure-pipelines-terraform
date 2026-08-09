@@ -10,6 +10,16 @@ import { postJson, postJsonWithRetry, truncateBody } from '../src/callback';
 import { createHttpsClient } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
 import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
+import {
+    CONTROL_CHARS_ADDRESS,
+    ANSI_ESCAPE_ADDRESS,
+    SCRIPT_MARKUP_ADDRESS,
+    QUOTES_BACKSLASH_ADDRESS,
+    LONG_ADDRESS,
+    DIRECTION_OVERRIDE_ADDRESS,
+    HOSTILE_ATTR_NAME,
+    HOSTILE_ATTR_ADDRESS,
+} from './sarif-hostile-fixtures';
 
 // Direct unit tests for the fail-secure rejectUnauthorized default.
 import './RejectUnauthorizedDefaultL0';
@@ -565,6 +575,81 @@ describe('TerraformDriftReport Test Suite', function () {
                 assert(r.message.text.length > 0, 'message text is set');
                 assert(run.tool.driver.rules.some(rule => rule.id === r.ruleId), 'result references a catalogued rule');
             });
+        }, tr);
+    });
+
+    it('DriftReportSarifHostile — hostile resource addresses/attribute names survive the real SARIF path as safely-escaped JSON data, not raw control bytes or broken structure (#898)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportSarifHostile.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (failOnDrift=false)');
+
+            // No fixed sarifPath input was given -- recover the auto-generated,
+            // uuid-named path the task actually wrote from its own output-variable
+            // logging command rather than assuming any particular location.
+            const varLine = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=sarifFilePath;'));
+            assert(varLine, `sarifFilePath output variable line not found in stdout: ${tr.stdout}`);
+            const sarifPath = varLine!.slice(varLine!.indexOf(']') + 1).trim();
+            assert(fs.existsSync(sarifPath), `SARIF report should exist at ${sarifPath}`);
+
+            const raw = fs.readFileSync(sarifPath, 'utf-8');
+
+            // The control characters/ANSI escape must appear only as their escaped
+            // JSON forms (\u0000, \u001b, ...) -- never as a literal raw control
+            // byte -- proving JSON.stringify (not manual concatenation) serialized
+            // them. \x09/\x0A/\x0D are excluded: those are the file's own legitimate
+            // pretty-printing whitespace, not hostile content under test here.
+            assert(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(raw), 'raw SARIF file must not contain a literal unescaped control byte');
+            assert(raw.includes('\\u0000'), 'NUL must survive as an escaped \\u0000 sequence');
+            assert(raw.toLowerCase().includes('\\u001b'), 'the ANSI ESC byte must survive as an escaped \\u001b sequence');
+
+            // Must still be valid JSON that round-trips (a broken/truncated
+            // structure would throw here or fail the re-stringify comparison).
+            const sarif = JSON.parse(raw) as {
+                version: string;
+                runs: Array<{
+                    results: Array<{
+                        message: { text: string };
+                        locations: Array<{ logicalLocations: Array<{ fullyQualifiedName: string }> }>;
+                    }>;
+                }>;
+            };
+            assert.strictEqual(
+                JSON.stringify(JSON.parse(JSON.stringify(sarif))),
+                JSON.stringify(sarif),
+                'SARIF must round-trip through JSON unchanged',
+            );
+            assert.strictEqual(sarif.version, '2.1.0', 'SARIF version must be 2.1.0');
+
+            const run = sarif.runs[0];
+            assert.strictEqual(run.results.length, 7, 'one result per hostile resource change');
+            const byAddr = new Map(run.results.map(r => [r.locations[0].logicalLocations[0].fullyQualifiedName, r]));
+
+            // Every hostile address must be preserved EXACTLY as data -- no
+            // truncation, no mangling -- proving it never escaped its JSON string.
+            for (const addr of [
+                CONTROL_CHARS_ADDRESS,
+                ANSI_ESCAPE_ADDRESS,
+                SCRIPT_MARKUP_ADDRESS,
+                QUOTES_BACKSLASH_ADDRESS,
+                LONG_ADDRESS,
+                DIRECTION_OVERRIDE_ADDRESS,
+                HOSTILE_ATTR_ADDRESS,
+            ]) {
+                assert(byAddr.has(addr), `expected a result for hostile address (len ${addr.length})`);
+            }
+            assert.strictEqual(
+                byAddr.get(LONG_ADDRESS)!.locations[0].logicalLocations[0].fullyQualifiedName.length,
+                LONG_ADDRESS.length,
+                'the very long address must not be truncated',
+            );
+
+            // The hostile attribute name must be carried through message.text as data too.
+            const hostileAttrResult = byAddr.get(HOSTILE_ATTR_ADDRESS)!;
+            assert(
+                hostileAttrResult.message.text.includes(HOSTILE_ATTR_NAME),
+                'hostile attribute name must appear verbatim in the message text',
+            );
         }, tr);
     });
 
