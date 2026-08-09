@@ -8,12 +8,31 @@ import { pipeline } from 'stream/promises';
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { parseAllowedHosts, isRegistryHostAllowed, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from './registry-allowlist';
+import { parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages } from './registry-allowlist';
+import { validateUrlPathSegment } from './url-path-segment';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
+
+/**
+ * Localized rejection text for the egress authorization applied to a download
+ * destination. assertEgressHostAllowed() itself carries no azure-pipelines-task-lib
+ * dependency (it is shared verbatim with the sibling packer extension), so each
+ * call site supplies its own message factories naming the offending host and the
+ * applicable allowlist input.
+ */
+const REGISTRY_EGRESS_MESSAGES: EgressHostMessages = {
+    notAllowed: (hostname, allowedHosts) => tasks.loc("RegistryDownloadHostNotAllowed", hostname, allowedHosts),
+    isPrivate: (hostname) => tasks.loc("RegistryDownloadHostIsPrivate", hostname),
+};
+
+const MIRROR_EGRESS_MESSAGES: EgressHostMessages = {
+    notAllowed: (hostname, allowedHosts) => tasks.loc("MirrorDownloadHostNotAllowed", hostname, allowedHosts),
+    isPrivate: (hostname) => tasks.loc("MirrorDownloadHostIsPrivate", hostname),
+};
+
 
 const isWindows = os.type().match(/^Win/);
 
@@ -97,7 +116,7 @@ async function resolveVersion(agent: string, downloadSource: string, inputVersio
 
     if (downloadSource === "registry") {
         const registryUrl = tasks.getInput("registryUrl", true)!;
-        const mirrorName = tasks.getInput("registryMirrorName", true)! || agent;
+        const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || agent);
         return resolveVersionFromRegistry(registryUrl, mirrorName);
     }
 
@@ -148,7 +167,7 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
     switch (downloadSource) {
         case "registry": {
             const registryUrl = tasks.getInput("registryUrl", true)!;
-            const mirrorName = tasks.getInput("registryMirrorName", true)! || agent;
+            const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || agent);
             const result = await downloadFromRegistry(agent, version, registryUrl, mirrorName);
             // Strip any embedded basic-auth userinfo before persisting the source
             // into a downstream-readable pipeline variable (#586).
@@ -259,75 +278,37 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     // trust-the-registry behavior.
     const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
     const initialHost = new URL(data.download_url).hostname;
-    if (allowedHosts.length > 0) {
-        // Fail fast, before any temp-path resolution or network activity, when
-        // the registry's own advertised download_url host is already
-        // disallowed. downloadToFile() below re-validates this same host (and
-        // every redirect hop) again as defense in depth (#679), but this
-        // upfront check keeps the common case (registry itself is fine, only
-        // a redirect might misbehave) cheap and matches the original
-        // synchronous rejection behavior exactly.
-        if (!isRegistryHostAllowed(initialHost, allowedHosts)) {
-            throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", initialHost, allowedHosts.join(', ')));
-        }
-    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
-        // Baseline protection even on the DEFAULT (no explicit allowlist) path
-        // (#729): a compromised or misconfigured registry pointing download_url
-        // straight at a loopback/link-local/private address (notably the cloud
-        // metadata service, conventionally at 169.254.169.254) is refused
-        // without requiring the operator to opt into registryAllowedHosts.
-        // Does not apply once an explicit allowlist is configured, so an
-        // operator who deliberately points at a private-IP mirror for an
-        // air-gapped environment is unaffected. Also resolves the host and
-        // re-checks every returned address (resolvesToPrivateOrLinkLocalAddress),
-        // so a DNS name that simply resolves to a private/metadata address is
-        // refused too, not just a literal IP (#769). This resolves at check
-        // time and does not pin the IP into the download connection, so it is
-        // defense-in-depth against the static case, not a complete defense
-        // against active DNS rebinding.
-        throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", initialHost));
-    }
+    // Egress authorization for the download destination -- ONE decision
+    // (assertEgressHostAllowed) applied to the initial URL here and, via
+    // downloadToFile below, to every redirect hop. With an explicit allowlist
+    // only the pin is enforced (an operator may deliberately pin a private,
+    // air-gapped host); with none, a host that IS or RESOLVES TO a private/
+    // link-local/reserved address is refused. Addresses are classified
+    // numerically, so `127.1`, `2130706433`, `[::ffff:127.0.0.1]` and
+    // 100.64.0.0/10 cannot walk past a dotted-quad pattern (#161). The DNS
+    // step resolves at check time and does not pin the address into the
+    // connection, so it is defense-in-depth against a statically-private
+    // host, not a complete DNS-rebinding defense.
+    await assertEgressHostAllowed(initialHost, allowedHosts, REGISTRY_EGRESS_MESSAGES);
 
     const ext = agent === "sentinel" ? ".zip" : (isWindows ? ".exe" : "");
     const fileName = `${agent}-${version}-${uuidV4()}${ext}`;
     let filePath: string;
     try {
-        if (allowedHosts.length > 0) {
-            // tools.downloadTool() follows redirects with no way to re-validate
-            // or disable that, so a compromised registry could return an
-            // allowlisted download_url that itself 302s to an arbitrary host,
-            // bypassing the pin entirely. Route through the manual-redirect
-            // downloadToFile() instead, which re-checks EVERY hop against
-            // allowedHosts (#679) -- only when the operator actually opted into
-            // the pin, so the default (no allowlist) path is unchanged.
-            const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
-            filePath = path.join(destDir, fileName);
-            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, (hostname) => {
-                if (!isRegistryHostAllowed(hostname, allowedHosts)) {
-                    throw new Error(tasks.loc("RegistryDownloadHostNotAllowed", hostname, allowedHosts.join(', ')));
-                }
-            });
-        } else {
-            // Baseline redirect-hop protection on the DEFAULT (no explicit allowlist)
-            // path (#729 follow-up): tools.downloadTool() follows redirects with no
-            // way to re-validate them, so a compromised/misconfigured registry could
-            // return an initially-safe download_url that itself 302s to a
-            // private/link-local address (notably the cloud metadata service) -- the
-            // initial-host check above only covers the first hop. Route through the
-            // same manual-redirect downloadToFile() used on the allowlist path,
-            // re-checking every hop against BOTH isPrivateOrLinkLocalHost and
-            // resolvesToPrivateOrLinkLocalAddress -- mirroring the initial-host
-            // check above -- so a redirect Location that is a DNS name resolving to
-            // a private/metadata address is caught per-hop too, not only a literal
-            // private/link-local host/IP (#769).
-            const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
-            filePath = path.join(destDir, fileName);
-            await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
-                if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
-                    throw new Error(tasks.loc("RegistryDownloadHostIsPrivate", hostname));
-                }
-            });
-        }
+        // tools.downloadTool() follows redirects with no way to re-validate or
+        // disable that, so a compromised registry could return an initially
+        // acceptable download_url that itself 302s to an arbitrary host --
+        // bypassing an explicit registryAllowedHosts pin, or reaching the
+        // private/metadata address the initial-host check just cleared
+        // (#679/#729/#769). Route through the manual-redirect downloadToFile(),
+        // which re-applies the SAME assertEgressHostAllowed decision on every
+        // hop. The pinned and default-deny paths share one branch now: the
+        // allowlist-vs-blocklist choice lives inside the helper, so it can no
+        // longer be made differently for the initial host and for a hop (#161).
+        const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+        filePath = path.join(destDir, fileName);
+        await downloadToFile(data.download_url, filePath, DOWNLOAD_TIMEOUT_MS, hostname =>
+            assertEgressHostAllowed(hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES));
     } catch (exception) {
         // download_url is a pre-signed URL whose query string carries the signing
         // token; drop the whole query (redactUrl) and scrub the raw URL out of the
@@ -459,30 +440,23 @@ async function downloadTo(url: string, fileName: string): Promise<string> {
 async function downloadFromMirrorUrl(url: string, fileName: string): Promise<string> {
     const mirrorAllowedHosts = parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false));
     const initialHost = new URL(url).hostname;
-    if (mirrorAllowedHosts.length > 0) {
-        if (!isRegistryHostAllowed(initialHost, mirrorAllowedHosts)) {
-            throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", initialHost, mirrorAllowedHosts.join(', ')));
-        }
-    } else if (isPrivateOrLinkLocalHost(initialHost) || await resolvesToPrivateOrLinkLocalAddress(initialHost)) {
-        throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", initialHost));
-    }
+    // Egress authorization for the download destination -- ONE decision
+    // (assertEgressHostAllowed) applied to the initial URL here and, via
+    // downloadToFile below, to every redirect hop. With an explicit allowlist
+    // only the pin is enforced (an operator may deliberately pin a private,
+    // air-gapped host); with none, a host that IS or RESOLVES TO a private/
+    // link-local/reserved address is refused. Addresses are classified
+    // numerically, so `127.1`, `2130706433`, `[::ffff:127.0.0.1]` and
+    // 100.64.0.0/10 cannot walk past a dotted-quad pattern (#161). The DNS
+    // step resolves at check time and does not pin the address into the
+    // connection, so it is defense-in-depth against a statically-private
+    // host, not a complete DNS-rebinding defense.
+    await assertEgressHostAllowed(initialHost, mirrorAllowedHosts, MIRROR_EGRESS_MESSAGES);
     const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
     const destPath = path.join(destDir, fileName);
     try {
-        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, async (hostname) => {
-            if (mirrorAllowedHosts.length > 0) {
-                if (!isRegistryHostAllowed(hostname, mirrorAllowedHosts)) {
-                    throw new Error(tasks.loc("MirrorDownloadHostNotAllowed", hostname, mirrorAllowedHosts.join(', ')));
-                }
-            } else if (isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname)) {
-                // Mirrors the initial-host check above and the registry path's
-                // per-hop fix: also resolve the hop's hostname via DNS so a
-                // redirect Location that is a DNS name resolving to a
-                // private/metadata address is caught too, not only a literal
-                // private/link-local host/IP (#769).
-                throw new Error(tasks.loc("MirrorDownloadHostIsPrivate", hostname));
-            }
-        });
+        await downloadToFile(url, destPath, DOWNLOAD_TIMEOUT_MS, hostname =>
+            assertEgressHostAllowed(hostname, mirrorAllowedHosts, MIRROR_EGRESS_MESSAGES));
     } catch (exception) {
         // A mirror download URL can embed operator basic-auth userinfo; strip it from
         // the interpolated message (#586).
