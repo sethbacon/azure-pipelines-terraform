@@ -15,6 +15,8 @@ import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
+import { discardArtifactOnFailure } from './artifact-discard';
+import { retryAsync } from './retry';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 
 /**
@@ -42,6 +44,21 @@ const isWindows = os.type().match(/^Win/);
 // File name of the local, per-cached-tool-directory integrity marker written after
 // a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
 const CACHE_INTEGRITY_MARKER = ".installer-verified.sha256";
+
+// A marker's content must be exactly one 64-character SHA256 digest. Anything else --
+// empty, truncated, or non-hex -- means the marker is UNVERIFIABLE, not that the tool
+// was tampered with; see verifyCachedTool (#198).
+const CACHE_INTEGRITY_MARKER_PATTERN = /^[a-fA-F0-9]{64}$/;
+
+/**
+ * Bounded retry for the binary download itself (#78): tools.downloadTool performs a
+ * single HTTP GET with no retry of its own, so a single transient blip during the
+ * largest and slowest fetch of the install failed the whole task. The metadata and
+ * checksum fetches already retry inside http-client.ts. Verification is deliberately
+ * OUTSIDE the retry -- a checksum or signature failure is deterministic and must
+ * never be repeated.
+ */
+const DOWNLOAD_RETRY = { retries: 2, baseDelayMs: 250, maxBackoffMs: 2000 };
 
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const binary = tasks.getInput("binary") || "terraform";
@@ -185,7 +202,7 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
     try {
-        zipPath = await tools.downloadTool(downloadUrl, fileName);
+        zipPath = await retryAsync(() => tools.downloadTool(downloadUrl, fileName), DOWNLOAD_RETRY);
     } catch (exception) {
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
@@ -198,10 +215,12 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
 
     const sha256SumsContent = await fetchText(sha256SumsUrl);
     const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
-    await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
-
-    const expectedHash = parseSha256(sha256SumsContent, zipFileName);
-    await verifySha256(zipPath, expectedHash);
+    // A failed signature or checksum check DELETES the zip rather than leaving a
+    // rejected — possibly tampered — artifact in the agent's temp directory (#204).
+    await discardArtifactOnFailure(zipPath, async () => {
+        await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
+        await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
+    });
 
     return zipPath;
 }
@@ -289,7 +308,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     if (data.sha256) {
-        await verifySha256(zipPath, data.sha256);
+        await discardArtifactOnFailure(zipPath, () => verifySha256(zipPath, data.sha256));
         return { zipPath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
@@ -388,8 +407,10 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
     // key (a missing .sig is fatal only when requireGpgSignature is set), then
     // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
-    await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
-    await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
+    await discardArtifactOnFailure(zipPath, async () => {
+        await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+        await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
+    });
     return { zipPath, verified: true };
 }
 
@@ -448,11 +469,22 @@ async function hashFile(filePath: string): Promise<string> {
  * only means a future cache hit for this tool degrades to the pre-existing
  * trust-the-cache behavior.
  */
-async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Promise<void> {
+export async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Promise<void> {
+    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
+    // ATOMIC: write to a temp name in the SAME directory, then rename into place. A
+    // plain writeFileSync interrupted mid-write -- agent disk full, job cancellation,
+    // a container kill -- leaves a marker that exists and is readable but is empty or
+    // truncated, and every later install of that version then compares the real digest
+    // against that fragment and fails with a tampering-shaped CachedToolVerificationFailed,
+    // permanently bricking the version on that agent (#198). Renaming into place means
+    // a reader only ever sees a complete digest or no marker at all.
+    const tempPath = `${markerPath}.${uuidV4()}.tmp`;
     try {
-        fs.writeFileSync(path.join(toolDir, CACHE_INTEGRITY_MARKER), await hashFile(exePath), 'utf8');
+        fs.writeFileSync(tempPath, await hashFile(exePath), 'utf8');
+        fs.renameSync(tempPath, markerPath);
     } catch (err) {
         tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
+        try { fs.unlinkSync(tempPath); } catch { /* best effort */ }
     }
 }
 
@@ -466,10 +498,17 @@ async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Prom
  *   verification was disabled): returns false — the caller escalates to a remote
  *   re-verification against a freshly downloaded release (see
  *   reverifyUnmarkedCacheEntry), closing the cross-job trust-on-first-use gap.
+ * - Marker present but MALFORMED — empty, truncated, or not 64 hex characters, i.e.
+ *   an interrupted write (#198): returns false, exactly like a missing marker. An
+ *   unverifiable record is not evidence of tampering; feeding the fragment to the
+ *   comparison would fail every subsequent install of that version with a
+ *   tampering-shaped error and send an operator down a security-incident path for
+ *   what is a torn file. The marker is NOT healed here — healing happens only after
+ *   the escalated re-verification actually proves the cached executable.
  * - Marker present and it matches the cached executable's current hash: passes
  *   silently, returns true.
- * - Marker present but it does not match: the cached executable changed since it
- *   was verified (tampering or corruption on a shared agent) — fail closed.
+ * - Marker present, well-formed, and it does not match: the cached executable changed
+ *   since it was verified (tampering or corruption on a shared agent) — fail closed.
  *
  * Trust-boundary note: the marker lives next to the executable it protects, so an
  * attacker who can rewrite the cached binary under the agent account can rewrite
@@ -477,13 +516,17 @@ async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Prom
  * cross-job verification-policy mixing, not against an attacker who already has
  * write access to the agent's tool cache (who effectively owns the agent).
  */
-async function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): Promise<boolean> {
+export async function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): Promise<boolean> {
     const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
     if (!fs.existsSync(markerPath)) {
         tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification).`);
         return false;
     }
     const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
+    if (!CACHE_INTEGRITY_MARKER_PATTERN.test(storedHash)) {
+        tasks.debug(`Cache hit for ${toolLabel}: the stored integrity marker is not a 64-character SHA256 digest (${storedHash.length} character(s) recorded); treating the entry as unverifiable rather than tampered.`);
+        return false;
+    }
     const actualHash = (await hashFile(exePath)).toLowerCase();
     if (actualHash !== storedHash) {
         throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
@@ -636,8 +679,15 @@ async function downloadTofu(inputVersion: string): Promise<string> {
     let cachedToolPath = tools.findLocalTool(tofuToolName, version);
     const cacheHit = !!cachedToolPath;
 
+    // Mirrors downloadTerraform: the cache-integrity marker is written only for an
+    // artifact this run actually verified. downloadZipFromOpenTofu verifies the zip's
+    // SHA256 unconditionally (cosign only gates the AUTHENTICITY of the SHA256SUMS
+    // itself), so reaching the line below means the artifact was verified — stated
+    // explicitly rather than left as an invariant a future edit could quietly break.
+    let verified = false;
     if (!cachedToolPath) {
         const zipPath = await downloadZipFromOpenTofu(version);
+        verified = true;
         const unzippedPath = await tools.extractZip(zipPath);
         cachedToolPath = await tools.cacheDir(unzippedPath, tofuToolName, version);
         tasks.setVariable('terraformDownloadedFrom', 'opentofu');
@@ -666,9 +716,7 @@ async function downloadTofu(inputVersion: string): Promise<string> {
                 (rootFolder) => findExecutable(rootFolder, tofuToolName),
             );
         }
-    } else {
-        // downloadZipFromOpenTofu always verifies the zip's SHA256 unconditionally
-        // (cosign only gates authenticity of the SHA256SUMS itself).
+    } else if (verified) {
         await writeCacheIntegrityMarker(cachedToolPath, tofuPath);
     }
 
@@ -708,7 +756,7 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     const fileName = `${tofuToolName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
     try {
-        zipPath = await tools.downloadTool(downloadUrl, fileName);
+        zipPath = await retryAsync(() => tools.downloadTool(downloadUrl, fileName), DOWNLOAD_RETRY);
     } catch (exception) {
         throw new Error(tasks.loc("TerraformDownloadFailed", downloadUrl, exception));
     }
@@ -728,10 +776,11 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     // against an operator-supplied hash before trusting it, closing the ambient
     // PATH-lookup trust gap. Unset (default), behavior is unchanged.
     const cosignSha256 = tasks.getInput("cosignSha256", false);
-    await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined);
-
-    const expectedHash = parseSha256(sha256SumsContent, zipFileName);
-    await verifySha256(zipPath, expectedHash);
+    // As on the hashicorp path: a failed cosign or checksum check discards the zip (#204).
+    await discardArtifactOnFailure(zipPath, async () => {
+        await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined);
+        await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
+    });
 
     return zipPath;
 }

@@ -27,6 +27,10 @@ import './UrlSecretRedactionL0';
 // (#161/#191/#200/#201, sibling azure-pipelines-packer #161). Imported for its
 // side effect of registering the suite.
 import './EgressAuthorizationL0';
+// Table-driven class test for the artifact-trust defect class (#65/#78/#136/#198/#204):
+// every path by which a binary becomes trusted, across ALL THREE installer tasks, plus
+// the failure/edge states of the verification itself.
+import './ArtifactTrustL0';
 
 describe('TerraformInstaller Test Suite', function () {
 

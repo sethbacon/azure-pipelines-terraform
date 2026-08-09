@@ -89,6 +89,24 @@ const FAMILIES = [
         ],
     },
     {
+        // Discard-on-failed-verification wrapper: a downloaded archive whose
+        // checksum or signature does NOT verify is deleted rather than left sitting
+        // in the agent's temp directory, where on a persistent self-hosted agent a
+        // rejected — possibly tampered — artifact would otherwise stay indefinitely.
+        // The distinction it encodes (a failed COMPARISON discards; a merely
+        // UNAVAILABLE checksum the operator opted out of requiring does not) is the
+        // kind of thing that drifts if each installer keeps its own copy, so keep it
+        // byte-identical across the three installer tasks.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'artifact-discard.ts',
+        ],
+    },
+    {
         // Registry/mirror EGRESS AUTHORIZATION (SSRF-relevant): shared across all
         // three installer tasks that accept a registryAllowedHosts/mirrorAllowedHosts
         // input. Carries the numeric (not textual) private/reserved-address
