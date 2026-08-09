@@ -52,7 +52,7 @@ describe('hardened temp-file writes coverage (class test #881/#882/#887)', funct
       fn: 'verifyCosignSignature',
       sink: 'fs.writeFileSync(sha256sums/.sig/.pem) into bare os.tmpdir()',
       verdict: 'FIXED',
-      why: '#887: now prefers Agent.TempDirectory (matching terraform-installer.ts\'s own tasks.getVariable convention in this same task) and uses an exclusive create (wx, CWE-59/377). No writeSecretFile-family primitive was added to this task -- see the batch report\'s notes for the deliberate narrower-hardening justification (public verification material, no credential trust model in this task).',
+      why: '#887: now prefers Agent.TempDirectory (matching terraform-installer.ts\'s own tasks.getVariable convention in this same task) and writes the three inputs inside a per-invocation mkdtempSync directory (0700, atomically created), so a pre-planted path cannot be followed at all (CWE-59/377). No writeSecretFile-family primitive was added to this task -- see the batch report\'s notes for the deliberate narrower-hardening justification (public verification material, no credential trust model in this task).',
     },
 
     // --- already hardened, unchanged ---
@@ -214,15 +214,22 @@ describe('hardened temp-file writes coverage (class test #881/#882/#887)', funct
       assert.ok(/path\.join\(tempDir,/.test(body), 'the auto-generated SARIF path must be built from tempDir');
     });
 
-    it('#887: verifyCosignSignature prefers Agent.TempDirectory and writes the verification-input files with an exclusive create', () => {
+    it('#887: verifyCosignSignature writes the verification-input files inside a per-invocation mkdtemp directory under Agent.TempDirectory', () => {
       const src = fs.readFileSync(path.join(REPO_ROOT, 'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts'), 'utf8');
-      assert.ok(/tasks\.getVariable\(["']Agent\.TempDirectory["']\)\s*\|\|\s*os\.tmpdir\(\)/.test(src), 'expected tempDir to prefer Agent.TempDirectory, falling back to os.tmpdir()');
+      assert.ok(
+        /fs\.mkdtempSync\(path\.join\(tasks\.getVariable\(["']Agent\.TempDirectory["']\)\s*\|\|\s*os\.tmpdir\(\),/.test(src),
+        'expected the scratch directory to be created via mkdtempSync under Agent.TempDirectory, falling back to os.tmpdir()',
+      );
       const writeCalls = src.match(/fs\.writeFileSync\([^;]*\);/g) ?? [];
       const sha256Writes = writeCalls.filter((c) => /sha256SumsPath|signaturePath|certificatePath/.test(c));
       assert.strictEqual(sha256Writes.length, 3, `expected exactly 3 writes of the verification-input files; found: ${sha256Writes.length}`);
-      for (const call of sha256Writes) {
-        assert.ok(/flag:\s*['"]wx['"]/.test(call), `expected an exclusive create (flag: 'wx') on: ${call}`);
+      for (const p of ['sha256SumsPath', 'signaturePath', 'certificatePath']) {
+        assert.ok(
+          new RegExp(`const ${p} = path\\.join\\(scratchDir,`).test(src),
+          `${p} must be built from the mkdtemp scratch directory, not the shared temp root`,
+        );
       }
+      assert.ok(/fs\.rmSync\(scratchDir,\s*\{\s*recursive:\s*true/.test(src), 'the scratch directory must be removed recursively on the way out');
     });
   });
 });
