@@ -1214,6 +1214,12 @@
         "GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
         "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
-        "ShowSensitiveOutputsConsoleStrictFailure": "The captured 'terraform show -json' output contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; failing before the output is echoed to the console. Disable 'failOnSensitiveOutputs' to downgrade this to a warning, or set outputTo to 'file' for the existing file-based handling."
-    }
+        "ShowSensitiveOutputsConsoleStrictFailure": "The captured 'terraform show -json' output contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; failing before the output is echoed to the console. Disable 'failOnSensitiveOutputs' to downgrade this to a warning, or set outputTo to 'file' for the existing file-based handling.",
+      "TerraformCommandTimedOut": "Terraform command timed out after %d minute(s) and was terminated. Increase 'commandTimeoutMinutes' if this operation is expected to take longer.",
+      "TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
+      "TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",
+      "TerraformFmtFailed": "Terraform fmt failed with exit code %s",
+      "TerraformTestFailed": "Terraform test failed with exit code %s",
+      "Error_FederatedTokenAquisitionFailed": "Failed to acquire a federated (OIDC) ID token for the service connection. Verify the service connection is configured for Workload Identity Federation and that the pipeline is authorized to use it."
+}
 }

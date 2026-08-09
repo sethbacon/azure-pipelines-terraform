@@ -74,6 +74,8 @@ jobs:
         run: node scripts/test-check-shared-modules.js
       - name: Check for unregistered near-duplicate modules
         run: node scripts/check-near-duplicate-modules.js
+      - name: Validate egress authorization (SSRF class signature)
+        run: node scripts/check-egress-authorization.js
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})

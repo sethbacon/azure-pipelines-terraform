@@ -18,6 +18,11 @@ import './RegistryVersionResolverL0';
 // Direct unit tests for the shared url-secret-redaction module (#776).
 import './UrlSecretRedactionL0';
 
+// Table-driven class test for the egress-authorization defect class
+// (#161/#191/#200/#201, sibling azure-pipelines-packer #161). Imported for its
+// side effect of registering the suite.
+import './EgressAuthorizationL0';
+
 describe('PolicyAgentInstaller Test Suite', function () {
 
     before(() => {
