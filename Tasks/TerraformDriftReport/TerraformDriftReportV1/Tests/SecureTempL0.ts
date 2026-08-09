@@ -4,6 +4,8 @@ import os = require('os');
 import path = require('path');
 import cp = require('child_process');
 import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
+import { writeSarif } from '../src/sarif';
+import { Result } from 'terraform-drift-contract';
 
 /**
  * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile
@@ -205,6 +207,48 @@ describe('replaceSecretFile (TerraformDriftReport copy) — user-named SARIF out
             f.lstatSync = origLstatSync;
         }
         assert.strictEqual(fs.readFileSync(link, 'utf8'), 'placeholder-content', 'a path reported as a symlink must not be overwritten');
+    });
+});
+
+/**
+ * Direct unit tests for sarif.ts's writeSarif temp-dir preference (#882): the
+ * auto-generated path (no explicit sarifPath) must land under the caller's
+ * Agent.TempDirectory when given, not a bare os.tmpdir(), matching index.ts's
+ * own drift-summary file so it is covered by the agent's job-end temp purge
+ * on a self-hosted/persistent agent instead of the shared, never-purged OS
+ * temp directory.
+ */
+describe('writeSarif (TerraformDriftReport) — auto-generated path prefers the caller-supplied tempDir (#882)', function () {
+    const emptyResult: Result = { added: 0, changed: 0, destroyed: 0, drifted: false, summary: [] };
+    let scratchDir: string;
+
+    beforeEach(() => {
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdr-sarif-tempdir-test-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(scratchDir, { recursive: true, force: true });
+    });
+
+    it('writes the auto-generated SARIF file under the given tempDir', () => {
+        const outPath = writeSarif(emptyResult, undefined, scratchDir);
+        assert.ok(outPath.startsWith(scratchDir + path.sep), `expected the SARIF file under ${scratchDir}, got ${outPath}`);
+        assert.ok(fs.existsSync(outPath));
+    });
+
+    it('falls back to os.tmpdir() when no tempDir is supplied (back-compat default)', () => {
+        const outPath = writeSarif(emptyResult);
+        try {
+            assert.ok(outPath.startsWith(os.tmpdir()), `expected the default SARIF path under os.tmpdir(), got ${outPath}`);
+        } finally {
+            fs.rmSync(outPath, { force: true });
+        }
+    });
+
+    it('an explicit sarifPath is honored verbatim, unaffected by tempDir', () => {
+        const explicitPath = path.join(scratchDir, 'explicit.sarif');
+        const outPath = writeSarif(emptyResult, explicitPath, path.join(scratchDir, 'unused-tempdir'));
+        assert.strictEqual(outPath, path.resolve(explicitPath));
     });
 });
 

@@ -3,7 +3,7 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 
-import { randomUUID as uuidV4, createHash } from 'crypto';
+import { createHash } from 'crypto';
 import { pipeline } from 'stream/promises';
 import { fetchBufferAllow404 } from './http-client';
 import { VerificationFailure } from './verification-failure';
@@ -166,11 +166,21 @@ export async function verifyCosignSignature(
         return;
     }
 
-    const tempDir = os.tmpdir();
-    const sha256SumsPath = path.join(tempDir, `sha256sums-${uuidV4()}`);
-    const signaturePath = path.join(tempDir, `sha256sums-${uuidV4()}.sig`);
-    const certificatePath = path.join(tempDir, `sha256sums-${uuidV4()}.pem`);
+    // #887: prefer Agent.TempDirectory (auto-purged by the ADO agent at job end)
+    // over a bare os.tmpdir(), matching terraform-installer.ts's own
+    // tasks.getVariable("Agent.TempDirectory") convention in this same task, so
+    // these files don't outlive the job on a persistent self-hosted agent.
+    // mkdtempSync creates the directory atomically with 0700, so the three
+    // verification inputs cannot be pre-planted or read by another local user
+    // (CWE-377/CWE-59) -- the same idiom used elsewhere in this repo.
+    const scratchDir = fs.mkdtempSync(path.join(tasks.getVariable("Agent.TempDirectory") || os.tmpdir(), 'tsm-cosign-'));
+    const sha256SumsPath = path.join(scratchDir, 'sha256sums');
+    const signaturePath = path.join(scratchDir, 'sha256sums.sig');
+    const certificatePath = path.join(scratchDir, 'sha256sums.pem');
 
+    // Deliberately outside the verify try/catch below: a local write failure is
+    // transport-like, not a signature failure, and must never be reclassified as
+    // a VerificationFailure.
     fs.writeFileSync(sha256SumsPath, sha256SumsContent);
     fs.writeFileSync(signaturePath, signatureBytes);
     fs.writeFileSync(certificatePath, certificateBytes);
@@ -197,8 +207,6 @@ export async function verifyCosignSignature(
         const errorMessage = error instanceof Error ? error.message : String(error);
         throw new VerificationFailure(`Cosign signature verification failed for SHA256SUMS: ${errorMessage}`);
     } finally {
-        try { fs.unlinkSync(sha256SumsPath); } catch { /* ignore cleanup errors */ }
-        try { fs.unlinkSync(signaturePath); } catch { /* ignore cleanup errors */ }
-        try { fs.unlinkSync(certificatePath); } catch { /* ignore cleanup errors */ }
+        try { fs.rmSync(scratchDir, { recursive: true, force: true }); } catch { /* ignore cleanup errors */ }
     }
 }

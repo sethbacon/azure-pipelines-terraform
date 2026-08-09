@@ -52,6 +52,9 @@ async function run(): Promise<void> {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
     // Hoisted so the finally can optionally clean it up (see cleanupSummaryFile).
     let summaryFile: string | undefined;
+    // Hoisted so emergencyCleanup (below) can scrub+delete it too (#882) -- set
+    // only when sarifOutput is enabled.
+    let sarifFile: string | undefined;
 
     // #775: Node terminates immediately on an unhandled SIGTERM/SIGINT without
     // running the try/finally below, so a pipeline cancellation mid-run would
@@ -71,6 +74,18 @@ async function run(): Promise<void> {
             } catch { /* best-effort scrub before the unlink below */ }
             try {
                 fs.unlinkSync(summaryFile);
+            } catch { /* best-effort: the agent temp purge is the backstop */ }
+        }
+        // #882: the SARIF report is the same plan-derived, writeSecretFile'd class
+        // of temp file as summaryFile above (same job, written moments later) --
+        // without this it was the one such file in this task never registered
+        // with the emergency path, so a cancellation left it behind unscrubbed.
+        if (sarifFile && fs.existsSync(sarifFile)) {
+            try {
+                scrubFile(sarifFile);
+            } catch { /* best-effort scrub before the unlink below */ }
+            try {
+                fs.unlinkSync(sarifFile);
             } catch { /* best-effort: the agent temp purge is the backstop */ }
         }
     };
@@ -152,8 +167,8 @@ async function run(): Promise<void> {
         tasks.setVariable('summaryFilePath', summaryFile, false, true);
 
         if (tasks.getBoolInput('sarifOutput', false)) {
-            const sarifFilePath = writeSarif(result, tasks.getInput('sarifPath', false));
-            tasks.setVariable('sarifFilePath', sarifFilePath, false, true);
+            sarifFile = writeSarif(result, tasks.getInput('sarifPath', false), tempDir);
+            tasks.setVariable('sarifFilePath', sarifFile, false, true);
         }
 
         console.log(

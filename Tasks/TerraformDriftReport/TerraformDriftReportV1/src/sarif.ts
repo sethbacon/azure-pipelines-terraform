@@ -94,11 +94,17 @@ export function buildDriftSarif(result: Result): SarifLog {
  * staging-directory location) that a re-run legitimately overwrites; when no
  * sarifPath is given the auto-generated UUID path has nothing pre-existing to
  * overwrite, so it behaves identically to an exclusive create.
+ *
+ * When no explicit sarifPath is given, the auto-generated path is written
+ * under `tempDir` (the caller's Agent.TempDirectory, when set) rather than a
+ * bare os.tmpdir() -- matching index.ts's own drift-summary file, so it is
+ * covered by the agent's job-end temp purge on a self-hosted/persistent agent
+ * instead of sitting in the shared, never-purged OS temp directory (#882).
  */
-export function writeSarif(result: Result, sarifPath?: string): string {
+export function writeSarif(result: Result, sarifPath?: string, tempDir: string = os.tmpdir()): string {
     const outPath = sarifPath && sarifPath.trim().length > 0
         ? path.resolve(sarifPath)
-        : path.join(os.tmpdir(), `tsm-drift-report-${uuidV4()}.sarif`);
+        : path.join(tempDir, `tsm-drift-report-${uuidV4()}.sarif`);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     replaceSecretFile(outPath, JSON.stringify(buildDriftSarif(result), null, 2));
     return outPath;
