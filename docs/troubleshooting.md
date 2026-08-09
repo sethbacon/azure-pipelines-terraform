@@ -4,6 +4,53 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 ---
 
+## Behaviour changes that can break a pipeline that used to work
+
+Recent hardening changes turn three previously-silent conditions into failures. If a pipeline that
+worked yesterday fails today, check here first.
+
+### A service connection with no authorization scheme now fails instead of running as WIF
+
+**Symptom:** `Service connection '<id>' has no authorization scheme. Expected one of:
+WorkloadIdentityFederation, ManagedServiceIdentity, ServicePrincipal.`
+
+**Cause:** An AzureRM service connection whose scheme Azure DevOps did not report. Previously the
+task defaulted to Workload Identity Federation with only a warning. That produced a *credential-less*
+WIF setup, which the `azurerm` provider then completed from whatever ambient identity the agent
+happened to have — an Azure CLI login left over from a previous step, or the agent VM's own managed
+identity. The build appeared to succeed while authenticating as something nobody chose. It now fails
+closed, on both the backend (`init`) and provider paths, matching the AWS/GCP/OCI handlers.
+
+**Fix:** Recreate or repair the service connection so it declares a scheme. If the build was in fact
+relying on the agent's ambient identity, make that explicit by using a `ManagedServiceIdentity`
+service connection.
+
+### The AWS role session name is derived per run
+
+**Symptom:** `Not authorized to perform sts:AssumeRoleWithWebIdentity` on a role that worked before,
+where the trust policy contains an `sts:RoleSessionName` condition.
+
+**Cause:** The session name was the fixed constant `AzureDevOps-Terraform` (or
+`AzureDevOps-Terraform-Backend`) for every federated run of every pipeline in every organization,
+which collapses CloudTrail attribution and forecloses per-pipeline conditions. It is now derived per
+run as `ado-tf-<TeamProject>-<BuildId>` / `ado-tf-backend-<TeamProject>-<BuildId>`.
+
+**Fix:** See [Pinning the role session
+name](setup/aws-wif-setup.md#optional-pinning-the-role-session-name) — drop the condition, switch it
+to a `StringLike` prefix match, or set `awsSessionName`/`backendAWSSessionName` explicitly.
+
+### Outbound WIF calls now honour the agent's proxy configuration
+
+Not a breaking change, but the fix for one: the OIDC token request and the OCI UPST exchange used
+Node's global `fetch` with no dispatcher, which ignores `HTTP_PROXY`/`HTTPS_PROXY` and the agent's
+own proxy settings. On a self-hosted agent whose only egress is a forward proxy, every WIF path
+failed at token acquisition. Both now route through `Agent.ProxyUrl`/`Agent.ProxyUsername`/
+`Agent.ProxyPassword`, as the installer tasks already did, while keeping their https-only assertion
+and no-redirect policy. If you worked around this by switching a connection back to a static
+credential, you can switch it back to WIF.
+
+---
+
 ## Authentication Errors
 
 ### Azure — "The access token is from the wrong issuer"
@@ -14,12 +61,18 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 ### Azure — "AADSTS700024: Client assertion is not within its valid time range"
 
-**Cause:** Clock skew between the Azure DevOps agent and Azure AD, or an expired OIDC token.
+**Cause:** Clock skew between the Azure DevOps agent and Azure AD, or an expired OIDC token. The ADO
+OIDC token is short-lived — minutes, not hours — and the task fetches it once at the start of the
+command and never refreshes it (`src/id-token-generator.ts` has no expiry or refresh path), so a long
+step between token acquisition and the Terraform operation, or a very long-running operation, can
+outlive it.
 
 **Fix:**
 
 - Ensure the agent host clock is synchronized (NTP).
 - If using self-hosted agents, verify that the system clock drift is less than 5 minutes.
+- For long-running operations, prefer a `ManagedServiceIdentity` service connection: MSI credentials
+  are refreshed by the Azure SDK for the life of the process, unlike a one-shot WIF assertion.
 
 ### AWS — "Not authorized to perform sts:AssumeRoleWithWebIdentity"
 

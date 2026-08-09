@@ -70,7 +70,39 @@ directories and their per-task test commands.
    ```
 
 4. Open a PR to `main` with a conventional-commit title.
-5. CI runs automatically: version consistency check → build + test (Ubuntu + Windows × Node 24) → type-check tab → actionlint.
+5. CI runs automatically. Every one of these jobs gates the PR — a change that
+   trips any of them blocks the merge, so it is worth knowing they exist before
+   you are surprised by one. The per-task `Build and Test *` jobs run on both
+   Ubuntu and Windows × Node 24:
+
+   <!-- ci-jobs:begin -->
+   - `Check Version Consistency` — validates the version fields in each `task.json`.
+   - `Check Shared Module Parity` — modules with byte-identical copies across tasks
+     must stay identical, every outbound HTTP call must honour the agent proxy
+     configuration, and documented claims must match the code
+     (`scripts/check-shared-modules.js`, `scripts/check-egress-authorization.js`,
+     `scripts/check-proxy-parity.js`, `scripts/check-docs-claims.js`).
+   - `Build and Test V5` — lint, compile and unit tests for TerraformTaskV5.
+   - `Build and Test V5 Smoke`
+   - `Build and Test Installer V1`
+   - `Build and Test Provider Mirror V1`
+   - `Build and Test Module Publish V1`
+   - `Build and Test Policy Agent Installer V1`
+   - `Build and Test Policy Check V1`
+   - `Build and Test Drift Report V1`
+   - `Build and Test terraform-docs Installer V1`
+   - `Build and Test terraform-docs V1`
+   - `Build and Test Markdown2Html V1`
+   - `Build and Test Publish KB Article V1`
+   - `Build and Test Tab` — type-checks and builds the Terraform results tab.
+   - `Lint GitHub Actions` — actionlint.
+   - `Scan Workflows (zizmor)` — workflow-security scan.
+   <!-- ci-jobs:end -->
+
+   This list is checked against `.github/workflows/unit-test.yml` by
+   `scripts/check-docs-claims.js`, in both directions, so it cannot drift as jobs
+   are added or renamed. Adding a task means adding its job here too.
+
 6. Squash-merge when CI passes and the PR is approved; the branch is deleted automatically.
 
 ## Error messages

@@ -12,6 +12,8 @@ import './IdTokenGeneratorL0';
 import './RetryL0';
 // Direct unit tests for the agent HTTP proxy configuration helper.
 import './ProxyConfigL0';
+import './ProxyParityL0';
+import './RoleSessionNameManifestL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
 // Direct unit tests for post-hoc chmod on third-party secure-file downloads.
