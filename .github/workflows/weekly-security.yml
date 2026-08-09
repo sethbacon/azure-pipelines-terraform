@@ -399,6 +399,97 @@ jobs:
             })().catch(function (err) { console.error("Key-expiry check FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
+  # ── sha256-only installer drift canary ─────────────────
+  # OPA and terraform-docs are the two installer paths with NO upstream signature
+  # to verify -- a published sha256 is the entire trust anchor, so a silent change
+  # to the release-asset naming or the checksum-file format would not break a
+  # signature check, it would break checksum verification itself. The two canaries
+  # above cover the SIGNED paths (OpenTofu/cosign, Terraform/GPG); this covers the
+  # unsigned ones (#892). It reuses each installer's own exported asset-name builder
+  # and checksum parser rather than reimplementing them, so the canary cannot drift
+  # from what the shipped task actually enforces.
+  sha256-only-installer-drift-canary:
+    name: sha256-only installer drift canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Install + compile PolicyAgentInstaller (emits the JS the canary requires)
+        working-directory: Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1
+        run: npm ci --ignore-scripts && npm run compile
+      - name: Install + compile TerraformDocsInstaller (emits the JS the canary requires)
+        working-directory: Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1
+        run: npm ci --ignore-scripts && npm run compile
+      - name: Resolve latest OPA release version
+        id: opa-version
+        run: |
+          version=$(curl -fsSL https://api.github.com/repos/open-policy-agent/opa/releases/latest | jq -r '.tag_name')
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not resolve the latest OPA release version" >&2
+            exit 1
+          fi
+          echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+      - name: Resolve latest terraform-docs release version
+        id: tfdocs-version
+        run: |
+          version=$(curl -fsSL https://api.github.com/repos/terraform-docs/terraform-docs/releases/latest | jq -r '.tag_name')
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not resolve the latest terraform-docs release version" >&2
+            exit 1
+          fi
+          echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+      - name: OPA — asset and checksum sidecar still match what the installer expects
+        working-directory: Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1
+        env:
+          VERSION: ${{ steps.opa-version.outputs.version }}
+        # A rename or checksum-format change upstream is reported as DRIFT, distinct
+        # from a curl network failure, so a transient blip is never mistaken for one.
+        run: |
+          node -e '
+            const { getOpaAssetName, parseFirstSha256 } = require("./src/policy-agent-installer");
+            const version = process.env.VERSION;
+            const asset = getOpaAssetName();
+            const base = "https://github.com/open-policy-agent/opa/releases/download/v" + version + "/" + asset;
+            (async function () {
+              const head = await fetch(base, { method: "HEAD", redirect: "follow" });
+              if (!head.ok) { throw new Error("DRIFT: expected OPA asset " + asset + " not published for v" + version + " (HTTP " + head.status + ") at " + base); }
+              const res = await fetch(base + ".sha256", { redirect: "follow" });
+              if (!res.ok) { throw new Error("DRIFT: OPA checksum sidecar missing for " + asset + " (HTTP " + res.status + ")"); }
+              const body = await res.text();
+              const digest = parseFirstSha256(body, asset);
+              if (!/^[0-9a-f]{64}$/.test(digest)) { throw new Error("DRIFT: OPA checksum sidecar no longer parses to a bare sha256 -- got " + JSON.stringify(digest)); }
+              console.log("OK: OPA v" + version + " asset " + asset + " present with a parseable sha256 (" + digest.slice(0, 12) + "...).");
+            })().catch(function (err) { console.error("OPA sha256-only canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+      - name: terraform-docs — asset and checksum file still match what the installer expects
+        working-directory: Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1
+        env:
+          VERSION: ${{ steps.tfdocs-version.outputs.version }}
+        run: |
+          node -e '
+            const { getAssetName, parseSha256 } = require("./src/terraform-docs-installer");
+            const version = process.env.VERSION;
+            const asset = getAssetName(version);
+            const base = "https://github.com/terraform-docs/terraform-docs/releases/download/v" + version + "/";
+            (async function () {
+              const head = await fetch(base + asset, { method: "HEAD", redirect: "follow" });
+              if (!head.ok) { throw new Error("DRIFT: expected terraform-docs asset " + asset + " not published for v" + version + " (HTTP " + head.status + ")"); }
+              const sumsName = "terraform-docs-v" + version + ".sha256sum";
+              const res = await fetch(base + sumsName, { redirect: "follow" });
+              if (!res.ok) { throw new Error("DRIFT: terraform-docs checksum file " + sumsName + " missing (HTTP " + res.status + ")"); }
+              const digest = parseSha256(await res.text(), asset);
+              if (!/^[0-9a-f]{64}$/.test(digest)) { throw new Error("DRIFT: terraform-docs checksum file no longer lists " + asset + " in the expected format"); }
+              console.log("OK: terraform-docs v" + version + " asset " + asset + " listed in " + sumsName + " (" + digest.slice(0, 12) + "...).");
+            })().catch(function (err) { console.error("terraform-docs sha256-only canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+
   # ── Tooling version drift canary ───────────────────────
   # actionlint and zizmor are both hand-pinned inline (curl + sha256) in
   # unit-test.yml's actionlint/zizmor jobs rather than tracked by any package
@@ -462,7 +553,17 @@ jobs:
     name: Create issue on failure
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [ci, osv-scan, stale-dependabot, verify-marketplace-environment-protection, opentofu-cosign-canary, hashicorp-gpg-canary, tooling-version-drift-canary]
+    needs:
+      [
+        ci,
+        osv-scan,
+        stale-dependabot,
+        verify-marketplace-environment-protection,
+        opentofu-cosign-canary,
+        hashicorp-gpg-canary,
+        sha256-only-installer-drift-canary,
+        tooling-version-drift-canary,
+      ]
     if: failure() && github.event_name == 'schedule'
     permissions:
       issues: write
