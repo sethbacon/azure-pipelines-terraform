@@ -5,6 +5,7 @@ import path = require('path');
 import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
+import { TEST_OCI_PRIVATE_KEY_SPACES } from './test-oci-fixtures';
 
 /**
  * Direct unit tests for the generated OCI backend config file (#545). The
@@ -15,6 +16,25 @@ import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler
  * stay INSIDE the working directory (terraform init only loads *.tf from
  * there) and remain registered for cleanup.
  */
+/** A complete, well-formed OCI API-key connection: handleProvider now fails closed without one. */
+const OCI_ENDPOINT_DATA: Record<string, string> = {
+    tenancy: 'ocid1.tenancy.oc1..dummy',
+    user: 'ocid1.user.oc1..dummy',
+    region: 'us-ashburn-1',
+    fingerprint: 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99',
+};
+
+/**
+ * The signing key is NOT in OCI_ENDPOINT_DATA above, because it is not read
+ * through `tasks.getEndpointDataParameter` -- that accessor debug-logs the value
+ * it returns and leaves `ENDPOINT_DATA_*` in `process.env` for the terraform
+ * child, so `requireSecretField(..., { source: 'data' })` routes through
+ * `readSecretEndpointDataParameter`, which reads this variable directly
+ * (src/endpoint-data-secret.ts). The fixture therefore has to deliver it the way
+ * the agent does, exactly as the OCI mock-runner test setups do.
+ */
+const OCI_PRIVATE_KEY_ENV = 'ENDPOINT_DATA_OCI_PRIVATEKEY';
+
 describe('OCI backend config file — secret-file write hardening (#545)', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
     const t = tasks as any;
@@ -22,7 +42,10 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
         getInput: t.getInput,
         setSecret: t.setSecret,
         debug: t.debug,
+        warning: t.warning,
+        getEndpointDataParameter: t.getEndpointDataParameter,
     };
+
     let scratchDir: string;
 
     const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
@@ -38,12 +61,16 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
         };
         t.setSecret = () => { /* no-op */ };
         t.debug = () => { /* silence */ };
+        t.warning = () => { /* silence */ };
+        t.getEndpointDataParameter = (_id: string, key: string) => OCI_ENDPOINT_DATA[key];
     });
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
+        t.warning = taskOrig.warning;
+        t.getEndpointDataParameter = taskOrig.getEndpointDataParameter;
         fs.rmSync(scratchDir, { recursive: true, force: true });
     });
 
@@ -135,6 +162,8 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
         getBoolInput: t.getBoolInput,
         setSecret: t.setSecret,
         debug: t.debug,
+        warning: t.warning,
+        getEndpointDataParameter: t.getEndpointDataParameter,
     };
     let scratchDir: string;
     let cachePath: string;
@@ -155,6 +184,12 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
     }
 
     beforeEach(() => {
+        // handleProvider now fails closed without a complete API-key connection
+        // (the cache-registration behaviour under test is independent of that).
+        t.warning = () => { /* silence */ };
+        t.getEndpointDataParameter = (_id: string, key: string) => OCI_ENDPOINT_DATA[key];
+        // Re-set per test: readSecretEndpointDataParameter deletes it once read.
+        process.env[OCI_PRIVATE_KEY_ENV] = TEST_OCI_PRIVATE_KEY_SPACES;
         scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oci-backend-cache-test-'));
         fs.mkdirSync(path.join(scratchDir, '.terraform'));
         cachePath = path.join(scratchDir, '.terraform', 'terraform.tfstate');
@@ -168,6 +203,9 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
+        t.warning = taskOrig.warning;
+        t.getEndpointDataParameter = taskOrig.getEndpointDataParameter;
+        delete process.env[OCI_PRIVATE_KEY_ENV];
         fs.rmSync(scratchDir, { recursive: true, force: true });
     });
 
@@ -197,7 +235,11 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
     it('also registers the cache for cleanup from handleProvider (apply/destroy as the last step, no handleBackend call)', async () => {
         installInputs(true);
         const handler = new TerraformCommandHandlerOCI();
-        await handler.handleProvider({ serviceProviderName: undefined } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
+        // A real run always carries a service connection here (createAuthCommand
+        // reads it as a required input); handleProvider now fails closed without
+        // one, so the cache-registration behaviour under test is exercised with a
+        // connection whose credential reads are stubbed below.
+        await handler.handleProvider({ serviceProviderName: 'OCI' } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
         handler.cleanupTempFiles();
 
         assert.ok(!fs.existsSync(cachePath), 'handleProvider (used by plan/apply/destroy/...) must register the same opt-in cleanup, not only handleBackend (init)');
@@ -211,7 +253,11 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
             return undefined;
         };
         const handler = new TerraformCommandHandlerOCI();
-        await handler.handleProvider({ serviceProviderName: undefined } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
+        // A real run always carries a service connection here (createAuthCommand
+        // reads it as a required input); handleProvider now fails closed without
+        // one, so the cache-registration behaviour under test is exercised with a
+        // connection whose credential reads are stubbed below.
+        await handler.handleProvider({ serviceProviderName: 'OCI' } as unknown as Parameters<TerraformCommandHandlerOCI['handleProvider']>[0]);
         handler.cleanupTempFiles();
 
         // backendOCIConfigGenerate's own input group is only visible/defaulted

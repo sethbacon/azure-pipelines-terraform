@@ -64,7 +64,14 @@ describe('TerraformCommandHandlerAWS.configureBackendCredentials (cross-cloud)',
 
     assert.strictEqual(process.env['AWS_ROLE_ARN'], 'arn:aws:iam::922142189708:role/ADO-role');
     assert.strictEqual(process.env['AWS_REGION'], 'us-east-1');
-    assert.strictEqual(process.env['AWS_ROLE_SESSION_NAME'], 'AzureDevOps-Terraform-Backend');
+    // #197: the session name is derived from job context, not a constant shared by
+    // every federated run of every pipeline -- it is CloudTrail's
+    // userIdentity.arn pivot. The 'ado-tf-backend' prefix keeps the backend's
+    // assumed-role session distinguishable from the provider's.
+    const backendSessionName = process.env['AWS_ROLE_SESSION_NAME']!;
+    assert.notStrictEqual(backendSessionName, 'AzureDevOps-Terraform-Backend');
+    assert.ok(backendSessionName.startsWith('ado-tf-backend'), `unexpected session name: ${backendSessionName}`);
+    assert.ok(/^[\w+=,.@-]{2,64}$/.test(backendSessionName), `session name must satisfy AWS's grammar: ${backendSessionName}`);
 
     const tokenFilePath = process.env['AWS_WEB_IDENTITY_TOKEN_FILE']!;
     assert.ok(tokenFilePath, 'AWS_WEB_IDENTITY_TOKEN_FILE should be set');

@@ -6,6 +6,38 @@ import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import { writeSecretFile } from './secure-temp';
 import { resolveWifTempDir } from './temp-dir';
+import {
+    assertIdentityValue,
+    neutralizeEnvironmentVariables,
+    requireIdentityField,
+    requireSecretField,
+    resolveRoleSessionName,
+} from './credential-guards';
+
+/**
+ * Environment variables the AWS SDK's default credential chain matches BEFORE
+ * the web-identity token file (`resolveCredentials()` in
+ * aws/session/credentials.go; same ordering in aws-sdk-go-v2's
+ * `resolveCredentialChain`). Any of these left set by a self-hosted agent or a
+ * pipeline variable wins outright over a freshly minted federated assertion, so
+ * the WIF path clears them before injecting (#187).
+ */
+const AWS_STATIC_CREDENTIAL_ENV = [
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_SESSION_TOKEN',
+    'AWS_PROFILE',
+    'AWS_SHARED_CREDENTIALS_FILE',
+] as const;
+
+/** The mirror set: web-identity/role selectors the static-key path must clear. */
+const AWS_FEDERATED_CREDENTIAL_ENV = [
+    'AWS_WEB_IDENTITY_TOKEN_FILE',
+    'AWS_ROLE_ARN',
+    'AWS_SESSION_TOKEN',
+    'AWS_PROFILE',
+    'AWS_SHARED_CREDENTIALS_FILE',
+] as const;
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
 
@@ -22,10 +54,16 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
      * `configureBackendCredentials` (cross-cloud injection on later commands).
      */
     private setEnvOnlyAwsCredentials(backendServiceName: string): void {
-        const accessKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "username", true)!;
-        const secretKey = tasks.getEndpointAuthorizationParameter(backendServiceName, "password", true)!;
-        if (secretKey) { tasks.setSecret(secretKey); }
+        // Both fields were read with optional=true behind a `!`: an absent access
+        // key or secret produced `undefined`, which setEnvironmentVariable skips
+        // with a warning, so the s3 backend silently fell through to the agent's
+        // instance-profile/ambient credentials -- the same fail-open shape as #97
+        // and exactly what the provider path already refused to do.
+        const accessKey = requireIdentityField(backendServiceName, "username");
+        const secretKey = requireSecretField(backendServiceName, "password");
+        tasks.setSecret(secretKey);
 
+        neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static backend");
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey, true);
     }
@@ -33,7 +71,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
     private setupBackend(backendServiceName: string) {
         this.backendConfig.set('bucket', tasks.getInput("backendAWSBucketName", true)!);
         this.backendConfig.set('key', tasks.getInput("backendAWSKey", true)!);
-        this.backendConfig.set('region', tasks.getEndpointAuthorizationParameter(backendServiceName, "region", true)!);
+        this.backendConfig.set('region', requireIdentityField(backendServiceName, "region"));
 
         this.setEnvOnlyAwsCredentials(backendServiceName);
     }
@@ -58,23 +96,38 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         writeSecretFile(tokenFilePath, oidcToken);
         this.tempFiles.push(tokenFilePath);
 
+        // Clear the static keys FIRST: the SDK matches them before the
+        // web-identity token file, so an inherited pair would silently discard
+        // the assertion just written above (#187).
+        neutralizeEnvironmentVariables(AWS_STATIC_CREDENTIAL_ENV, "AWS Workload Identity Federation");
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", params.roleArn);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", params.region);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", params.sessionName);
     }
 
+    /**
+     * The backend's Workload Identity Federation parameter block, shared by
+     * `setupBackendWIF` (init) and `configureBackendCredentials` (cross-cloud).
+     * These were two verbatim copies, and the #197 session-name fix landing in
+     * only one of them would have been this batch's own defect class in
+     * miniature: one branch guarded, its sibling not.
+     */
+    private async applyBackendWifEnvironment(backendServiceName: string): Promise<void> {
+        await this.applyWifEnvironment({
+            serviceConnection: backendServiceName,
+            roleArn: assertIdentityValue(tasks.getInput("backendAWSRoleArn", true), "Input 'backendAWSRoleArn'"),
+            region: assertIdentityValue(tasks.getInput("backendAWSRegion", true), "Input 'backendAWSRegion'"),
+            sessionName: resolveRoleSessionName("backendAWSSessionName", "ado-tf-backend"),
+            tokenFilePrefix: "aws-backend-oidc-token",
+        });
+    }
+
     private async setupBackendWIF(backendServiceName: string): Promise<void> {
         this.backendConfig.set('bucket', tasks.getInput("backendAWSBucketName", true)!);
         this.backendConfig.set('key', tasks.getInput("backendAWSKey", true)!);
 
-        await this.applyWifEnvironment({
-            serviceConnection: backendServiceName,
-            roleArn: tasks.getInput("backendAWSRoleArn", true)!,
-            region: tasks.getInput("backendAWSRegion", true)!,
-            sessionName: tasks.getInput("backendAWSSessionName", false) || "AzureDevOps-Terraform-Backend",
-            tokenFilePrefix: "aws-backend-oidc-token",
-        });
+        await this.applyBackendWifEnvironment(backendServiceName);
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
@@ -102,13 +155,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
 
         tasks.debug("Configuring cross-cloud s3 backend credentials (environment variables only).");
         if (authScheme === "WorkloadIdentityFederation") {
-            await this.applyWifEnvironment({
-                serviceConnection: backendServiceName,
-                roleArn: tasks.getInput("backendAWSRoleArn", true)!,
-                region: tasks.getInput("backendAWSRegion", true)!,
-                sessionName: tasks.getInput("backendAWSSessionName", false) || "AzureDevOps-Terraform-Backend",
-                tokenFilePrefix: "aws-backend-oidc-token",
-            });
+            await this.applyBackendWifEnvironment(backendServiceName);
         } else {
             this.setEnvOnlyAwsCredentials(backendServiceName);
         }
@@ -122,21 +169,36 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProviderName) {
-                const accessKeyId = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "username", false);
-                const secretAccessKey = tasks.getEndpointAuthorizationParameter(command.serviceProviderName, "password", false);
-                if (secretAccessKey) { tasks.setSecret(secretAccessKey); }
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId ?? '');
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey ?? '', true);
+                // `?? ''` made an absent field a silently skipped environment
+                // variable, which the AWS SDK reads as "not set" and answers from
+                // the instance profile instead. Both now fail closed.
+                const accessKeyId = requireIdentityField(command.serviceProviderName, "username");
+                const secretAccessKey = requireSecretField(command.serviceProviderName, "password");
+                tasks.setSecret(secretAccessKey);
+                neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static");
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId);
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey, true);
+            } else {
+                // Silently injecting nothing leaves terraform to authenticate from
+                // whatever ambient credentials the agent carries -- the defect this
+                // whole matrix exists to remove.
+                throw new Error("An AWS service connection is required for this command. Set environmentServiceNameAWS.");
             }
         }
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
+        if (!command.serviceProviderName) {
+            // Fail closed like the static path: an empty service connection would
+            // otherwise POST to the ADO OIDC endpoint with an empty id and surface
+            // a cryptic downstream error instead of a clear misconfiguration.
+            throw new Error("An AWS service connection is required for Workload Identity Federation. Set environmentServiceNameAWS.");
+        }
         await this.applyWifEnvironment({
             serviceConnection: command.serviceProviderName,
-            roleArn: tasks.getInput("awsRoleArn", true)!,
-            region: tasks.getInput("awsRegion", true)!,
-            sessionName: tasks.getInput("awsSessionName", false) || "AzureDevOps-Terraform",
+            roleArn: assertIdentityValue(tasks.getInput("awsRoleArn", true), "Input 'awsRoleArn'"),
+            region: assertIdentityValue(tasks.getInput("awsRegion", true), "Input 'awsRegion'"),
+            sessionName: resolveRoleSessionName("awsSessionName", "ado-tf"),
             tokenFilePrefix: "aws-oidc-token",
         });
     }

@@ -4,6 +4,54 @@ import { TerraformAuthorizationCommandInitializer } from "./terraform-commands";
 import { BaseTerraformCommandHandler } from "./base-terraform-command-handler";
 import { EnvironmentVariableHelper } from "./environment-variables";
 import { generateIdToken } from './id-token-generator';
+import {
+    assertIdentityValue,
+    neutralizeEnvironmentVariables,
+    requireIdentityField,
+    requireSecretField,
+} from './credential-guards';
+
+/**
+ * The `ARM_*` variables that make the azurerm provider choose a particular
+ * credential. Each auth branch clears the ones belonging to the schemes it is
+ * NOT using, so a value inherited from a self-hosted agent or an earlier task
+ * cannot decide the run's identity (#187). `ARM_USE_MSI` in particular only
+ * reaches the agent identity while the secret/OIDC/certificate variables are
+ * absent.
+ */
+const ARM_IDENTITY_SELECTORS = {
+    secret: 'ARM_CLIENT_SECRET',
+    oidcToken: 'ARM_OIDC_TOKEN',
+    certPath: 'ARM_CLIENT_CERTIFICATE_PATH',
+    cert: 'ARM_CLIENT_CERTIFICATE',
+    useMsi: 'ARM_USE_MSI',
+    useOidc: 'ARM_USE_OIDC',
+} as const;
+
+/**
+ * Every ARM_* variable that can decide WHICH identity the azurerm provider
+ * authenticates as. Cleared wholesale at the top of `setCommonVariables`, before
+ * the scheme branch re-establishes exactly the ones it needs.
+ * ARM_SUBSCRIPTION_ID is not here: it names a target, not an identity, and is
+ * resolved and set by the caller before `setCommonVariables` runs.
+ */
+const ARM_CREDENTIAL_SELECTOR_ENV = [
+    'ARM_CLIENT_ID',
+    'ARM_CLIENT_SECRET',
+    'ARM_CLIENT_CERTIFICATE',
+    'ARM_CLIENT_CERTIFICATE_PATH',
+    'ARM_CLIENT_CERTIFICATE_PASSWORD',
+    'ARM_OIDC_TOKEN',
+    'ARM_OIDC_TOKEN_FILE_PATH',
+    'ARM_OIDC_REQUEST_TOKEN',
+    'ARM_OIDC_REQUEST_URL',
+    'ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID',
+    'ARM_OIDC_AZURE_SERVICE_CONNECTION_ID',
+    'ARM_USE_MSI',
+    'ARM_USE_OIDC',
+    'ARM_USE_CLI',
+    'ARM_TENANT_ID',
+] as const;
 
 /**
  * Wall-clock bound for `az login`/`az account set` (#822, CWE-1088) -- ALWAYS
@@ -26,6 +74,15 @@ export const AZ_LOGIN_TIMEOUT_MS = AZ_LOGIN_TIMEOUT_MINUTES * 60_000;
  * left blank), which preserves the existing system-assigned-only behavior.
  */
 export function getManagedIdentityClientId(serviceConnectionID: string): string | undefined {
+    // @credential-exempt: this read is optional BY DESIGN and is the one place in
+    // the matrix where absence is the correct, secure outcome. An MSI-scheme
+    // connection leaves "Service Principal Id" blank for a SYSTEM-assigned
+    // identity; returning undefined then means "use the agent's own identity",
+    // which is precisely the principal that scheme selects. Making it required
+    // would break every system-assigned connection. The caller's MSI branch
+    // clears ARM_CLIENT_ID when this returns undefined, so an inherited value
+    // cannot substitute a user-assigned identity nobody configured.
+    //
     // getEndpointAuthorizationParameter's 3rd param is named `optional` (true =
     // don't throw when absent) - the opposite convention from getInput's
     // `required`. true here is what makes this genuinely optional.
@@ -49,14 +106,20 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
      * per HashiCorp's guidance against caching backend credentials on disk).
      */
     private async applyBackendCredentialEnv(serviceConnectionID: string, useCliFlagsForBackend: boolean): Promise<AuthorizationScheme> {
-        const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
+        const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true), serviceConnectionID);
 
         let subscriptionId = tasks.getInput("backendAzureRmOverrideSubscriptionID", false);
         if (!subscriptionId) {
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
         if (subscriptionId) {
+            subscriptionId = assertIdentityValue(subscriptionId, `Azure subscription id for service connection '${serviceConnectionID}'`);
             EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
+        } else {
+            // Nothing resolved from the input or the connection: an inherited
+            // ARM_SUBSCRIPTION_ID would otherwise silently target a subscription
+            // this service connection never named (#187).
+            neutralizeEnvironmentVariables(['ARM_SUBSCRIPTION_ID'], "Azure");
         }
 
         const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
@@ -84,7 +147,11 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
         if (subscriptionId && resourceGroupName) {
-            this.backendConfig.set("subscription_id", subscriptionId);
+            // Cached into .terraform/terraform.tfstate as a -backend-config value,
+            // so it gets the same charset validation as every injected identity
+            // field (#199).
+            this.backendConfig.set("subscription_id",
+                assertIdentityValue(subscriptionId, `Azure subscription id for service connection '${serviceConnectionID}'`));
         }
 
         // Setup Entra ID authentication (set as backend config to ensure it is cached)
@@ -123,7 +190,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
     public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
         const serviceConnectionID = tasks.getInput("environmentServiceNameAzureRM", true)!;
-        const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true)!);
+        const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true), serviceConnectionID);
 
         tasks.debug("Setting up provider for authorization scheme: " + authorizationScheme + ".");
 
@@ -133,7 +200,13 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             subscriptionId = tasks.getEndpointDataParameter(serviceConnectionID, "subscriptionid", true);
         }
         if (subscriptionId) {
+            subscriptionId = assertIdentityValue(subscriptionId, `Azure subscription id for service connection '${serviceConnectionID}'`);
             EnvironmentVariableHelper.setEnvironmentVariable("ARM_SUBSCRIPTION_ID", subscriptionId);
+        } else {
+            // Nothing resolved from the input or the connection: an inherited
+            // ARM_SUBSCRIPTION_ID would otherwise silently target a subscription
+            // this service connection never named (#187).
+            neutralizeEnvironmentVariables(['ARM_SUBSCRIPTION_ID'], "Azure");
         }
 
         const fallbackToIdTokenGeneration = tasks.getBoolInput("environmentAzureRmUseIdTokenGeneration", false);
@@ -170,11 +243,11 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             throw new Error("az CLI not found. Install the Azure CLI on the agent to use 'Run az login'. See https://docs.microsoft.com/cli/azure/install-azure-cli");
         }
 
-        const tenantId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", true)!;
+        const tenantId = requireIdentityField(serviceConnectionID, "tenantid");
 
         switch (authorizationScheme) {
             case AuthorizationScheme.WorkloadIdentityFederation: {
-                const spnId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!;
+                const spnId = requireIdentityField(serviceConnectionID, "serviceprincipalid");
                 const oidcToken = await generateIdToken(serviceConnectionID);
                 tasks.setSecret(oidcToken);
 
@@ -189,8 +262,8 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 break;
             }
             case AuthorizationScheme.ServicePrincipal: {
-                const spnId = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!;
-                const spnKey = tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", false)!;
+                const spnId = requireIdentityField(serviceConnectionID, "serviceprincipalid");
+                const spnKey = requireSecretField(serviceConnectionID, "serviceprincipalkey");
                 tasks.setSecret(spnKey);
 
                 const loginTool: ToolRunner = tasks.tool(azPath);
@@ -254,10 +327,32 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
 
     private async setCommonVariables(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, fallbackToIdTokenGeneration: boolean, useCliFlagsForBackend: boolean): Promise<void> {
-        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tasks.getEndpointAuthorizationParameter(serviceConnectionID, "tenantid", false) ?? '');
+        // Clear EVERY ARM_* credential selector before any branch injects its own
+        // (#187). Doing it once here rather than only per-branch closes the case
+        // no per-branch list can: an inherited ARM_CLIENT_ID on the MSI path,
+        // where the branch legitimately MAY set that variable (a user-assigned
+        // identity) and so cannot blanket-clear it. ARM_SUBSCRIPTION_ID is
+        // deliberately absent from this list -- the caller resolves and sets it
+        // before calling this method.
+        neutralizeEnvironmentVariables(ARM_CREDENTIAL_SELECTOR_ENV, "Azure");
+        // optional=false already threw for an absent tenant, so the `?? ''` tail
+        // was unreachable (#194); requireIdentityField keeps the same fail-closed
+        // contract while adding the charset validation the injected value never
+        // had (#199) and a message that names the field.
+        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", requireIdentityField(serviceConnectionID, "tenantid"));
 
         switch (authorizationScheme) {
             case AuthorizationScheme.ManagedServiceIdentity: {
+                // @credential-exempt: ManagedServiceIdentity deliberately requires no
+                // credential field -- the agent's own managed identity IS the intended
+                // principal, and the connection's optional client id only disambiguates
+                // a user-assigned identity (see getManagedIdentityClientId).
+                // The azurerm provider only reaches that identity while the
+                // secret/OIDC/certificate variables are absent, so an inherited one
+                // must be cleared or it silently selects a different principal (#187).
+                neutralizeEnvironmentVariables(
+                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useOidc],
+                    "Azure Managed Identity");
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_MSI", "true");
                 // ARM_USE_MSI alone authenticates as the agent's system-assigned identity.
                 // If the connection targets a user-assigned identity instead, the azurerm
@@ -274,6 +369,9 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             }
 
             case AuthorizationScheme.WorkloadIdentityFederation: {
+                neutralizeEnvironmentVariables(
+                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi],
+                    "Azure Workload Identity Federation");
                 const workloadIdentityFederationCredentials = await this.getWorkloadIdentityFederationCredentials(serviceConnectionID, fallbackToIdTokenGeneration);
                 if (useCliFlagsForBackend) {
                     // By persisting the client ID in the backend config, we can support multiple service connections for backend and provider auth.
@@ -327,7 +425,10 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 tasks.warning("Client secret authentication is not secure and will be deprecated in the next major version of this task. Please use Workload identity federation authentication instead.");
 
                 const servicePrincipalCredentials = this.getServicePrincipalCredentials(serviceConnectionID);
-                if (servicePrincipalCredentials.servicePrincipalKey) { tasks.setSecret(servicePrincipalCredentials.servicePrincipalKey); }
+                tasks.setSecret(servicePrincipalCredentials.servicePrincipalKey);
+                neutralizeEnvironmentVariables(
+                    [ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi, ARM_IDENTITY_SELECTORS.useOidc],
+                    "Azure service principal");
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId);
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey, true);
                 break;
@@ -335,17 +436,31 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         }
     }
 
+    /**
+     * #97: both fields were read with optional=true behind a `!`, so a service
+     * connection missing either one produced `undefined`, which
+     * setEnvironmentVariable then skipped with a warning -- leaving ARM_CLIENT_ID
+     * and/or ARM_CLIENT_SECRET unset and the azurerm provider free to fall back
+     * to the agent's ambient identity. Both now fail closed, and the id is
+     * charset-validated like every other injected identity field (#199).
+     */
     private getServicePrincipalCredentials(serviceConnectionID: string): ServicePrincipalCredentials {
-        const servicePrincipalCredentials: ServicePrincipalCredentials = {
-            servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
-            servicePrincipalKey: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalkey", true)!
-        }
-        return servicePrincipalCredentials;
+        return {
+            servicePrincipalId: requireIdentityField(serviceConnectionID, "serviceprincipalid"),
+            servicePrincipalKey: requireSecretField(serviceConnectionID, "serviceprincipalkey")
+        };
     }
 
+    /**
+     * The branch #97 REOPENED over in the sibling packer extension: the
+     * ServicePrincipal path above was hardened while this one kept reading
+     * `serviceprincipalid` as optional behind a `!`, so an empty client id
+     * yielded a silently skipped ARM_CLIENT_ID with ARM_USE_OIDC still set --
+     * the azurerm provider then resolved an identity from the agent instead.
+     */
     private async getWorkloadIdentityFederationCredentials(serviceConnectionID: string, getIdToken: boolean): Promise<WorkloadIdentityFederationCredentials> {
         const workloadIdentityFederationCredentials: WorkloadIdentityFederationCredentials = {
-            servicePrincipalId: tasks.getEndpointAuthorizationParameter(serviceConnectionID, "serviceprincipalid", true)!,
+            servicePrincipalId: requireIdentityField(serviceConnectionID, "serviceprincipalid"),
             oidcToken: ""
         }
         if (getIdToken) {
@@ -354,10 +469,21 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         return workloadIdentityFederationCredentials;
     }
 
-    private mapAuthorizationScheme(authorizationScheme: string): AuthorizationScheme {
-        if (authorizationScheme === undefined) {
-            tasks.warning("The authorization scheme could not be found for your Service Connection, using Workload identity federation by default, but this could cause issues.");
-            return AuthorizationScheme.WorkloadIdentityFederation;
+    /**
+     * #97: an absent authorization scheme used to default to Workload Identity
+     * Federation with only a warning, and the parameter was typed `string` while
+     * the caller passed `getEndpointAuthorizationScheme(id, true)!` -- optional,
+     * so genuinely `string | undefined` at runtime. The `!` and the
+     * `=== undefined` check contradicted each other, and the silent default meant
+     * a service connection with no scheme still produced a credential-less WIF
+     * setup, which the azurerm provider then completed from whatever ambient
+     * identity the agent had (Azure CLI login or managed identity). The parameter
+     * is now typed honestly and an absent scheme fails closed, matching the
+     * AWS/GCP/OCI handlers and the sibling packer extension.
+     */
+    private mapAuthorizationScheme(authorizationScheme: string | undefined, serviceConnectionID: string): AuthorizationScheme {
+        if (!authorizationScheme) {
+            throw new Error(`Service connection '${serviceConnectionID}' has no authorization scheme. Expected one of: WorkloadIdentityFederation, ManagedServiceIdentity, ServicePrincipal.`);
         }
 
         if (authorizationScheme.toLowerCase() === AuthorizationScheme.ServicePrincipal) {

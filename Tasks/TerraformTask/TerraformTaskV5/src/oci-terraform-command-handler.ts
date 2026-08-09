@@ -7,8 +7,32 @@ import { generateIdToken } from './id-token-generator';
 import { exchangeOidcForUpst } from './oci-token-exchange';
 import { writeSecretFile, tightenFilePermissions } from './secure-temp';
 import { normalizePem } from './pem-normalizer';
-import { readSecretEndpointDataParameter } from './endpoint-data-secret';
 import { resolveWifTempDir } from './temp-dir';
+import {
+    FINGERPRINT_PATTERN,
+    neutralizeEnvironmentVariables,
+    OCID_PATTERN,
+    REGION_PATTERN,
+    requireIdentityField,
+    requireSecretField,
+} from './credential-guards';
+
+/**
+ * OCI SDK configuration the oci provider honours ahead of, or instead of, the
+ * TF_VAR_ and OCI_CLI_ values this handler injects. Cleared so an inherited
+ * config file or profile on a self-hosted agent cannot redirect the run to a
+ * different tenancy/user (#187).
+ */
+const OCI_COMPETING_CREDENTIAL_ENV = [
+    'OCI_CLI_CONFIG_FILE',
+    'OCI_CLI_PROFILE',
+    'OCI_CLI_AUTH',
+    'OCI_CLI_TENANCY',
+    'OCI_CLI_USER',
+    'OCI_CLI_FINGERPRINT',
+    'OCI_CLI_KEY_FILE',
+    'OCI_CLI_REGION',
+] as const;
 import path = require('path');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -306,27 +330,49 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProviderName) {
-                // NOT tasks.getEndpointDataParameter(): that helper debug-logs the
-                // value it returns, so the raw OCI API signing key would already be
-                // in the build log before getPrivateKeyFilePath's first setSecret.
-                // readSecretEndpointDataParameter reads the same ENDPOINT_DATA_*
-                // variable directly, masks it line-wise, and deletes it so the
-                // terraform child process does not inherit it (endpoint-data-secret.ts).
-                const rawPrivateKey = readSecretEndpointDataParameter(command.serviceProviderName, "privateKey");
-                if (!rawPrivateKey) {
-                    throw new Error("OCI private key not found in service connection. Ensure the 'privateKey' field is configured.");
-                }
+                // Fails closed on an absent/empty key, AND is read through
+                // readSecretEndpointDataParameter rather than
+                // tasks.getEndpointDataParameter: the latter debug-logs the value it
+                // returns, so the raw OCI API signing key would already be in the
+                // build log before getPrivateKeyFilePath's first setSecret, and it
+                // leaves ENDPOINT_DATA_* in process.env for the terraform child to
+                // inherit. Both guards compose inside requireSecretField(source:
+                // 'data') -- see credential-guards.ts readSecretEndpointField and
+                // endpoint-data-secret.ts.
+                const rawPrivateKey = requireSecretField(command.serviceProviderName, "privateKey", { source: 'data' });
                 const privateKeyFilePath = this.getPrivateKeyFilePath(rawPrivateKey);
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "tenancy", false) || '');
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", tasks.getEndpointDataParameter(command.serviceProviderName, "user", false) || '');
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", tasks.getEndpointDataParameter(command.serviceProviderName, "region", false) || '');
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", tasks.getEndpointDataParameter(command.serviceProviderName, "fingerprint", false) || '');
+                // Each of these used an `optional=false` accessor inside an `|| ''`
+                // chain: the tail was unreachable (#194) and, more importantly, the
+                // values reached TF_VAR_* with none of the grammar checks the WIF
+                // path on this same handler already applied to the equivalent
+                // fields (#199). The sibling packer extension's OCI handler has
+                // validated exactly these four since it was written -- this branch
+                // was the unguarded sibling.
+                const tenancy = requireIdentityField(command.serviceProviderName, "tenancy", { source: 'data', pattern: OCID_PATTERN, description: 'OCID' });
+                const user = requireIdentityField(command.serviceProviderName, "user", { source: 'data', pattern: OCID_PATTERN, description: 'OCID' });
+                const region = requireIdentityField(command.serviceProviderName, "region", { source: 'data', pattern: REGION_PATTERN, description: 'region identifier' });
+                const fingerprint = requireIdentityField(command.serviceProviderName, "fingerprint", { source: 'data', pattern: FINGERPRINT_PATTERN, description: 'key fingerprint' });
+
+                neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI API key");
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancy);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", user);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", region);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", fingerprint);
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_private_key_path", privateKeyFilePath);
+            } else {
+                // Silently injecting nothing leaves terraform to authenticate from
+                // the agent's ambient OCI config or instance principal.
+                throw new Error("An OCI service connection is required for this command. Set environmentServiceNameOCI.");
             }
         }
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
+        if (!command.serviceProviderName) {
+            // Fail closed rather than requesting an OIDC token for an empty
+            // service connection id.
+            throw new Error("An OCI service connection is required for Workload Identity Federation. Set environmentServiceNameOCI.");
+        }
         // 1. Get OIDC JWT from Azure DevOps
         const oidcToken = await generateIdToken(command.serviceProviderName);
         tasks.setSecret(oidcToken);
@@ -389,6 +435,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         this.tempFiles.push(configPath);
 
         // 6. Set environment variables for the OCI Terraform provider
+        neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath);
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_AUTH", "security_token");

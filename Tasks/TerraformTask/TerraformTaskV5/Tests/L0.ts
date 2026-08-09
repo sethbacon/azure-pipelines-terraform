@@ -59,6 +59,9 @@ import './BinaryNameAllowlistL0';
 import './GcpTokenUriValidationL0';
 // Direct unit tests for the hoisted auth-scheme validator shared by AWS/GCP/OCI.
 import './AuthSchemeValidatorL0';
+
+// The credential fail-closed class test (#97 and its siblings).
+import './CredentialFailClosedMatrixL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.
@@ -153,18 +156,24 @@ describe('Terraform Test Suite', function () {
 
     });
 
-    it('azure init should succeed with missing authentication scheme', async () => {
-        let tp = path.join(__dirname, './InitTests/Azure/AzureInitSuccessMissingAuthenticationScheme.js');
+    // #97: an absent authorization scheme used to default silently to Workload
+    // Identity Federation (warning only), which -- combined with the azurerm
+    // provider's own fallbacks -- could authenticate as the agent's ambient
+    // identity. It must now fail closed, like every other provider handler.
+    it('azure init should FAIL with missing authentication scheme (#97)', async () => {
+        let tp = path.join(__dirname, './InitTests/Azure/AzureInitMissingAuthenticationSchemeRejects.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
         await tr.runAsync();
 
         runValidations(() => {
-            assert(tr.succeeded, 'task should have succeeded');
-            assert(tr.invokedToolCount === 1, 'tool should have been invoked one time. actual: ' + tr.invokedToolCount);
-            assert(tr.errorIssues.length === 0, 'should have no errors');
-            assert(tr.warningIssues.length === 1, 'should have 1 warning');
-            assert(tr.stdOutContained('AzureInitSuccessMissingAuthenticationSchemeL0 should have succeeded.'), 'Should have printed: AzureInitSuccessMissingAuthenticationSchemeL0 should have succeeded.');
+            assert(tr.failed, 'task should have failed');
+            assert(tr.invokedToolCount === 0, 'terraform must not be invoked without a resolved authorization scheme. actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length > 0, 'should have an error issue');
+            assert(
+                tr.errorIssues.some((e) => e.includes('has no authorization scheme')),
+                'should name the missing authorization scheme. errors: ' + tr.errorIssues
+            );
         }, tr);
     });
 

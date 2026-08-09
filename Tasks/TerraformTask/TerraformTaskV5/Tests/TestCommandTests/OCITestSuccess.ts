@@ -12,10 +12,10 @@ tr.setInput('workingDirectory', 'DummyWorkingDirectory');
 tr.setInput('commandOptions', '');
 tr.setInput('environmentServiceNameOCI', 'OCI');
 
-process.env['ENDPOINT_DATA_OCI_TENANCY'] = 'DummyTenancy';
-process.env['ENDPOINT_DATA_OCI_USER'] = 'DummyUser';
+process.env['ENDPOINT_DATA_OCI_TENANCY'] = 'ocid1.tenancy.oc1..dummy';
+process.env['ENDPOINT_DATA_OCI_USER'] = 'ocid1.user.oc1..dummy';
 process.env['ENDPOINT_DATA_OCI_REGION'] = 'us-ashburn-1';
-process.env['ENDPOINT_DATA_OCI_FINGERPRINT'] = 'DummyFingerprint';
+process.env['ENDPOINT_DATA_OCI_FINGERPRINT'] = 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99';
 process.env['ENDPOINT_DATA_OCI_PRIVATEKEY'] = TEST_OCI_PRIVATE_KEY_SPACES;
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
