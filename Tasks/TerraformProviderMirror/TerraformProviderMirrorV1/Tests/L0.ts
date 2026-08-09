@@ -141,18 +141,29 @@ describe('config-generator', () => {
             );
         });
 
-        it('should prefer include over exclude when both are provided', () => {
+        // Previously asserted the opposite ("should prefer include over exclude"),
+        // pinning the else-if defect of #872 as if it were intended behaviour.
+        it('should emit both include and exclude when both are provided', () => {
             const config: ProviderMirrorConfig = {
                 mirrorUrl: 'https://registry.example.com',
                 allowDirectFallback: true,
-                directExcludePatterns: ['registry.terraform.io/foo/*'],
-                directIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                directExcludePatterns: ['registry.terraform.io/company-internal/*'],
+                directIncludePatterns: ['registry.terraform.io/*/*'],
             };
 
             const result = generateProviderInstallationConfig(config);
 
-            assert.ok(result.includes('include = '));
-            assert.ok(!result.includes('exclude = '));
+            assert.strictEqual(result,
+                'provider_installation {\n' +
+                '  network_mirror {\n' +
+                '    url = "https://registry.example.com/"\n' +
+                '  }\n' +
+                '  direct {\n' +
+                '    include = ["registry.terraform.io/*/*"]\n' +
+                '    exclude = ["registry.terraform.io/company-internal/*"]\n' +
+                '  }\n' +
+                '}\n'
+            );
         });
 
         it('should strip trailing slashes from mirror URL before appending one', () => {

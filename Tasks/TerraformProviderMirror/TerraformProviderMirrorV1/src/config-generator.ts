@@ -66,10 +66,13 @@ export function generateProviderInstallationConfig(config: ProviderMirrorConfig)
     if (config.allowDirectFallback) {
         hcl += '  direct {\n';
 
+        // Terraform accepts both on one installation method and lets exclude win
+        // (#872); emitting only one silently discards the operator's other list.
         if (config.directIncludePatterns.length > 0) {
             const formatted = config.directIncludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
             hcl += `    include = [${formatted}]\n`;
-        } else if (config.directExcludePatterns.length > 0) {
+        }
+        if (config.directExcludePatterns.length > 0) {
             const formatted = config.directExcludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
             hcl += `    exclude = [${formatted}]\n`;
         }
