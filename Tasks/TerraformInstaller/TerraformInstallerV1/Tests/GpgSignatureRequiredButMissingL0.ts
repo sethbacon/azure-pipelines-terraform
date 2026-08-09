@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.9.8');
         tl.setResult(tl.TaskResult.Succeeded, 'GpgSignatureRequiredButMissingL0 should not have succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'GpgSignatureRequiredButMissingL0 should have failed: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'GpgSignatureRequiredButMissingL0 should have failed: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 

@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.9.8');
         tl.setResult(tl.TaskResult.Succeeded, 'GpgVerificationFailL0 should have failed but succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'GpgVerificationFailL0 failed as expected: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'GpgVerificationFailL0 failed as expected: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 

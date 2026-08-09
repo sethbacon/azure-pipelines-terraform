@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('latest');
         tl.setResult(tl.TaskResult.Failed, 'HashiCorpLatestCheckpointInvalidResponseFailL0 should have failed but succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'HashiCorpLatestCheckpointInvalidResponseFailL0 failed as expected: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'HashiCorpLatestCheckpointInvalidResponseFailL0 failed as expected: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 

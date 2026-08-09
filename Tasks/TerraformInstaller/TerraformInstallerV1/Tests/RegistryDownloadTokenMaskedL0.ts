@@ -9,7 +9,7 @@ async function run() {
         await downloadTerraform('1.9.8');
         tl.setResult(tl.TaskResult.Succeeded, 'RegistryDownloadTokenMaskedL0 should have succeeded.');
     } catch (error) {
-        tl.setResult(tl.TaskResult.Failed, 'RegistryDownloadTokenMaskedL0 failed: ' + error.message);
+        tl.setResult(tl.TaskResult.Failed, 'RegistryDownloadTokenMaskedL0 failed: ' + (error instanceof Error ? error.message : String(error)));
     }
 }
 
