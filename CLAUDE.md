@@ -57,6 +57,8 @@ Closes #12
 
 The release is a **public, publicly-listed** Marketplace extension: `npm run package:release` overrides the base manifest with `configs/release.json` (`"public": true`, `galleryFlags: ["Public"]`). The `"public": false` in `azure-devops-extension.json` (and in `configs/dev.json` / `configs/test.json`) is only the dev-safe default so a dev/test package can never accidentally ship a public listing — it is not the distribution model.
 
+The publish itself goes through `scripts/publish-marketplace.js`, which keeps the minted Entra token on tfx's stdin (never on argv, where it would be readable in `/proc/<pid>/cmdline`) and retries a transient upstream failure a bounded number of times — the sibling `azure-pipelines-packer` repo lost its v1.2.7 release to a single HTTP 503 at this step, leaving an orphaned draft release behind. A deterministic rejection is never retried. It runs as a step inside the `marketplace` environment job, so it neither changes nor bypasses that environment's gates.
+
 The `marketplace` environment (Settings → Environments) must have (1) at least one required reviewer so every VS Marketplace publish gets human approval, and (2) a deployment branch/ref policy so a publish can only run from an approved branch or tag (e.g. `main` / `v*`) even after a reviewer approves. Both are verified automatically by the `verify-marketplace-environment-protection` job in `weekly-security.yml` — which fails the scheduled run (filing an issue) if either rule, or the environment itself, is missing or removed — and, fail-closed at publish time, by the matching guard step in `release.yml`.
 
 ## Publisher Registration
@@ -379,7 +381,7 @@ npm test
 
 ### Test structure
 
-Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runner pattern. Test files come in pairs:
+Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runner pattern. The mock-runner entry must be the task's **real** `src/index.ts` (`path.join(__dirname, '..', 'src', 'index.js')`), never a re-implementation of it in `Tests/`, and `src/index.js` must not be excluded from `.nycrc.json` — a declared `execution` target that no test loads and no metric measures is unverified in production (#189, sibling `azure-pipelines-packer` #189). `scripts/check-enforced-disciplines.js` fails CI if either property regresses for any task. Test files come in pairs:
 
 - `<Name>.ts` - test data/mock setup (mock runner)
 - `<Name>L0.ts` - the actual mocha test using `MockTestRunner`
@@ -421,6 +423,8 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 - `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
+
+The `Check Shared Module Parity` job also runs `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — both it and its self-test are **steps inside existing required jobs**, so branch protection needs no change.
 
 ## Local Development Environment
 

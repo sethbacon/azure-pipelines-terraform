@@ -69,6 +69,35 @@ describe('PolicyAgentInstaller Test Suite', function () {
     }
 
     // --- Success cases ---
+    // #189: the two scenarios below point the mock runner at ../src/index.js
+    // itself, not at the RunInstaller.js re-implementation, so the declared
+    // task.json execution entry point is exercised (and measured — it is no
+    // longer excluded in .nycrc.json) on both its success and its fail-closed path.
+    it('EntryPointInstallSuccess', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointInstallSuccess.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            assert.ok(
+                tr.stdout.includes('EntryPoint test: prependPath(' + path.join(path.sep + 'opt', 'hostedtoolcache', 'opa', '0.70.0', 'x64') + ')'),
+                'src/index.ts must prepend the install directory to PATH when PATH does not already start with it. stdout: ' + tr.stdout
+            );
+            assert.ok(
+                tr.stdout.includes('Version: 0.70.0'),
+                'src/index.ts must run the post-install `opa version` verification. stdout: ' + tr.stdout
+            );
+        }, tr);
+    });
+
+    it('EntryPointVerifyFail', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointVerifyFail.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'src/index.ts must fail closed when the post-install verification fails');
+            assert.ok(tr.errorIssues.length > 0, 'should have an error issue. stdout: ' + tr.stdout);
+        }, tr);
+    });
+
     expectSuccess('SentinelOfficialSuccess');
     expectSuccess('OpaOfficialSuccess');
     expectSuccess('OpaLatestSuccess');

@@ -494,22 +494,27 @@ jobs:
           tenant-id: ${{ vars.AZDO_PUBLISH_TENANT_ID }}
           allow-no-subscriptions: true
       - name: Publish extension with a Microsoft Entra token
+        # scripts/publish-marketplace.js keeps the token on stdin (with --token
+        # omitted and --auth-type pat set, tfx-cli 0.23.2 reads it from its
+        # masked "Personal access token:" prompt, so it never appears in
+        # /proc/<pid>/cmdline or `ps` -- CWE-214) AND retries a transient
+        # upstream failure a bounded number of times. The sibling
+        # azure-pipelines-packer repo lost its v1.2.7 release to a single HTTP
+        # 503 here, leaving an orphaned draft release behind; this pipeline had
+        # the same single-shot publish. A deterministic rejection (bad manifest,
+        # auth failure, duplicate version on the first attempt) is never
+        # retried. Behaviour gated by scripts/test-publish-marketplace.js in CI.
         run: |
           VSIX_FILE=$(find . -maxdepth 1 -name "*.vsix" -print -quit)
           # 499b84ac-1321-427f-aa17-267ca6975798 is the Azure DevOps resource app.
-          ENTRA_TOKEN=$(az account get-access-token \
+          MARKETPLACE_TOKEN=$(az account get-access-token \
             --tenant "${VARS_AZDO_PUBLISH_TENANT_ID}" \
             --resource 499b84ac-1321-427f-aa17-267ca6975798 \
             --query accessToken -o tsv)
           # Mask the runtime-minted token so it is redacted from any log output.
-          echo "::add-mask::$ENTRA_TOKEN"
-          # Supply the token via stdin, NOT on argv: with --token omitted and
-          # --auth-type pat set, tfx-cli 0.23.2 reads the token from its masked
-          # "Personal access token:" prompt on stdin (verified against 0.23.2:
-          # getCredentials() -> token.val() -> qread/prompt), so the token never
-          # appears in /proc/<pid>/cmdline or `ps` (CWE-214). `printf` is a bash
-          # builtin, so it spawns no argv-visible helper process either.
-          printf '%s\n' "$ENTRA_TOKEN" | ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat
+          echo "::add-mask::$MARKETPLACE_TOKEN"
+          export MARKETPLACE_TOKEN
+          node scripts/publish-marketplace.js --vsix "$VSIX_FILE"
         env:
           VARS_AZDO_PUBLISH_TENANT_ID: ${{ vars.AZDO_PUBLISH_TENANT_ID }}
 

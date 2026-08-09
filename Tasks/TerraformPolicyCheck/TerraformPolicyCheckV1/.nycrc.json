@@ -12,7 +12,6 @@
     "exclude": [
         "src/**/*.d.ts",
         "src/**/*.map",
-        "src/index.js",
         "src/types.js"
     ],
     "check-coverage": true,
