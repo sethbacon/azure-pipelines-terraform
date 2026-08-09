@@ -94,17 +94,18 @@ outlive it.
 
 - The AzureRM handler lowercases the incoming scheme before matching, so `serviceprincipal`, `ServicePrincipal`, and `SERVICEPRINCIPAL` all resolve the same way.
 - If you see this error, the service connection was created with a scheme the task does not recognize (for example, a legacy certificate-based principal). Recreate the connection using one of the supported schemes from the Azure DevOps UI. See [Azure WIF Setup Guide](setup/azure-wif-setup.md).
-- **AWS / GCP schemes are case-sensitive**, unlike Azure. The `environmentAuthSchemeAWS` and `environmentAuthSchemeGCP` inputs must be exactly `WorkloadIdentityFederation` or `ServiceConnection` — `workloadidentityfederation` will silently fall through to the static-credentials path.
+- **AWS / GCP schemes are case-sensitive**, unlike Azure. The `environmentAuthSchemeAWS` and `environmentAuthSchemeGCP` inputs must be exactly `WorkloadIdentityFederation` or `ServiceConnection` — a mis-cased value such as `workloadidentityfederation` throws an `Unrecognized authorization scheme '<value>' for input '<inputName>'` error rather than silently falling through to the static-credentials path.
 
 ### AWS / GCP — WIF configured but task uses static credentials
 
-**Cause:** `environmentAuthSchemeAWS` / `environmentAuthSchemeGCP` is set to something other than the exact string `WorkloadIdentityFederation` (typos, case variation, or inadvertently blank).
+**Cause:** `environmentAuthSchemeAWS` / `environmentAuthSchemeGCP` was left unset or blank, so the task silently defaulted to `ServiceConnection` (static credentials) instead of the intended `WorkloadIdentityFederation`.
 
 **Fix:**
 
 - Check the YAML or classic-editor input for the exact value `WorkloadIdentityFederation`. The string comparison is case-sensitive and no partial matching is performed.
 - Enable debug logging (`System.Debug: true`) and look for a `handleProvider` trace to confirm which code path executed.
 - If the input is unset, the default is `ServiceConnection` (static credentials). Explicitly set the auth scheme input — it is not inherited from the service connection.
+- A typo or case variation is no longer silent: the task throws `Unrecognized authorization scheme '<value>' for input '<inputName>'`, naming the exact input that failed validation, instead of falling back to static credentials.
 
 ### OIDC federated-token acquisition — timeouts and retries
 

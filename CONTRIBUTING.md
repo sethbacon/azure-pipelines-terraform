@@ -127,7 +127,7 @@ cd Tasks/TerraformTask/TerraformTaskV5
 npm test
 ```
 
-This runs: `npm run compile:all && mocha --timeout 10000 --require ts-node/register Tests/L0.ts`
+This runs: `npm run compile:all && mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts`
 
 where `compile:all` = `compile` (`tsc -b tsconfig.json`) + `compile:tests` (`tsc -p tsconfig.tests.json`)
 
@@ -297,7 +297,7 @@ The tab is bundled by `webpack.config.js` (at the repo root) alongside packaging
 From the repo root:
 
 ```bash
-npm install --include=dev            # installs tfx-cli, webpack, ts-loader, glob-exec
+npm install --include=dev            # installs tfx-cli, webpack, ts-loader
 npm run build:release                # clean → deps → compile tasks → prune dev deps → webpack
 ```
 

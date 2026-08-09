@@ -108,7 +108,7 @@ Or use `latest` to resolve the newest release at run time (convenient, but the r
 | Azure (AzureRM) | Service Principal            | Client ID + secret. Deprecated; use WIF instead.                                                                                           |
 | AWS             | Service Connection           | Access key ID + secret access key via AWS service connection.                                                                              |
 | AWS             | Workload Identity Federation | OIDC token exchange via `AWS_WEB_IDENTITY_TOKEN_FILE`. Requires IAM role with trust policy.                                                |
-| GCP             | Service Connection           | Service account JSON key via GCP service connection. Grant the service account least-privilege roles; prefer WIF. Grant the service account least-privilege roles; prefer WIF.                                                       |
+| GCP             | Service Connection           | Service account JSON key via GCP service connection. Grant the service account least-privilege roles; prefer WIF.                          |
 | GCP             | Workload Identity Federation | OIDC token exchange via external account credentials. Requires Workload Identity Pool.                                                     |
 | OCI             | Service Connection           | Private key + user/tenancy OCIDs via OCI service connection.                                                                               |
 | OCI             | Workload Identity Federation | OIDC token exchanged for a temporary User Principal Session Token (UPST) via OCI Identity Domains. Requires an Identity Propagation Trust. |
