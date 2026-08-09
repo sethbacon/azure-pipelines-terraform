@@ -108,6 +108,25 @@ describe('sanitizeHtmlForPublish — real-parser head/body allowlist (#820)', ()
         assert.strictEqual($('head style').text(), '.ok{color:blue}', 'the safe style is the one kept');
     });
 
+    it('drops a plain external-origin <meta refresh> from the head even without a javascript:/vbscript: token (#889)', () => {
+        const doc = '<!DOCTYPE html><html><head><title>t</title>'
+            + '<meta http-equiv="refresh" content="0;url=https://evil.example.com/">'
+            + '</head><body><p>ok</p></body></html>';
+        const $ = cheerio.load(sanitizeHtmlForPublish(doc));
+        assert.strictEqual($('head meta[http-equiv]').length, 0, 'external-origin meta-refresh dropped');
+    });
+
+    it('keeps a legitimate self/fragment/relative <meta refresh> in the head (#889)', () => {
+        const doc = '<!DOCTYPE html><html><head><title>t</title>'
+            + '<meta http-equiv="refresh" content="30">'
+            + '<meta http-equiv="refresh" content="5;url=#section">'
+            + '<meta http-equiv="refresh" content="5;url=/kb/updated-article">'
+            + '</head><body><p>ok</p></body></html>';
+        const out = sanitizeHtmlForPublish(doc);
+        const $ = cheerio.load(out);
+        assert.strictEqual($('head meta[http-equiv]').length, 3, `all 3 legitimate meta-refreshes kept (got: ${out})`);
+    });
+
     it('strips active-content attributes (on*, dangerous style) from the <body> element itself while keeping benign ones', () => {
         const doc = '<html><head></head><body onload="alert(1)" style="background:url(https://evil.example.com/x)" class="kb-body"><p>ok</p></body></html>';
         const $ = cheerio.load(sanitizeHtmlForPublish(doc));
