@@ -10,7 +10,17 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
         this.providerName = "hcp";
     }
 
-    /** Shared by `handleBackend` (init) and `configureBackendCredentials` (cross-cloud). */
+    /**
+     * Shared by `handleBackend` (init) and `configureBackendCredentials` (cross-cloud).
+     *
+     * @credential-exempt: TF_TOKEN_app_terraform_io is the ONLY credential this
+     * backend has, it is always overwritten here from a required input, and it
+     * out-ranks a `terraform login` credentials file in Terraform's own token
+     * resolution. The one variable that could redirect it, TF_CLI_CONFIG_FILE, is
+     * legitimately set by the TerraformProviderMirror task earlier in the same
+     * job, so clearing it here would break provider mirroring. There is no
+     * competing identity to neutralize.
+     */
     private applyBackendEnv(): void {
         const token = tasks.getInput("backendHCPToken", true)!;
         if (token) { tasks.setSecret(token); }

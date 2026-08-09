@@ -177,7 +177,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         const handler = new TerraformCommandHandlerOCI();
         await assert.rejects(
             handler.handleProvider(makeCommand()),
-            /OCI private key not found in service connection/,
+            /field 'privateKey' is missing or empty/,
         );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -22,7 +22,13 @@ export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler 
     }
 
     public async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        // No provider credentials needed for generic/local backend type
+        // @credential-exempt: the generic/local backend type has no cloud provider
+        // identity. Generic backends (http, PostgreSQL, Consul, Kubernetes, ...)
+        // are authenticated, if at all, by the user's own environment
+        // (CONSUL_HTTP_TOKEN, TF_HTTP_*), which this task must not touch: there is
+        // no service connection to read a credential from and nothing to
+        // neutralize. Verified by inspection -- this method's body is empty and
+        // handleBackend only forwards non-secret -backend-config arguments.
     }
 
     /**

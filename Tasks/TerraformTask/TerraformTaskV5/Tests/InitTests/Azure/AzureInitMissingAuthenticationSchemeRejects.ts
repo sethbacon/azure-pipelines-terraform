@@ -2,7 +2,16 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-let tp = path.join(__dirname, './AzureInitSuccessMissingAuthenticationSchemeL0.js');
+/**
+ * #97: a service connection with NO authorization scheme used to default to
+ * Workload Identity Federation with only a warning. Because the resulting run
+ * set ARM_USE_OIDC without a verified client identity, the azurerm provider
+ * completed authentication from whatever ambient identity the agent carried
+ * (Azure CLI login or managed identity). It now fails closed, so this scenario
+ * asserts the REJECTION.
+ */
+
+let tp = path.join(__dirname, './AzureInitMissingAuthenticationSchemeRejectsL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('provider', 'azurerm');

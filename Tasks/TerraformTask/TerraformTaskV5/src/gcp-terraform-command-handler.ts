@@ -7,6 +7,27 @@ import { generateIdToken } from './id-token-generator';
 import { normalizePem } from './pem-normalizer';
 import { writeSecretFile } from './secure-temp';
 import { resolveWifTempDir } from './temp-dir';
+import {
+    assertIdentityValue,
+    neutralizeEnvironmentVariables,
+    requireIdentityField,
+    requireSecretField,
+} from './credential-guards';
+
+/**
+ * Google credential sources that resolve AHEAD of, or instead of, the
+ * credentials file this handler writes (an inherited GOOGLE_CREDENTIALS /
+ * GOOGLE_APPLICATION_CREDENTIALS / gcloud ADC override on a self-hosted agent).
+ * Cleared on both provider branches so the run cannot authenticate as an
+ * identity the service connection never named (#187).
+ */
+const GOOGLE_COMPETING_CREDENTIAL_ENV = [
+    'GOOGLE_APPLICATION_CREDENTIALS',
+    'GOOGLE_OAUTH_ACCESS_TOKEN',
+    'GOOGLE_GHA_CREDS_PATH',
+    'CLOUDSDK_AUTH_ACCESS_TOKEN',
+    'CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE',
+] as const;
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
 
@@ -51,15 +72,9 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         // Get credentials for json file
         const jsonKeyFilePath = path.join(resolveWifTempDir(), `credentials-${uuidV4()}.json`);
 
-        const clientEmail = tasks.getEndpointAuthorizationParameter(serviceName, "Issuer", false);
-        const tokenUri = tasks.getEndpointAuthorizationParameter(serviceName, "Audience", false);
-        const privateKey = tasks.getEndpointAuthorizationParameter(serviceName, "PrivateKey", false);
-
-        if (!clientEmail || !tokenUri || !privateKey) {
-            const missing = ([!clientEmail && "Issuer", !tokenUri && "Audience", !privateKey && "PrivateKey"] as (string | false)[])
-                .filter(Boolean).join(", ");
-            throw new Error(`GCP service connection is missing required fields: ${missing}`);
-        }
+        const clientEmail = requireIdentityField(serviceName, "Issuer");
+        const tokenUri = requireIdentityField(serviceName, "Audience");
+        const privateKey = requireSecretField(serviceName, "PrivateKey");
         assertGoogleTokenUri(tokenUri);
         // Mask the raw value first: a service connection may deliver the key
         // flattened to a single line (which itself starts with "-----BEGIN"),
@@ -104,6 +119,12 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
      * See https://developer.hashicorp.com/terraform/language/backend#credentials-and-sensitive-data
      */
     private applyBackendCredentialFile(credentialsFilePath: string): void {
+        // @credential-exempt: GOOGLE_BACKEND_CREDENTIALS takes precedence over
+        // GOOGLE_CREDENTIALS / GOOGLE_APPLICATION_CREDENTIALS / ADC in the gcs
+        // backend's own resolution order, so an inherited value cannot out-rank
+        // it. Clearing the lower-precedence names here would be actively WRONG in
+        // a cross-cloud run: `handleProvider` sets GOOGLE_CREDENTIALS for the
+        // PROVIDER, and the backend path can run after it in the same process.
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_BACKEND_CREDENTIALS", credentialsFilePath);
     }
 
@@ -222,26 +243,44 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         } else {
             if (command.serviceProviderName) {
                 const jsonKeyFilePath = this.getJsonKeyFilePath(command.serviceProviderName);
+                // optional=false already throws for an absent project, so the
+                // `|| ''` tail was unreachable (#194); the project id is also
+                // charset-validated before it becomes GOOGLE_PROJECT (#199).
+                const project = requireIdentityField(command.serviceProviderName, "project", { source: 'data' });
 
+                neutralizeEnvironmentVariables(GOOGLE_COMPETING_CREDENTIAL_ENV, "GCP service account key");
                 EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", jsonKeyFilePath);
-                EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", tasks.getEndpointDataParameter(command.serviceProviderName, "project", false) || '');
+                EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", project);
+            } else {
+                // Silently injecting nothing leaves terraform to authenticate from
+                // whatever ambient credentials the agent carries.
+                throw new Error("A GCP service connection is required for this command. Set environmentServiceNameGCP.");
             }
         }
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {
-        const projectNumber = tasks.getInput("gcpProjectNumber", true)!;
+        if (!command.serviceProviderName) {
+            // Fail closed rather than requesting an OIDC token for an empty
+            // service connection id.
+            throw new Error("A GCP service connection is required for Workload Identity Federation. Set environmentServiceNameGCP.");
+        }
+        // Every one of these is interpolated into the audience / impersonation
+        // URLs written to the credentials file, so each is charset-validated
+        // rather than trusted as free text (#199).
+        const projectNumber = assertIdentityValue(tasks.getInput("gcpProjectNumber", true), "Input 'gcpProjectNumber'");
 
         const credentialsFilePath = await this.writeWifCredentials({
             serviceConnection: command.serviceProviderName,
             projectNumber,
-            poolId: tasks.getInput("gcpWorkloadIdentityPoolId", true)!,
-            providerId: tasks.getInput("gcpWorkloadIdentityProviderId", true)!,
-            serviceAccountEmail: tasks.getInput("gcpServiceAccountEmail", true)!,
+            poolId: assertIdentityValue(tasks.getInput("gcpWorkloadIdentityPoolId", true), "Input 'gcpWorkloadIdentityPoolId'"),
+            providerId: assertIdentityValue(tasks.getInput("gcpWorkloadIdentityProviderId", true), "Input 'gcpWorkloadIdentityProviderId'"),
+            serviceAccountEmail: assertIdentityValue(tasks.getInput("gcpServiceAccountEmail", true), "Input 'gcpServiceAccountEmail'"),
             tokenFilePrefix: "gcp-oidc-token",
             credentialsFilePrefix: "gcp-wif-credentials",
         });
 
+        neutralizeEnvironmentVariables(GOOGLE_COMPETING_CREDENTIAL_ENV, "GCP Workload Identity Federation");
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);
     }
