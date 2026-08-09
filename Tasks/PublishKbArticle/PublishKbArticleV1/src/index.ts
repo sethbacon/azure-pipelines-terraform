@@ -10,7 +10,7 @@ import {
     findArticleBySourceKey,
 } from './servicenow-client';
 import { validateHtmlContent, readHtmlFile, sanitizeHtmlForPublish } from './html-validate';
-import { emitArticleOutput, findKbArticleJson, readFrontMatterKey, sanitizeForSingleLineEcho } from './manifest';
+import { emitArticleOutput, findKbArticleJson, readFrontMatterKey, sanitizeForSingleLineEcho, sanitizeOutputVariableValue } from './manifest';
 import { DryRunPlan, PlannedAction, formatDryRunReport } from './dry-run';
 import { processArticleImages } from './attachments';
 import { updateArticleBody } from './servicenow-client';
@@ -356,9 +356,24 @@ async function run() {
         // -----------------------------------------------------------------
         emitArticleOutput(article, sourceKey, emitManifest, kbId);
 
-        tasks.setVariable('kbArticleId', article['sys_id'] as string, false, true);
-        tasks.setVariable('kbArticleNumber', article['number'] as string, false, true);
-        tasks.setVariable('kbWorkflowState', article['workflow_state'] as string, false, true);
+        // The console echoes above were newline-neutralized (#693) but these three
+        // sibling output variables -- the SAME ServiceNow-response fields -- went
+        // to setVariable raw. Route them through the output-variable guard so a
+        // response field carrying CR/LF (or a non-string value the `as string`
+        // cast silently accepted) can never forge a `##vso[...]` logging command
+        // or land unvalidated in a downstream `$(kbArticleId)` expansion.
+        for (const [variableName, field] of [
+            ['kbArticleId', 'sys_id'],
+            ['kbArticleNumber', 'number'],
+            ['kbWorkflowState', 'workflow_state'],
+        ] as const) {
+            const safeValue = sanitizeOutputVariableValue(article[field]);
+            if (safeValue === null) {
+                tasks.warning(`ServiceNow response field '${field}' failed output-variable validation (length/printable-ASCII); skipping the ${variableName} output variable.`);
+                continue;
+            }
+            tasks.setVariable(variableName, safeValue, false, true);
+        }
 
         // -----------------------------------------------------------------
         // Phase 2: upload referenced images as attachments and rewrite the body.

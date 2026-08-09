@@ -630,9 +630,9 @@
             "type": "string",
             "label": "Session name",
             "required": false,
-            "defaultValue": "AzureDevOps-Terraform",
+            "defaultValue": "",
             "visibleRule": "provider = aws && environmentAuthSchemeAWS = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock && command != test",
-            "helpMarkDown": "Name for the assumed role session. Defaults to 'AzureDevOps-Terraform'."
+            "helpMarkDown": "Session name for the assumed role. Leave blank to derive one from the job (`ado-tf-<TeamProject>-<BuildId>`). The session name is the human-readable half of CloudTrail's `userIdentity.arn` (`arn:aws:sts::<acct>:assumed-role/<Role>/<SessionName>`), so a per-run value is what lets an incident responder tell which pipeline and which run made a change; it can also be constrained with an `sts:RoleSessionName` trust-policy condition. A value supplied here must match AWS's grammar: 2-64 characters from `[A-Za-z0-9_+=,.@-]`."
         },
         {
             "name": "environmentServiceNameGCP",
@@ -984,9 +984,9 @@
             "type": "string",
             "label": "Session name",
             "required": false,
-            "defaultValue": "AzureDevOps-Terraform-Backend",
+            "defaultValue": "",
             "visibleRule": "backendAuthSchemeAWS = WorkloadIdentityFederation",
-            "helpMarkDown": "Name for the assumed role session. Defaults to 'AzureDevOps-Terraform-Backend'.",
+            "helpMarkDown": "Session name for the assumed role. Leave blank to derive one from the job (`ado-tf-backend-<TeamProject>-<BuildId>`). The session name is the human-readable half of CloudTrail's `userIdentity.arn` (`arn:aws:sts::<acct>:assumed-role/<Role>/<SessionName>`), so a per-run value is what lets an incident responder tell which pipeline and which run made a change; it can also be constrained with an `sts:RoleSessionName` trust-policy condition. A value supplied here must match AWS's grammar: 2-64 characters from `[A-Za-z0-9_+=,.@-]`.",
             "groupName": "backendAWS"
         },
         {

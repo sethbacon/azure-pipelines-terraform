@@ -166,6 +166,31 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
+
+  // #198: a TRUNCATED integrity marker (an interrupted write: disk full, cancelled
+  // job, container kill) is UNVERIFIABLE, not a mismatch. Feeding the fragment to the
+  // hash comparison used to fail every subsequent install of that version with a
+  // tampering-shaped CachedToolVerificationFailed. It must instead be treated exactly
+  // like a missing marker: escalate, and degrade with a warning when the source is
+  // unreachable. Sibling of the same row in TerraformInstallerV1's class test.
+  it('cache hit, TRUNCATED marker, source unreachable: degrades instead of reporting tampering (#198)', async () => {
+    const tp = path.join(__dirname, 'CacheHitTruncatedMarkerDegrades.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      assert(
+        !tr.stdout.includes('CachedToolVerificationFailed'),
+        'a torn marker must never be reported as tampering. stdout: ' + tr.stdout
+      );
+      assert(
+        tr.warningIssues.some((w) => w.includes('CachedToolReverificationUnavailable')),
+        'should degrade through the unavailable-re-verification warning. warnings: ' + tr.warningIssues
+      );
+    }, tr);
+  });
+
   it('cache hit, no marker, source unreachable, requireOnlineReverification=true: fails closed instead of degrading (#778)', async () => {
     const tp = path.join(__dirname, 'CacheHitHashUnavailableStrict.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

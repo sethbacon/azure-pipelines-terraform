@@ -100,6 +100,41 @@ Update the trust policy condition:
 
 Replace `<ACCOUNT_ID>`, `<ORG_ID>`, `<ORG_NAME>`, `<PROJECT_NAME>`, and `<SERVICE_CONNECTION_NAME>` with your values.
 
+### Optional: pinning the role session name
+
+`AWS_ROLE_SESSION_NAME` is the human-readable half of CloudTrail's `userIdentity.arn`
+(`arn:aws:sts::<acct>:assumed-role/<Role>/<SessionName>`), so it is the field an incident responder
+pivots on to find which pipeline and which run made a change.
+
+Leave `awsSessionName` / `backendAWSSessionName` **blank** (the default) and the task derives a
+distinct name per run — `ado-tf-<System.TeamProject>-<Build.BuildId>` for the provider, and
+`ado-tf-backend-...` for the state backend, so the two sessions of one job stay distinguishable —
+sanitized to AWS's `[A-Za-z0-9_+=,.@-]` charset and truncated to 64 characters from the right so the
+build id always survives.
+
+> **Behaviour change.** Earlier versions used the fixed constants `AzureDevOps-Terraform` and
+> `AzureDevOps-Terraform-Backend` for every federated run of every pipeline in every organization.
+> **If your trust policy pins `sts:RoleSessionName` to either constant, assume-role will now be
+> denied.** Drop the condition, widen it to a prefix, or set the input explicitly to the old value.
+
+To keep an `sts:RoleSessionName` condition while still getting per-run attribution, match the prefix:
+
+```json
+"Condition": {
+  "StringEquals": {
+    "vstoken.dev.azure.com/<ORG_ID>:aud": "api://AzureADTokenV2",
+    "vstoken.dev.azure.com/<ORG_ID>:sub": "sc://<ORG_NAME>/<PROJECT_NAME>/<SERVICE_CONNECTION_NAME>"
+  },
+  "StringLike": {
+    "sts:RoleSessionName": "ado-tf-MyProject-*"
+  }
+}
+```
+
+An explicit input still wins, and is validated against AWS's own grammar (2-64 characters from
+`[A-Za-z0-9_+=,.@-]`) so an invalid value fails in the task with a clear message rather than as an
+opaque STS rejection.
+
 ## Step 3: Configure the Pipeline Task
 
 In your Azure Pipeline YAML, add the Terraform task with the WIF auth scheme:
@@ -113,7 +148,8 @@ In your Azure Pipeline YAML, add the Terraform task with the WIF auth scheme:
     environmentAuthSchemeAWS: 'WorkloadIdentityFederation'
     awsRoleArn: 'arn:aws:iam::123456789012:role/TerraformDeployRole'
     awsRegion: 'us-east-1'
-    awsSessionName: 'AzureDevOps-Terraform'   # optional
+    # awsSessionName: optional. Leave it out and the task derives a per-run
+    # name: ado-tf-<TeamProject>-<BuildId> (ado-tf-backend-... for the backend).
     workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
 ```
 
