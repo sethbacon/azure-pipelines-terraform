@@ -7,6 +7,7 @@ import { generateIdToken } from './id-token-generator';
 import { exchangeOidcForUpst } from './oci-token-exchange';
 import { writeSecretFile, tightenFilePermissions } from './secure-temp';
 import { normalizePem } from './pem-normalizer';
+import { readSecretEndpointDataParameter } from './endpoint-data-secret';
 import { resolveWifTempDir } from './temp-dir';
 import path = require('path');
 import crypto = require('crypto');
@@ -305,7 +306,13 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProviderName) {
-                const rawPrivateKey = tasks.getEndpointDataParameter(command.serviceProviderName, "privateKey", false);
+                // NOT tasks.getEndpointDataParameter(): that helper debug-logs the
+                // value it returns, so the raw OCI API signing key would already be
+                // in the build log before getPrivateKeyFilePath's first setSecret.
+                // readSecretEndpointDataParameter reads the same ENDPOINT_DATA_*
+                // variable directly, masks it line-wise, and deletes it so the
+                // terraform child process does not inherit it (endpoint-data-secret.ts).
+                const rawPrivateKey = readSecretEndpointDataParameter(command.serviceProviderName, "privateKey");
                 if (!rawPrivateKey) {
                     throw new Error("OCI private key not found in service connection. Ensure the 'privateKey' field is configured.");
                 }

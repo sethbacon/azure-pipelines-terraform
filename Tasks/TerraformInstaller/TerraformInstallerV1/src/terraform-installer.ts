@@ -201,10 +201,22 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
     // data.download_url = pre-signed storage URL (15-minute TTL)
     // data.sha256       = hex SHA256 of the zip (may be empty if registry verified server-side)
+    // The pre-signed download_url carries a live, read-scoped storage credential in
+    // its query string. tools.downloadTool logs the URL at INFO and only auto-redacts
+    // Azure `sig=`, so AWS X-Amz-Signature/X-Amz-Credential/X-Amz-Security-Token and
+    // GCS X-Goog-Signature/X-Goog-Credential would otherwise print unredacted on every
+    // normal registry run. Register each token component as a secret FIRST -- before
+    // ANY emission that can carry this URL, including the https-pin rejection below,
+    // which used to interpolate the raw pre-signed URL into its message while this
+    // registration still sat further down the function (#66/#98).
+    const urlTokenSecrets = extractUrlTokenSecrets(data.download_url);
+    for (const secret of urlTokenSecrets) {
+        tasks.setSecret(secret);
+    }
     // The download URL is registry-controlled and fetched outside fetchJson's HTTPS
     // guard, so pin it to HTTPS before downloading — as the mirror path already does.
     if (!data.download_url.startsWith('https://')) {
-        throw new Error(tasks.loc("InsecureUrlRejected", data.download_url));
+        throw new Error(tasks.loc("InsecureUrlRejected", redactUrl(data.download_url)));
     }
 
     // Optional opt-in host pin: a compromised registry could still point
@@ -243,16 +255,6 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
-    // The pre-signed download_url carries a live, read-scoped storage credential in
-    // its query string. tools.downloadTool logs the URL at INFO and only auto-redacts
-    // Azure `sig=`, so AWS X-Amz-Signature/X-Amz-Credential/X-Amz-Security-Token and
-    // GCS X-Goog-Signature/X-Goog-Credential would otherwise print unredacted on every
-    // normal registry run. Register each token component as a secret FIRST so the
-    // agent masks it in tool-lib's log line (and in any failure message).
-    const urlTokenSecrets = extractUrlTokenSecrets(data.download_url);
-    for (const secret of urlTokenSecrets) {
-        tasks.setSecret(secret);
-    }
     let zipPath: string;
     try {
         if (allowedHosts.length > 0) {

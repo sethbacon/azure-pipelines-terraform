@@ -1,5 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { scrubFile, tightenFilePermissions } from './secure-temp';
+import { maskSecureVarFileValues } from './secure-var-file-masking';
 
 export interface ISecureFileLoader {
     downloadSecureFile(secureFileId: string): Promise<string>;
@@ -100,5 +101,11 @@ export async function getSecureVarFileArgs(loader?: ISecureFileLoader): Promise<
 
     const secureFileLoader = loader || new SecureFileLoader();
     const filePath = await secureFileLoader.downloadSecureFile(secureFileId);
+    // task.json steers secrets into this file, but nothing ever registered its
+    // CONTENTS with the masker -- only the file's permissions were tightened and
+    // its bytes scrubbed at cleanup. Register every scalar string value BEFORE
+    // the path reaches terraform, so a value terraform echoes (a diagnostic that
+    // quotes the offending value, TF_LOG output) is masked.
+    maskSecureVarFileValues(filePath);
     return { varFileArg: `-var-file=${filePath}`, secureFileId, filePath };
 }

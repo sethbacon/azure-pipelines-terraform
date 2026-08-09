@@ -221,7 +221,7 @@
             "label": "Secure variables file (.tfvars)",
             "required": false,
             "visibleRule": "command = plan || command = apply || command = destroy || command = import || command = refresh",
-            "helpMarkDown": "Select a .tfvars file from the ADO Secure Files library. The file will be downloaded to a temporary location and passed as -var-file to the terraform command. The file is automatically deleted after execution. Useful for secrets that should not be stored in source control."
+            "helpMarkDown": "Select a .tfvars file from the ADO Secure Files library. The file will be downloaded to a temporary location and passed as -var-file to the terraform command. The file is automatically deleted after execution. Useful for secrets that should not be stored in source control. Every scalar string value in the file (JSON `.tfvars.json` or quoted HCL literals) is registered with the build-log secret masker before terraform runs, so a value terraform echoes is redacted. Values shorter than 4 characters, and numeric/boolean values, are NOT masked."
         },
         {
             "name": "terraformVariables",
