@@ -927,12 +927,24 @@ export abstract class BaseTerraformCommandHandler {
             result = commandOutput.code;
         } else if (outputTo === "file") {
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
+            // ignoreReturnCode mirrors packer's build()/fix() fix (#202/#203, same
+            // class): without it a non-zero `terraform show` REJECTS here and the
+            // already-captured stdout is discarded, so the file the operator asked
+            // for is never written and showFilePath is never exported -- even
+            // though the output exists. The non-zero code is re-surfaced as an
+            // explicit failure below, after the file and variable are in place.
             const commandOutput = await this.execWithStdoutCapture(terraformTool, {
                 cwd: showCommand.workingDirectory,
+                ignoreReturnCode: true,
             });
 
             this.writeCommandOutputFile(showFilePath, commandOutput.stdout);
-            tasks.setVariable('showFilePath', showFilePath, false, true);
+            const safeShowFilePath = this.sanitizeOutputVariableValue(showFilePath);
+            if (safeShowFilePath) {
+                tasks.setVariable('showFilePath', safeShowFilePath, false, true);
+            } else {
+                tasks.warning(`showFilePath '${showFilePath}' failed output-variable validation (length/printable-ASCII); skipping the showFilePath output variable.`);
+            }
 
             // Detect destroy changes in JSON plan output
             if (outputFormat === "json") {
@@ -958,6 +970,12 @@ export abstract class BaseTerraformCommandHandler {
             }
 
             result = commandOutput.code;
+            if (result !== 0) {
+                // Re-raised only now that the output file and showFilePath exist
+                // (#202/#203 class): failing is still the right outcome, losing the
+                // captured output on the way there was not.
+                throw new Error(`Terraform show failed with exit code ${result}.`);
+            }
         } else {
             throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
         }
@@ -1001,12 +1019,21 @@ export abstract class BaseTerraformCommandHandler {
         // contract), so the relocation is transparent to them.
         const outputFileDirectory = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
         const jsonOutputVariablesFilePath = path.join(outputFileDirectory, `output-${uuidV4()}.json`);
+        // Same #202/#203 class as show()/custom(): a rejecting exec would discard
+        // the captured stdout before it is written and before
+        // jsonOutputVariablesPath is exported. Capture the code, persist, then fail.
         const commandOutput = await this.execWithStdoutCapture(terraformTool, {
             cwd: outputCommand.workingDirectory,
+            ignoreReturnCode: true,
         });
 
         this.writeCommandOutputFile(jsonOutputVariablesFilePath, commandOutput.stdout);
-        tasks.setVariable('jsonOutputVariablesPath', jsonOutputVariablesFilePath, false, true);
+        const safeOutputVariablesPath = this.sanitizeOutputVariableValue(jsonOutputVariablesFilePath);
+        if (safeOutputVariablesPath) {
+            tasks.setVariable('jsonOutputVariablesPath', safeOutputVariablesPath, false, true);
+        } else {
+            tasks.warning(`jsonOutputVariablesPath '${jsonOutputVariablesFilePath}' failed output-variable validation (length/printable-ASCII); skipping the jsonOutputVariablesPath output variable.`);
+        }
         const hasSensitiveOutputs = this.warnIfSensitiveOutputFile(commandOutput.stdout, jsonOutputVariablesFilePath);
 
         // #650: a file containing sensitive output values is auto-registered for
@@ -1030,6 +1057,9 @@ export abstract class BaseTerraformCommandHandler {
         // Auto-set pipeline variables from terraform output
         this.setOutputVariables(commandOutput.stdout);
 
+        if (commandOutput.code !== 0) {
+            throw new Error(`Terraform output failed with exit code ${commandOutput.code}.`);
+        }
         return commandOutput.code;
     }
 
@@ -1338,8 +1368,9 @@ export abstract class BaseTerraformCommandHandler {
         // parsing needed since afterPlanFileWritten() is already a safe no-op
         // (via fs.existsSync) when planFilePath doesn't exist -- i.e. every
         // non-plan custom command. Wrapped in try/catch/finally mirroring
-        // init()'s identical afterInit() pattern: neither exec path below sets
-        // ignoreReturnCode, so a failing custom command REJECTS -- the hook
+        // init()'s identical afterInit() pattern: a failing custom command still
+        // leaves this block by throwing (the console path REJECTS, the file path
+        // re-raises its own captured code after persisting its output) -- the hook
         // must still run on that path, and the original error is re-thrown
         // unchanged afterward.
         const planFilePath = extractOutFlagPath(commandOptions);
@@ -1352,13 +1383,27 @@ export abstract class BaseTerraformCommandHandler {
                 });
             } else if (outputTo === "file") {
                 const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
+                // #202/#203 class: the try/finally above only guarantees the
+                // afterPlanFileWritten hook on a rejecting exec -- the write and
+                // the customFilePath export sit AFTER the await inside the try, so
+                // a non-zero exit skipped both and silently discarded the captured
+                // output. Persist first, then re-raise the failure below.
                 const commandOutput = await this.execWithStdoutCapture(terraformTool, {
-                    cwd: customCommand.workingDirectory
+                    cwd: customCommand.workingDirectory,
+                    ignoreReturnCode: true,
                 });
 
                 this.writeCommandOutputFile(customFilePath, commandOutput.stdout);
-                tasks.setVariable('customFilePath', customFilePath, false, true);
+                const safeCustomFilePath = this.sanitizeOutputVariableValue(customFilePath);
+                if (safeCustomFilePath) {
+                    tasks.setVariable('customFilePath', safeCustomFilePath, false, true);
+                } else {
+                    tasks.warning(`customFilePath '${customFilePath}' failed output-variable validation (length/printable-ASCII); skipping the customFilePath output variable.`);
+                }
                 result = commandOutput.code;
+                if (result !== 0) {
+                    throw new Error(`Terraform custom command failed with exit code ${result}.`);
+                }
             } else {
                 throw new Error("Invalid outputTo value. Must be 'console' or 'file'.");
             }

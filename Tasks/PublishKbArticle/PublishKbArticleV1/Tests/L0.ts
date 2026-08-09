@@ -27,6 +27,9 @@ import './RetryL0';
 // Direct unit tests for the shared html-sanitizer.ts allowlist policy and
 // sanitizeHtmlForPublish's full-document <body> extraction/splice (#820/#835).
 import './AllowlistSanitizerL0';
+// This task's behavioural rows of the cross-task output-boundary class table
+// (the structural half lives in TerraformTaskV5/Tests/OutputBoundaryClassL0.ts).
+import './OutputBoundaryClassL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;
@@ -2188,12 +2191,34 @@ describe('manifest.emitArticleOutput / findKbArticleJson', () => {
         const cwd = process.cwd();
         process.chdir(tmpDir());
         try {
-            // A number containing a path separator into a directory that does not
-            // exist makes writeFileSync throw (ENOENT) on every platform.
-            assert.doesNotThrow(() => manifest.outputArticleInfoToJson({ ...article, number: 'no-such-dir/KB0001' }));
+            // Pre-create a DIRECTORY at the target name so writeFileSync throws
+            // (EISDIR) on every platform. The previous fixture used a number
+            // containing a path separator ('no-such-dir/KB0001') to force ENOENT,
+            // but a separator-bearing number is now rejected before the write --
+            // it can never reach writeFileSync, so it would no longer exercise
+            // the failure path this test exists for. The assertion is unchanged.
+            fs.mkdirSync('KB0001.json');
+            assert.doesNotThrow(() => manifest.outputArticleInfoToJson(article));
             assert.ok(
                 capturedWarnings.some(w => /ArticleInfoSaveFailed|Error saving article information/.test(w)),
                 `expected the KB-json save failure to surface via tasks.warning: ${capturedWarnings}`,
+            );
+        } finally {
+            process.chdir(cwd);
+        }
+    });
+
+    it('a ServiceNow article number that is not a safe file name cannot steer the legacy KB-json write', () => {
+        const cwd = process.cwd();
+        const dir = tmpDir();
+        process.chdir(dir);
+        try {
+            manifest.outputArticleInfoToJson({ ...article, number: '../escaped' });
+            assert.ok(!fs.existsSync(`${dir}/../escaped.json`), 'the write must not escape the working directory');
+            assert.ok(fs.existsSync('article_info.json'), 'it must fall back to the in-directory default name');
+            assert.ok(
+                capturedWarnings.some(w => /is not a safe file name/.test(w)),
+                `expected the rejected article number to surface via tasks.warning: ${capturedWarnings}`,
             );
         } finally {
             process.chdir(cwd);

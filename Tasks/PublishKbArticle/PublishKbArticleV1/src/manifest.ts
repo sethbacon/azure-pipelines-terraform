@@ -17,6 +17,34 @@ export function sanitizeForSingleLineEcho(value: string): string {
     return value.replace(/\r\n|[\r\n\u2028\u2029]/g, ' ');
 }
 
+/** Upper bound on a ServiceNow-supplied value before it becomes a pipeline output variable. */
+const OUTPUT_VAR_MAX_LENGTH = 1024;
+
+/**
+ * The output-variable counterpart of sanitizeForSingleLineEcho.
+ *
+ * sanitizeForSingleLineEcho only ever guarded the console ECHO of sys_id /
+ * number / workflow_state; the sibling `tasks.setVariable` calls for the same
+ * three ServiceNow-response fields had no validation at all, not even the
+ * `as string` cast they carried (a cast is erased at runtime -- a JSON object
+ * or number in that field reached setVariable unchanged). An ADO output
+ * variable is a real trust boundary: it is emitted as
+ * `##vso[task.setvariable variable=x]VALUE` and later steps macro-expand
+ * `$(x)` into scripts, so a CR/LF in VALUE forges a second logging command and
+ * the raw value lands in a shell. Caps length and requires printable ASCII,
+ * matching BasePackerCommandHandler/BaseTerraformCommandHandler's guard of the
+ * same name. Returns null (caller skips the variable) when validation fails.
+ */
+export function sanitizeOutputVariableValue(value: unknown): string | null {
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+    const text = String(value);
+    if (!text || text.length > OUTPUT_VAR_MAX_LENGTH) return null;
+    return /^[\x20-\x7E]+$/.test(text) ? text : null;
+}
+
+/** Upper bound on a kb-manifest file before it is read into memory and parsed. */
+const MANIFEST_MAX_BYTES = 5 * 1024 * 1024;
+
 /** Append an article entry to the kb-manifest JSON file. */
 export function appendToManifest(manifestPath: string, entry: Record<string, unknown>): void {
     let entries: unknown[] = [];
@@ -32,6 +60,15 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
     }
     if (fd !== undefined) {
         try {
+            // Bound the read before buffering it whole: the descriptor points at an
+            // operator-chosen path, so the file is not necessarily this task's own
+            // manifest. fstat (not stat) so the size is measured on the SAME
+            // descriptor that is about to be read, preserving the TOCTOU property
+            // the openSync above exists for. A real manifest is a few KB.
+            const size = fs.fstatSync(fd).size;
+            if (size > MANIFEST_MAX_BYTES) {
+                throw new Error(`manifest ${manifestPath} is ${size} bytes, above the ${MANIFEST_MAX_BYTES}-byte cap`);
+            }
             entries = JSON.parse(fs.readFileSync(fd, 'utf-8'));
         } catch (e: unknown) {
             // The manifest exists but is unreadable/corrupt. Do NOT silently reset it
@@ -66,7 +103,19 @@ export function appendToManifest(manifestPath: string, entry: Record<string, unk
 
 /** Write article info to a KB<number>.json file (legacy mode). */
 export function outputArticleInfoToJson(article: Record<string, unknown>): void {
-    const number = (article['number'] as string) || 'article_info';
+    // `number` comes straight from the ServiceNow response and is used here as a
+    // FILE PATH relative to the working directory. Unvalidated, a response field
+    // of the form '../../evil' (or one carrying a separator or NUL) would steer
+    // this write outside the working directory entirely. Constrain it to the
+    // shape the task's own reader can find again -- KB_ARTICLE_JSON_NAME_RE
+    // below only ever matches `KB<...>.json` / `article_info.json` in the
+    // current directory -- so anything else is not merely unsafe, it is a file
+    // findKbArticleJson could never resolve.
+    const rawNumber = (article['number'] as string) || 'article_info';
+    const number = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rawNumber) ? rawNumber : 'article_info';
+    if (number !== rawNumber) {
+        tasks.warning(`ServiceNow article number '${sanitizeForSingleLineEcho(String(rawNumber))}' is not a safe file name; writing article_info.json instead.`);
+    }
     const filename = `${number}.json`;
     const info = {
         article_id: article['sys_id'],
