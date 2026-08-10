@@ -69,7 +69,7 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
             // pending the row (the suite runs with --forbid-pending).
             const base = fs.readFileSync(path.join(SRC, 'base-terraform-command-handler.ts'), 'utf8');
             assert.ok(
-                /const safeShowFilePath = this\.sanitizeOutputVariableValue\(showFilePath\);[\s\S]{0,200}?tasks\.setVariable\('showFilePath', safeShowFilePath/.test(base),
+                /const safeShowFilePath = this\.resultsPublisher\.sanitizeOutputVariableValue\(showFilePath\);[\s\S]{0,200}?tasks\.setVariable\('showFilePath', safeShowFilePath/.test(base),
                 'showFilePath must be exported only through the output-variable guard'
             );
             return;
@@ -152,8 +152,12 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
 
     it('S2 writeCommandOutputFile — EXEMPT: every command-output write goes through the unlink-then-O_EXCL primitive, so no planted symlink is followed', () => {
         const base = fs.readFileSync(path.join(SRC, 'base-terraform-command-handler.ts'), 'utf8');
+        // #878 moved the write sinks to results-publisher.ts. Both files are read
+        // here: checking only the handler would let the bare-write count below pass
+        // trivially now that it no longer even imports fs.
+        const publisher = fs.readFileSync(path.join(SRC, 'results-publisher.ts'), 'utf8');
         assert.ok(
-            /private writeCommandOutputFile\([\s\S]{0,300}?replaceSecretFile\(filePath, content\);/.test(base),
+            /writeCommandOutputFile\([\s\S]{0,300}?replaceSecretFile\(filePath, content\);/.test(publisher),
             'writeCommandOutputFile must delegate to replaceSecretFile'
         );
         const secureTemp = fs.readFileSync(path.join(SRC, 'secure-temp.ts'), 'utf8');
@@ -167,8 +171,11 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
         // attachment write (writeAndAttachDigest) was the one grandfathered
         // exception here; #881 closed it (now writeSecretFile too), so this must
         // stay at zero.
-        const bareWrites = base.match(/fs\.writeFileSync\(/g) || [];
-        assert.strictEqual(bareWrites.length, 0, 'no bare fs.writeFileSync may remain in this handler (#881: the digest write must also go through writeSecretFile)');
+        const bareWrites = [
+            ...(base.match(/fs\.writeFileSync\(/g) ?? []),
+            ...(publisher.match(/fs\.writeFileSync\(/g) ?? []),
+        ];
+        assert.strictEqual(bareWrites.length, 0, 'no bare fs.writeFileSync may remain in the handler or results publisher (#881: the digest write must also go through writeSecretFile)');
     });
 
     it('S2 outputArticleInfoToJson — SIBLING PACKAGE: the ServiceNow-supplied article number is constrained to a separator-free basename before it becomes a write path', () => {

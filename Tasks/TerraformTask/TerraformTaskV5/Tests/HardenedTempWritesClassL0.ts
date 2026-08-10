@@ -34,11 +34,11 @@ describe('hardened temp-file writes coverage (class test #881/#882/#887)', funct
   const SITE_ROWS: SiteRow[] = [
     // --- fixed this batch ---
     {
-      file: 'Tasks/TerraformTask/TerraformTaskV5/src/base-terraform-command-handler.ts',
+      file: 'Tasks/TerraformTask/TerraformTaskV5/src/results-publisher.ts',
       fn: 'writeAndAttachDigest',
       sink: 'fs.writeFileSync -> writeSecretFile',
       verdict: 'FIXED',
-      why: '#881: the plan/state/apply digest attachment now goes through the same 0600/O_EXCL primitive as the sibling raw-plan attachment (plan()) written moments earlier in the same class.',
+      why: '#881: the plan/state/apply digest attachment now goes through the same 0600/O_EXCL primitive as the sibling raw-plan attachment (plan()) written moments earlier in the same class. Moved out of base-terraform-command-handler.ts by #878; the hardening is unchanged.',
     },
     {
       file: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/sarif.ts',
@@ -61,10 +61,10 @@ describe('hardened temp-file writes coverage (class test #881/#882/#887)', funct
       fn: 'plan (raw terraform-plan-results attachment)',
       sink: 'writeSecretFile',
       verdict: 'HARDENED',
-      why: 'Already written via writeSecretFile (0600/O_EXCL); the sibling writeAndAttachDigest gap fixed above was the only bare fs.writeFileSync left in this file.',
+      why: 'Already written via writeSecretFile (0600/O_EXCL). Since #878 this is the only secret-file write left in this file; the sibling writeAndAttachDigest gap fixed under #881 now lives in results-publisher.ts.',
     },
     {
-      file: 'Tasks/TerraformTask/TerraformTaskV5/src/base-terraform-command-handler.ts',
+      file: 'Tasks/TerraformTask/TerraformTaskV5/src/results-publisher.ts',
       fn: 'writeCommandOutputFile (show/output/custom command output files)',
       sink: 'replaceSecretFile',
       verdict: 'HARDENED',
@@ -195,8 +195,10 @@ describe('hardened temp-file writes coverage (class test #881/#882/#887)', funct
 
   describe('regression guards for the three FIXED sites (source-level, in addition to the behavioral tests listed above)', () => {
     it('#881: writeAndAttachDigest calls writeSecretFile, not a bare fs.writeFileSync', () => {
-      const src = fs.readFileSync(path.join(REPO_ROOT, 'Tasks/TerraformTask/TerraformTaskV5/src/base-terraform-command-handler.ts'), 'utf8');
-      const start = src.indexOf('private writeAndAttachDigest(');
+      // #878 moved this out of base-terraform-command-handler.ts; the assertion is
+      // unchanged, only the file it reads.
+      const src = fs.readFileSync(path.join(REPO_ROOT, 'Tasks/TerraformTask/TerraformTaskV5/src/results-publisher.ts'), 'utf8');
+      const start = src.indexOf('writeAndAttachDigest(');
       assert.ok(start >= 0, 'writeAndAttachDigest not found');
       const body = src.slice(start, src.indexOf('\n    }', start));
       assert.ok(/\bwriteSecretFile\(digestPath/.test(body), 'writeAndAttachDigest must write digestPath via writeSecretFile');
