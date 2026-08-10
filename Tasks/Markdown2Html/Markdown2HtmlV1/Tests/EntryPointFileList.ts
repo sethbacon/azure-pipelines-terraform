@@ -1,6 +1,5 @@
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import fs = require('fs');
-import os = require('os');
 import path = require('path');
 
 // #189 (sibling azure-pipelines-packer #189): this task's suite was entirely
