@@ -48,6 +48,10 @@ function report(tr: ttm.MockTestRunner, message: string): string {
 }
 
 describe('Output-boundary defect class (S1 output variables / S2 path writes / S3 dropped crossings / S4 unbounded parse)', function () {
+    // Every behavioural row spawns a MockTestRunner child; the first one on a cold
+    // Windows agent pays the ts-node compile too and has twice overrun the 10s
+    // default (#923). Matches the other MockTestRunner suites, which all raise it.
+    this.timeout(20000);
 
     // --- S1: pipeline output variables ------------------------------------
 
