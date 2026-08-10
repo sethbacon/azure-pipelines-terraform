@@ -1,9 +1,15 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { getSecureVarFileArgs } from './secure-file-loader';
 import { replaceSecretFile, writeSecretFile } from './secure-temp';
 import { TempFileManager } from './temp-file-manager';
+import {
+    ArgumentBuilder,
+    splitNonEmptyLines,
+    hasPositionalCommandArg,
+    extractOutFlagPath,
+    commandOptionsContainsJsonFlag,
+} from './argument-builder';
 import { buildPlanDigest } from './results/plan-digest';
 import { DigestBuildMeta } from './results/digest-common';
 import { buildApplyDigest, ApplyDigestOptions, parseNdjsonLines } from './results/apply-digest';
@@ -18,194 +24,20 @@ import { randomUUID as uuidV4 } from 'crypto';
 import fs = require('fs');
 import os = require('os');
 
-/** Validates Terraform resource addresses (e.g. `aws_instance.foo`, `module.bar["key"]`). */
-export const RESOURCE_ADDRESS_RE = /^[a-zA-Z_][\w\-]*(\[[^\]]+\])?(\.[a-zA-Z_][\w\-]*(\[[^\]]+\])?)*$/;
-
-/**
- * Splits a multi-line task input into trimmed, non-empty lines -- the common
- * core of this task's several multi-line-input parsers (var-file paths, target
- * addresses, -var tokens, -backend-config args). Each line is kept whole (never
- * further split) so a value containing spaces -- a path on a Windows agent, or
- * a quoted index key like `module.x["a b"]` -- survives as one token.
- * `skipComments` additionally drops lines starting with `#`, matching the
- * `-var`/`-backend-config` inputs' existing support for comment lines; the
- * var-file/target-address inputs never supported that and keep it disabled so
- * behavior here is unchanged from before this helper existed.
- */
-export function splitNonEmptyLines(input: string | undefined, opts: { skipComments?: boolean } = {}): string[] {
-    if (!input) return [];
-    return input
-        .split('\n')
-        .map(l => l.trim())
-        .filter(l => l && !(opts.skipComments && l.startsWith('#')));
-}
-
-/**
- * Splits a multi-line `varFile` input into `-var-file=<path>` tokens, one per
- * non-empty line. Each path is kept whole so it can be passed as a single argv
- * entry — paths containing spaces (common on Windows agents) must not be split.
- */
-export function parseVarFileTokens(varFile: string | undefined): string[] {
-    return splitNonEmptyLines(varFile).map(f => `-var-file=${f}`);
-}
-
-/**
- * Splits a multi-line `targetResources` input into validated `-target=<address>`
- * tokens. Addresses may legitimately contain spaces inside quoted index keys
- * (e.g. `module.x["a b"]`), so each is kept as a single argv entry.
- */
-export function parseTargetTokens(targetResources: string | undefined): string[] {
-    const lines = splitNonEmptyLines(targetResources);
-    for (const address of lines) {
-        if (!RESOURCE_ADDRESS_RE.test(address)) {
-            throw new Error(`Invalid target address '${address}': must be a valid Terraform resource address`);
-        }
-    }
-    return lines.map(a => `-target=${a}`);
-}
-
-/**
- * Splits `commandOptions` into argv the way ToolRunner's `.line()` does, by
- * mirroring task-lib's own `_argStringToArray`: a `"` toggles quoting anywhere
- * in a token (not only at its start) and is stripped, `\` escapes inside
- * quotes, and only unquoted whitespace separates arguments.
- *
- * The helpers below inspect `commandOptions` to make decisions about an argv
- * that ToolRunner -- not they -- ultimately builds, so any disagreement between
- * the two parsers is a bug by construction. The previous regex tokenizer only
- * recognized a token that was quoted in its entirety, so `-out="my plan.tfplan"`
- * split into `-out="my` + `plan.tfplan"` and every helper drew a different
- * conclusion than Terraform did (#875).
- */
-export function splitCommandOptions(commandOptions: string): string[] {
-    const args: string[] = [];
-    let inQuotes = false;
-    let escaped = false;
-    let lastCharWasSpace = true;
-    let arg = '';
-
-    const append = (c: string): void => {
-        // task-lib only treats a backslash as an escape for a double quote.
-        if (escaped && c !== '"') {
-            arg += '\\';
-        }
-        arg += c;
-        escaped = false;
-    };
-
-    // Indexed rather than for..of so surrogate pairs are handled as task-lib does.
-    for (let i = 0; i < commandOptions.length; i++) {
-        const c = commandOptions.charAt(i);
-
-        if (c === ' ' && !inQuotes) {
-            if (!lastCharWasSpace) {
-                args.push(arg);
-                arg = '';
-            }
-            lastCharWasSpace = true;
-            continue;
-        }
-        lastCharWasSpace = false;
-
-        if (c === '"') {
-            if (!escaped) {
-                inQuotes = !inQuotes;
-            } else {
-                append(c);
-            }
-            continue;
-        }
-        if (c === '\\' && escaped) {
-            append(c);
-            continue;
-        }
-        if (c === '\\' && inQuotes) {
-            escaped = true;
-            continue;
-        }
-        append(c);
-    }
-
-    if (!lastCharWasSpace) {
-        args.push(arg.trim());
-    }
-    return args;
-}
-
-/**
- * Best-effort heuristic (Phase 5 §5.5) for whether a `show` command's
- * `commandOptions` carries a positional plan-file argument (e.g. `tfplan.out`,
- * or `-no-color tfplan.out`) as opposed to flags only. Terraform's `show`
- * reads a saved plan file when given one, or the CURRENT state when given
- * none -- and this task has no other signal to distinguish the two, since a
- * plan-file path is free text embedded in `commandOptions` alongside any
- * flags, not a separate input. Used ONLY to gate the new `publishStateResults`
- * structured-state-summary path (never the pre-existing show-of-planfile
- * sensitive-output/destroy-change detection, which is unconditional and
- * unaffected by this function): a positional token found here means this run
- * is a planfile show, so the state-summary attachment is skipped even if
- * `publishStateResults` is set (documented in the task's helpMarkDown).
- *
- * Tokenized with {@link splitCommandOptions}, so quoting is read exactly as
- * ToolRunner's `.line()` reads it. A value that isn't a flag (doesn't start
- * with `-`) is treated as positional.
- */
-export function hasPositionalCommandArg(commandOptions: string | undefined): boolean {
-    if (!commandOptions) return false;
-    return splitCommandOptions(commandOptions).some(t => !t.startsWith('-'));
-}
-
-/**
- * Returns the plan-file path from a user-supplied `-out=<path>` / `-out <path>`
- * (double-dash `--out` accepted too, as Terraform does) token in
- * `commandOptions`, or undefined if none is present. Tokenized with
- * {@link splitCommandOptions}, so the returned path is byte-for-byte the one
- * ToolRunner passes to Terraform -- including quoted paths containing spaces,
- * in both the `-out="a b.tfplan"` and `-out "a b.tfplan"` forms (#875).
- *
- * Used by plan() UNCONDITIONALLY (#675 2nd follow-up) to detect a user-supplied
- * `-out=` so its plan file can be permission-tightened via afterPlanFileWritten()
- * even when publishPlanSummary is unset, and by plan()/destroy()'s
- * publishPlanSummary path (#612): when the user already saves the plan via
- * their own `-out=`, the task must NOT inject a second `-out=` -- Terraform
- * silently honors only the LAST `-out=` on the command line, so the task's
- * tempfile would shadow the user's file and the user's artifact plan would
- * never be written. When a user `-out=` is present the subsequent
- * `terraform show -json` digest is built against the user's own saved plan (which
- * then describes the very plan that gets applied); when absent, the task injects
- * its own tempfile exactly as before.
- */
-export function extractOutFlagPath(commandOptions: string | undefined): string | undefined {
-    if (!commandOptions) return undefined;
-    const tokens = splitCommandOptions(commandOptions);
-    for (let i = 0; i < tokens.length; i++) {
-        const token = tokens[i];
-        const eq = token.match(/^--?out=(.*)$/);
-        if (eq) return eq[1];
-        if (token === '-out' || token === '--out') {
-            const next = tokens[i + 1];
-            if (next !== undefined) return next;
-        }
-    }
-    return undefined;
-}
-
-/**
- * Detects a standalone `-json` (or `--json`) flag in `commandOptions` as
- * Terraform itself would parse it -- a whole token, not a substring match, so
- * e.g. `-var=myjsonvalue` or a quoted value that merely contains the text
- * "json" is correctly ignored. Used to fail closed on plan()'s
- * publishPlanResults path (#492): with `-json`, terraform plan's stdout is
- * machine-readable NDJSON whose `change.after` carries real values in
- * cleartext (masked only by a parallel `after_sensitive` flag meant for a
- * redacting CONSUMER to apply -- exactly like apply -json), not the
- * human-readable format's own `(sensitive value)` redaction that makes
- * echoing that capture to the console safe.
- */
-export function commandOptionsContainsJsonFlag(commandOptions: string | undefined): boolean {
-    if (!commandOptions) return false;
-    return splitCommandOptions(commandOptions).some((token) => token === '-json' || token === '--json');
-}
+// Argument construction moved to `src/argument-builder.ts` (#878). These are
+// re-exported because Tests/ and generic-terraform-command-handler.ts import them
+// from here; the entry point is preserved so this refactor stays behaviour-only.
+export {
+    ArgumentBuilder,
+    RESOURCE_ADDRESS_RE,
+    splitNonEmptyLines,
+    parseVarFileTokens,
+    parseTargetTokens,
+    splitCommandOptions,
+    hasPositionalCommandArg,
+    extractOutFlagPath,
+    commandOptionsContainsJsonFlag,
+} from './argument-builder';
 
 // `warnIfSensitiveOutputs`'s sensitivity detection is the SAME predicate the WP-1
 // redaction core applies (design §5.2.7): rather than re-derive it here (the
@@ -271,14 +103,16 @@ export const MAX_CAPTURED_MESSAGE_BYTES = 64 * 1024; // 64 KiB
 
 /**
  * Single abstract base carrying every terraform sub-command (init/plan/apply/...)
- * plus the auth/temp-file plumbing shared by all provider handlers. The size is a
+ * plus the auth plumbing shared by all provider handlers. The size is a
  * deliberate cohesion trade-off: the provider subclasses (azure/aws/gcp/oci/hcp/
  * generic) override only handleBackend()/handleProvider() and inherit one identical
  * command-execution path, which is exactly what keeps provider behavior consistent.
- * Known separable concerns, if this is ever decomposed: argv/flag building, the
- * per-command implementations, provider-detection output parsing, plan-result
- * inspection, and temp-file lifecycle. Splitting them is a pure refactor with no
- * behavior change — intentionally deferred, not an oversight.
+ *
+ * #878 is decomposing the rest. Extracted so far: temp-file lifecycle
+ * ({@link TempFileManager}) and argv/flag building ({@link ArgumentBuilder}).
+ * Still here, and still separable: the per-command implementations,
+ * provider-detection output parsing, and plan-result inspection. Each step is a
+ * pure refactor with no behavior change.
  */
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
@@ -286,6 +120,9 @@ export abstract class BaseTerraformCommandHandler {
     backendConfig: Map<string, string>;
     // The only mutable state this class had, now owned by its own collaborator (#878).
     protected readonly tempFileManager = new TempFileManager();
+    // Argv construction, likewise (#878). It needs the temp-file manager because a
+    // downloaded secure var file must be recorded for later scrubbing.
+    protected readonly argumentBuilder = new ArgumentBuilder(this.tempFileManager);
     private static readonly OUTPUT_VAR_MAX_LENGTH = 1024;
 
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
@@ -414,78 +251,6 @@ export abstract class BaseTerraformCommandHandler {
             this.getWorkingDirectory(),
             additionalArgs
         );
-    }
-
-    protected replaceTokens(): string[] {
-        const replaceAddress = tasks.getInput("replaceAddress", false);
-        if (!replaceAddress) return [];
-        if (!RESOURCE_ADDRESS_RE.test(replaceAddress)) {
-            throw new Error(`Invalid replace address '${replaceAddress}': must be a valid Terraform resource address`);
-        }
-        return [`-replace=${replaceAddress}`];
-    }
-
-    /** Returns the `-parallelism=N` token, or [] if not set. Validates the value. */
-    protected parallelismTokens(): string[] {
-        const parallelism = tasks.getInput("parallelism", false);
-        if (!parallelism) return [];
-        const n = parseInt(parallelism, 10);
-        if (isNaN(n) || n < 1) {
-            throw new Error(`Invalid parallelism value '${parallelism}': must be a positive integer`);
-        }
-        return [`-parallelism=${n}`];
-    }
-
-    /** Downloads the secure var file (if configured) and returns its `-var-file=<path>` token. */
-    protected async secureVarFileTokens(): Promise<string[]> {
-        const result = await getSecureVarFileArgs();
-        if (!result) return [];
-        // The path is retained so the file can be scrubbed before it is unlinked (#662).
-        this.tempFileManager.setSecureFile(result.secureFileId, result.filePath);
-        return [result.varFileArg];
-    }
-
-    /**
-     * Builds the structured leading flags that precede the base command. Each flag
-     * is returned as a single argv token (applied later via {@link applyTokens})
-     * so values containing spaces — a var-file path on a Windows agent, or a
-     * target/replace address with a quoted index key — are never split.
-     *
-     * Token order (left to right): secureVarFile, targetResources, varFiles,
-     * refreshOnly, replace. Flag order is irrelevant to Terraform; it is fixed
-     * here only for predictability and stable test assertions.
-     */
-    protected async buildLeadingArgs(config: {
-        replaceFlag?: boolean;
-        refreshOnly?: boolean;
-        varFiles?: boolean;
-        targetResources?: boolean;
-        secureVarFile?: boolean;
-    }): Promise<string[]> {
-        const tokens: string[] = [];
-        if (config.secureVarFile) tokens.push(...await this.secureVarFileTokens());
-        if (config.targetResources) tokens.push(...parseTargetTokens(tasks.getInput("targetResources", false)));
-        if (config.varFiles) tokens.push(...parseVarFileTokens(tasks.getInput("varFile", false)));
-        if (config.refreshOnly && tasks.getBoolInput("refreshOnly", false)) tokens.push('-refresh-only');
-        if (config.replaceFlag) tokens.push(...this.replaceTokens());
-        return tokens;
-    }
-
-    /** Applies tokens to a tool runner as individual argv entries (no re-splitting). */
-    protected applyTokens(tool: ToolRunner, tokens: string[]): void {
-        for (const token of tokens) {
-            tool.arg(token);
-        }
-    }
-
-    protected appendTerraformVariables(terraformTool: ToolRunner): void {
-        const variables = tasks.getInput("terraformVariables", false);
-        if (!variables) return;
-
-        for (const trimmed of splitNonEmptyLines(variables, { skipComments: true })) {
-            terraformTool.arg('-var');
-            terraformTool.arg(trimmed);
-        }
     }
 
     // --- Core infrastructure ---
@@ -1058,15 +823,15 @@ export abstract class BaseTerraformCommandHandler {
         const planCommand = this.createAuthCommand("plan");
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
 
-        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             replaceFlag: true, refreshOnly: true, varFiles: true,
             targetResources: true, secureVarFile: true,
         }));
         const commandOptions = this.getCommandOptions();
         if (commandOptions) terraformTool.line(commandOptions);
         terraformTool.arg("-detailed-exitcode");
-        this.applyTokens(terraformTool, this.parallelismTokens());
-        this.appendTerraformVariables(terraformTool);
+        this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
+        this.argumentBuilder.appendTerraformVariables(terraformTool);
 
         await this.handleProvider(planCommand);
         await this.warnIfMultipleProviders();
@@ -1436,7 +1201,7 @@ export abstract class BaseTerraformCommandHandler {
         const applyCommand = this.createAuthCommand("apply");
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
 
-        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             replaceFlag: true, refreshOnly: true, varFiles: true,
             targetResources: true, secureVarFile: true,
         }));
@@ -1455,8 +1220,8 @@ export abstract class BaseTerraformCommandHandler {
         // structured (secret-bearing) fields are consumed only by the redaction
         // pipeline, never printed.
         this.applyAutoApprove(terraformTool, publishApplyResults ? ["-json"] : []);
-        this.applyTokens(terraformTool, this.parallelismTokens());
-        this.appendTerraformVariables(terraformTool);
+        this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
+        this.argumentBuilder.appendTerraformVariables(terraformTool);
 
         await this.handleProvider(applyCommand);
         await this.warnIfMultipleProviders();
@@ -1632,12 +1397,12 @@ export abstract class BaseTerraformCommandHandler {
         const destroyCommand = this.createAuthCommand("destroy");
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
 
-        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,
         }));
         this.applyAutoApprove(terraformTool);
-        this.applyTokens(terraformTool, this.parallelismTokens());
-        this.appendTerraformVariables(terraformTool);
+        this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
+        this.argumentBuilder.appendTerraformVariables(terraformTool);
 
         await this.handleProvider(destroyCommand);
         await this.warnIfMultipleProviders();
@@ -1739,10 +1504,10 @@ export abstract class BaseTerraformCommandHandler {
     private async runDestroyPlanForSummary(planFilePath: string, workingDirectory: string): Promise<void> {
         const planCommand = this.createBaseCommand("plan", `-destroy -out=${planFilePath}`);
         const planTool = this.terraformToolHandler.createToolRunner(planCommand);
-        this.applyTokens(planTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(planTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,
         }));
-        this.appendTerraformVariables(planTool);
+        this.argumentBuilder.appendTerraformVariables(planTool);
 
         const result = await this.execWithTimeout(planTool, <IExecOptions>{
             cwd: workingDirectory,
@@ -1969,7 +1734,7 @@ export abstract class BaseTerraformCommandHandler {
         const importCommand = this.createAuthCommand("import");
         const terraformTool = this.terraformToolHandler.createToolRunner(importCommand);
 
-        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, secureVarFile: true,
         }));
         const commandOptions = this.getCommandOptions();
@@ -1978,7 +1743,7 @@ export abstract class BaseTerraformCommandHandler {
         // spaces is not split.
         terraformTool.arg(resourceAddress);
         terraformTool.arg(resourceId);
-        this.appendTerraformVariables(terraformTool);
+        this.argumentBuilder.appendTerraformVariables(terraformTool);
 
         await this.handleProvider(importCommand);
 
@@ -2008,13 +1773,13 @@ export abstract class BaseTerraformCommandHandler {
         const refreshCommand = this.createAuthCommand("refresh");
         const terraformTool = this.terraformToolHandler.createToolRunner(refreshCommand);
 
-        this.applyTokens(terraformTool, await this.buildLeadingArgs({
+        this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,
         }));
         const commandOptions = this.getCommandOptions();
         if (commandOptions) terraformTool.line(commandOptions);
-        this.applyTokens(terraformTool, this.parallelismTokens());
-        this.appendTerraformVariables(terraformTool);
+        this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
+        this.argumentBuilder.appendTerraformVariables(terraformTool);
 
         await this.handleProvider(refreshCommand);
 
