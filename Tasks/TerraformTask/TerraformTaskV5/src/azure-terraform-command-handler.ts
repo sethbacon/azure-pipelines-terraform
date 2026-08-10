@@ -249,7 +249,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             case AuthorizationScheme.WorkloadIdentityFederation: {
                 const spnId = requireIdentityField(serviceConnectionID, "serviceprincipalid");
                 const oidcToken = await generateIdToken(serviceConnectionID);
-                tasks.setSecret(oidcToken);
+                EnvironmentVariableHelper.registerSecret(oidcToken);
 
                 const loginTool: ToolRunner = tasks.tool(azPath);
                 loginTool.arg(["login", "--service-principal",
@@ -264,7 +264,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
             case AuthorizationScheme.ServicePrincipal: {
                 const spnId = requireIdentityField(serviceConnectionID, "serviceprincipalid");
                 const spnKey = requireSecretField(serviceConnectionID, "serviceprincipalkey");
-                tasks.setSecret(spnKey);
+                EnvironmentVariableHelper.registerSecret(spnKey);
 
                 const loginTool: ToolRunner = tasks.tool(azPath);
                 loginTool.arg(["login", "--service-principal",
@@ -414,7 +414,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     if (!accessToken) {
                         throw new Error("AccessToken not found in SystemVssConnection. Ensure the pipeline has OIDC enabled.");
                     }
-                    tasks.setSecret(accessToken);
+                    EnvironmentVariableHelper.registerSecret(accessToken);
                     EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true);
                 }
 
@@ -425,7 +425,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 tasks.warning("Client secret authentication is not secure and will be deprecated in the next major version of this task. Please use Workload identity federation authentication instead.");
 
                 const servicePrincipalCredentials = this.getServicePrincipalCredentials(serviceConnectionID);
-                tasks.setSecret(servicePrincipalCredentials.servicePrincipalKey);
+                EnvironmentVariableHelper.registerSecret(servicePrincipalCredentials.servicePrincipalKey);
                 neutralizeEnvironmentVariables(
                     [ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi, ARM_IDENTITY_SELECTORS.useOidc],
                     "Azure service principal");

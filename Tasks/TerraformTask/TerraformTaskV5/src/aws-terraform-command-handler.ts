@@ -61,7 +61,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         // and exactly what the provider path already refused to do.
         const accessKey = requireIdentityField(backendServiceName, "username");
         const secretKey = requireSecretField(backendServiceName, "password");
-        tasks.setSecret(secretKey);
+        EnvironmentVariableHelper.registerSecret(secretKey);
 
         neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static backend");
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey);
@@ -90,7 +90,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         tokenFilePrefix: string;
     }): Promise<void> {
         const oidcToken = await generateIdToken(params.serviceConnection);
-        tasks.setSecret(oidcToken);
+        EnvironmentVariableHelper.registerSecret(oidcToken);
 
         const tokenFilePath = path.join(resolveWifTempDir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);
@@ -174,7 +174,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
                 // the instance profile instead. Both now fail closed.
                 const accessKeyId = requireIdentityField(command.serviceProviderName, "username");
                 const secretAccessKey = requireSecretField(command.serviceProviderName, "password");
-                tasks.setSecret(secretAccessKey);
+                EnvironmentVariableHelper.registerSecret(secretAccessKey);
                 neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static");
                 EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId);
                 EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey, true);

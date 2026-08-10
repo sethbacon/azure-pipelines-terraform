@@ -120,7 +120,7 @@
         },
         {
             "name": "policyRepoToken",
-            "type": "string",
+            "type": "password",
             "label": "Repo access token",
             "defaultValue": "",
             "required": false,

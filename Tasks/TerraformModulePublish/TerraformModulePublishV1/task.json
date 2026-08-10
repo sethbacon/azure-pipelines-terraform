@@ -94,7 +94,7 @@
         },
         {
             "name": "apiKey",
-            "type": "string",
+            "type": "password",
             "label": "API key",
             "groupName": "private",
             "defaultValue": "",
@@ -167,7 +167,7 @@
         },
         {
             "name": "hcpToken",
-            "type": "string",
+            "type": "password",
             "label": "HCP API token",
             "groupName": "hcp",
             "defaultValue": "",

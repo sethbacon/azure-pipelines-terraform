@@ -1,5 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
+import { EnvironmentVariableHelper } from './environment-variables';
 
 /**
  * Builds fetch() RequestInit options that route the request through the
@@ -19,7 +20,7 @@ export function buildProxyFetchOptions(): RequestInit {
   let proxyUrl = proxy.proxyUrl;
   if (proxy.proxyUsername) {
     if (proxy.proxyPassword) {
-      tasks.setSecret(proxy.proxyPassword);
+      EnvironmentVariableHelper.registerSecret(proxy.proxyPassword);
     }
     let url: URL;
     try {
@@ -38,7 +39,7 @@ export function buildProxyFetchOptions(): RequestInit {
     // module-publish transport helpers already do for their own credential
     // URLs (#684).
     if (url.password) {
-      tasks.setSecret(url.password);
+      EnvironmentVariableHelper.registerSecret(url.password);
     }
     proxyUrl = url.toString();
   }
