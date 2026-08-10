@@ -1686,18 +1686,16 @@ export abstract class BaseTerraformCommandHandler {
             // console log.
             includeDiagnostics,
             includeDiagnosticDetail: tasks.getBoolInput('includeDiagnosticDetail', false),
-            // §5.4 / #694: exact-match redaction now also covers every credential
-            // this task itself injected via EnvironmentVariableHelper's
-            // isSecret=true path (the standard mechanism the provider handlers use
-            // for cloud credentials) -- closing the gap for a SHORT injected secret
-            // that the PEM/high-entropy heuristic alone would miss. A value passed
-            // directly to tasks.setSecret() elsewhere (e.g. an ephemeral WIF token
-            // exchanged mid-command) is not tracked by this helper and still relies
-            // on the heuristic alone; this narrows, but does not eliminate, the
-            // documented residual (SECURITY.md / design §5.10). Mitigated further
-            // by includeDiagnostics (above) and by includeDiagnosticDetail
-            // defaulting to false so the more leak-prone 'detail' field is omitted
-            // unless opted in.
+            // §5.4 / #694 / #886: exact-match redaction covers every credential this
+            // task has masked, including the federated ones minted mid-command (the
+            // ADO OIDC JWT, the OCI UPST, the ephemeral RSA key, the PAR URL) that
+            // never become environment variables. Those previously reached this
+            // attachment covered only by the 40-char entropy heuristic -- incidental
+            // coverage that a shorter token, or one the heuristic fragments on a `.`
+            // or `:`, would have slipped through. Build attachments are not
+            // agent-masked (SECURITY.md), so on this path the heuristic was the only
+            // control. Mitigated further by includeDiagnostics (above) and by
+            // includeDiagnosticDetail defaulting to false.
             knownSecrets: EnvironmentVariableHelper.getTrackedSecretValues(),
         };
 

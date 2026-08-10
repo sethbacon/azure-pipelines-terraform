@@ -73,6 +73,7 @@ import './CaptureOutputProtectionClassL0';
 // Table-driven CLASS test: hardened temp-file writes for plan/state/output/
 // verification-derived content -- a whole-repo site enumeration (#881/#882/#887).
 import './HardenedTempWritesClassL0';
+import './CredentialInputTypeClassL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.

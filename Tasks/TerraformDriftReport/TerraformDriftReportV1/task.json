@@ -63,7 +63,7 @@
     },
     {
       "name": "callbackToken",
-      "type": "string",
+      "type": "password",
       "label": "TSM callback token",
       "required": false,
       "isSecret": true,

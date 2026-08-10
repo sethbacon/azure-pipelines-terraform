@@ -1,5 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import fs = require('fs');
+import { EnvironmentVariableHelper } from './environment-variables';
 
 /**
  * The task manifest documents `secureVarsFile` as THE place to put sensitive
@@ -116,7 +117,7 @@ export function maskSecureVarFileValues(filePath: string): void {
         for (const line of value.split(/\r?\n/)) {
             const trimmed = line.trim();
             if (trimmed.length >= MIN_MASKABLE_VALUE_LENGTH) {
-                tasks.setSecret(trimmed);
+                EnvironmentVariableHelper.registerSecret(trimmed);
             }
         }
     }

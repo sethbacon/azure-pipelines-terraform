@@ -81,7 +81,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         // so no boundary-line filtering here.
         for (const line of privateKey.split('\n')) {
             const trimmed = line.trim();
-            if (trimmed) tasks.setSecret(trimmed);
+            if (trimmed) EnvironmentVariableHelper.registerSecret(trimmed);
         }
         const normalized = normalizePem(privateKey);
         // ADO's log masker matches per line, not across embedded newlines, so
@@ -90,7 +90,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         // this byte-different on-disk form if it were ever echoed to a log.
         for (const line of normalized.split('\n')) {
             const trimmed = line.trim();
-            if (trimmed && !trimmed.startsWith('-----')) tasks.setSecret(trimmed);
+            if (trimmed && !trimmed.startsWith('-----')) EnvironmentVariableHelper.registerSecret(trimmed);
         }
 
         // Create json string and write it to the file
@@ -154,7 +154,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         credentialsFilePrefix: string;
     }): Promise<string> {
         const oidcToken = await generateIdToken(params.serviceConnection);
-        tasks.setSecret(oidcToken);
+        EnvironmentVariableHelper.registerSecret(oidcToken);
 
         const tokenFilePath = path.join(resolveWifTempDir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);

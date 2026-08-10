@@ -23,7 +23,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
      */
     private applyBackendEnv(): void {
         const token = tasks.getInput("backendHCPToken", true)!;
-        if (token) { tasks.setSecret(token); }
+        if (token) { EnvironmentVariableHelper.registerSecret(token); }
         EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token, true);
 
         const organization = tasks.getInput("backendHCPOrganization", false);
