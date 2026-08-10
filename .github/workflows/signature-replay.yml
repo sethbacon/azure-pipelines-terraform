@@ -46,33 +46,47 @@ jobs:
       # run against a repo establishes nothing about it, and the job exits 2
       # rather than pretending otherwise — so these checkouts are load-bearing,
       # not convenience.
+      #
+      # persist-credentials: false on EVERY checkout. Without it, actions/checkout
+      # leaves SUITE_READ_TOKEN in each .git/config -- nine copies of a PAT that
+      # reads eight repositories including a private one -- inside a job that also
+      # uploads an artifact. That is zizmor's `artipacked` audit, and it is not
+      # theoretical here: widen the upload path by one glob and the token ships
+      # with the report. The replay only READS these trees; nothing after the
+      # checkouts needs git credentials.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-registry-backend
           path: suite/terraform-registry-backend
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-state-manager-backend
           path: suite/terraform-state-manager-backend
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-registry-frontend
           path: suite/terraform-registry-frontend
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-state-manager-frontend
           path: suite/terraform-state-manager-frontend
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-suite-identity
           path: suite/terraform-suite-identity
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/terraform-suite-ui
           path: suite/terraform-suite-ui
           token: "${{ secrets.SUITE_READ_TOKEN }}"
@@ -81,11 +95,13 @@ jobs:
       # presumed in the other and every signature runs in both.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/azure-pipelines-packer
           path: suite/azure-pipelines-packer
           token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/azure-pipelines-terraform
           path: suite/azure-pipelines-terraform
           token: "${{ secrets.SUITE_READ_TOKEN }}"
@@ -99,11 +115,13 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         if: github.event_name != 'schedule'
         with:
+          persist-credentials: false
           clean: false
           path: suite/${{ github.event.repository.name }}
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          persist-credentials: false
           repository: sethbacon/security-orchestration
           token: "${{ secrets.SUITE_READ_TOKEN }}"
           path: security-orchestration
