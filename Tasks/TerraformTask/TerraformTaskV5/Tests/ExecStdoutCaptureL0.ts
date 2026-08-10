@@ -13,13 +13,13 @@ import { TerraformAuthorizationCommandInitializer } from '../src/terraform-comma
  * than returning a silently-truncated string that would be parsed into a digest.
  */
 
-/** Minimal concrete handler exposing the protected capture method for testing. */
+/** Minimal concrete handler exposing the collaborator's capture method for testing. */
 class TestHandler extends BaseTerraformCommandHandler {
     async handleBackend(): Promise<void> { /* no-op */ }
     async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> { /* no-op */ }
     async configureBackendCredentials(): Promise<void> { /* no-op */ }
     public capture(tool: ToolRunner, options: IExecOptions, max?: number) {
-        return this.execWithStdoutCapture(tool, options, max as number);
+        return this.commandExecutor.execWithStdoutCapture(tool, options, max as number);
     }
 }
 

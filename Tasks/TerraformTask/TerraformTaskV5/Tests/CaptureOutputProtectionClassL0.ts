@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
-import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
+import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
+import { CommandExecutor } from '../src/command-executor';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
 import { ITerraformToolHandler } from '../src/terraform';
 
@@ -37,6 +38,14 @@ import { ITerraformToolHandler } from '../src/terraform';
  * turns its row red.
  */
 
+/** Returns canned output instead of running a real ToolRunner. */
+class StubExecutor extends CommandExecutor {
+    constructor(private readonly next: () => { code: number; stdout: string; stderr: string }) { super(); }
+    async execWithStdoutCapture(): Promise<{ code: number; stdout: string; stderr: string }> {
+        return this.next();
+    }
+}
+
 class TestHandler extends BaseTerraformCommandHandler {
     public nextCapture: { code: number; stdout: string; stderr: string } = { code: 0, stdout: '', stderr: '' };
 
@@ -44,16 +53,15 @@ class TestHandler extends BaseTerraformCommandHandler {
     async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> { /* no-op */ }
     async configureBackendCredentials(): Promise<void> { /* no-op */ }
 
-    // Test seam: replaces the real ToolRunner/exec pipeline with canned output.
-    protected async execWithStdoutCapture(_terraformTool: ToolRunner, _options: IExecOptions): Promise<{ code: number; stdout: string; stderr: string }> {
-        return this.nextCapture;
-    }
+    // Test seam: the exec pipeline moved to CommandExecutor (#878), so this
+    // replaces the collaborator rather than overriding an inherited method.
+    protected readonly commandExecutor = new StubExecutor(() => this.nextCapture);
 
     public get trackedTempFiles(): readonly string[] { return this.tempFileManager.tracked; }
     public get trackedEmergencyOnlyTempFiles(): readonly string[] { return this.tempFileManager.trackedEmergencyOnly; }
 }
 
-/** A ToolRunner is only ever created then handed to execWithStdoutCapture (overridden above) by show()/custom() -- a no-op stub is enough to avoid the real tasks.which/tasks.tool lookup. */
+/** A ToolRunner is only ever created then handed to execWithStdoutCapture (stubbed above) by show()/custom() -- a no-op stub is enough to avoid the real tasks.which/tasks.tool lookup. */
 function fakeToolHandler(): ITerraformToolHandler {
     const stub: Record<string, unknown> = {};
     stub.arg = () => stub;
