@@ -4,6 +4,50 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.13.0...v1.14.0) (2026-08-10)
+
+
+### Features
+
+* follow HashiCorp's automation guidance for every terraform invocation ([#921](https://github.com/sethbacon/azure-pipelines-terraform/issues/921)) ([caf3592](https://github.com/sethbacon/azure-pipelines-terraform/commit/caf359299bc3b33de226b732628ee2d59021bfb1)), closes [#896](https://github.com/sethbacon/azure-pipelines-terraform/issues/896)
+
+
+### Bug Fixes
+
+* clear the high advisories blocking every PR's npm audit gate ([#902](https://github.com/sethbacon/azure-pipelines-terraform/issues/902)) ([0a37eac](https://github.com/sethbacon/azure-pipelines-terraform/commit/0a37eac36920180ca1d17a280794370d8f5702d7))
+* honour directExcludePatterns when directIncludePatterns is also set ([#918](https://github.com/sethbacon/azure-pipelines-terraform/issues/918)) ([ca0fba0](https://github.com/sethbacon/azure-pipelines-terraform/commit/ca0fba074d58f93512d9ea4c94f3774bf85e9698)), closes [#872](https://github.com/sethbacon/azure-pipelines-terraform/issues/872)
+* make the per-run AWS session name actually execute, and align docs ([#907](https://github.com/sethbacon/azure-pipelines-terraform/issues/907)) ([098d0c1](https://github.com/sethbacon/azure-pipelines-terraform/commit/098d0c152c3b27f8dc2486be951b4b028db5fa10))
+* parse commandOptions the way ToolRunner actually parses it ([#919](https://github.com/sethbacon/azure-pipelines-terraform/issues/919)) ([fa630f7](https://github.com/sethbacon/azure-pipelines-terraform/commit/fa630f74c4e8eff62bde0470c2e535286607d601)), closes [#875](https://github.com/sethbacon/azure-pipelines-terraform/issues/875)
+* publish outputs before failing, and validate response-derived values ([#908](https://github.com/sethbacon/azure-pipelines-terraform/issues/908)) ([cf44558](https://github.com/sethbacon/azure-pipelines-terraform/commit/cf44558c86da554a7f90026f49231659477791bc))
+
+
+### Documentation
+
+* correct five statements the code contradicts ([#913](https://github.com/sethbacon/azure-pipelines-terraform/issues/913)) ([bfc8ba4](https://github.com/sethbacon/azure-pipelines-terraform/commit/bfc8ba4087bf17a3be30df1d8f719790f91bdbbd)), closes [#899](https://github.com/sethbacon/azure-pipelines-terraform/issues/899) [#895](https://github.com/sethbacon/azure-pipelines-terraform/issues/895) [#894](https://github.com/sethbacon/azure-pipelines-terraform/issues/894) [#893](https://github.com/sethbacon/azure-pipelines-terraform/issues/893) [#885](https://github.com/sethbacon/azure-pipelines-terraform/issues/885)
+
+
+### Refactor
+
+* extract TempFileManager from BaseTerraformCommandHandler ([#878](https://github.com/sethbacon/azure-pipelines-terraform/issues/878) PR 1) ([#922](https://github.com/sethbacon/azure-pipelines-terraform/issues/922)) ([108481e](https://github.com/sethbacon/azure-pipelines-terraform/commit/108481e67723565a5adde0c740a0aa22df304f92))
+* **v5:** move argv construction out of the god class ([#878](https://github.com/sethbacon/azure-pipelines-terraform/issues/878), 2/4) ([#925](https://github.com/sethbacon/azure-pipelines-terraform/issues/925)) ([1a8aad8](https://github.com/sethbacon/azure-pipelines-terraform/commit/1a8aad852ba32ad2daf3e77f4a25f765a51b5bf9))
+* **v5:** move command execution out of the god class ([#878](https://github.com/sethbacon/azure-pipelines-terraform/issues/878), 3/4) ([#926](https://github.com/sethbacon/azure-pipelines-terraform/issues/926)) ([19480f3](https://github.com/sethbacon/azure-pipelines-terraform/commit/19480f3645b1cae18787a75203ecbbba8443f18a))
+* **v5:** move results publishing out of the god class ([#878](https://github.com/sethbacon/azure-pipelines-terraform/issues/878), 4/4) ([#927](https://github.com/sethbacon/azure-pipelines-terraform/issues/927)) ([444e908](https://github.com/sethbacon/azure-pipelines-terraform/commit/444e908ba02ed414c93a7338c0df1b570d7aeb32))
+
+
+### Security
+
+* authorize egress by resolved address, on every hop ([#901](https://github.com/sethbacon/azure-pipelines-terraform/issues/901)) ([31683a3](https://github.com/sethbacon/azure-pipelines-terraform/commit/31683a3304c2b3948a87ebba8a30e33a58019386))
+* bound wildcard host pins to one label and gate the controls that decide ([#905](https://github.com/sethbacon/azure-pipelines-terraform/issues/905)) ([8f09c09](https://github.com/sethbacon/azure-pipelines-terraform/commit/8f09c09b48ae8115c8da0950d7ec891951933062)), closes [#888](https://github.com/sethbacon/azure-pipelines-terraform/issues/888) [#880](https://github.com/sethbacon/azure-pipelines-terraform/issues/880)
+* declare every credential input a secret, and register every masked value ([#920](https://github.com/sethbacon/azure-pipelines-terraform/issues/920)) ([f67c849](https://github.com/sethbacon/azure-pipelines-terraform/commit/f67c8494948d17420dadcb3f7bf9bae65619a252))
+* discard unverified artifacts and validate cache records ([#909](https://github.com/sethbacon/azure-pipelines-terraform/issues/909)) ([491e520](https://github.com/sethbacon/azure-pipelines-terraform/commit/491e5203caf334876e9199a69f0f54812376046e))
+* fail closed on absent or malformed provider credentials ([#903](https://github.com/sethbacon/azure-pipelines-terraform/issues/903)) ([de94720](https://github.com/sethbacon/azure-pipelines-terraform/commit/de94720ec51915492ff8f214460ed7baa82f460f))
+* look up attacker-influenceable keys without inheriting from Object ([#914](https://github.com/sethbacon/azure-pipelines-terraform/issues/914)) ([7f24c78](https://github.com/sethbacon/azure-pipelines-terraform/commit/7f24c78f21997b24bb8fc090f74d1518ad0fe2dc)), closes [#884](https://github.com/sethbacon/azure-pipelines-terraform/issues/884) [#897](https://github.com/sethbacon/azure-pipelines-terraform/issues/897)
+* neutralize and account for every captured-output sink ([#911](https://github.com/sethbacon/azure-pipelines-terraform/issues/911)) ([9ce5289](https://github.com/sethbacon/azure-pipelines-terraform/commit/9ce5289aa0e1fd1ace8d788d993a7f92f45f1066)), closes [#869](https://github.com/sethbacon/azure-pipelines-terraform/issues/869) [#868](https://github.com/sethbacon/azure-pipelines-terraform/issues/868)
+* register credentials with setSecret before they can be logged ([#900](https://github.com/sethbacon/azure-pipelines-terraform/issues/900)) ([11a3e60](https://github.com/sethbacon/azure-pipelines-terraform/commit/11a3e600140c7b5de7fac96cfb43e343111ebc0d))
+* retry the requests that actually fail, safely ([#910](https://github.com/sethbacon/azure-pipelines-terraform/issues/910)) ([639dc4e](https://github.com/sethbacon/azure-pipelines-terraform/commit/639dc4e63aaf68b3a116624151fb012b7cb62b72)), closes [#879](https://github.com/sethbacon/azure-pipelines-terraform/issues/879) [#891](https://github.com/sethbacon/azure-pipelines-terraform/issues/891)
+* stop a meta-refresh from navigating a published article off-site ([#912](https://github.com/sethbacon/azure-pipelines-terraform/issues/912)) ([b8290ce](https://github.com/sethbacon/azure-pipelines-terraform/commit/b8290ce960a1a1ae55018b4b5a6f3c15bd0ebbc7)), closes [#889](https://github.com/sethbacon/azure-pipelines-terraform/issues/889)
+* write and clean up every plan-derived temp file the hardened way ([#916](https://github.com/sethbacon/azure-pipelines-terraform/issues/916)) ([7e866da](https://github.com/sethbacon/azure-pipelines-terraform/commit/7e866da90c930ccdc3a2e92106f2e5fa0495085b))
+
 ## [1.13.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.12.2...v1.13.0) (2026-08-06)
 
 
