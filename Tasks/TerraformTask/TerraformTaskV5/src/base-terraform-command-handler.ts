@@ -289,27 +289,30 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async executeCommand(command: string): Promise<number> {
-        const commands: Record<string, () => Promise<number>> = {
-            init: () => this.init(),
-            validate: () => this.validate(),
-            plan: () => this.plan(),
-            apply: () => this.apply(),
-            destroy: () => this.destroy(),
-            show: () => this.show(),
-            output: () => this.output(),
-            custom: () => this.custom(),
-            workspace: () => this.workspace(),
-            state: () => this.state(),
-            fmt: () => this.fmt(),
-            test: () => this.test(),
-            get: () => this.get(),
-            import: () => this.import(),
-            forceunlock: () => this.forceUnlock(),
-            refresh: () => this.refresh(),
-        };
-        const fn = commands[command];
+        // A Map, not an object literal: `command` is a task input, and an object
+        // literal keyed by it resolves `constructor` to Object -- truthy, callable,
+        // and therefore straight past the not-found guard below (#884/#897 class).
+        const commands = new Map<string, () => Promise<number>>([
+            ['init', () => this.init()],
+            ['validate', () => this.validate()],
+            ['plan', () => this.plan()],
+            ['apply', () => this.apply()],
+            ['destroy', () => this.destroy()],
+            ['show', () => this.show()],
+            ['output', () => this.output()],
+            ['custom', () => this.custom()],
+            ['workspace', () => this.workspace()],
+            ['state', () => this.state()],
+            ['fmt', () => this.fmt()],
+            ['test', () => this.test()],
+            ['get', () => this.get()],
+            ['import', () => this.import()],
+            ['forceunlock', () => this.forceUnlock()],
+            ['refresh', () => this.refresh()],
+        ]);
+        const fn = commands.get(command);
         if (!fn) {
-            throw new Error(`Invalid command: ${command}. Valid: ${Object.keys(commands).join(', ')}`);
+            throw new Error(`Invalid command: ${command}. Valid: ${[...commands.keys()].join(', ')}`);
         }
         return fn();
     }

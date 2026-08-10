@@ -76,6 +76,9 @@ import './CaptureOutputProtectionClassL0';
 // verification-derived content -- a whole-repo site enumeration (#881/#882/#887).
 import './HardenedTempWritesClassL0';
 import './CredentialInputTypeClassL0';
+// This task's half of the prototype-chain lookup class (#884/#897): command
+// dispatch, which the signature found still keyed by a plain object literal.
+import './PrototypeSafeLookupClassL0';
 // Direct unit tests for the plan/apply digest REDACTION CORE (WP-1, the single
 // most security-critical unit): recursive redaction, digest builders, freeform
 // diagnostic scrub, and the golden-fixture regression + no-leak tripwire.
