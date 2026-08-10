@@ -31,6 +31,7 @@ import './OciWifTempDirL0';
 import './EmergencyCleanupNoHandlerL0';
 // Direct unit tests for tool-path resolution (terraformLocation vs PATH).
 import './ResolveToolPathL0';
+import './AutomationEnvL0';
 // Direct unit tests for OCI WIF synthetic-config field validation.
 import './OciWifConfigValidationL0';
 // Direct unit tests for the generated OCI backend config file's secret-file write.

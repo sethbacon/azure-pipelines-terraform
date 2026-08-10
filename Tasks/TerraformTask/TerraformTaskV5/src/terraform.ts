@@ -50,6 +50,25 @@ export interface ITerraformToolHandler {
     createToolRunner(command?: TerraformBaseCommandInitializer): ToolRunner;
 }
 
+/**
+ * HashiCorp's "Running Terraform in Automation" guidance for CI wrappers (#896):
+ * suppress the interactive "next command" suggestions, and stop the
+ * per-invocation call to checkpoint-api.hashicorp.com.
+ *
+ * Neither is forced. An operator who sets either variable on the job or step
+ * keeps their value -- including an empty one, which Terraform reads as off --
+ * so the opt-out is the mechanism Terraform itself documents rather than a task
+ * input only this task would honour.
+ */
+export function applyAutomationEnvironment(env: NodeJS.ProcessEnv = process.env): void {
+    if (env.TF_IN_AUTOMATION === undefined) {
+        env.TF_IN_AUTOMATION = '1';
+    }
+    if (env.CHECKPOINT_DISABLE === undefined) {
+        env.CHECKPOINT_DISABLE = '1';
+    }
+}
+
 export class TerraformToolHandler implements ITerraformToolHandler {
     private readonly tasks: typeof import('azure-pipelines-task-lib/task');
 
@@ -60,6 +79,10 @@ export class TerraformToolHandler implements ITerraformToolHandler {
     public createToolRunner(command?: TerraformBaseCommandInitializer): ToolRunner {
         const binaryName = getBinaryName(this.tasks);
         const toolPath = resolveToolPath(this.tasks, binaryName);
+
+        // Every terraform/tofu invocation in this task is built here, so this is the
+        // one place that cannot be bypassed by a future command path.
+        applyAutomationEnvironment();
 
         const toolRunner: ToolRunner = this.tasks.tool(toolPath);
         if (command) {
