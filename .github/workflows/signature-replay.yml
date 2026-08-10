@@ -1,0 +1,172 @@
+# Signature replay — the PER-REPO, merge-blocking half of the gate.
+#
+# WHY THIS REPO HOSTS IT. Eight of the twelve recorded signatures
+# (premask-emission, egress-authorization, provider-auth-failclosed,
+# artifact-trust, output-boundary, enforced-disciplines, proxy-parity,
+# docs-claims) apply ONLY to `ado-extension` kind — this repo and
+# azure-pipelines-packer — and skip all six suite repos. Until this file existed
+# the blocking half ran in the six repos those signatures SKIP and in neither of
+# the two they analyse, so a change here merged green and surfaced as a red gate
+# in repos whose own code was untouched and which could not act on it. #920 did
+# exactly that: 38 checks, none of them the replay.
+#
+# COST, already accepted six times and now eight: the ledger and signatures live
+# in the PRIVATE security-orchestration repo, so this PUBLIC repo has to hold a
+# SUITE_READ_TOKEN that can read it. What it buys is the ability to BLOCK a bad
+# merge, which the central scheduled copy cannot.
+#
+# Adding this file is NOT enforcement. The check must also be added to main's
+# required_status_checks, and that state asserted against the live API rather
+# than read off this YAML — but only AFTER a run proves the context reports,
+# because a required context that never posts blocks every merge instead.
+name: signature-replay
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Check 2, and the "new instance written since the fix" case, depend on time
+  # passing rather than on anyone opening a PR.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signature-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      # Every repo in SIGNATURE_SCOPE must be present. A signature that cannot
+      # run against a repo establishes nothing about it, and the job exits 2
+      # rather than pretending otherwise — so these checkouts are load-bearing,
+      # not convenience.
+      #
+      # persist-credentials: false on EVERY checkout. Without it, actions/checkout
+      # leaves SUITE_READ_TOKEN in each .git/config -- nine copies of a PAT that
+      # reads eight repositories including a private one -- inside a job that also
+      # uploads an artifact. That is zizmor's `artipacked` audit, and it is not
+      # theoretical here: widen the upload path by one glob and the token ships
+      # with the report. The replay only READS these trees; nothing after the
+      # checkouts needs git credentials.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-registry-backend
+          path: suite/terraform-registry-backend
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-state-manager-backend
+          path: suite/terraform-state-manager-backend
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-registry-frontend
+          path: suite/terraform-registry-frontend
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-state-manager-frontend
+          path: suite/terraform-state-manager-frontend
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-suite-identity
+          path: suite/terraform-suite-identity
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-suite-ui
+          path: suite/terraform-suite-ui
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      # The two ADO extensions are siblings that COPY modules between each other
+      # rather than sharing a versioned one, so a class found in either is
+      # presumed in the other and every signature runs in both.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/azure-pipelines-packer
+          path: suite/azure-pipelines-packer
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/azure-pipelines-terraform
+          path: suite/azure-pipelines-terraform
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+
+      # Overwrite this repo's sibling copy with the commit under test, so the
+      # replay reads the PR's code and not origin/main's. Guarded because
+      # `github.event.repository` is absent on schedule events — the path would
+      # collapse to `suite/` and dump this repo into the suite root. A scheduled
+      # run wants origin/main anyway, which the explicit checkout above already
+      # fetched.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        if: github.event_name != 'schedule'
+        with:
+          persist-credentials: false
+          clean: false
+          path: suite/${{ github.event.repository.name }}
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/security-orchestration
+          token: "${{ secrets.SUITE_READ_TOKEN }}"
+          path: security-orchestration
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # The credential-lifecycle signature is a type-aware Go analyzer; the
+      # replay invokes it with `go run` from its own module directory.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: security-orchestration/remediation/signatures/credlifecycle/go.mod
+          cache-dependency-path: security-orchestration/remediation/signatures/credlifecycle/go.sum
+
+      # Every ado-extension signature is node: premask-emission.cjs and
+      # output-boundary.cjs are node analysers, and the other six shell out to
+      # each extension's OWN committed gate
+      # (scripts/check-egress-authorization.js, scripts/auth-parity-matrix.cjs,
+      # scripts/check-artifact-trust.js, scripts/check-enforced-disciplines.js,
+      # scripts/check-proxy-parity.js, scripts/check-docs-claims.js) so the
+      # replay and this repo's CI cannot answer differently about the same code.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+
+      # --verify-linked-issues: a CLOSED linked issue stops absorbing residual,
+      # so the token must also have issues:read on every repo the ledger links
+      # to (see "Wiring it up" in the README for the full token shape).
+      - name: Replay recorded signatures
+        env:
+          GH_TOKEN: ${{ secrets.SUITE_READ_TOKEN }}
+        run: |
+          python security-orchestration/remediation/replay/replay.py \
+            --ledger security-orchestration/remediation/signatures/ledger.json \
+            --repos-root suite \
+            --verify-linked-issues \
+            --json replay-report.json
+
+      # Exit 1 or 2 already failed the step above; this keeps the machine-readable
+      # report for the run someone will actually want to read.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signature-replay-report
+          path: replay-report.json
+          if-no-files-found: ignore
