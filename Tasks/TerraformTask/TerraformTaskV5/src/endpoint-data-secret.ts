@@ -1,4 +1,3 @@
-import tasks = require('azure-pipelines-task-lib/task');
 import { EnvironmentVariableHelper } from './environment-variables';
 
 /**
