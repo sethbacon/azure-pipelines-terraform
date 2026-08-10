@@ -1,6 +1,5 @@
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import fs = require('fs');
-import os = require('os');
 import path = require('path');
 
 // #189, failure half: the REAL src/index.ts must fail closed — not throw out of
