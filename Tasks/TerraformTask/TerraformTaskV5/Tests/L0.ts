@@ -25,6 +25,7 @@ import './OutputBoundaryClassL0';
 import './ExecWithTimeoutL0';
 // Direct unit tests for the emergency-only output-file cleanup split (#650).
 import './EmergencyOnlyCleanupL0';
+import './TempFileManagerL0';
 // Direct unit tests for OCI WIF temp-dir resolution (Agent.TempDirectory).
 import './OciWifTempDirL0';
 // Direct unit test for emergency cleanup before a handler is assigned.

@@ -101,7 +101,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
             token_uri: tokenUri
         });
         writeSecretFile(jsonKeyFilePath, jsonCredsString);
-        this.tempFiles.push(jsonKeyFilePath);
+        this.trackTempFile(jsonKeyFilePath);
 
         return jsonKeyFilePath;
     }
@@ -158,7 +158,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
         const tokenFilePath = path.join(resolveWifTempDir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);
-        this.tempFiles.push(tokenFilePath);
+        this.trackTempFile(tokenFilePath);
 
         const audience = `//iam.googleapis.com/projects/${params.projectNumber}/locations/global/workloadIdentityPools/${params.poolId}/providers/${params.providerId}`;
 
@@ -173,7 +173,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
         const credentialsFilePath = path.join(resolveWifTempDir(), `${params.credentialsFilePrefix}-${uuidV4()}.json`);
         writeSecretFile(credentialsFilePath, JSON.stringify(credentials));
-        this.tempFiles.push(credentialsFilePath);
+        this.trackTempFile(credentialsFilePath);
 
         return credentialsFilePath;
     }

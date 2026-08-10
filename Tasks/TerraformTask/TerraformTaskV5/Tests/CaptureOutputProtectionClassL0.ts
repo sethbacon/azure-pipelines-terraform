@@ -49,8 +49,8 @@ class TestHandler extends BaseTerraformCommandHandler {
         return this.nextCapture;
     }
 
-    public get trackedTempFiles(): string[] { return this.tempFiles; }
-    public get trackedEmergencyOnlyTempFiles(): string[] { return this.emergencyOnlyTempFiles; }
+    public get trackedTempFiles(): readonly string[] { return this.tempFileManager.tracked; }
+    public get trackedEmergencyOnlyTempFiles(): readonly string[] { return this.tempFileManager.trackedEmergencyOnly; }
 }
 
 /** A ToolRunner is only ever created then handed to execWithStdoutCapture (overridden above) by show()/custom() -- a no-op stub is enough to avoid the real tasks.which/tasks.tool lookup. */

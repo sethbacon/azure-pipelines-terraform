@@ -1,8 +1,9 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { getSecureVarFileArgs, SecureFileLoader } from './secure-file-loader';
-import { replaceSecretFile, scrubFile, writeSecretFile } from './secure-temp';
+import { getSecureVarFileArgs } from './secure-file-loader';
+import { replaceSecretFile, writeSecretFile } from './secure-temp';
+import { TempFileManager } from './temp-file-manager';
 import { buildPlanDigest } from './results/plan-digest';
 import { DigestBuildMeta } from './results/digest-common';
 import { buildApplyDigest, ApplyDigestOptions, parseNdjsonLines } from './results/apply-digest';
@@ -283,20 +284,8 @@ export abstract class BaseTerraformCommandHandler {
     providerName: string;
     terraformToolHandler: ITerraformToolHandler;
     backendConfig: Map<string, string>;
-    protected tempFiles: string[];
-    // Files scrubbed+deleted ONLY on a SIGTERM/cancellation (emergencyCleanupTempFiles),
-    // never on normal step completion: a retained `terraform output -json` file
-    // when cleanupOutputFile is off, which downstream steps still read via
-    // jsonOutputVariablesPath during the same job but has no legitimate reader once
-    // the job is cancelled (#650). Since #650's auto-cleanup fix, this now only holds
-    // the output file when it has NO sensitive values, or the operator explicitly
-    // opted out via cleanupOutputFileIfSensitive=false -- a sensitive-containing file
-    // is registered in `tempFiles` instead (normal-completion cleanup) by default.
-    protected emergencyOnlyTempFiles: string[] = [];
-    private secureFileId: string | null = null;
-    // Path of the downloaded secure var file, retained so it can be scrubbed
-    // (zero-overwrite) before the securefiles-common helper unlinks it (#662).
-    private secureFilePath: string | null = null;
+    // The only mutable state this class had, now owned by its own collaborator (#878).
+    protected readonly tempFileManager = new TempFileManager();
     private static readonly OUTPUT_VAR_MAX_LENGTH = 1024;
 
     abstract handleBackend(terraformToolRunner: ToolRunner): Promise<void>;
@@ -365,7 +354,6 @@ export abstract class BaseTerraformCommandHandler {
         this.providerName = "";
         this.terraformToolHandler = new TerraformToolHandler(tasks);
         this.backendConfig = new Map<string, string>();
-        this.tempFiles = [];
     }
 
     // --- Helper methods to reduce duplication ---
@@ -452,9 +440,8 @@ export abstract class BaseTerraformCommandHandler {
     protected async secureVarFileTokens(): Promise<string[]> {
         const result = await getSecureVarFileArgs();
         if (!result) return [];
-        this.secureFileId = result.secureFileId;
-        // Retained so cleanupSecureFile can scrub the file before it is unlinked (#662).
-        this.secureFilePath = result.filePath;
+        // The path is retained so the file can be scrubbed before it is unlinked (#662).
+        this.tempFileManager.setSecureFile(result.secureFileId, result.filePath);
         return [result.varFileArg];
     }
 
@@ -724,88 +711,26 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     /**
-     * Scrubs (zero-overwrites) then unlinks each tracked temp path. Shared by
-     * {@link cleanupTempFiles} (normal end-of-step) and
-     * {@link emergencyCleanupTempFiles} (SIGTERM/cancellation). Best-effort per
-     * file: a scrub or unlink failure is surfaced above debug but never aborts
-     * cleanup of the remaining files.
+     * Tracks a temp path for scrub+delete. Kept on the base class because three
+     * cloud subclasses register their own credential files through it.
      */
-    private scrubAndUnlink(files: string[]): void {
-        for (const filePath of files) {
-            try {
-                if (fs.existsSync(filePath)) {
-                    // Scrub the content (overwrite with zeros) before unlinking, uniformly
-                    // for every tracked secret temp file -- OIDC/UPST/token files, GCP/OCI
-                    // credential JSON, PEM keys, the OCI PAR backend config-<uuid>.tf, and
-                    // cleartext `terraform output -json` dumps alike -- so a crash between
-                    // the overwrite and the unlink is the only remaining exposure window
-                    // (#595). A scrub failure is surfaced but does not skip the unlink
-                    // attempt below.
-                    try {
-                        scrubFile(filePath);
-                    } catch (scrubErr) {
-                        tasks.warning(`Failed to scrub temp file ${filePath} before deletion: ${scrubErr}`);
-                    }
-                    fs.unlinkSync(filePath);
-                    tasks.debug(`Cleaned up temp file: ${filePath}`);
-                }
-            } catch (err) {
-                // A leftover credential temp file (OIDC token / GCP or OCI key)
-                // is a real exposure on a self-hosted agent -- surface it
-                // above debug.
-                tasks.warning(`Failed to clean up temp file ${filePath}: ${err}`);
-            }
-        }
+    protected trackTempFile(filePath: string): void {
+        this.tempFileManager.track(filePath);
     }
 
-    /**
-     * Scrubs+deletes the secure var file (via securefiles-common) if one was
-     * downloaded. The downloaded path is scrubbed (zero-overwrite) before the
-     * vendored helper unlinks it (#662), matching the scrub-then-unlink every
-     * other credential temp file gets -- the secure var file (.tfvars/.pkrvars)
-     * commonly carries the very secrets passed as `-var-file`.
-     */
-    private cleanupSecureFile(): void {
-        if (!this.secureFileId) return;
-        try {
-            new SecureFileLoader().deleteSecureFile(this.secureFileId, this.secureFilePath ?? undefined);
-        } catch (err) {
-            tasks.warning(`Failed to clean up secure file: ${err}`);
-        }
-        this.secureFileId = null;
-        this.secureFilePath = null;
-    }
-
-    /**
-     * End-of-step cleanup (normal completion). Scrubs+deletes every tracked temp
-     * file and the secure var file. Deliberately does NOT touch
-     * {@link emergencyOnlyTempFiles} -- those (a retained `terraform output -json`
-     * file when cleanupOutputFile is off AND it either has no sensitive values or
-     * the operator opted out via cleanupOutputFileIfSensitive=false) must survive
-     * a normal step so downstream steps can still read them via the documented
-     * output-variable contract; they are cleaned only on cancellation (#650).
-     */
+    /** End-of-step cleanup (normal completion). */
     public cleanupTempFiles(): void {
-        this.scrubAndUnlink(this.tempFiles);
-        this.tempFiles = [];
-        this.cleanupSecureFile();
+        this.tempFileManager.cleanup();
     }
 
     /**
      * Cancellation cleanup (SIGTERM/SIGINT/uncaughtException, via
-     * ParentCommandHandler.emergencyCleanup). Cleans everything
-     * {@link cleanupTempFiles} does, PLUS {@link emergencyOnlyTempFiles}: on a
-     * cancellation there is no legitimate downstream reader left for a retained
-     * (non-sensitive, or explicitly opted-out) output file, so its values are
-     * scrubbed+deleted then rather than left on a reused self-hosted agent's
-     * temp dir until job end (#650).
+     * ParentCommandHandler.emergencyCleanup). Must stay synchronous: it runs from
+     * a process-level signal handler, where a returned promise would not be
+     * awaited before the process exits.
      */
     public emergencyCleanupTempFiles(): void {
-        this.scrubAndUnlink(this.tempFiles);
-        this.tempFiles = [];
-        this.scrubAndUnlink(this.emergencyOnlyTempFiles);
-        this.emergencyOnlyTempFiles = [];
-        this.cleanupSecureFile();
+        this.tempFileManager.emergencyCleanup();
     }
 
     /**
@@ -1028,9 +953,9 @@ export abstract class BaseTerraformCommandHandler {
                 // a cancellation, where no legitimate downstream reader remains.
                 if (hasSensitive) {
                     if (tasks.getBoolInput('cleanupShowFileIfSensitive', false)) {
-                        this.tempFiles.push(showFilePath);
+                        this.tempFileManager.track(showFilePath);
                     } else {
-                        this.emergencyOnlyTempFiles.push(showFilePath);
+                        this.tempFileManager.trackEmergencyOnly(showFilePath);
                     }
                 }
             }
@@ -1115,9 +1040,9 @@ export abstract class BaseTerraformCommandHandler {
         // on a reused self-hosted agent's temp dir until job end.
         if (tasks.getBoolInput('cleanupOutputFile', false) ||
             (hasSensitiveOutputs && tasks.getBoolInput('cleanupOutputFileIfSensitive', false))) {
-            this.tempFiles.push(jsonOutputVariablesFilePath);
+            this.tempFileManager.track(jsonOutputVariablesFilePath);
         } else {
-            this.emergencyOnlyTempFiles.push(jsonOutputVariablesFilePath);
+            this.tempFileManager.trackEmergencyOnly(jsonOutputVariablesFilePath);
         }
 
         // Auto-set pipeline variables from terraform output
@@ -1481,9 +1406,9 @@ export abstract class BaseTerraformCommandHandler {
                 const hasSensitive = commandOptionsContainsJsonFlag(commandOptions) &&
                     this.warnIfSensitiveOutputs(commandOutput.stdout, customFilePath);
                 if (hasSensitive) {
-                    this.tempFiles.push(customFilePath);
+                    this.tempFileManager.track(customFilePath);
                 } else {
-                    this.emergencyOnlyTempFiles.push(customFilePath);
+                    this.tempFileManager.trackEmergencyOnly(customFilePath);
                 }
                 result = commandOutput.code;
                 if (result !== 0) {
@@ -2204,7 +2129,7 @@ export abstract class BaseTerraformCommandHandler {
                 sensitive = true;
                 if (tasks.getBoolInput('failOnSensitiveOutputs', false)) {
                     if (filePath) {
-                        this.tempFiles.push(filePath);
+                        this.tempFileManager.track(filePath);
                         throw new Error(tasks.loc('ShowSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
                     }
                     throw new Error(tasks.loc('ShowSensitiveOutputsConsoleStrictFailure', sensitiveKeys.length, sensitiveKeys.join(', ')));
@@ -2280,7 +2205,7 @@ export abstract class BaseTerraformCommandHandler {
         if (sensitiveKeys.length === 0) return false;
 
         if (tasks.getBoolInput('failOnSensitiveOutputs', false) && !tasks.getBoolInput('cleanupOutputFile', false)) {
-            this.tempFiles.push(filePath);
+            this.tempFileManager.track(filePath);
             throw new Error(tasks.loc('OutputSensitiveOutputsStrictFailure', filePath, sensitiveKeys.length, sensitiveKeys.join(', ')));
         }
         // #650: state the actual outcome accurately -- with cleanupOutputFileIfSensitive

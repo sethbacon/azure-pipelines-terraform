@@ -21,8 +21,8 @@ class TestHandler extends BaseTerraformCommandHandler {
     async handleBackend(): Promise<void> { /* no-op */ }
     async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> { /* no-op */ }
     async configureBackendCredentials(): Promise<void> { /* no-op */ }
-    public trackTemp(p: string): void { this.tempFiles.push(p); }
-    public trackEmergencyOnly(p: string): void { this.emergencyOnlyTempFiles.push(p); }
+    public trackTemp(p: string): void { this.tempFileManager.track(p); }
+    public trackEmergencyOnly(p: string): void { this.tempFileManager.trackEmergencyOnly(p); }
 }
 
 describe('emergency-only temp-file cleanup (#650)', function () {

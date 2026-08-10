@@ -70,7 +70,7 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency cleanup then re-rais
     async handleBackend(): Promise<void> { /* no-op: not exercised by this test */ }
     async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> { /* no-op: not exercised by this test */ }
     async configureBackendCredentials(): Promise<void> { /* no-op: not exercised by this test */ }
-    public trackTemp(target: string): void { this.tempFiles.push(target); }
+    public trackTemp(target: string): void { this.tempFileManager.track(target); }
   }
 
   beforeEach(() => {

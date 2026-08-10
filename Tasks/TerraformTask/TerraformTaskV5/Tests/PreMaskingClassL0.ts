@@ -267,7 +267,7 @@ describe('Pre-mask defect class — credential emitted before it was registered 
             // M3 in its PEM guise: normalizePem rewrites the key to a byte-different
             // on-disk form, which needs its own registration.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const tempFiles: string[] = (handler as any).tempFiles;
+            const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
             assert.strictEqual(tempFiles.length, 1, 'exactly one tracked temp file: the OCI key');
             const onDisk = fs.readFileSync(tempFiles[0], 'utf8');
             const onDiskBody = onDisk.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('-----'));

@@ -141,32 +141,33 @@ azure-pipelines-terraform/
 
 ### Source files: `Tasks/TerraformTask/TerraformTaskV5/src/`
 
-| File                                 | Role                                                                                           |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `index.ts`                           | Entry point - reads `provider` and `command` inputs, delegates to `ParentCommandHandler`       |
-| `parent-handler.ts`                  | Routes provider/backend name to the correct handler class                                      |
-| `base-terraform-command-handler.ts`  | Abstract base with shared command implementations                                              |
-| `terraform.ts`                       | `TerraformToolHandler` - locates terraform binary and builds `ToolRunner`                      |
-| `terraform-commands.ts`              | Data classes: `TerraformBaseCommandInitializer`, `TerraformAuthorizationCommandInitializer`    |
-| `azure-terraform-command-handler.ts` | AzureRM-specific backend and provider auth (MSI, WorkloadIdentityFederation, ServicePrincipal) |
-| `aws-terraform-command-handler.ts`   | AWS-specific backend and provider auth                                                         |
-| `gcp-terraform-command-handler.ts`   | GCP-specific backend and provider auth                                                         |
-| `oci-terraform-command-handler.ts`   | OCI-specific backend (HTTP backend via PAR URL) and provider auth                              |
-| `environment-variables.ts`           | Helper for setting environment variables with tracking and cleanup                             |
-| `secure-file-loader.ts`              | Downloads secure var files from ADO Secure Files library                                       |
-| `id-token-generator.ts`              | Generates OIDC ID tokens for Workload Identity Federation fallback                             |
-| `secure-temp.ts`                     | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
-| `retry.ts`                           | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
-| `generic-terraform-command-handler.ts` | `TerraformCommandHandlerGeneric` — generic backend (`backendType: generic`) wired via `-backend-config` file/args |
-| `hcp-terraform-command-handler.ts`     | `TerraformCommandHandlerHCP` — HCP Terraform / Terraform Cloud backend (sets `TF_TOKEN_app_terraform_io` from `backendHCPToken`) |
-| `backend-detection.ts`                 | Maps a Terraform `backend.type` (from `.terraform/terraform.tfstate`) to the cloud whose credentials the backend needs — enables cross-cloud state-backend credential injection (bounded state-file read) |
-| `oci-token-exchange.ts`                | Exchanges the ADO OIDC token for an OCI UPST (User Principal Session Token) — the second hop of the OCI WIF flow; classifies retryable vs. deterministic failures + capped `Retry-After` |
-| `pem-normalizer.ts`                    | Normalizes a single-line ADO-delivered PEM private key to RFC 7468 format and validates it via `crypto.createPrivateKey()` (OCI and GCP private-key auth) |
-| `proxy-config.ts`                      | Builds `fetch()` options routing the OIDC/OCI outbound HTTPS calls through the agent's configured proxy (`Agent.ProxyUrl`/`Agent.ProxyUsername`/`Agent.ProxyPassword`) |
-| `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers |
-| `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant |
-| `endpoint-data-secret.ts`              | Reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value (`ENDPOINT_DATA_*` is not vaulted, unlike `AUTH`/`SECRET`/`INPUT`) |
-| `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them |
+| File                                   | Role                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`                             | Entry point - reads `provider` and `command` inputs, delegates to `ParentCommandHandler`                                                                                                                                                                                                                                                     |
+| `parent-handler.ts`                    | Routes provider/backend name to the correct handler class                                                                                                                                                                                                                                                                                    |
+| `base-terraform-command-handler.ts`    | Abstract base with shared command implementations                                                                                                                                                                                                                                                                                            |
+| `terraform.ts`                         | `TerraformToolHandler` - locates terraform binary and builds `ToolRunner`                                                                                                                                                                                                                                                                    |
+| `terraform-commands.ts`                | Data classes: `TerraformBaseCommandInitializer`, `TerraformAuthorizationCommandInitializer`                                                                                                                                                                                                                                                  |
+| `azure-terraform-command-handler.ts`   | AzureRM-specific backend and provider auth (MSI, WorkloadIdentityFederation, ServicePrincipal)                                                                                                                                                                                                                                               |
+| `aws-terraform-command-handler.ts`     | AWS-specific backend and provider auth                                                                                                                                                                                                                                                                                                       |
+| `gcp-terraform-command-handler.ts`     | GCP-specific backend and provider auth                                                                                                                                                                                                                                                                                                       |
+| `oci-terraform-command-handler.ts`     | OCI-specific backend (HTTP backend via PAR URL) and provider auth                                                                                                                                                                                                                                                                            |
+| `environment-variables.ts`             | Helper for setting environment variables with tracking and cleanup                                                                                                                                                                                                                                                                           |
+| `temp-file-manager.ts`                 | Owns the command handler's temp-file lifecycle: the two tracking tiers (normal-completion vs cancellation-only, #650), scrub-then-unlink of each tracked path (#595), and the secure var file's scrub-before-delete (#662)                                                                                                                   |
+| `secure-file-loader.ts`                | Downloads secure var files from ADO Secure Files library                                                                                                                                                                                                                                                                                     |
+| `id-token-generator.ts`                | Generates OIDC ID tokens for Workload Identity Federation fallback                                                                                                                                                                                                                                                                           |
+| `secure-temp.ts`                       | Secure temp-file primitives: owner-only 0600 + O_EXCL on Unix, a restrictive icacls DACL on Windows (both fail closed), plus symlink-guarded `scrubFile()` zero-overwrite-before-unlink (#595) — canonical source; byte-identical copy also in TerraformDriftReportV1 and TerraformPolicyCheckV1, gated by `scripts/check-shared-modules.js` |
+| `retry.ts`                             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js`                                                                                                                    |
+| `generic-terraform-command-handler.ts` | `TerraformCommandHandlerGeneric` — generic backend (`backendType: generic`) wired via `-backend-config` file/args                                                                                                                                                                                                                            |
+| `hcp-terraform-command-handler.ts`     | `TerraformCommandHandlerHCP` — HCP Terraform / Terraform Cloud backend (sets `TF_TOKEN_app_terraform_io` from `backendHCPToken`)                                                                                                                                                                                                             |
+| `backend-detection.ts`                 | Maps a Terraform `backend.type` (from `.terraform/terraform.tfstate`) to the cloud whose credentials the backend needs — enables cross-cloud state-backend credential injection (bounded state-file read)                                                                                                                                    |
+| `oci-token-exchange.ts`                | Exchanges the ADO OIDC token for an OCI UPST (User Principal Session Token) — the second hop of the OCI WIF flow; classifies retryable vs. deterministic failures + capped `Retry-After`                                                                                                                                                     |
+| `pem-normalizer.ts`                    | Normalizes a single-line ADO-delivered PEM private key to RFC 7468 format and validates it via `crypto.createPrivateKey()` (OCI and GCP private-key auth)                                                                                                                                                                                    |
+| `proxy-config.ts`                      | Builds `fetch()` options routing the OIDC/OCI outbound HTTPS calls through the agent's configured proxy (`Agent.ProxyUrl`/`Agent.ProxyUsername`/`Agent.ProxyPassword`)                                                                                                                                                                       |
+| `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers                                                                                                                                                                          |
+| `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant                                                                                                                           |
+| `endpoint-data-secret.ts`              | Reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value (`ENDPOINT_DATA_*` is not vaulted, unlike `AUTH`/`SECRET`/`INPUT`)                                                                                                                                                                  |
+| `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them                                                                                                                                                                                                                               |
 
 ### Manifest (`task.json`) size & organization convention
 
@@ -182,15 +183,15 @@ New inputs should extend an existing group rather than adding a parallel section
 
 Builds the redacted JSON digests published to the **Terraform** tab (see `docs/design/plan-apply-digest-spec.md` for the frozen schema/redaction contract):
 
-| File                | Role                                                                                                     |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `digest-schema.ts`  | The `PlanDigest`/`ApplyDigest`/`StateDigest` TypeScript shape (schemaVersion 1) — byte-identical copy in `src/tab/`, gated by `scripts/check-shared-modules.js` |
-| `caps.ts`           | Size/DoS caps (max resources, max attribute changes, byte ceilings, etc.) — byte-identical copy in `src/tab/`, same gate |
-| `redact.ts`         | The recursive redaction core: converts a raw value + its `*_sensitive`/`*_unknown` mask maps into a `RedactedValue`, fail-closed on mask/value shape mismatch |
-| `plan-digest.ts`    | Builds a `PlanDigest` from a parsed `terraform show -json <planfile>` object; also accepts an optional `mode: 'destroy'` (Phase 5) so a destroy plan is tagged `planMode: "destroy"` for the tab to label — same builder, same shape, no new type |
-| `apply-digest.ts`   | Builds an `ApplyDigest` from the `terraform apply -json` NDJSON event stream                               |
-| `state-digest.ts`   | (Phase 5) Builds a `StateDigest` from a parsed `terraform show -json` of the **current state** — a point-in-time resource/data-source/output inventory (no change actions, no before/after, no unknown), redacted against each resource's own `sensitive_values` via the same `redact.ts` core |
-| `secret-scrub.ts`   | Freeform-text scrub for apply diagnostics (known-secret string replacement + entropy/format heuristic) and attachment-name sanitization |
+| File               | Role                                                                                                                                                                                                                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `digest-schema.ts` | The `PlanDigest`/`ApplyDigest`/`StateDigest` TypeScript shape (schemaVersion 1) — byte-identical copy in `src/tab/`, gated by `scripts/check-shared-modules.js`                                                                                                                                |
+| `caps.ts`          | Size/DoS caps (max resources, max attribute changes, byte ceilings, etc.) — byte-identical copy in `src/tab/`, same gate                                                                                                                                                                       |
+| `redact.ts`        | The recursive redaction core: converts a raw value + its `*_sensitive`/`*_unknown` mask maps into a `RedactedValue`, fail-closed on mask/value shape mismatch                                                                                                                                  |
+| `plan-digest.ts`   | Builds a `PlanDigest` from a parsed `terraform show -json <planfile>` object; also accepts an optional `mode: 'destroy'` (Phase 5) so a destroy plan is tagged `planMode: "destroy"` for the tab to label — same builder, same shape, no new type                                              |
+| `apply-digest.ts`  | Builds an `ApplyDigest` from the `terraform apply -json` NDJSON event stream                                                                                                                                                                                                                   |
+| `state-digest.ts`  | (Phase 5) Builds a `StateDigest` from a parsed `terraform show -json` of the **current state** — a point-in-time resource/data-source/output inventory (no change actions, no before/after, no unknown), redacted against each resource's own `sensitive_values` via the same `redact.ts` core |
+| `secret-scrub.ts`  | Freeform-text scrub for apply diagnostics (known-secret string replacement + entropy/format heuristic) and attachment-name sanitization                                                                                                                                                        |
 
 `redact.ts` and `state-digest.ts` have only one copy each (task-side); neither is duplicated into `src/tab/` — the task produces a digest, the tab only ever consumes an already-redacted one — so they are intentionally not in the `check-shared-modules.js` parity families. `digest-schema.ts`/`caps.ts` remain the byte-identical parity families; the Phase 5 `StateDigest` type and `MAX_STATE_RESOURCES`/`MAX_STATE_ATTRS_PER_RESOURCE` caps were added to those two existing files (no new family needed).
 
@@ -249,11 +250,11 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 - Pure config generation — no network calls, no credentials needed
 - Intended to run once per agent job, before `terraform init`
 
-| File                  | Role                                                       |
-| --------------------- | ---------------------------------------------------------- |
-| `index.ts`            | Entry point — reads inputs, validates URL, writes config   |
-| `config-generator.ts` | Pure function generating HCL `provider_installation` block |
-| `secure-temp.ts`      | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) used for the generated `.terraformrc` |
+| File                      | Role                                                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`                | Entry point — reads inputs, validates URL, writes config                                                                                                                                                               |
+| `config-generator.ts`     | Pure function generating HCL `provider_installation` block                                                                                                                                                             |
+| `secure-temp.ts`          | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) used for the generated `.terraformrc`                                                    |
 | `url-secret-redaction.ts` | Redacts credential-bearing query parameters (Azure `sig=`, AWS `X-Amz-Signature`/`X-Amz-Credential`/`X-Amz-Security-Token`, GCS `X-Goog-*`) and `user:password@` userinfo from a URL before it can reach the build log |
 
 ## TerraformDocsInstaller Task (TerraformDocsInstallerV1)
@@ -272,18 +273,18 @@ Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a pol
 
 Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates policies against Terraform plan JSON (`terraform show -json` output). Engine dispatch in `index.ts`:
 
-| File                 | Role                                                                                                                                                              |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`           | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs                                                                   |
-| `opa-engine.ts`      | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined)                                                   |
-| `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override) |
+| File                 | Role                                                                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`           | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs                                                                                                                                                                           |
+| `opa-engine.ts`      | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined)                                                                                                                                                           |
+| `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override)                                                                                                         |
 | `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token delivered as an `http.extraheader` Authorization header via per-invocation `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` env vars, not argv, so it never appears in the child process's command line) |
-| `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                   |
-| `exec-timeout.ts`    | Wall-clock ceiling for a local policy-engine subprocess — task-lib's `execAsync` bounds captured output size but not time, so a hung engine would otherwise run to the ADO job timeout |
-| `output-cap.ts`      | Bounded stdout/stderr capture (`attachBoundedCapture`) so a runaway engine cannot grow one JS string until the agent OOMs (#632)                                    |
-| `secure-temp.ts`     | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
-| `retry.ts`           | Bounded-backoff retry loop for the policy-repo git clone — byte-identical copy shared with TerraformTaskV5 and the installer family, gated by `scripts/check-shared-modules.js` |
-| `types.ts`           | Shared type definitions for the engines and the orchestrator                                                                                                       |
+| `results.ts`         | Raw output file + JUnit XML + `results.publish` logging command                                                                                                                                                                                                           |
+| `exec-timeout.ts`    | Wall-clock ceiling for a local policy-engine subprocess — task-lib's `execAsync` bounds captured output size but not time, so a hung engine would otherwise run to the ADO job timeout                                                                                    |
+| `output-cap.ts`      | Bounded stdout/stderr capture (`attachBoundedCapture`) so a runaway engine cannot grow one JS string until the agent OOMs (#632)                                                                                                                                          |
+| `secure-temp.ts`     | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's                                                                                                  |
+| `retry.ts`           | Bounded-backoff retry loop for the policy-repo git clone — byte-identical copy shared with TerraformTaskV5 and the installer family, gated by `scripts/check-shared-modules.js`                                                                                           |
+| `types.ts`           | Shared type definitions for the engines and the orchestrator                                                                                                                                                                                                              |
 
 The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — the task applies it off the exit code. Policies see the raw `terraform show -json` schema (not the TFC `tfplan/v2` mock). Output variables: `policyResult`, `violationCount`, `resultsFilePath`.
 
@@ -291,14 +292,14 @@ The standalone Sentinel CLI does NOT gate on `enforcement_level` (HCP-only) — 
 
 Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terraform/OpenTofu plan JSON (`terraform show -json` output) into drift counts (create/update/delete) and a changed-resource summary, and optionally POSTs it to a Terraform State Manager (TSM) drift callback URL.
 
-| File              | Role                                                                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`        | Entry point — computes drift counts, orchestrates the callback and SARIF report                                                    |
-| `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot) |
+| File              | Role                                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`        | Entry point — computes drift counts, orchestrates the callback and SARIF report                                                                                                                                           |
+| `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot)                                                                                        |
 | `retry.ts`        | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
-| `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                          |
-| `secure-temp.ts`  | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
-| `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                               |
+| `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                                                                                                                 |
+| `secure-temp.ts`  | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's                                                  |
+| `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                                                                                                                      |
 
 Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`, `summaryFilePath` (opt-in `cleanupSummaryFile` removes it after use), `sarifFilePath`.
 
@@ -306,31 +307,31 @@ Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`,
 
 Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes a Terraform module version to HCP Terraform (private module registry) or a private/self-hosted Terraform registry.
 
-| File                   | Role                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| `index.ts`             | Entry point — reads inputs, dispatches to the chosen `registryType`                                     |
-| `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
-| `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
-| `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
+| File                   | Role                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`             | Entry point — reads inputs, dispatches to the chosen `registryType`                                                                                                                                                       |
+| `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                                                                                                                                  |
+| `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent                                                                                                                            |
+| `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror)                                                                                                                   |
 | `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
-| `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                      |
-| `types.ts`             | Shared type definitions for both publishers                                                             |
+| `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                                                                                                                                        |
+| `types.ts`             | Shared type definitions for both publishers                                                                                                                                                                               |
 
 ## Markdown2Html Task (Markdown2HtmlV1)
 
 Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to HTML for publishing as ServiceNow knowledge base articles — parses YAML front matter, renders via `markdown-it` with `highlight.js` syntax highlighting, and resolves `{% include %}`-style file includes.
 
-| File                  | Role                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| `index.ts`            | Entry point — orchestrates the conversion pipeline                                          |
-| `converter.ts`        | Markdown → HTML conversion pipeline                                                         |
-| `frontmatter.ts`      | YAML front-matter parsing (`js-yaml`)                                                       |
-| `includes.ts`         | Resolves `{% include %}`-style file includes                                                |
-| `highlight-theme.ts`  | Syntax-highlighting theme wiring for `highlight.js`                                         |
-| `document.ts`         | Document model / metadata                                                                   |
-| `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                  |
-| `html-sanitizer.ts`   | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in PublishKbArticleV1, gated by `scripts/check-shared-modules.js` |
-| `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1 |
+| File                  | Role                                                                                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`            | Entry point — orchestrates the conversion pipeline                                                                                                                   |
+| `converter.ts`        | Markdown → HTML conversion pipeline                                                                                                                                  |
+| `frontmatter.ts`      | YAML front-matter parsing (`js-yaml`)                                                                                                                                |
+| `includes.ts`         | Resolves `{% include %}`-style file includes                                                                                                                         |
+| `highlight-theme.ts`  | Syntax-highlighting theme wiring for `highlight.js`                                                                                                                  |
+| `document.ts`         | Document model / metadata                                                                                                                                            |
+| `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                                                                                           |
+| `html-sanitizer.ts`   | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in PublishKbArticleV1, gated by `scripts/check-shared-modules.js`                       |
+| `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1                                                                          |
 | `html-sanitizer.ts`   | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in PublishKbArticleV1 (#820) |
 
 Output variable: `htmlFilePath`.
@@ -339,21 +340,21 @@ Output variable: `htmlFilePath`.
 
 Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a knowledge base article in ServiceNow — create, update, workflow-state transition, and image-attachment sync (content-hash-based idempotency).
 
-| File                   | Role                                                                                                                       |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`             | Entry point — orchestrates the create/update/workflow flow                                                                 |
-| `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                     |
-| `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                    |
-| `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                         |
+| File                   | Role                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`             | Entry point — orchestrates the create/update/workflow flow                                                                                                                                                                |
+| `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                                                                                                                    |
+| `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                                                                                                                   |
+| `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                                                                                                                        |
 | `retry.ts`             | Shared bounded exponential-backoff retry (`retryAsync`) + capped 429 `Retry-After` parsing (`parseRetryAfterMs`) — byte-identical across all seven tasks in this retry family, gated by `scripts/check-shared-modules.js` |
-| `attachments.ts`       | Image-attachment upload/list/sync                                                                                          |
-| `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                          |
-| `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks |
-| `html-sanitizer.ts`    | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in Markdown2HtmlV1, gated by `scripts/check-shared-modules.js` |
-| `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                   |
-| `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                               |
-| `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                       |
-| `html-sanitizer.ts`    | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in Markdown2HtmlV1 (#820) |
+| `attachments.ts`       | Image-attachment upload/list/sync                                                                                                                                                                                         |
+| `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                                                                                                                         |
+| `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks                                                                                                |
+| `html-sanitizer.ts`    | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in Markdown2HtmlV1, gated by `scripts/check-shared-modules.js`                                                                               |
+| `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                                                                                                                  |
+| `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                                                                                                                              |
+| `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                                                                                                                      |
+| `html-sanitizer.ts`    | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in Markdown2HtmlV1 (#820)                                                         |
 
 Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.
 
@@ -412,23 +413,23 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 
 ## Key Dependencies
 
-| Package                                    | Purpose                                                                                |
-| ------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `azure-pipelines-task-lib`                 | ADO task SDK (inputs, variables, tool runners) — all 11 tasks                          |
-| `azure-pipelines-tool-lib`                 | Tool download/cache — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller |
-| `azure-devops-node-api`                    | Azure DevOps REST API client — TerraformTaskV5                                         |
-| `azure-pipelines-tasks-artifacts-common`   | Shared artifact utilities — TerraformTaskV5                                            |
-| `azure-pipelines-tasks-securefiles-common` | Secure file download — TerraformTaskV5 (`secureVarsFile` input)                        |
-| `openpgp`                                  | GPG signature verification for installer downloads                                     |
-| `undici`                                   | HTTP/proxy client — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller   |
-| `sanitize-html`                             | Primary allowlist HTML sanitizer (final stored-XSS defense) — Markdown2Html            |
+| Package                                    | Purpose                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `azure-pipelines-task-lib`                 | ADO task SDK (inputs, variables, tool runners) — all 11 tasks                                                                                         |
+| `azure-pipelines-tool-lib`                 | Tool download/cache — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller                                                                |
+| `azure-devops-node-api`                    | Azure DevOps REST API client — TerraformTaskV5                                                                                                        |
+| `azure-pipelines-tasks-artifacts-common`   | Shared artifact utilities — TerraformTaskV5                                                                                                           |
+| `azure-pipelines-tasks-securefiles-common` | Secure file download — TerraformTaskV5 (`secureVarsFile` input)                                                                                       |
+| `openpgp`                                  | GPG signature verification for installer downloads                                                                                                    |
+| `undici`                                   | HTTP/proxy client — TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller                                                                  |
+| `sanitize-html`                            | Primary allowlist HTML sanitizer (final stored-XSS defense) — Markdown2Html                                                                           |
 | `cheerio`                                  | Markdown2Html: defense-in-depth pre-filter parsing ahead of `sanitize-html`; PublishKbArticle: independent `html-validate.ts` content-inspection gate |
-| `markdown-it`                              | Markdown parser — Markdown2Html                                                        |
-| `highlight.js`                             | Syntax highlighting — Markdown2Html                                                    |
-| `js-yaml`                                  | YAML front-matter parsing — Markdown2Html                                              |
-| `terraform-drift-contract`                 | Drift-summary contract types — TerraformDriftReport                                    |
-| `typescript`                               | Build toolchain                                                                        |
-| `mocha` + `ts-node`                        | Test framework                                                                         |
+| `markdown-it`                              | Markdown parser — Markdown2Html                                                                                                                       |
+| `highlight.js`                             | Syntax highlighting — Markdown2Html                                                                                                                   |
+| `js-yaml`                                  | YAML front-matter parsing — Markdown2Html                                                                                                             |
+| `terraform-drift-contract`                 | Drift-summary contract types — TerraformDriftReport                                                                                                   |
+| `typescript`                               | Build toolchain                                                                                                                                       |
+| `mocha` + `ts-node`                        | Test framework                                                                                                                                        |
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-task bundled-dependency breakdown.
 
@@ -445,14 +446,14 @@ The `Check Shared Module Parity` job also runs `scripts/check-enforced-disciplin
 
 Verified tooling snapshot (periodically re-verified rather than tracked to an exact date — re-check locally with `--version` if it's been a while since the table below was last touched):
 
-| Tool               | Status                 | Version                                          |
-| ------------------ | ---------------------- | ------------------------------------------------ |
-| Node.js            | Installed              | v24.14.0 (Active LTS — matches CI target)        |
-| npm                | Installed              | v11.9.0                                          |
-| TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install`         |
+| Tool               | Status                 | Version                                                                                                  |
+| ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| Node.js            | Installed              | v24.14.0 (Active LTS — matches CI target)                                                                |
+| npm                | Installed              | v11.9.0                                                                                                  |
+| TypeScript (`tsc`) | Not globally installed | Available as dev dep after `npm install`                                                                 |
 | `tfx-cli`          | Not globally installed | Available as dev dep after `npm install` at root (pinned `0.23.2` at the repo root — see `package.json`) |
-| GitHub CLI (`gh`)  | Installed              | v2.87.3                                          |
-| Terraform          | Installed              | v1.14.6 at `/c/dev/terraform`                    |
+| GitHub CLI (`gh`)  | Installed              | v2.87.3                                                                                                  |
+| Terraform          | Installed              | v1.14.6 at `/c/dev/terraform`                                                                            |
 
 CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). Node 20 is EOL as of April 2026.
 

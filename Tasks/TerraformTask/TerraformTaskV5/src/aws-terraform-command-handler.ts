@@ -94,7 +94,7 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
 
         const tokenFilePath = path.join(resolveWifTempDir(), `${params.tokenFilePrefix}-${uuidV4()}.jwt`);
         writeSecretFile(tokenFilePath, oidcToken);
-        this.tempFiles.push(tokenFilePath);
+        this.trackTempFile(tokenFilePath);
 
         // Clear the static keys FIRST: the SDK matches them before the
         // web-identity token file, so an inherited pair would silently discard

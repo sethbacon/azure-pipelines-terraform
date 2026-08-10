@@ -93,7 +93,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         await handler.handleProvider(makeCommand());
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tempFiles: string[] = (handler as any).tempFiles;
+        const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
         assert.strictEqual(tempFiles.length, 1, 'exactly one tracked temp file: the private key');
         const [privateKeyPath] = tempFiles;
 
@@ -160,7 +160,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         await handler.handleProvider(makeCommand());
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tempFiles: string[] = (handler as any).tempFiles;
+        const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
         assert.strictEqual(process.env['TF_VAR_tenancy_ocid'], 'ocid1.tenancy.oc1..dummy');
         assert.strictEqual(process.env['TF_VAR_user_ocid'], 'ocid1.user.oc1..dummy');
         assert.strictEqual(process.env['TF_VAR_region'], 'us-ashburn-1');
@@ -181,7 +181,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        assert.strictEqual((handler as any).tempFiles.length, 0, 'no temp file is tracked when the key is missing');
+        assert.strictEqual((handler as any).tempFileManager.tracked.length, 0, 'no temp file is tracked when the key is missing');
         assert.strictEqual(setSecretCalls.length, 0, 'nothing is masked when there is no key to mask');
     });
 });
