@@ -1,6 +1,7 @@
 import tasks = require("azure-pipelines-task-lib/task");
 import { buildProxyFetchOptions } from './proxy-config';
 import { retryAsync, parseRetryAfterMs } from './retry';
+import { EnvironmentVariableHelper } from './environment-variables';
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {
     const tokenGenerator = new TokenGenerator();
@@ -168,7 +169,7 @@ export class TokenGenerator {
         // The agent OAuth token is a bearer credential. Register it as a secret
         // in-module so masking does not depend on the agent's implicit
         // System.AccessToken registration, matching the token-refresh path.
-        tasks.setSecret(accessToken);
+        EnvironmentVariableHelper.registerSecret(accessToken);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -230,7 +231,7 @@ export class TokenGenerator {
         }
 
         const oidcToken = oidcObject.oidcToken;
-        tasks.setSecret(oidcToken);
+        EnvironmentVariableHelper.registerSecret(oidcToken);
         return oidcToken;
     }
 }

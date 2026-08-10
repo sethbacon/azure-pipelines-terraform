@@ -1,4 +1,4 @@
-import tasks = require('azure-pipelines-task-lib/task');
+import { EnvironmentVariableHelper } from './environment-variables';
 
 /**
  * Registers every non-empty line of a (possibly multi-line) credential with the
@@ -17,7 +17,7 @@ export function maskSecretLines(value: string): void {
     for (const line of value.split('\n')) {
         const trimmed = line.trim();
         if (trimmed) {
-            tasks.setSecret(trimmed);
+            EnvironmentVariableHelper.registerSecret(trimmed);
         }
     }
 }

@@ -128,7 +128,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // so no boundary-line filtering here.
         for (const line of privateKey.split('\n')) {
             const trimmed = line.trim();
-            if (trimmed) tasks.setSecret(trimmed);
+            if (trimmed) EnvironmentVariableHelper.registerSecret(trimmed);
         }
         const normalized = normalizePem(privateKey);
         // ADO's log masker matches per line, not across embedded newlines, so
@@ -137,7 +137,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // this byte-different on-disk form if it were ever echoed to a log.
         for (const line of normalized.split('\n')) {
             const trimmed = line.trim();
-            if (trimmed && !trimmed.startsWith('-----')) tasks.setSecret(trimmed);
+            if (trimmed && !trimmed.startsWith('-----')) EnvironmentVariableHelper.registerSecret(trimmed);
         }
         const privateKeyFilePath = path.join(resolveWifTempDir(), `keyfile-${uuidV4()}.pem`);
         writeSecretFile(privateKeyFilePath, normalized);
@@ -165,9 +165,8 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             // masked in build logs, matching how every other credential in this task is
             // handled.
             if (parUrl) {
-                tasks.setSecret(parUrl);
+                EnvironmentVariableHelper.registerSecret(parUrl);
             }
-
             // Validate the PAR URL (https-only, reject template-injection syntax) and
             // escape it for safe interpolation into the generated HCL address string.
             // parUrl was tasks.setSecret()'d above, so validation errors never leak it.
@@ -386,7 +385,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         }
         // 1. Get OIDC JWT from Azure DevOps
         const oidcToken = await generateIdToken(command.serviceProviderName);
-        tasks.setSecret(oidcToken);
+        EnvironmentVariableHelper.registerSecret(oidcToken);
 
         // 2. Generate ephemeral RSA-2048 key pair
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
@@ -401,7 +400,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         for (const keyLine of privateKey.split('\n')) {
             const trimmed = keyLine.trim();
             if (trimmed && !trimmed.startsWith('-----')) {
-                tasks.setSecret(trimmed);
+                EnvironmentVariableHelper.registerSecret(trimmed);
             }
         }
 
@@ -409,7 +408,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const identityDomainUrl = tasks.getInput("ociWifIdentityDomainUrl", true)!;
         const clientId = tasks.getInput("ociWifClientId", true)!;
         const upst = await exchangeOidcForUpst(oidcToken, identityDomainUrl, clientId, publicKey);
-        tasks.setSecret(upst);
+        EnvironmentVariableHelper.registerSecret(upst);
 
         // 4. Compute fingerprint of ephemeral public key
         const keyObject = crypto.createPublicKey(publicKey);

@@ -1118,7 +1118,7 @@
         },
         {
             "name": "backendOCIPar",
-            "type": "string",
+            "type": "password",
             "label": "PAR for Terraform remote state file",
             "required": false,
             "helpMarkDown": "The OCI object storage PAR configuration for the Terraform remote state file (optional).<br><br>This PAR URL is a bearer credential (its /p/&lt;token&gt;/ path segment grants read/write to the state bucket). It is written into a generated <code>config-&lt;uuid&gt;.tf</code> file inside the 'Configuration directory' below -- Terraform only loads <code>*.tf</code> files from the working directory, so this file cannot be relocated to a purged temp directory like the task's other credential files. It is written with restrictive permissions and its contents are scrubbed (overwritten) before deletion at the end of the step, but a host crash before that cleanup runs can still leave it on disk. <b>Security-sensitive:</b> <code>terraform init</code> also copies this PAR URL into <code>&lt;Configuration directory&gt;/.terraform/terraform.tfstate</code>, a cache this task does not scrub by default because later plan/apply/etc. steps against the same working directory need it. See the 'Scrub cached backend PAR on cleanup' input (enable only on the last state-touching step), use short-lived/narrowly-scoped PARs, and prefer ephemeral working directories on self-hosted agents.",
@@ -1215,11 +1215,11 @@
         "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsConsoleStrictFailure": "The captured 'terraform show -json' output contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; failing before the output is echoed to the console. Disable 'failOnSensitiveOutputs' to downgrade this to a warning, or set outputTo to 'file' for the existing file-based handling.",
-      "TerraformCommandTimedOut": "Terraform command timed out after %d minute(s) and was terminated. Increase 'commandTimeoutMinutes' if this operation is expected to take longer.",
-      "TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
-      "TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",
-      "TerraformFmtFailed": "Terraform fmt failed with exit code %s",
-      "TerraformTestFailed": "Terraform test failed with exit code %s",
-      "Error_FederatedTokenAquisitionFailed": "Failed to acquire a federated (OIDC) ID token for the service connection. Verify the service connection is configured for Workload Identity Federation and that the pipeline is authorized to use it."
-}
+        "TerraformCommandTimedOut": "Terraform command timed out after %d minute(s) and was terminated. Increase 'commandTimeoutMinutes' if this operation is expected to take longer.",
+        "TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
+        "TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",
+        "TerraformFmtFailed": "Terraform fmt failed with exit code %s",
+        "TerraformTestFailed": "Terraform test failed with exit code %s",
+        "Error_FederatedTokenAquisitionFailed": "Failed to acquire a federated (OIDC) ID token for the service connection. Verify the service connection is configured for Workload Identity Federation and that the pipeline is authorized to use it."
+    }
 }

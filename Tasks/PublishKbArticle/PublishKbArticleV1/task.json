@@ -59,7 +59,7 @@
         },
         {
             "name": "clientSecret",
-            "type": "string",
+            "type": "password",
             "label": "OAuth Client Secret",
             "defaultValue": "",
             "required": false,
@@ -78,7 +78,7 @@
         },
         {
             "name": "password",
-            "type": "string",
+            "type": "password",
             "label": "Password",
             "defaultValue": "",
             "required": false,
