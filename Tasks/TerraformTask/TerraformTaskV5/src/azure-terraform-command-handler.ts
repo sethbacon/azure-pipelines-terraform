@@ -1,7 +1,7 @@
 import tasks = require("azure-pipelines-task-lib/task");
 import { ToolRunner, IExecOptions } from "azure-pipelines-task-lib/toolrunner";
 import { TerraformAuthorizationCommandInitializer } from "./terraform-commands";
-import { BaseTerraformCommandHandler } from "./base-terraform-command-handler";
+import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from "./environment-variables";
 import { generateIdToken } from './id-token-generator';
 import {
@@ -296,7 +296,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         if (subscriptionId) {
             const setTool: ToolRunner = tasks.tool(azPath);
             setTool.arg(["account", "set", "--subscription", subscriptionId]);
-            await this.execWithTimeout(
+            await this.commandExecutor.execWithTimeout(
                 setTool,
                 <IExecOptions>{ silent: true },
                 AZ_LOGIN_TIMEOUT_MS,
@@ -314,7 +314,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
      * exec-and-check sequence verbatim (#732).
      */
     private async execAzLogin(loginTool: ToolRunner): Promise<void> {
-        const loginResult = await this.execWithTimeout(
+        const loginResult = await this.commandExecutor.execWithTimeout(
             loginTool,
             <IExecOptions>{ silent: true },
             AZ_LOGIN_TIMEOUT_MS,

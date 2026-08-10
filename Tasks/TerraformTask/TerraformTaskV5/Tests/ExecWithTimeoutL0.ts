@@ -31,10 +31,10 @@ class TestHandler extends BaseTerraformCommandHandler {
         explicitTimeoutMs?: number,
         explicitTimeoutMessage?: string,
     ): Promise<number> {
-        return this.execWithTimeout(tool, options, explicitTimeoutMs, explicitTimeoutMessage);
+        return this.commandExecutor.execWithTimeout(tool, options, explicitTimeoutMs, explicitTimeoutMessage);
     }
     public commandTimeoutMinutes(): number | undefined {
-        return this.getCommandTimeoutMinutes();
+        return this.commandExecutor.getCommandTimeoutMinutes();
     }
 }
 

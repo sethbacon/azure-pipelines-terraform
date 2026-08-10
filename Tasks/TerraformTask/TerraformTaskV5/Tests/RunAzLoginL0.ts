@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerAzureRM, AZ_LOGIN_TIMEOUT_MS } from '../src/azure-terraform-command-handler';
-import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
+import { CommandExecutor } from '../src/command-executor';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
 
 /**
@@ -226,11 +226,11 @@ describe('runAzLogin — opt-in az login gate, argv shape & secret masking (#635
     /* --- always-on timeout wiring (#822) --- */
 
     it('bounds az login with an always-on timeout, independent of commandTimeoutMinutes', async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a protected method
-        const proto = BaseTerraformCommandHandler.prototype as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a collaborator method
+        const proto = CommandExecutor.prototype as any;
         const original = proto.execWithTimeout;
         const calls: unknown[][] = [];
-        proto.execWithTimeout = function (this: BaseTerraformCommandHandler, ...args: unknown[]) {
+        proto.execWithTimeout = function (this: CommandExecutor, ...args: unknown[]) {
             calls.push(args);
             return original.apply(this, args);
         };
@@ -247,11 +247,11 @@ describe('runAzLogin — opt-in az login gate, argv shape & secret masking (#635
     });
 
     it('bounds az account set with the same always-on timeout when a subscription is provided', async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a protected method
-        const proto = BaseTerraformCommandHandler.prototype as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- prototype-patch a collaborator method
+        const proto = CommandExecutor.prototype as any;
         const original = proto.execWithTimeout;
         const calls: unknown[][] = [];
-        proto.execWithTimeout = function (this: BaseTerraformCommandHandler, ...args: unknown[]) {
+        proto.execWithTimeout = function (this: CommandExecutor, ...args: unknown[]) {
             calls.push(args);
             return original.apply(this, args);
         };
