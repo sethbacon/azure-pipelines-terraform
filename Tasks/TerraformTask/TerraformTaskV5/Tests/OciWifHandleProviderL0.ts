@@ -87,7 +87,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         await (handler as any).handleProviderWIF(makeCommand());
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tempFiles: string[] = (handler as any).tempFiles;
+        const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
         assert.strictEqual(tempFiles.length, 3, 'private key, UPST, and config -- exactly 3 tracked temp files');
         const [privateKeyPath, upstPath, configPath] = tempFiles;
 
@@ -132,7 +132,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         await (handler as any).handleProviderWIF(makeCommand());
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tempFiles: string[] = (handler as any).tempFiles;
+        const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
         const privateKeyPem = fs.readFileSync(tempFiles[0], 'utf-8');
         const nonBoundaryLines = privateKeyPem.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('-----'));
         assert.ok(nonBoundaryLines.length > 0, 'sanity: the real PEM has body lines to mask');
@@ -163,7 +163,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tempFiles: string[] = (handler as any).tempFiles;
+        const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
         assert.strictEqual(tempFiles.length, 2, 'the private key and UPST were tracked before the third call threw');
         for (const f of tempFiles) {
             assert.ok(fs.existsSync(f), `file written before the failure must still exist prior to cleanup: ${f}`);

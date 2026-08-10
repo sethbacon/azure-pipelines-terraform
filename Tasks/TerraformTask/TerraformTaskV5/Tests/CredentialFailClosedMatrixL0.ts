@@ -12,6 +12,7 @@ import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler
 import { TerraformCommandHandlerHCP } from '../src/hcp-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from '../src/generic-terraform-command-handler';
 import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
+import { TempFileManager } from '../src/temp-file-manager';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
 import { EnvironmentVariableHelper } from '../src/environment-variables';
 
@@ -311,8 +312,10 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
                     new TerraformAuthorizationCommandInitializer('plan', '', fixture.serviceConnection ?? ''));
             }
         } finally {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tempFiles is protected
-            (impl as any).tempFiles = [];
+            // Drops tracking without deleting anything, as the previous `tempFiles = []`
+            // did -- these fixtures assert on credential handling, not on cleanup.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tempFileManager is protected
+            (impl as any).tempFileManager = new TempFileManager();
         }
         return impl;
     }

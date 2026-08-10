@@ -141,7 +141,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         }
         const privateKeyFilePath = path.join(resolveWifTempDir(), `keyfile-${uuidV4()}.pem`);
         writeSecretFile(privateKeyFilePath, normalized);
-        this.tempFiles.push(privateKeyFilePath);
+        this.trackTempFile(privateKeyFilePath);
         return privateKeyFilePath;
     }
 
@@ -187,7 +187,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             // (#545); the uuid filename keeps the exclusive create collision-free.
             const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
             writeSecretFile(tfConfigFilePath, config);
-            this.tempFiles.push(tfConfigFilePath);
+            this.trackTempFile(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
             this.registerOciBackendCacheForCleanup(workingDirectory);
             this.parBackendGeneratedThisInit = true;
@@ -208,7 +208,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
      */
     private registerOciBackendCacheForCleanup(workingDirectory: string): void {
         if (!tasks.getBoolInput("cleanupOCIBackendCache", false)) return;
-        this.tempFiles.push(path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`));
+        this.trackTempFile(path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`));
     }
 
     /**
@@ -422,11 +422,11 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
         const privateKeyPath = path.join(tempDir, `oci-wif-key-${sessionId}.pem`);
         writeSecretFile(privateKeyPath, privateKey);
-        this.tempFiles.push(privateKeyPath);
+        this.trackTempFile(privateKeyPath);
 
         const upstPath = path.join(tempDir, `oci-wif-upst-${sessionId}`);
         writeSecretFile(upstPath, upst);
-        this.tempFiles.push(upstPath);
+        this.trackTempFile(upstPath);
 
         const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
         const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
@@ -442,7 +442,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
         const configPath = path.join(tempDir, `oci-wif-config-${sessionId}`);
         writeSecretFile(configPath, configContent);
-        this.tempFiles.push(configPath);
+        this.trackTempFile(configPath);
 
         // 6. Set environment variables for the OCI Terraform provider
         neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
