@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.0...v1.14.1) (2026-08-10)
+
+
+### Security
+
+* **v5:** dispatch commands through a Map, not a prototype-reachable literal ([#930](https://github.com/sethbacon/azure-pipelines-terraform/issues/930)) ([53aff81](https://github.com/sethbacon/azure-pipelines-terraform/commit/53aff8120554517ca03b97434452e0a36efc3e0d))
+
 ## [1.14.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.13.0...v1.14.0) (2026-08-10)
 
 
