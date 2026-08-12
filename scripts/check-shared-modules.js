@@ -362,6 +362,30 @@ const REGION_FAMILIES = [
             'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
         ],
     },
+    {
+        // truncateBody(): the last-line bound on how much of a remote response
+        // body can be interpolated into a thrown error or a log line. Every
+        // transport that surfaces a remote body in an error message carries it,
+        // and until #407 each carried its OWN copy: the two https-client.ts
+        // copies had a falsy guard, while TerraformTaskV5's oci-token-exchange.ts
+        // and PublishKbArticleV1's servicenow-http.ts had independently written
+        // variants without one (servicenow-http.ts even under a different name,
+        // truncate()). Two of the four sat outside every parity mechanism, so a
+        // tightening of the cap -- or a fix to the "does the marker itself leak
+        // length" question -- could land in one transport and be missed in the
+        // rest. All four are now byte-identical and gated here.
+        //
+        // A REGION family rather than a whole-file FAMILY because three of the
+        // four host files are not copies of each other in any other respect;
+        // this is the same reason ProxyTunnelAgent above is region-gated.
+        region: 'TruncateBody',
+        files: [
+            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
+            'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts',
+        ],
+    },
 ];
 
 // Normalize line endings so a CRLF checkout never reads as drift; the bytes that
@@ -406,11 +430,51 @@ function extractRegion(relPath, region) {
     if (closes[0] <= opens[0]) {
         return { ok: false, full, reason: `'${closeToken}' precedes its '${openToken}' in ${relPath}` };
     }
-    return { ok: true, full, content: lines.slice(opens[0] + 1, closes[0]).join('\n') };
+    return {
+        ok: true,
+        full,
+        content: lines.slice(opens[0] + 1, closes[0]).join('\n'),
+        // Marker positions, so --fix can splice a canonical region back in without
+        // disturbing the host file's own surrounding code.
+        lines,
+        openLine: opens[0],
+        closeLine: closes[0],
+    };
 }
 
-function main() {
+// --fix support (#300). The parity gate tells you a canonical module and its
+// copies diverged, but reconciling them was still a manual per-directory copy,
+// which is exactly the "must be made twice and kept in sync by hand" cost the
+// duplication was reported for. These two helpers make the canonical copy the
+// single source you EDIT: fix it once, run `npm run sync:shared`, and every
+// other copy is rewritten from it.
+//
+// Deliberately NOT wired into the build. If syncing ran automatically before
+// packaging, a genuine unintended divergence would be silently repaired instead
+// of failing CI, which would defeat the whole point of the gate -- the gate has
+// to stay fail-closed. Syncing is an explicit authoring step; CI only ever
+// verifies.
+function writeFamilyCopy(canonicalFull, targetFull) {
+    fs.copyFileSync(canonicalFull, targetFull);
+}
+
+function writeRegionCopy(canonicalContent, target) {
+    const spliced = [
+        ...target.lines.slice(0, target.openLine + 1),
+        ...canonicalContent.split('\n'),
+        ...target.lines.slice(target.closeLine),
+    ];
+    fs.writeFileSync(target.full, spliced.join('\n'));
+}
+
+function main(argv = process.argv.slice(2)) {
+    // `--fix` rewrites every non-canonical copy from its canonical source
+    // instead of failing on divergence (#300). A missing canonical or a broken
+    // region marker is still a hard failure even under --fix: there is nothing
+    // trustworthy to sync FROM, so repairing would be a guess.
+    const fix = argv.includes('--fix');
     let hasError = false;
+    let fixedCount = 0;
 
     for (const { dirs, modules } of FAMILIES) {
         const [canonicalDir, ...otherDirs] = dirs;
@@ -429,9 +493,16 @@ function main() {
                     continue;
                 }
                 if (other.content !== base.content) {
-                    console.error(`FAIL: ${file} diverged between ${canonicalDir} and ${dir}`);
-                    console.error(`      reconcile both copies (canonical: ${base.full})`);
-                    hasError = true;
+                    if (fix) {
+                        writeFamilyCopy(base.full, other.full);
+                        console.log(`FIXED: ${file} rewritten from canonical (${canonicalDir} -> ${dir})`);
+                        fixedCount++;
+                    } else {
+                        console.error(`FAIL: ${file} diverged between ${canonicalDir} and ${dir}`);
+                        console.error(`      reconcile both copies (canonical: ${base.full})`);
+                        console.error(`      or run: npm run sync:shared`);
+                        hasError = true;
+                    }
                 } else {
                     console.log(`OK: ${file} identical (${canonicalDir} == ${dir})`);
                 }
@@ -455,9 +526,16 @@ function main() {
                 continue;
             }
             if (other.content !== base.content) {
-                console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
-                console.error(`      reconcile both copies (canonical: ${base.full})`);
-                hasError = true;
+                if (fix) {
+                    writeRegionCopy(base.content, other);
+                    console.log(`FIXED: region '${region}' rewritten from canonical (${canonicalFile} -> ${file})`);
+                    fixedCount++;
+                } else {
+                    console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
+                    console.error(`      reconcile both copies (canonical: ${base.full})`);
+                    console.error(`      or run: npm run sync:shared`);
+                    hasError = true;
+                }
             } else {
                 console.log(`OK: region '${region}' identical (${canonicalFile} == ${file})`);
             }
@@ -466,6 +544,12 @@ function main() {
 
     if (hasError) {
         process.exit(1);
+    }
+    if (fix) {
+        console.log(fixedCount === 0
+            ? 'Nothing to sync: every copy already matches its canonical source.'
+            : `Synced ${fixedCount} cop${fixedCount === 1 ? 'y' : 'ies'} from canonical. Review the diff before committing.`);
+        return;
     }
     console.log('All shared-module parity checks passed.');
 }

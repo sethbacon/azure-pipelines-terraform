@@ -444,6 +444,21 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
 - `.github/workflows/signature-replay.yml` — **Remediation gate.** Re-runs every recorded defect-class signature from the private `sethbacon/security-orchestration` ledger against the whole suite (six suite repos plus both ADO extensions) and fails the PR if a class recorded as fixed matches again, or if a new instance appears that no issue covers. Eight of the twelve signatures apply only to `ado-extension` kind — this repo and `azure-pipelines-packer` — so this is the half of the gate that can block a bad merge here. Needs the `SUITE_READ_APP_ID` variable and `SUITE_READ_APP_KEY` secret; every checkout except the private `security-orchestration` one runs on the job's own `GITHUB_TOKEN`. Not yet a required status check.
 
+### Reconciling a shared module (`npm run sync:shared`)
+
+Each ADO task is an independent npm package that ships its own compiled JS in place (`include: ["src/**/*"]`, then `webpack` copies `Tasks/**` minus the `.ts`), so a shared module physically has to exist inside every task that uses it — there is no runtime import path out of a task directory. The repo's answer is byte-identical copies plus a fail-closed parity gate rather than a workspace package.
+
+To change one of those modules, edit the **canonical** copy (the first directory of its family, or the first file of its region family, in `scripts/check-shared-modules.js`) and then run:
+
+```bash
+npm run sync:shared   # node scripts/check-shared-modules.js --fix
+npm run check:shared  # verify (this is what CI runs)
+```
+
+`--fix` rewrites every non-canonical copy from its canonical source — whole files for `FAMILIES`, and only the text between the `// #region shared:<name>` markers for `REGION_FAMILIES`, so a region's host file keeps its own surrounding code. A missing canonical or a broken marker stays a hard failure even under `--fix`: there is nothing trustworthy to sync from.
+
+Syncing is deliberately **not** wired into the build. If it ran automatically before packaging, a genuine unintended divergence would be silently repaired instead of failing CI, which is exactly what the gate exists to prevent. Syncing is an authoring step; CI only ever verifies.
+
 The `Check Shared Module Parity` job also runs `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — both it and its self-test are **steps inside existing required jobs**, so branch protection needs no change.
 
 ## Local Development Environment

@@ -257,9 +257,28 @@ function encodeBody(body: SnRequestOptions['body']): Buffer | undefined {
     return Buffer.from(JSON.stringify(body), 'utf8');
 }
 
-function truncate(s: string, max = 500): string {
-    return s.length > max ? `${s.slice(0, max)}… (truncated)` : s;
+// #region shared:TruncateBody
+/**
+ * Bounds a remote response body before it is interpolated into a thrown error
+ * or log line, so a large — or credential-reflecting — body cannot be dumped
+ * wholesale. The credential itself is also registered with setSecret(), so the
+ * agent masks it; this is defense-in-depth against verbose error bodies.
+ *
+ * Callers that scrub known request secrets out of a body do so BEFORE calling
+ * this, so a secret straddling the truncation boundary is still scrubbed whole.
+ *
+ * Duplicated verbatim into every transport that interpolates a remote body into
+ * an error message (#407), and byte-compared across all four copies by
+ * scripts/check-shared-modules.js — so a future hardening change here cannot
+ * land in one transport and be silently missed in the others.
+ */
+export function truncateBody(body: string, max = 500): string {
+    if (!body) {
+        return '';
+    }
+    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
 }
+// #endregion shared:TruncateBody
 
 /** Remove known request secrets from a response body (see SnRequestOptions.scrubValues). */
 function scrubSecrets(body: string, secrets: string[] | undefined): string {
@@ -355,7 +374,7 @@ export function snRequest(
                         // withRetry can honor it (#584); other statuses carry none.
                         const retryAfterMs = status === 429 ? parseRetryAfterMs(res.headers['retry-after']) : undefined;
                         reject(new ServiceNowHttpError(
-                            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncate(scrubSecrets(raw, options.scrubValues))}`,
+                            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncateBody(scrubSecrets(raw, options.scrubValues))}`,
                             status,
                             retryAfterMs,
                         ));

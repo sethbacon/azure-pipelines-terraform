@@ -13,6 +13,8 @@
         "deps:prune": "node scripts/for-each-task.js prune",
         "compile": "node scripts/for-each-task.js compile",
         "webpack": "webpack --config webpack.config.js --progress",
+        "check:shared": "node scripts/check-shared-modules.js",
+        "sync:shared": "node scripts/check-shared-modules.js --fix",
         "test:v5": "cd Tasks/TerraformTask/TerraformTaskV5 && npm test",
         "test:tab": "jest --config jest.config.js"
     },
