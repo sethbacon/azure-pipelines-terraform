@@ -103,6 +103,15 @@ jobs:
           persist-credentials: false
           repository: 4cloudguru/cloud-suite-ui
           path: suite/terraform-suite-ui
+      # The shared module both ADO extensions are migrating onto. It is a
+      # checkout rather than an inference: the extensions used to COPY these
+      # modules to each other, and a version pin is only an improvement if
+      # something reads it.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: 4cloudguru/pipeline-task-core
+          path: suite/pipeline-task-core
       # The two ADO extensions are siblings that COPY modules between each other
       # rather than sharing a versioned one, so a class found in either is
       # presumed in the other and every signature runs in both.
