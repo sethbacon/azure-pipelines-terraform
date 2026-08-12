@@ -443,6 +443,21 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
 
+### Reconciling a shared module (`npm run sync:shared`)
+
+Each ADO task is an independent npm package that ships its own compiled JS in place (`include: ["src/**/*"]`, then `webpack` copies `Tasks/**` minus the `.ts`), so a shared module physically has to exist inside every task that uses it — there is no runtime import path out of a task directory. The repo's answer is byte-identical copies plus a fail-closed parity gate rather than a workspace package.
+
+To change one of those modules, edit the **canonical** copy (the first directory of its family, or the first file of its region family, in `scripts/check-shared-modules.js`) and then run:
+
+```bash
+npm run sync:shared   # node scripts/check-shared-modules.js --fix
+npm run check:shared  # verify (this is what CI runs)
+```
+
+`--fix` rewrites every non-canonical copy from its canonical source — whole files for `FAMILIES`, and only the text between the `// #region shared:<name>` markers for `REGION_FAMILIES`, so a region's host file keeps its own surrounding code. A missing canonical or a broken marker stays a hard failure even under `--fix`: there is nothing trustworthy to sync from.
+
+Syncing is deliberately **not** wired into the build. If it ran automatically before packaging, a genuine unintended divergence would be silently repaired instead of failing CI, which is exactly what the gate exists to prevent. Syncing is an authoring step; CI only ever verifies.
+
 The `Check Shared Module Parity` job also runs `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — both it and its self-test are **steps inside existing required jobs**, so branch protection needs no change.
 
 ## Local Development Environment

@@ -43,6 +43,26 @@ function runCheck(cwd) {
     return spawnSync(process.execPath, [scriptPath], { cwd, encoding: 'utf8' });
 }
 
+// `--fix` mode (#300): rewrites every non-canonical copy from its canonical
+// source. Cases 7 and 8 below prove it actually repairs both family kinds and
+// that it leaves a region host file's surrounding code untouched.
+function runFix(cwd) {
+    return spawnSync(process.execPath, [scriptPath, '--fix'], { cwd, encoding: 'utf8' });
+}
+
+// Read the text strictly between a region's markers, mirroring
+// check-shared-modules.js's own extractRegion() closely enough to assert on
+// exact region content after a --fix run.
+function readRegion(file, region) {
+    const lines = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n');
+    const open = lines.findIndex(l => l.trimStart().startsWith(`// #region shared:${region}`));
+    const close = lines.findIndex(l => l.trimStart().startsWith(`// #endregion shared:${region}`));
+    if (open === -1 || close === -1 || close <= open) {
+        return null;
+    }
+    return lines.slice(open + 1, close).join('\n');
+}
+
 // Escape a literal string for safe interpolation into a RegExp.
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -144,6 +164,93 @@ try {
         failed = true;
     } else {
         console.log('OK: check-shared-modules.js fails closed when a shared-region marker is deleted.');
+    }
+
+    // Case 6: the truncateBody() region (#407). oci-token-exchange.ts carried a
+    // variant of this helper that sat outside EVERY parity mechanism before
+    // #407, so this case specifically diverges THAT copy: it is the one whose
+    // drift previously could not be detected at all. Asserting on the exact
+    // region name proves the failure comes from the TruncateBody comparison and
+    // not from some unrelated family tripping first.
+    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
+    const truncateTargetFile = path.join('Tasks', 'TerraformTask', 'TerraformTaskV5', 'src', 'oci-token-exchange.ts');
+    const truncateScratchTarget = path.join(scratchDir, truncateTargetFile);
+    const truncateEndMarker = '// #endregion shared:TruncateBody';
+    const truncateOriginal = fs.readFileSync(truncateScratchTarget, 'utf8');
+    // Weaken the bound the way a careless edit would: raise the cap only here.
+    fs.writeFileSync(
+        truncateScratchTarget,
+        truncateOriginal.replace('max = 500', 'max = 50000'),
+    );
+
+    const truncateDivergedResult = runCheck(scratchDir);
+    const truncateDivergedOutput = `${truncateDivergedResult.stdout}${truncateDivergedResult.stderr}`;
+    if (truncateDivergedResult.status === 0 || !truncateDivergedOutput.includes("shared region 'TruncateBody' diverged")) {
+        console.error('FAIL: check-shared-modules.js did not flag a diverged shared TruncateBody region.');
+        console.error(truncateDivergedResult.stdout, truncateDivergedResult.stderr);
+        failed = true;
+    } else {
+        console.log("OK: check-shared-modules.js exits non-zero when the truncateBody bound diverges in one transport.");
+    }
+
+    // Case 7 (--fix, #300): with BOTH a whole-file family copy and a region copy
+    // deliberately diverged, `--fix` must rewrite each from its canonical source
+    // so a subsequent plain check passes. Asserts on exact post-fix content, not
+    // merely on a zero exit, so a --fix that "succeeded" by doing nothing (or by
+    // rewriting the wrong direction) still fails this case.
+    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
+    const fixFamilyTarget = path.join(scratchDir, targetFile);
+    const fixFamilyCanonical = path.join(scratchDir, 'Tasks', 'TerraformInstaller', 'TerraformInstallerV1', 'src', 'http-client.ts');
+    const canonicalFamilyContent = fs.readFileSync(fixFamilyCanonical, 'utf8');
+    fs.appendFileSync(fixFamilyTarget, '\n// check-shared-modules --fix self-test divergence marker\n');
+
+    const fixRegionTarget = path.join(scratchDir, truncateTargetFile);
+    const fixRegionCanonicalFile = path.join(scratchDir, 'Tasks', 'TerraformModulePublish', 'TerraformModulePublishV1', 'src', 'https-client.ts');
+    const canonicalRegionContent = readRegion(fixRegionCanonicalFile, 'TruncateBody');
+    fs.writeFileSync(fixRegionTarget, fs.readFileSync(fixRegionTarget, 'utf8').replace('max = 500', 'max = 50000'));
+
+    // Sanity: the tree really is broken before --fix runs, so a green result
+    // below cannot come from having diverged nothing at all.
+    if (runCheck(scratchDir).status === 0) {
+        console.error('FAIL: self-test setup error — the tree was still clean before --fix ran.');
+        failed = true;
+    }
+
+    const fixResult = runFix(scratchDir);
+    const postFixCheck = runCheck(scratchDir);
+    const repairedFamily = fs.readFileSync(fixFamilyTarget, 'utf8');
+    const repairedRegion = readRegion(fixRegionTarget, 'TruncateBody');
+
+    if (fixResult.status !== 0) {
+        console.error('FAIL: check-shared-modules.js --fix exited non-zero.');
+        console.error(fixResult.stdout, fixResult.stderr);
+        failed = true;
+    } else if (repairedFamily !== canonicalFamilyContent) {
+        console.error('FAIL: --fix did not restore the whole-file family copy to the canonical bytes.');
+        failed = true;
+    } else if (repairedRegion !== canonicalRegionContent) {
+        console.error('FAIL: --fix did not restore the shared region to the canonical bytes.');
+        failed = true;
+    } else if (postFixCheck.status !== 0) {
+        console.error('FAIL: the parity gate still fails after --fix repaired every copy.');
+        console.error(postFixCheck.stdout, postFixCheck.stderr);
+        failed = true;
+    } else {
+        console.log('OK: --fix rewrites both a whole-file copy and a shared region from canonical.');
+    }
+
+    // Case 8 (--fix must not clobber a region host file): splicing a region back
+    // into servicenow-http.ts/oci-token-exchange.ts must replace ONLY the text
+    // between the markers. A --fix implemented as a whole-file copy would pass
+    // case 7's region assertion while destroying the host file, so assert the
+    // surrounding code — the file's own class, unique to it — survived.
+    if (!fs.readFileSync(fixRegionTarget, 'utf8').includes('class OciTokenExchangeError')) {
+        console.error('FAIL: --fix clobbered the region host file\'s surrounding code.');
+        failed = true;
+    } else {
+        console.log('OK: --fix leaves a region host file\'s surrounding code intact.');
     }
 } finally {
     fs.rmSync(scratchDir, { recursive: true, force: true });
