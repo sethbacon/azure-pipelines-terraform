@@ -25,14 +25,28 @@ class OciTokenExchangeError extends Error {
     }
 }
 
+// #region shared:TruncateBody
 /**
- * Bound a remote response body before it is interpolated into a thrown error,
- * so a large or credential-reflecting body cannot be dumped wholesale into the
- * build log.
+ * Bounds a remote response body before it is interpolated into a thrown error
+ * or log line, so a large — or credential-reflecting — body cannot be dumped
+ * wholesale. The credential itself is also registered with setSecret(), so the
+ * agent masks it; this is defense-in-depth against verbose error bodies.
+ *
+ * Callers that scrub known request secrets out of a body do so BEFORE calling
+ * this, so a secret straddling the truncation boundary is still scrubbed whole.
+ *
+ * Duplicated verbatim into every transport that interpolates a remote body into
+ * an error message (#407), and byte-compared across all four copies by
+ * scripts/check-shared-modules.js — so a future hardening change here cannot
+ * land in one transport and be silently missed in the others.
  */
-function truncateBody(body: string, max = 500): string {
+export function truncateBody(body: string, max = 500): string {
+    if (!body) {
+        return '';
+    }
     return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
 }
+// #endregion shared:TruncateBody
 
 /**
  * Remove any occurrence of a known request secret (here the OIDC subject_token
