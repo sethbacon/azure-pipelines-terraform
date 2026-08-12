@@ -12,8 +12,19 @@
 #
 # COST, already accepted six times and now eight: the ledger and signatures live
 # in the PRIVATE security-orchestration repo, so this PUBLIC repo has to hold a
-# SUITE_READ_TOKEN that can read it. What it buys is the ability to BLOCK a bad
-# merge, which the central scheduled copy cannot.
+# credential that can read it. What it buys is the ability to BLOCK a bad merge,
+# which the central scheduled copy cannot.
+#
+# That cost is smaller than it first looks. Every repo the replay reads is PUBLIC
+# except security-orchestration, so those checkouts run on this job's own
+# GITHUB_TOKEN and take no distributed secret at all — and so do the `gh` calls
+# behind --verify-linked-issues, whose linkages all point at public repos. The
+# stored secret is a GitHub App private KEY that mints an hour-long token for ONE
+# step, narrowed by `repositories:` to the one repo it reads and by
+# `permission-contents: read` to the one thing it does there. It replaced a
+# no-expiry PAT that could not have worked anyway: a fine-grained PAT's resource
+# owner is fixed at one account, so it could never read the one checkout that
+# lives in another org.
 #
 # Adding this file is NOT enforcement. The check must also be added to main's
 # required_status_checks, and that state asserted against the live API rather
@@ -47,49 +58,51 @@ jobs:
       # rather than pretending otherwise — so these checkouts are load-bearing,
       # not convenience.
       #
-      # persist-credentials: false on EVERY checkout. Without it, actions/checkout
-      # leaves SUITE_READ_TOKEN in each .git/config -- nine copies of a PAT that
-      # reads eight repositories including a private one -- inside a job that also
-      # uploads an artifact. That is zizmor's `artipacked` audit, and it is not
-      # theoretical here: widen the upload path by one glob and the token ships
-      # with the report. The replay only READS these trees; nothing after the
-      # checkouts needs git credentials.
+      # All eight are PUBLIC, so none takes a `token:`: actions/checkout falls
+      # back to this job's own GITHUB_TOKEN, which reads public repositories
+      # anywhere.
+      #
+      # persist-credentials: false on EVERY checkout, the tokenless ones included.
+      # Without it, actions/checkout leaves whatever credential it used in that
+      # clone's .git/config, inside a job that also uploads an artifact. That is
+      # zizmor's `artipacked` audit, and it is not theoretical here: widen the
+      # upload path by one glob and the credential ships with the report. The
+      # replay only READS these trees; nothing after the checkouts needs git
+      # credentials.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/terraform-registry-backend
           path: suite/terraform-registry-backend
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/terraform-state-manager-backend
           path: suite/terraform-state-manager-backend
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/terraform-registry-frontend
           path: suite/terraform-registry-frontend
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/terraform-state-manager-frontend
           path: suite/terraform-state-manager-frontend
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/terraform-suite-identity
           path: suite/terraform-suite-identity
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
+      # Moved out of the sethbacon org and renamed on 2026-08-11, which is what
+      # broke this checkout with "Not Found". `path` keeps the OLD name
+      # deliberately: scope.json's `dir` is what `--repos-root suite` resolves
+      # against, and the move did not rename the scope entry.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-          repository: sethbacon/terraform-suite-ui
+          repository: 4cloudguru/cloud-suite-ui
           path: suite/terraform-suite-ui
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       # The two ADO extensions are siblings that COPY modules between each other
       # rather than sharing a versioned one, so a class found in either is
       # presumed in the other and every signature runs in both.
@@ -98,13 +111,11 @@ jobs:
           persist-credentials: false
           repository: sethbacon/azure-pipelines-packer
           path: suite/azure-pipelines-packer
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/azure-pipelines-terraform
           path: suite/azure-pipelines-terraform
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
 
       # Overwrite this repo's sibling copy with the commit under test, so the
       # replay reads the PR's code and not origin/main's. Guarded because
@@ -119,11 +130,29 @@ jobs:
           clean: false
           path: suite/${{ github.event.repository.name }}
 
+      # The one private repo, and so the one credential. `owner:` is load-bearing
+      # rather than cosmetic: an app token is minted PER INSTALLATION and an
+      # installation is per account, so the owner has to be named explicitly.
+      # `repositories:` narrows the token to the single repo it is spent on, and
+      # `permission-contents: read` narrows what it may do there — without that
+      # it inherits every permission the installation holds, which is zizmor's
+      # `github-app-token` audit and is how a read-only intention silently
+      # becomes write-capable the day the app is widened.
+      - name: Mint a read token for security-orchestration
+        id: suite-read
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: "${{ vars.SUITE_READ_APP_ID }}"
+          private-key: "${{ secrets.SUITE_READ_APP_KEY }}"
+          owner: sethbacon
+          repositories: security-orchestration
+          permission-contents: read
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
           repository: sethbacon/security-orchestration
-          token: "${{ secrets.SUITE_READ_TOKEN }}"
+          token: "${{ steps.suite-read.outputs.token }}"
           path: security-orchestration
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -148,12 +177,15 @@ jobs:
         with:
           node-version: "20"
 
-      # --verify-linked-issues: a CLOSED linked issue stops absorbing residual,
-      # so the token must also have issues:read on every repo the ledger links
-      # to (see "Wiring it up" in the README for the full token shape).
+      # --verify-linked-issues: a CLOSED linked issue stops absorbing residual.
+      # Every issue the ledger links to is in a PUBLIC repo, which GITHUB_TOKEN
+      # reads without help, so the app token is not needed here and is not given.
+      # Link an issue in a private repo and this fails loudly as a GATE ERROR
+      # rather than assuming open — at which point widen the credential, not the
+      # assumption.
       - name: Replay recorded signatures
         env:
-          GH_TOKEN: ${{ secrets.SUITE_READ_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python security-orchestration/remediation/replay/replay.py \
             --ledger security-orchestration/remediation/signatures/ledger.json \
