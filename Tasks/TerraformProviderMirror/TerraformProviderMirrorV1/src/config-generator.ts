@@ -1,4 +1,4 @@
-import { redactUrlUserInfo } from './url-secret-redaction';
+import { redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 
 export interface ProviderMirrorConfig {
     mirrorUrl: string;
