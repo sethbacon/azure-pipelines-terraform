@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseAllowedHosts, isRegistryHostAllowed, resolvesToPrivateOrLinkLocalAddress } from '../src/registry-allowlist';
+import { parseAllowedHosts, isHostAllowed as isRegistryHostAllowed, resolvesToPrivateOrLinkLocalAddress } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Direct unit tests for the optional registry download_url host allowlist.

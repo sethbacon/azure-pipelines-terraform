@@ -8,14 +8,12 @@ import { pipeline } from 'stream/promises';
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages } from './registry-allowlist';
-import { validateUrlPathSegment } from './url-path-segment';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
 import { discardArtifactOnFailure } from './artifact-discard';
-import { retryAsync } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 
 /**
