@@ -653,6 +653,84 @@ describe('TerraformDriftReport Test Suite', function () {
         }, tr);
     });
 
+    it('DriftReportSensitiveMasking — an attribute marked on ONE mirror is masked on BOTH sides, and module provenance is projected, in what the task writes', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportSensitiveMasking.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (failOnDrift=false)');
+
+            // Recover both uuid-named artifacts from the task's own output-variable
+            // logging commands (same technique as DriftReportSarifHostile) rather
+            // than assuming a location.
+            const outputVar = (name: string): string => {
+                const line = tr.stdout.split('\n').find(l => l.includes(`##vso[task.setvariable variable=${name};`));
+                assert(line, `${name} output variable line not found in stdout: ${tr.stdout}`);
+                return line!.slice(line!.indexOf(']') + 1).trim();
+            };
+            const summaryPath = outputVar('summaryFilePath');
+            const sarifPath = outputVar('sarifFilePath');
+            assert(fs.existsSync(summaryPath), `summary file should exist at ${summaryPath}`);
+            const raw = fs.readFileSync(summaryPath, 'utf-8');
+            const body = JSON.parse(raw) as {
+                summary: Array<{ address: string; attrs?: Array<{ name: string; before: string | null; after: string | null }> }>;
+                plan: { configuration: { root_module: { module_calls: Record<string, Record<string, string>> } } };
+            };
+
+            // Marked on `after` only -- `before` must NOT be the cleartext value.
+            const web = body.summary.find(e => e.address === 'aws_instance.web');
+            assert(web, 'aws_instance.web must be in the summary');
+            assert.deepStrictEqual(
+                web!.attrs,
+                [{ name: 'user_data', before: '(sensitive)', after: '(sensitive)' }],
+                'an after-only sensitivity mark must mask BOTH sides',
+            );
+
+            // The mirror image: marked on `before` only.
+            const legacy = body.summary.find(e => e.address === 'aws_db_instance.legacy');
+            assert(legacy, 'aws_db_instance.legacy must be in the summary');
+            assert.deepStrictEqual(
+                legacy!.attrs,
+                [{ name: 'password', before: '(sensitive)', after: '(sensitive)' }],
+                'a before-only sensitivity mark must mask BOTH sides',
+            );
+
+            // Module provenance is projected to the two fields the backend reads,
+            // with the module source's embedded credential scrubbed -- the raw
+            // config subtree (which carries no sensitivity metadata to mask
+            // against) must not be relayed.
+            assert.deepStrictEqual(
+                body.plan.configuration.root_module.module_calls,
+                {
+                    vpc: {
+                        source: 'git::https://(redacted)@github.com/org/mod.git',
+                        version_constraint: '~> 5.0',
+                    },
+                },
+                'module provenance must be the two-field projection, not the raw subtree',
+            );
+
+            // Tripwire: none of the fixture's known-secret literals may appear in
+            // ANY plan-derived artifact this task writes, nor in the build log.
+            // (The SARIF report names changed attributes but never their values,
+            // so it is asserted here as a standing no-leak guarantee.)
+            assert(fs.existsSync(sarifPath), `SARIF report should exist at ${sarifPath}`);
+            const sarifRaw = fs.readFileSync(sarifPath, 'utf-8');
+            for (const secret of [
+                'BEFORE-ONLY-PLAINTEXT-SECRET',
+                'AFTER-ONLY-PLAINTEXT-SECRET',
+                'BEFORE-VALUE-MARKED-SENSITIVE',
+                'AFTER-VALUE-MARKED-SENSITIVE',
+                'CONFIG-EMBEDDED-PASSWORD',
+                'ghp_MODULESOURCETOKEN',
+                'aws_db_instance.inner',
+            ]) {
+                assert(!raw.includes(secret), `summary file must not contain ${secret}`);
+                assert(!sarifRaw.includes(secret), `SARIF report must not contain ${secret}`);
+                assert(!tr.stdout.includes(secret), `build log must not contain ${secret}`);
+            }
+        }, tr);
+    });
+
     it('DriftReportCallbackSuccess — 2xx callback succeeds and masks the callback token', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackSuccess.js'));
         await tr.runAsync();

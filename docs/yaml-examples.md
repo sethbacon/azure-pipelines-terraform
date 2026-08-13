@@ -1016,9 +1016,13 @@ surface drift in SARIF-aware tooling.
 > natively in the **Tests** tab, so JUnit is the zero-setup path.
 
 Module provenance: `includeModuleProvenance` (default `true`) adds the
-configuration's `module_calls` and locked module versions — read from
+configuration's module calls and locked module versions — read from
 `moduleManifest` (default `.terraform/modules/modules.json`) — to the report and
-callback body. Set it `false` to omit them.
+callback body. Set it `false` to omit them. Only `source` (with any credential in
+the URL redacted) and `version_constraint` are emitted per module call: the plan's
+`configuration` block carries no sensitivity metadata, so the rest of the subtree —
+including every literal module argument's `constant_value` — is dropped rather than
+forwarded. See [SECURITY.md](../SECURITY.md).
 
 ---
 

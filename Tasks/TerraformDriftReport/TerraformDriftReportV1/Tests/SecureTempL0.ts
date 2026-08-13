@@ -5,7 +5,7 @@ import path = require('path');
 import cp = require('child_process');
 import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
 import { writeSarif } from '../src/sarif';
-import { Result } from 'terraform-drift-contract';
+import { Result } from '@4cloudguru/terraform-drift-contract';
 
 /**
  * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile

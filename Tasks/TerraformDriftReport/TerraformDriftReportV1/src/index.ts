@@ -3,7 +3,7 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 import { randomUUID } from 'crypto';
-import { summarize, moduleCallsPlan, Plan } from 'terraform-drift-contract';
+import { summarize, moduleCallsPlan, Plan } from '@4cloudguru/terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
 import { writeSecretFile, scrubFile } from './secure-temp';
