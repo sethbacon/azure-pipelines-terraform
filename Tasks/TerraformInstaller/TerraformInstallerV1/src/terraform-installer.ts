@@ -233,7 +233,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
-    const data = await fetchJson<{ download_url: string; sha256: string }>(infoUrl);
+    const data = await fetchJson<{ download_url: string; sha256: string; shasums_url?: string }>(infoUrl);
     if (!data.download_url) {
         throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
     }
@@ -316,7 +316,17 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         // Typed as a VerificationFailure: the reachable registry deterministically
         // withheld required material, so the cache-hit re-verification path re-throws
         // (fail closed) instead of degrading to the cached binary (#589).
-        throw new VerificationFailure(`Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`);
+        // Deliberately NOT falling back to data.shasums_url: it is served from the same host
+        // as download_url, whereas sha256 is the registry's own hash of the artifact recorded at
+        // ingest from upstream. Taking the checksum from the artifact's own host would collapse
+        // the two authorities and stop detecting a tampered artifact.
+        throw new VerificationFailure(
+            `Checksum verification is required but the registry did not provide a sha256 for ${infoUrl}.`
+            + (data.shasums_url
+                ? ` The registry did advertise a shasums_url for this version, so it holds the checksum but left the sha256 field empty -- a registry-side data problem, not a missing upstream checksum.`
+                : ``)
+            + ` Populate sha256 in the registry, or set downloadSource to "hashicorp" to install from the upstream release instead.`,
+        );
     } else {
         tasks.warning(`SHA256 not provided by registry for ${infoUrl}; skipping local verification (trusting the registry's server-side verification only). Set requireChecksum to enforce a local check.`);
     }
