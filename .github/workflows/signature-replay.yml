@@ -58,7 +58,7 @@ jobs:
       # rather than pretending otherwise — so these checkouts are load-bearing,
       # not convenience.
       #
-      # All eight are PUBLIC, so none takes a `token:`: actions/checkout falls
+      # All of them are PUBLIC, so none takes a `token:`: actions/checkout falls
       # back to this job's own GITHUB_TOKEN, which reads public repositories
       # anywhere.
       #
@@ -125,6 +125,41 @@ jobs:
           persist-credentials: false
           repository: sethbacon/azure-pipelines-terraform
           path: suite/azure-pipelines-terraform
+
+      # The GitHub-Actions family, added to SIGNATURE_SCOPE in 2026-08: two
+      # composite actions whose whole implementation is shell in action.yml, two
+      # node actions that ship TypeScript plus a committed dist/, and the drift
+      # payload contract this extension's TerraformDriftReport task shares with
+      # them — scope.json records it as a `consumes` of this repo. Same rule as
+      # every checkout above — in scope.json and absent here is exit 2 for the
+      # whole job, not a quieter run. Note the OWNER: drift-contract is in the
+      # 4cloudguru org, not sethbacon. Both orgs' repos are public, so this job's
+      # own GITHUB_TOKEN still reads them, but the slug is not interchangeable.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/setup-terraform-hardened
+          path: suite/setup-terraform-hardened
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-provider-mirror
+          path: suite/terraform-provider-mirror
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-drift-report
+          path: suite/terraform-drift-report
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-module-publish
+          path: suite/terraform-module-publish
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: 4cloudguru/terraform-drift-contract
+          path: suite/terraform-drift-contract
 
       # Overwrite this repo's sibling copy with the commit under test, so the
       # replay reads the PR's code and not origin/main's. Guarded because
