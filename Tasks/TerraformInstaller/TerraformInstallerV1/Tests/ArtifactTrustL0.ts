@@ -47,6 +47,22 @@ type SiteRow = { file: string; fn: string; kind: string; verdict: string };
  * trust root (see the notes on the SUMS-ABSENT rows) rather than a hole.
  */
 const SITE_ROWS: SiteRow[] = [
+    // Every discardArtifactOnFailure() call site, once per enclosing function. The
+    // discard now lives in @4cloudguru/pipeline-task-core, which cannot import the
+    // ADO task lib, so the log line naming the deleted artifact is an injected
+    // argument — REPORTS-DISCARD means that sink is still being passed.
+    { file: TF, fn: 'downloadZipFromHashiCorp', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromOpenTofu', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadSentinelOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadOpaOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'verifyMirrorChecksum', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TD, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TD, fn: 'verifyChecksumOrSkip', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+
     // ---------------- TerraformInstallerV1: terraform (GPG) + OpenTofu (cosign) ----
     { file: TF, fn: 'downloadTerraform', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
     { file: TF, fn: 'resolveVersionFromHashiCorp', kind: 'LATEST', verdict: 'FAILS-CLOSED' },

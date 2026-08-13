@@ -342,7 +342,7 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     }
 
     if (data.sha256) {
-            await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
+        await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
         return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
