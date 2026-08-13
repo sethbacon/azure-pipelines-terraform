@@ -3,8 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { assertEgressHostAllowed, isRegistryHostAllowed, parseAllowedHosts, EgressHostMessages } from '../src/registry-allowlist';
-import { validateUrlPathSegment } from '../src/url-path-segment';
+import { assertEgressHostAllowed, isHostAllowed as isRegistryHostAllowed, parseAllowedHosts, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
 import { downloadToFile } from '../src/http-client';
 
 /**

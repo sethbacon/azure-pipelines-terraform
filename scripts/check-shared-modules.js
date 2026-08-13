@@ -107,29 +107,6 @@ const FAMILIES = [
         ],
     },
     {
-        // Registry/mirror EGRESS AUTHORIZATION (SSRF-relevant): shared across all
-        // three installer tasks that accept a registryAllowedHosts/mirrorAllowedHosts
-        // input. Carries the numeric (not textual) private/reserved-address
-        // classification and assertEgressHostAllowed(), the single decision every
-        // download destination — initial URL and every redirect hop — goes through
-        // (#161). A drift here could silently restore the textual blocklist that
-        // `127.1` / `2130706433` / `::ffff:127.0.0.1` / 100.64.0.0/10 walked past
-        // in one task while the others stayed hardened, so keep byte-identical.
-        //
-        // url-path-segment.ts is in the same family: it validates the operator's
-        // registryMirrorName before it is interpolated into the registry URL path
-        // (#200), and only ever has meaning alongside those same registry inputs.
-        dirs: [
-            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
-            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
-            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
-        ],
-        modules: [
-            'registry-allowlist.ts',
-            'url-path-segment.ts',
-        ],
-    },
-    {
         // Private-registry 'latest' version resolution + operator-URL credential
         // masking helper, shared by all three installer tasks that support
         // downloadSource=registry. Previously hand-duplicated with a matching body
