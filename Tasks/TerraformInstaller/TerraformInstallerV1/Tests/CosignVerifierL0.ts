@@ -6,7 +6,7 @@ import path = require('path');
 import crypto = require('crypto');
 import tasks = require('azure-pipelines-task-lib/task');
 import { buildOpenTofuCertIdentityRegexp, verifyCosignSignature } from '../src/cosign-verifier';
-import { isVerificationFailure } from '../src/verification-failure';
+import { isVerificationFailure } from '@4cloudguru/pipeline-task-core';
 import * as httpClient from '../src/http-client';
 
 // Direct (non-MockTestRunner) unit tests for the cosign verifier. These run in

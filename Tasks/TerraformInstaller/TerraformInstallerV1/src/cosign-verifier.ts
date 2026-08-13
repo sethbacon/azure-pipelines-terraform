@@ -6,7 +6,7 @@ import path = require('path');
 import { createHash } from 'crypto';
 import { pipeline } from 'stream/promises';
 import { fetchBufferAllow404 } from './http-client';
-import { VerificationFailure } from './verification-failure';
+import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Computes a file's SHA256 via a streaming read (fs.createReadStream piped into

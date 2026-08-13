@@ -295,91 +295,106 @@ for (const file of files) {
         const inDiscardSpan = (i) => discardSpans.some(([s, e]) => i >= s && i < e);
 
         if (phase === 1) {
-        // ---------------- VERIFY sites ----------------
-        // Every direct verification of a downloaded artifact in this function.
-        const verifierCalls = VERIFIERS.flatMap((v) => callIndices(fn.text, v).map((c) => ({ ...c, v })));
-        // A function that reads a cache-integrity marker is verifying the AGENT'S
-        // CACHED TOOL, not a fresh download: deleting it there would evict another
-        // job's cache entry, so the discard requirement deliberately does not apply.
-        const readsMarker = /(\w+)\s*=\s*(?:await\s+)?fs\.readFileSync\s*\(/.test(fn.text)
-            && (VERIFIERS.some((v) => callIndices(fn.text, v).length > 0) || /!==|===/.test(fn.text))
-            && /marker|sidecar|Marker|Sidecar/i.test(fn.text);
-        for (const call of verifierCalls) {
-            if (readsMarker) {
-                add('VERIFY', fn, 'EXEMPT-CACHE-VERIFY',
-                    'verifies the agent-cached executable against its recorded marker; discarding here would evict another job\'s cache entry',
-                    fn.start + call.index);
-            } else if (inDiscardSpan(call.index)) {
-                add('VERIFY', fn, 'DISCARDS-ON-FAILURE', `${call.v} runs inside ${DISCARD_GUARD}()`, fn.start + call.index);
-            } else {
-                add('VERIFY', fn, 'RETAINS-ON-FAILURE',
-                    `${call.v} is not wrapped in ${DISCARD_GUARD}() — a failed check leaves the artifact on disk (#204)`,
-                    fn.start + call.index);
-            }
-        }
-
-        // ---------------- SUMS-ABSENT branches ----------------
-        // The "this source published no checksum file" branch: a value assigned
-        // from fetch{Text,Buffer}Allow404() (which returns null on a genuine 404,
-        // never on a transient failure) that the function then null-checks. Only
-        // counted in a function that itself verifies the artifact, so the branch
-        // really does decide whether verification happens.
-        const absentVars = [...fn.text.matchAll(/(\w+)\s*=\s*(?:await\s+)?fetch(?:Text|Buffer)Allow404\s*\(/g)].map((m) => m[1]);
-        const verifiesHere = VERIFIERS.some((v) => callIndices(fn.text, v).length > 0);
-        if (verifiesHere) {
-            // The toggle governing SIGNATURE verification is whatever this
-            // function passes as the `required` argument of its signature check —
-            // read off the call, never hardcoded, so a rename cannot blind this.
-            const signatureCall = SIGNATURE_VERIFIERS.flatMap((v) => callIndices(fn.text, v))[0];
-            const signatureToggle = signatureCall
-                ? (fn.text.slice(signatureCall.open + 1, matchParen(fn.text, signatureCall.open)).split(',').pop() || '').trim()
-                : null;
-            for (const v of absentVars) {
-                const m = fn.text.match(new RegExp(`\\b${v}\\s*===\\s*null`));
-                if (!m || m.index === undefined) continue;
-                const block = blockAfter(fn.text, m.index);
-                if (!signatureToggle) {
-                    add('SUMS-ABSENT', fn, 'EXEMPT-NO-SIGNATURE-TRUST-ROOT',
-                        'this source is sha256-rooted (it publishes no detached signature), so a require-signature toggle has nothing to check here',
-                        fn.start + m.index);
-                } else if (new RegExp(`\\b${signatureToggle}\\b`).test(block) || SIGNATURE_TOGGLE.test(block)) {
-                    add('SUMS-ABSENT', fn, 'HONORS-SIGNATURE-TOGGLE',
-                        `the no-checksum-file branch consults ${signatureToggle} before installing`,
-                        fn.start + m.index);
+            // ---------------- VERIFY sites ----------------
+            // Every direct verification of a downloaded artifact in this function.
+            const verifierCalls = VERIFIERS.flatMap((v) => callIndices(fn.text, v).map((c) => ({ ...c, v })));
+            // A function that reads a cache-integrity marker is verifying the AGENT'S
+            // CACHED TOOL, not a fresh download: deleting it there would evict another
+            // job's cache entry, so the discard requirement deliberately does not apply.
+            const readsMarker = /(\w+)\s*=\s*(?:await\s+)?fs\.readFileSync\s*\(/.test(fn.text)
+                && (VERIFIERS.some((v) => callIndices(fn.text, v).length > 0) || /!==|===/.test(fn.text))
+                && /marker|sidecar|Marker|Sidecar/i.test(fn.text);
+            for (const call of verifierCalls) {
+                if (readsMarker) {
+                    add('VERIFY', fn, 'EXEMPT-CACHE-VERIFY',
+                        'verifies the agent-cached executable against its recorded marker; discarding here would evict another job\'s cache entry',
+                        fn.start + call.index);
+                } else if (inDiscardSpan(call.index)) {
+                    add('VERIFY', fn, 'DISCARDS-ON-FAILURE', `${DISCARD_GUARD}() wraps ${call.v}`, fn.start + call.index);
                 } else {
-                    add('SUMS-ABSENT', fn, 'SIGNATURE-TOGGLE-INERT',
-                        `a signature-rooted source published no checksum file and this branch never reads ${signatureToggle} — the toggle is inert exactly where verification is missing (#65)`,
-                        fn.start + m.index);
+                    add('VERIFY', fn, 'RETAINS-ON-FAILURE',
+                        `${call.v} is not wrapped in ${DISCARD_GUARD}() — a failed check leaves the artifact on disk (#204)`,
+                        fn.start + call.index);
                 }
             }
-        }
 
-        // ---------------- RECORD-READ / RECORD-WRITE ----------------
-        const readAssign = [...fn.text.matchAll(/(\w+)\s*=\s*(?:await\s+)?fs\.readFileSync\s*\(/g)];
-        for (const m of readAssign) {
-            const v = m[1];
-            const after = fn.text.slice(m.index);
-            const usedAsExpectedHash =
-                new RegExp(`verifySha256\\s*\\([^)]*,\\s*${v}\\b`).test(after)
-                || new RegExp(`(?:!==|===)\\s*${v}\\b`).test(after)
-                || new RegExp(`\\b${v}\\s*(?:!==|===)`).test(after);
-            if (!usedAsExpectedHash) continue;
-            add('RECORD-READ', fn, validatesHex(fn.text) ? 'VALIDATES-RECORD' : 'TRUSTS-MALFORMED-RECORD',
-                validatesHex(fn.text)
-                    ? 'the stored digest is validated as 64 hex characters before it is used as an expectation'
-                    : 'a zero-length or truncated marker is fed straight to the comparison, so an unverifiable record reads as tampering and bricks the version (#198)',
-                fn.start + m.index);
-        }
-        const writeCalls = callIndices(fn.text, 'writeFileSync');
-        for (const call of writeCalls) {
-            const args = fn.text.slice(call.open + 1, matchParen(fn.text, call.open));
-            if (!/hash|digest/i.test(args)) continue;
-            add('RECORD-WRITE', fn, callIndices(fn.text, 'renameSync').length > 0 ? 'ATOMIC-WRITE' : 'TORN-WRITE',
-                callIndices(fn.text, 'renameSync').length > 0
-                    ? 'written to a temp name in the same directory and renamed into place, so no reader ever sees a partial digest'
-                    : 'a non-atomic write leaves a truncated marker behind if the job is killed mid-write (#198)',
-                fn.start + call.index);
-        }
+            // The discard itself lives in @4cloudguru/pipeline-task-core, which does not
+            // import the ADO task lib, so the log line naming the deleted artifact is an
+            // INJECTED sink. That makes it an argument a call site can silently omit,
+            // leaving the operator with a rejected artifact removed and no record of it.
+            for (const [start, end] of discardSpans) {
+                const callText = fn.text.slice(start, end);
+                if (/(^|[^\w$])discardLog(\W|$)/.test(callText)) {
+                    add('DISCARD', fn, 'REPORTS-DISCARD', `${DISCARD_GUARD}() is passed the discardLog sink`, fn.start + start);
+                } else {
+                    add('DISCARD', fn, 'SILENT-DISCARD',
+                        `${DISCARD_GUARD}() is called without the discardLog sink — the artifact is deleted with no record of it (#204)`,
+                        fn.start + start);
+                }
+            }
+
+            // ---------------- SUMS-ABSENT branches ----------------
+            // The "this source published no checksum file" branch: a value assigned
+            // from fetch{Text,Buffer}Allow404() (which returns null on a genuine 404,
+            // never on a transient failure) that the function then null-checks. Only
+            // counted in a function that itself verifies the artifact, so the branch
+            // really does decide whether verification happens.
+            const absentVars = [...fn.text.matchAll(/(\w+)\s*=\s*(?:await\s+)?fetch(?:Text|Buffer)Allow404\s*\(/g)].map((m) => m[1]);
+            const verifiesHere = VERIFIERS.some((v) => callIndices(fn.text, v).length > 0);
+            if (verifiesHere) {
+                // The toggle governing SIGNATURE verification is whatever this
+                // function passes as the `required` argument of its signature check —
+                // read off the call, never hardcoded, so a rename cannot blind this.
+                const signatureCall = SIGNATURE_VERIFIERS.flatMap((v) => callIndices(fn.text, v))[0];
+                const signatureToggle = signatureCall
+                    ? (fn.text.slice(signatureCall.open + 1, matchParen(fn.text, signatureCall.open)).split(',').pop() || '').trim()
+                    : null;
+                for (const v of absentVars) {
+                    const m = fn.text.match(new RegExp(`\\b${v}\\s*===\\s*null`));
+                    if (!m || m.index === undefined) continue;
+                    const block = blockAfter(fn.text, m.index);
+                    if (!signatureToggle) {
+                        add('SUMS-ABSENT', fn, 'EXEMPT-NO-SIGNATURE-TRUST-ROOT',
+                            'this source is sha256-rooted (it publishes no detached signature), so a require-signature toggle has nothing to check here',
+                            fn.start + m.index);
+                    } else if (new RegExp(`\\b${signatureToggle}\\b`).test(block) || SIGNATURE_TOGGLE.test(block)) {
+                        add('SUMS-ABSENT', fn, 'HONORS-SIGNATURE-TOGGLE',
+                            `the no-checksum-file branch consults ${signatureToggle} before installing`,
+                            fn.start + m.index);
+                    } else {
+                        add('SUMS-ABSENT', fn, 'SIGNATURE-TOGGLE-INERT',
+                            `a signature-rooted source published no checksum file and this branch never reads ${signatureToggle} — the toggle is inert exactly where verification is missing (#65)`,
+                            fn.start + m.index);
+                    }
+                }
+            }
+
+            // ---------------- RECORD-READ / RECORD-WRITE ----------------
+            const readAssign = [...fn.text.matchAll(/(\w+)\s*=\s*(?:await\s+)?fs\.readFileSync\s*\(/g)];
+            for (const m of readAssign) {
+                const v = m[1];
+                const after = fn.text.slice(m.index);
+                const usedAsExpectedHash =
+                    new RegExp(`verifySha256\\s*\\([^)]*,\\s*${v}\\b`).test(after)
+                    || new RegExp(`(?:!==|===)\\s*${v}\\b`).test(after)
+                    || new RegExp(`\\b${v}\\s*(?:!==|===)`).test(after);
+                if (!usedAsExpectedHash) continue;
+                add('RECORD-READ', fn, validatesHex(fn.text) ? 'VALIDATES-RECORD' : 'TRUSTS-MALFORMED-RECORD',
+                    validatesHex(fn.text)
+                        ? 'the stored digest is validated as 64 hex characters before it is used as an expectation'
+                        : 'a zero-length or truncated marker is fed straight to the comparison, so an unverifiable record reads as tampering and bricks the version (#198)',
+                    fn.start + m.index);
+            }
+            const writeCalls = callIndices(fn.text, 'writeFileSync');
+            for (const call of writeCalls) {
+                const args = fn.text.slice(call.open + 1, matchParen(fn.text, call.open));
+                if (!/hash|digest/i.test(args)) continue;
+                add('RECORD-WRITE', fn, callIndices(fn.text, 'renameSync').length > 0 ? 'ATOMIC-WRITE' : 'TORN-WRITE',
+                    callIndices(fn.text, 'renameSync').length > 0
+                        ? 'written to a temp name in the same directory and renamed into place, so no reader ever sees a partial digest'
+                        : 'a non-atomic write leaves a truncated marker behind if the job is killed mid-write (#198)',
+                    fn.start + call.index);
+            }
 
         } // end phase 1
 
@@ -387,19 +402,19 @@ for (const file of files) {
         // Any function that pulls an artifact off the network, whether through a
         // primitive directly or through a discovered wrapper.
         if (phase === 2) {
-        const downloadCalls = [...DOWNLOAD_PRIMITIVES, ...acquireWrappers].flatMap((p) =>
-            (fn.name === p ? [] : callIndices(fn.text, p)).map((c) => ({ ...c, p })));
-        if (downloadCalls.length > 0) {
-            const verifies = reaches(VERIFIERS);
-            const verdict = verifies ? 'VERIFIED'
-                : acquireWrappers.has(fn.name) ? 'EXEMPT-DELEGATES-TO-CALLER'
-                    : 'UNVERIFIED';
-            add('ACQUIRE', fn, verdict,
-                verdict === 'VERIFIED' ? `reaches ${VERIFIERS.join('/')} before the artifact is used`
-                    : verdict === 'EXEMPT-DELEGATES-TO-CALLER' ? 'pure download wrapper: the URL is a parameter, so the caller owns verification'
-                        : 'downloads an artifact that no verification on this path ever checks',
-                fn.start + downloadCalls[0].index);
-        }
+            const downloadCalls = [...DOWNLOAD_PRIMITIVES, ...acquireWrappers].flatMap((p) =>
+                (fn.name === p ? [] : callIndices(fn.text, p)).map((c) => ({ ...c, p })));
+            if (downloadCalls.length > 0) {
+                const verifies = reaches(VERIFIERS);
+                const verdict = verifies ? 'VERIFIED'
+                    : acquireWrappers.has(fn.name) ? 'EXEMPT-DELEGATES-TO-CALLER'
+                        : 'UNVERIFIED';
+                add('ACQUIRE', fn, verdict,
+                    verdict === 'VERIFIED' ? `reaches ${VERIFIERS.join('/')} before the artifact is used`
+                        : verdict === 'EXEMPT-DELEGATES-TO-CALLER' ? 'pure download wrapper: the URL is a parameter, so the caller owns verification'
+                            : 'downloads an artifact that no verification on this path ever checks',
+                    fn.start + downloadCalls[0].index);
+            }
         } // end phase 2
 
         // ---------------- CACHE-ADMIT ----------------
@@ -453,6 +468,7 @@ for (const file of files) {
 const FAIL_VERDICTS = new Set([
     'UNVERIFIED',
     'RETAINS-ON-FAILURE',
+    'SILENT-DISCARD',
     'SIGNATURE-TOGGLE-INERT',
     'TRUSTS-MALFORMED-RECORD',
     'TORN-WRITE',
@@ -478,7 +494,7 @@ if (JSON_OUTPUT) {
 }
 
 console.log(`artifact-trust signature — ${path.basename(ROOT)} (${files.length} src file(s), ${unique.length} trust site(s))\n`);
-for (const kind of ['ACQUIRE', 'VERIFY', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
+for (const kind of ['ACQUIRE', 'VERIFY', 'DISCARD', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
     const rows = unique.filter((s) => s.kind === kind);
     if (rows.length === 0) continue;
     console.log(`${kind} (${rows.length}):`);

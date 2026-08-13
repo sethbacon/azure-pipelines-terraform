@@ -7,7 +7,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import * as httpClient from '../src/http-client';
 import { verifyGpgSignature } from '../src/gpg-verifier';
 import { HASHICORP_GPG_PUBLIC_KEY } from '../src/hashicorp-gpg-key';
-import { isVerificationFailure } from '../src/verification-failure';
+import { isVerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 // Direct (parent-process) unit tests for the GPG signature gate. These use the
 // REAL openpgp/crypto (the MockTestRunner integration scenarios stub openpgp away,

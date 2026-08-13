@@ -6,8 +6,8 @@ import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import { verifySha256, verifyCachedTool, writeCacheIntegrityMarker } from '../src/terraform-installer';
-import { discardArtifactOnFailure } from '../src/artifact-discard';
-import { VerificationFailure } from '../src/verification-failure';
+import { discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
+import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 /**
  * CLASS TEST — artifact trust (#65 / #78 / #136 / #198 / #204), sibling of
@@ -47,6 +47,22 @@ type SiteRow = { file: string; fn: string; kind: string; verdict: string };
  * trust root (see the notes on the SUMS-ABSENT rows) rather than a hole.
  */
 const SITE_ROWS: SiteRow[] = [
+    // Every discardArtifactOnFailure() call site, once per enclosing function. The
+    // discard now lives in @4cloudguru/pipeline-task-core, which cannot import the
+    // ADO task lib, so the log line naming the deleted artifact is an injected
+    // argument — REPORTS-DISCARD means that sink is still being passed.
+    { file: TF, fn: 'downloadZipFromHashiCorp', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF, fn: 'downloadZipFromOpenTofu', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadSentinelOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadOpaOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'verifyMirrorChecksum', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TD, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TD, fn: 'verifyChecksumOrSkip', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+
     // ---------------- TerraformInstallerV1: terraform (GPG) + OpenTofu (cosign) ----
     { file: TF, fn: 'downloadTerraform', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
     { file: TF, fn: 'resolveVersionFromHashiCorp', kind: 'LATEST', verdict: 'FAILS-CLOSED' },
@@ -287,6 +303,31 @@ describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
                 discardArtifactOnFailure(missing, async () => { throw new VerificationFailure('checksum mismatch'); }),
                 /checksum mismatch/,
             );
+        });
+
+        it('the discard is reported to the caller-supplied debug sink, naming the artifact', async () => {
+            // The sink is the operator's ONLY signal that a rejected artifact was
+            // removed. It is injected because the package does not import the ADO
+            // task lib, which makes it a parameter a caller can silently omit —
+            // exactly the kind of loss no other assertion here would notice.
+            const artifact = tempArtifact('tampered-zip-bytes');
+            const logged: string[] = [];
+            try {
+                await assert.rejects(
+                    discardArtifactOnFailure(
+                        artifact,
+                        () => verifySha256(artifact, 'a'.repeat(64)),
+                        { debug: (message: string) => { logged.push(message); } },
+                    ),
+                    /SHA256|Sha256/,
+                );
+                assert.ok(
+                    logged.some(m => m.includes(artifact) && /discard/i.test(m)),
+                    `the discard must be reported to the debug sink and name the artifact. logged: ${JSON.stringify(logged)}`,
+                );
+            } finally {
+                try { fs.unlinkSync(artifact); } catch { /* already discarded, which is the point */ }
+            }
         });
     });
 
