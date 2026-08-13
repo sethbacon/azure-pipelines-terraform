@@ -1,6 +1,6 @@
 import tasks = require("azure-pipelines-task-lib/task");
 import { buildProxyFetchOptions } from './proxy-config';
-import { retryAsync, parseRetryAfterMs } from './retry';
+import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 import { EnvironmentVariableHelper } from './environment-variables';
 
 export async function generateIdToken(serviceConnectionID: string): Promise<string> {

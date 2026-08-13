@@ -13,7 +13,7 @@
 // Apply future fixes to both repos' copies where they still apply.
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
-import { retryAsync } from './retry';
+import { retryAsync } from '@4cloudguru/pipeline-task-core';
 import * as fs from 'fs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';

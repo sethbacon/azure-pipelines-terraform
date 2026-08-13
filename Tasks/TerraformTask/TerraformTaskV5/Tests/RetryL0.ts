@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import assert = require('assert');
-import { retryAsync, parseRetryAfterMs } from '../src/retry';
+import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Direct unit tests for the shared retry.ts module itself -- retryAsync

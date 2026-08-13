@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
 import { buildProxyFetchOptions } from './proxy-config';
-import { retryAsync, parseRetryAfterMs } from './retry';
+import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Number of total token-exchange attempts and the initial backoff, matching the
