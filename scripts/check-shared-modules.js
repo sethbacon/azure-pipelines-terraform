@@ -215,40 +215,6 @@ const FAMILIES = [
         ],
     },
     {
-        // Bounded exponential-backoff retry helper (retryAsync + the 429
-        // Retry-After parser). One shared loop replaces the ones that used to be
-        // independently open-coded in TokenGenerator (id-token-generator.ts),
-        // retryHttp (http.ts), postJsonWithRetry (callback.ts), withRetry
-        // (servicenow-http.ts), and the three installer-family fetch clients'
-        // withRetry (http-client.ts). Each call site preserves its own semantics
-        // via predicates rather than a hardcoded policy, so a hardening change
-        // (jitter, a max-total-time cap, ...) lands here once instead of drifting
-        // across copies. Tasks can't cross-import, so it lives as byte-identical
-        // copies gated here. NOTE: the installer http-client.ts copies previously
-        // kept their OWN internal withRetry on purpose; as of #645 they delegate
-        // here too (retry.ts has no azure-pipelines-task-lib dependency, so it is
-        // portable across the fetch+AbortController transport as well), which is
-        // why the three installer src dirs now appear in this family. http-client.ts
-        // itself stays its own separate family above — only the retry loop is shared.
-        // TerraformPolicyCheck joined this family for #891: cloneRepo's git-clone
-        // was the one network operation in that task with no retry at all (not even
-        // its own open-coded loop) — it now delegates to this same shared retryAsync
-        // rather than growing a ninth bespoke implementation.
-        dirs: [
-            'Tasks/TerraformTask/TerraformTaskV5/src',
-            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
-            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
-            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
-            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
-            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
-            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
-            'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src',
-        ],
-        modules: [
-            'retry.ts',
-        ],
-    },
-    {
         // Frozen plan/apply digest CONTRACT shared between the task that PRODUCES
         // the redacted digest (src/results/) and the build-results tab that
         // CONSUMES it (src/tab/). digest-schema.ts is the versioned TypeScript

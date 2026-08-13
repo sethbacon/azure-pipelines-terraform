@@ -34,7 +34,7 @@ import * as net from 'net';
 import { Duplex } from 'stream';
 import { URL } from 'url';
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
-import { retryAsync, parseRetryAfterMs } from './retry';
+import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Per-request socket timeout (ms) and the upper bound on the response body

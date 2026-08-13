@@ -1,5 +1,5 @@
 import { HttpResponse, truncateBody } from './https-client';
-import { retryAsync, parseRetryAfterMs } from './retry';
+import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 import tasks = require('azure-pipelines-task-lib/task');
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared

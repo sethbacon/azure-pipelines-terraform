@@ -16,7 +16,7 @@ import { verifyCosignSignature } from './cosign-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
 import { VerificationFailure, isVerificationFailure } from './verification-failure';
 import { discardArtifactOnFailure } from './artifact-discard';
-import { retryAsync } from './retry';
+import { retryAsync } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 
 /**

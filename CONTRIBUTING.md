@@ -258,15 +258,16 @@ runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
 
 ### Retry/backoff helper parity
 
-`retry.ts` (`retryAsync()`) is the single canonical, CI-enforced-byte-identical bounded-retry implementation, duplicated across all **seven** tasks that need it (Tasks can't cross-import, so `scripts/check-shared-modules.js` gates byte-identity across the copies instead):
+`retryAsync()` comes from `@4cloudguru/pipeline-task-core`, a dependency of every task that needs bounded retry. It used to be eight byte-identical `src/retry.ts` copies gated by `scripts/check-shared-modules.js`; the package replaces the copies, so there is nothing left to keep in sync. These consume it:
 
-- `Tasks/TerraformTask/TerraformTaskV5/src/retry.ts`
-- `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/retry.ts` (consumed by `http.ts`'s `retryHttp()`)
-- `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/retry.ts` (consumed by `callback.ts`'s `postJsonWithRetry()`)
-- `Tasks/PublishKbArticle/PublishKbArticleV1/src/retry.ts` (consumed by `servicenow-http.ts`'s `withRetry()`)
-- `Tasks/TerraformInstaller/TerraformInstallerV1/src/retry.ts`, `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/retry.ts`, `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/retry.ts` (the installer family's shared `http-client.ts` fetch client)
+- `Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.ts` and `src/oci-token-exchange.ts`
+- `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/http.ts` (`retryHttp()`)
+- `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/callback.ts` (`postJsonWithRetry()`)
+- `Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts` (`withRetry()`)
+- `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/policy-source.ts` (the policy-repo git clone)
+- the installer family's `http-client.ts` and installer modules: `Tasks/TerraformInstaller/TerraformInstallerV1`, `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1`, `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1`
 
-The default backoff is AWS-style decorrelated jitter (`delay = min(maxBackoffMs, baseDelayMs + random() * (max(baseDelayMs, previousDelay * 3) - baseDelayMs))`), not a fixed `baseDelayMs * 2 ** attempt` schedule, and each call site supplies its own `retryResult`/`retryError` predicates rather than sharing one hardcoded policy. An optional `maxElapsedMs` wall-clock budget across all attempts is also available (#692). **When hardening the retry/backoff behavior (the backoff formula, a retry predicate, a new option, etc.), edit `retry.ts` and update every one of the seven copies together in the same change** — `scripts/check-shared-modules.js`'s `Check Shared Module Parity` CI job fails the build on any divergence, so this is enforced, not just a convention to remember.
+The default backoff is AWS-style decorrelated jitter (`delay = min(maxBackoffMs, baseDelayMs + random() * (max(baseDelayMs, previousDelay * 3) - baseDelayMs))`), not a fixed `baseDelayMs * 2 ** attempt` schedule, and each call site supplies its own `retryResult`/`retryError` predicates rather than sharing one hardcoded policy. An optional `maxElapsedMs` wall-clock budget across all attempts is also available (#692). **Harden the retry/backoff behavior in the package, not here** — a change to the formula, a predicate or an option ships as a new package version that every task picks up, instead of eight edits that CI has to police. Each task keeps its own `Tests/RetryL0.ts`, which now exercises the installed package: those are the contract tests that catch a behavioural change arriving through a version bump.
 
 `callback.ts`'s `postJsonWithRetry()` deliberately supplies a `retryResult` that never retries after a *received* HTTP response, including a 5xx, and only retries transport-level failures via the default `retryError`. This is intentional, not an oversight — `TerraformDriftReport`'s TSM callback token is one-shot, so retrying after the server has already seen (and possibly consumed) the token risks a spurious duplicate-submission error on the retry rather than a real recovery. Keep this divergence (via its own predicate, not a fork of `retry.ts` itself) when hardening the other call sites' behavior.
 

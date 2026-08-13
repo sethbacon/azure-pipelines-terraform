@@ -1,5 +1,5 @@
 import { createHttpsClient, HttpResponse, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
-import { retryAsync } from './retry';
+import { retryAsync } from '@4cloudguru/pipeline-task-core';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformModulePublish via ./https-client and guarded by
