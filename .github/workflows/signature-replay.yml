@@ -112,6 +112,36 @@ jobs:
           persist-credentials: false
           repository: 4cloudguru/pipeline-task-core
           path: suite/pipeline-task-core
+      # The GitHub-Actions family plus the drift payload contract they share with
+      # the ADO TerraformDriftReport task. In SIGNATURE_SCOPE and absent here is
+      # exit 2 for the whole job, not a quieter run. Note drift-contract is owned
+      # by 4cloudguru, not sethbacon; each path basename must equal that repo's
+      # `dir` in scope.json, which is what `--repos-root suite` resolves against.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/setup-terraform-hardened
+          path: suite/setup-terraform-hardened
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-provider-mirror
+          path: suite/terraform-provider-mirror
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-drift-report
+          path: suite/terraform-drift-report
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/terraform-module-publish
+          path: suite/terraform-module-publish
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: 4cloudguru/terraform-drift-contract
+          path: suite/terraform-drift-contract
       # The two ADO extensions are siblings that COPY modules between each other
       # rather than sharing a versioned one, so a class found in either is
       # presumed in the other and every signature runs in both.
