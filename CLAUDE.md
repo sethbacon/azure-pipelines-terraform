@@ -257,7 +257,6 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 | `index.ts`                | Entry point — reads inputs, validates URL, writes config                                                                                                                                                               |
 | `config-generator.ts`     | Pure function generating HCL `provider_installation` block                                                                                                                                                             |
 | `secure-temp.ts`          | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) used for the generated `.terraformrc`                                                    |
-| `url-secret-redaction.ts` | Redacts credential-bearing query parameters (Azure `sig=`, AWS `X-Amz-Signature`/`X-Amz-Credential`/`X-Amz-Security-Token`, GCS `X-Goog-*`) and `user:password@` userinfo from a URL before it can reach the build log |
 
 ## TerraformDocsInstaller Task (TerraformDocsInstallerV1)
 

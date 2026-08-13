@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from './config-generator';
-import { extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
+import { extractUrlUserInfoSecrets, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { replaceSecretFile } from './secure-temp';
 
 function parseMultiLineInput(input: string | undefined): string[] {

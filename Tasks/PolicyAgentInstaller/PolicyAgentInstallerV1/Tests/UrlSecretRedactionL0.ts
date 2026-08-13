@@ -6,7 +6,7 @@ import {
     scrubSecretsFromMessage,
     extractUrlUserInfoSecrets,
     redactUrlUserInfo,
-} from '../src/url-secret-redaction';
+} from '@4cloudguru/pipeline-task-core';
 
 /**
  * Direct unit tests for the shared url-secret-redaction module (#776). This file

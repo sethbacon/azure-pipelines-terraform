@@ -1,6 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { fetchJson } from './http-client';
-import { extractUrlUserInfoSecrets, redactUrlUserInfo } from './url-secret-redaction';
+import { extractUrlUserInfoSecrets, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 
 /**
  * setSecret() any basic-auth userinfo embedded in an operator-supplied
