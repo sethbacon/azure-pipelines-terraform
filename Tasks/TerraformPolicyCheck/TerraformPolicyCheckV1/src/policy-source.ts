@@ -4,7 +4,7 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
-import { retryAsync } from './retry';
+import { retryAsync } from '@4cloudguru/pipeline-task-core';
 import { attachBoundedCapture } from './output-cap';
 
 // Wall-clock bound for each git invocation. git's HTTP transport has no built-in
