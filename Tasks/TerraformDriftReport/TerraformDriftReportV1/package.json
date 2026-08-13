@@ -20,7 +20,7 @@
   "minimumAgentVersion": "2.144.0",
   "dependencies": {
     "azure-pipelines-task-lib": "^5.2.10",
-    "terraform-drift-contract": "github:sethbacon/terraform-drift-contract#v1.0.0"
+    "@4cloudguru/terraform-drift-contract": "^1.1.0"
   },
   "overrides": {
     "diff": "^8.0.3",

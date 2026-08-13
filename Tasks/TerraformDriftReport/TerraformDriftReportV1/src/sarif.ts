@@ -2,7 +2,7 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
-import { Result, SummaryEntry } from 'terraform-drift-contract';
+import { Result, SummaryEntry } from '@4cloudguru/terraform-drift-contract';
 import { replaceSecretFile } from './secure-temp';
 
 interface SarifMessage { text: string; }

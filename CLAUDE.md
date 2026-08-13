@@ -430,7 +430,7 @@ Tests are organized by command x provider: `InitTests/`, `PlanTests/`, `ApplyTes
 | `markdown-it`                              | Markdown parser — Markdown2Html                                                                                                                       |
 | `highlight.js`                             | Syntax highlighting — Markdown2Html                                                                                                                   |
 | `js-yaml`                                  | YAML front-matter parsing — Markdown2Html                                                                                                             |
-| `terraform-drift-contract`                 | Drift-summary contract types — TerraformDriftReport                                                                                                   |
+| `@4cloudguru/terraform-drift-contract`     | Drift-summary contract types — TerraformDriftReport                                                                                                   |
 | `typescript`                               | Build toolchain                                                                                                                                       |
 | `mocha` + `ts-node`                        | Test framework                                                                                                                                        |
 

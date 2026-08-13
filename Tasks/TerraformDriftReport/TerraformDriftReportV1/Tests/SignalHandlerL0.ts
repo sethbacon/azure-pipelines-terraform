@@ -79,8 +79,9 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency summary-file scrub t
         // The real summarize() handles an empty plan gracefully (all zeros), so no
         // stub is needed; the callback POST then hangs, standing in for a TSM
         // callback still in flight when a termination signal arrives. (summarize is
-        // a read-only ESM getter on the terraform-drift-contract package and cannot
-        // be reassigned anyway -- postJsonWithRetry is same-task src and is writable.)
+        // a read-only ESM getter on the @4cloudguru/terraform-drift-contract package
+        // and cannot be reassigned anyway -- postJsonWithRetry is same-task src and
+        // is writable.)
         callback.postJsonWithRetry = () => new Promise(() => { /* never resolves */ });
 
         delete require.cache[indexModulePath];
