@@ -654,19 +654,21 @@ describe('TerraformDriftReport Test Suite', function () {
     });
 
     it('DriftReportSensitiveMasking — an attribute marked on ONE mirror is masked on BOTH sides, and module provenance is projected, in what the task writes', async () => {
-        const dir = path.join(os.tmpdir(), 'tdr-sensitive');
-        const sarifPath = path.join(dir, 'drift.sarif');
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportSensitiveMasking.js'));
         await tr.runAsync();
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded (failOnDrift=false)');
 
-            // Recover the uuid-named summary file the task actually wrote from its
-            // own output-variable logging command (same technique as
-            // DriftReportSarifHostile) rather than assuming a location.
-            const varLine = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=summaryFilePath;'));
-            assert(varLine, `summaryFilePath output variable line not found in stdout: ${tr.stdout}`);
-            const summaryPath = varLine!.slice(varLine!.indexOf(']') + 1).trim();
+            // Recover both uuid-named artifacts from the task's own output-variable
+            // logging commands (same technique as DriftReportSarifHostile) rather
+            // than assuming a location.
+            const outputVar = (name: string): string => {
+                const line = tr.stdout.split('\n').find(l => l.includes(`##vso[task.setvariable variable=${name};`));
+                assert(line, `${name} output variable line not found in stdout: ${tr.stdout}`);
+                return line!.slice(line!.indexOf(']') + 1).trim();
+            };
+            const summaryPath = outputVar('summaryFilePath');
+            const sarifPath = outputVar('sarifFilePath');
             assert(fs.existsSync(summaryPath), `summary file should exist at ${summaryPath}`);
             const raw = fs.readFileSync(summaryPath, 'utf-8');
             const body = JSON.parse(raw) as {

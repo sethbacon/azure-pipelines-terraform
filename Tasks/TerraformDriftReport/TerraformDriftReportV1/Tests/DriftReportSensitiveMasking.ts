@@ -16,12 +16,11 @@ import fs = require('fs');
 // likewise forwarded raw, carrying `expressions.*.constant_value` and a
 // credential-bearing module `source` URL that no sensitivity metadata exists to
 // mask. L0 asserts neither literal survives anywhere in what the task writes.
-const tp = path.join(__dirname, '..', 'src', 'index.js');
-const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
-
-const dir = path.join(os.tmpdir(), 'tdr-sensitive');
-fs.rmSync(dir, { recursive: true, force: true });
-fs.mkdirSync(dir, { recursive: true });
+//
+// sarifPath is deliberately left unset so writeSarif auto-generates its own
+// unique uuid-named path (see sarif.ts and DriftReportSarifHostile) -- this
+// fixture only needs mkdtempSync for the plan.json it writes.
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdr-sensitive-'));
 const planFile = path.join(dir, 'plan.json');
 fs.writeFileSync(
     planFile,
@@ -65,6 +64,9 @@ fs.writeFileSync(
     }),
 );
 
+const tp = path.join(__dirname, '..', 'src', 'index.js');
+const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
+
 tr.setInput('planJsonFile', planFile);
 // Exercises moduleCallsPlan() -- the second half of the contract fix.
 tr.setInput('includeModuleProvenance', 'true');
@@ -73,6 +75,5 @@ tr.setInput('failOnDrift', 'false');
 // The SARIF report is the other plan-derived artifact this task writes, so it
 // gets the same no-leak assertion.
 tr.setInput('sarifOutput', 'true');
-tr.setInput('sarifPath', path.join(dir, 'drift.sarif'));
 
 tr.run();
