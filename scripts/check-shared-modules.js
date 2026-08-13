@@ -74,39 +74,6 @@ const FAMILIES = [
         ],
     },
     {
-        // Verification-failure classification (cache-hit re-verification): typed
-        // marker distinguishing "material failed verification" (fail closed) from
-        // "material unavailable" (degrade gracefully to the cached tool). A drift
-        // here could silently reclassify a bad signature as a mere availability
-        // warning, so keep it byte-identical across the three installer tasks.
-        dirs: [
-            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
-            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
-            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
-        ],
-        modules: [
-            'verification-failure.ts',
-        ],
-    },
-    {
-        // Discard-on-failed-verification wrapper: a downloaded archive whose
-        // checksum or signature does NOT verify is deleted rather than left sitting
-        // in the agent's temp directory, where on a persistent self-hosted agent a
-        // rejected — possibly tampered — artifact would otherwise stay indefinitely.
-        // The distinction it encodes (a failed COMPARISON discards; a merely
-        // UNAVAILABLE checksum the operator opted out of requiring does not) is the
-        // kind of thing that drifts if each installer keeps its own copy, so keep it
-        // byte-identical across the three installer tasks.
-        dirs: [
-            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
-            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
-            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
-        ],
-        modules: [
-            'artifact-discard.ts',
-        ],
-    },
-    {
         // Private-registry 'latest' version resolution + operator-URL credential
         // masking helper, shared by all three installer tasks that support
         // downloadSource=registry. Previously hand-duplicated with a matching body

@@ -12,10 +12,11 @@ import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
-import { VerificationFailure, isVerificationFailure } from './verification-failure';
-import { discardArtifactOnFailure } from './artifact-discard';
-import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
+
+// The package does not import the ADO task lib, so the discard's log line is wired here.
+const discardLog = { debug: (message: string) => tasks.debug(message) };
 
 /**
  * Localized rejection text for the egress authorization applied to a download
@@ -218,7 +219,7 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     await discardArtifactOnFailure(zipPath, async () => {
         await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
-    });
+    }, discardLog);
 
     return zipPath;
 }
@@ -306,7 +307,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     if (data.sha256) {
-        await discardArtifactOnFailure(zipPath, () => verifySha256(zipPath, data.sha256));
+        await discardArtifactOnFailure(zipPath, () => verifySha256(zipPath, data.sha256), discardLog);
         return { zipPath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
@@ -418,7 +419,7 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     await discardArtifactOnFailure(zipPath, async () => {
         await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
-    });
+    }, discardLog);
     return { zipPath, verified: true };
 }
 
@@ -788,7 +789,7 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     await discardArtifactOnFailure(zipPath, async () => {
         await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
-    });
+    }, discardLog);
 
     return zipPath;
 }

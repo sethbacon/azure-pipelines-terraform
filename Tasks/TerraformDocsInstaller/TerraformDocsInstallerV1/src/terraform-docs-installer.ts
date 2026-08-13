@@ -10,10 +10,11 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
 import { getBoolInputDefaultTrue } from './bool-input';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
-import { VerificationFailure, isVerificationFailure } from './verification-failure';
-import { discardArtifactOnFailure } from './artifact-discard';
-import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
+
+// The package does not import the ADO task lib, so the discard's log line is wired here.
+const discardLog = { debug: (message: string) => tasks.debug(message) };
 
 /**
  * Localized rejection text for the egress authorization applied to a download
@@ -275,7 +276,7 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     }
 
     if (data.sha256) {
-        await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256));
+            await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
         return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
@@ -340,7 +341,7 @@ async function verifyChecksumOrSkip(filePath: string, sha256Url: string, assetNa
     // The checksum file exists: a missing asset entry or a hash mismatch is always
     // fatal — and DELETES the archive rather than leaving a rejected, possibly
     // tampered artifact in the agent's temp directory (#204).
-    await discardArtifactOnFailure(filePath, () => verifySha256(filePath, parseSha256(sumsBody, assetName)));
+    await discardArtifactOnFailure(filePath, () => verifySha256(filePath, parseSha256(sumsBody, assetName)), discardLog);
     return true;
 }
 

@@ -6,8 +6,8 @@ import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import { verifySha256, verifyCachedTool, writeCacheIntegrityMarker } from '../src/terraform-installer';
-import { discardArtifactOnFailure } from '../src/artifact-discard';
-import { VerificationFailure } from '../src/verification-failure';
+import { discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
+import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 /**
  * CLASS TEST — artifact trust (#65 / #78 / #136 / #198 / #204), sibling of
@@ -287,6 +287,31 @@ describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
                 discardArtifactOnFailure(missing, async () => { throw new VerificationFailure('checksum mismatch'); }),
                 /checksum mismatch/,
             );
+        });
+
+        it('the discard is reported to the caller-supplied debug sink, naming the artifact', async () => {
+            // The sink is the operator's ONLY signal that a rejected artifact was
+            // removed. It is injected because the package does not import the ADO
+            // task lib, which makes it a parameter a caller can silently omit —
+            // exactly the kind of loss no other assertion here would notice.
+            const artifact = tempArtifact('tampered-zip-bytes');
+            const logged: string[] = [];
+            try {
+                await assert.rejects(
+                    discardArtifactOnFailure(
+                        artifact,
+                        () => verifySha256(artifact, 'a'.repeat(64)),
+                        { debug: (message: string) => { logged.push(message); } },
+                    ),
+                    /SHA256|Sha256/,
+                );
+                assert.ok(
+                    logged.some(m => m.includes(artifact) && /discard/i.test(m)),
+                    `the discard must be reported to the debug sink and name the artifact. logged: ${JSON.stringify(logged)}`,
+                );
+            } finally {
+                try { fs.unlinkSync(artifact); } catch { /* already discarded, which is the point */ }
+            }
         });
     });
 

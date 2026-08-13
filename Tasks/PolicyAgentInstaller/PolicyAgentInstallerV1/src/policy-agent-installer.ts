@@ -11,10 +11,11 @@ import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEO
 import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from './url-secret-redaction';
-import { VerificationFailure, isVerificationFailure } from './verification-failure';
-import { discardArtifactOnFailure } from './artifact-discard';
-import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
+
+// The package does not import the ADO task lib, so the discard's log line is wired here.
+const discardLog = { debug: (message: string) => tasks.debug(message) };
 
 /**
  * Localized rejection text for the egress authorization applied to a download
@@ -223,7 +224,7 @@ async function downloadSentinelOfficial(version: string): Promise<{ path: string
     await discardArtifactOnFailure(zipPath, async () => {
         await verifyGpgSignature(sha256SumsContent, `${sha256SumsUrl}.sig`, requireGpg);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
-    });
+    }, discardLog);
     return { path: zipPath, verified: true };
 }
 
@@ -255,7 +256,7 @@ async function downloadOpaOfficial(version: string): Promise<{ path: string; ver
         tasks.warning(`SHA256 verification skipped for OPA download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
     }
-    await discardArtifactOnFailure(binaryPath, () => verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName)));
+    await discardArtifactOnFailure(binaryPath, () => verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName)), discardLog);
     return { path: binaryPath, verified: true };
 }
 
@@ -341,7 +342,7 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     }
 
     if (data.sha256) {
-        await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256));
+            await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
         return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
@@ -402,7 +403,7 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
         tasks.warning(`SHA256 verification skipped for mirror download: no checksum file published at ${sha256Url}.`);
         return { path: binaryPath, verified: false };
     }
-    await discardArtifactOnFailure(binaryPath, () => verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName)));
+    await discardArtifactOnFailure(binaryPath, () => verifySha256(binaryPath, parseFirstSha256(sha256Body, assetName)), discardLog);
     return { path: binaryPath, verified: true };
 }
 
@@ -435,7 +436,7 @@ async function verifyMirrorChecksum(filePath: string, sha256SumsUrl: string, fil
     await discardArtifactOnFailure(filePath, async () => {
         await verifyGpgSignature(body, `${sha256SumsUrl}.sig`, requireGpg);
         await verifySha256(filePath, parseSha256(body, fileName));
-    });
+    }, discardLog);
     return true;
 }
 

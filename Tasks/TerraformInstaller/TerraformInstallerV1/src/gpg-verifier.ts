@@ -8,7 +8,7 @@ import * as openpgp from 'openpgp';
 
 import { fetchBufferAllow404 } from './http-client';
 import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
-import { VerificationFailure } from './verification-failure';
+import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Verifies the GPG signature of a SHA256SUMS file against HashiCorp's public key.

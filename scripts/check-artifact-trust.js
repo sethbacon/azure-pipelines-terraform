@@ -310,11 +310,26 @@ for (const file of files) {
                     'verifies the agent-cached executable against its recorded marker; discarding here would evict another job\'s cache entry',
                     fn.start + call.index);
             } else if (inDiscardSpan(call.index)) {
-                add('VERIFY', fn, 'DISCARDS-ON-FAILURE', `${call.v} runs inside ${DISCARD_GUARD}()`, fn.start + call.index);
+                add('VERIFY', fn, 'DISCARDS-ON-FAILURE', `${DISCARD_GUARD}() wraps ${call.v}`, fn.start + call.index);
             } else {
                 add('VERIFY', fn, 'RETAINS-ON-FAILURE',
                     `${call.v} is not wrapped in ${DISCARD_GUARD}() — a failed check leaves the artifact on disk (#204)`,
                     fn.start + call.index);
+            }
+        }
+
+        // The discard itself lives in @4cloudguru/pipeline-task-core, which does not
+        // import the ADO task lib, so the log line naming the deleted artifact is an
+        // INJECTED sink. That makes it an argument a call site can silently omit,
+        // leaving the operator with a rejected artifact removed and no record of it.
+        for (const [start, end] of discardSpans) {
+            const callText = fn.text.slice(start, end);
+            if (/(^|[^\w$])discardLog(\W|$)/.test(callText)) {
+                add('DISCARD', fn, 'REPORTS-DISCARD', `${DISCARD_GUARD}() is passed the discardLog sink`, fn.start + start);
+            } else {
+                add('DISCARD', fn, 'SILENT-DISCARD',
+                    `${DISCARD_GUARD}() is called without the discardLog sink — the artifact is deleted with no record of it (#204)`,
+                    fn.start + start);
             }
         }
 
@@ -453,6 +468,7 @@ for (const file of files) {
 const FAIL_VERDICTS = new Set([
     'UNVERIFIED',
     'RETAINS-ON-FAILURE',
+    'SILENT-DISCARD',
     'SIGNATURE-TOGGLE-INERT',
     'TRUSTS-MALFORMED-RECORD',
     'TORN-WRITE',
@@ -478,7 +494,7 @@ if (JSON_OUTPUT) {
 }
 
 console.log(`artifact-trust signature — ${path.basename(ROOT)} (${files.length} src file(s), ${unique.length} trust site(s))\n`);
-for (const kind of ['ACQUIRE', 'VERIFY', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
+for (const kind of ['ACQUIRE', 'VERIFY', 'DISCARD', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
     const rows = unique.filter((s) => s.kind === kind);
     if (rows.length === 0) continue;
     console.log(`${kind} (${rows.length}):`);
