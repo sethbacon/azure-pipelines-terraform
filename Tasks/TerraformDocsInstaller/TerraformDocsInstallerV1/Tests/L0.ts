@@ -348,6 +348,28 @@ describe('TerraformDocsInstaller Test Suite', function () {
   expectFailure('RegistryEmptySha256RequireChecksum');
   expectFailure('MirrorChecksumFetch5xxFail');
 
+  it('registry withholds sha256 but advertises shasums_url: fails closed and names the registry as the cause', async () => {
+    const tp = path.join(__dirname, 'RegistryEmptySha256ShasumsHint.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+
+    runValidations(() => {
+      assert(tr.failed, 'task should have failed');
+      assert(
+        tr.errorIssues.some(e => /did not provide a sha256/i.test(e)),
+        'should still fail closed on the missing checksum. errors: ' + tr.errorIssues,
+      );
+      assert(
+        tr.errorIssues.some(e => /registry-side data problem/i.test(e)),
+        'should report that the registry holds the checksum but left sha256 empty. errors: ' + tr.errorIssues,
+      );
+      assert(
+        !tr.stdout.includes('terraform-docs installed'),
+        'must not install from a same-origin shasums_url fallback',
+      );
+    }, tr);
+  });
+
   it('registry host resolves to a private address: should reject on the DEFAULT (no allowlist) path (#769)', async () => {
     const tp = path.join(__dirname, 'RegistryHostResolvesPrivate.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
