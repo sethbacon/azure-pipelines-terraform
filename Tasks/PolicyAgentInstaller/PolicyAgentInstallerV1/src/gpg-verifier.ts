@@ -3,8 +3,19 @@
 // the copies stay byte-identical, failing the build on any divergence, so a fix or
 // key rotation here MUST be applied to BOTH copies. This duplication is deliberate
 // (each task bundles independently) — not drift to be flagged.
+//
+// The CRYPTOGRAPHIC decision now comes from @4cloudguru/pipeline-task-core/gpg
+// (verifyDetached), so the openpgp API surface lives in one place instead of two
+// copies. What stays here is what the package deliberately refuses to own:
+//   - the trust root (HASHICORP_GPG_PUBLIC_KEY), because vendoring a signing key
+//     through a package means a compromise of that package silently replaces it;
+//   - the 404-vs-transient distinction, because only the caller knows a missing
+//     signature MAY be downgraded on operator opt-out while a 5xx never may;
+//   - the VerificationFailure typing, which is what lets the cache-hit
+//     re-verification path fail closed on a bad signature but degrade on an outage.
 import tasks = require('azure-pipelines-task-lib/task');
-import * as openpgp from 'openpgp';
+
+import { verifyDetached } from '@4cloudguru/pipeline-task-core/gpg';
 
 import { fetchBufferAllow404 } from './http-client';
 import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
@@ -38,28 +49,22 @@ export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl
 
     tasks.debug(`Verifying GPG signature from ${signatureUrl}`);
 
-    const publicKey = await openpgp.readKey({ armoredKey: HASHICORP_GPG_PUBLIC_KEY });
-    const signature = await openpgp.readSignature({ binarySignature: signatureBytes });
-    const message = await openpgp.createMessage({ text: sha256SumsContent });
-
-    const result = await openpgp.verify({
-        message,
-        signature,
-        verificationKeys: publicKey,
+    const result = await verifyDetached({
+        message: new TextEncoder().encode(sha256SumsContent),
+        signature: signatureBytes,
+        armoredPublicKeys: [HASHICORP_GPG_PUBLIC_KEY],
     });
 
     // From here on the signature material was OBTAINED but does not verify —
     // throw the typed VerificationFailure so the cache-hit re-verification path
     // fails closed instead of degrading to "material unavailable".
-    if (!result.signatures || result.signatures.length === 0) {
-        throw new VerificationFailure(`GPG signature verification failed: no signatures found in ${signatureUrl}`);
-    }
-    const { verified } = result.signatures[0];
-    try {
-        await verified;
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new VerificationFailure(`GPG signature verification failed for SHA256SUMS: ${errorMessage}`);
+    if (!result.verified) {
+        // The reasons are how an operator tells a key-rotation miss from a tampered
+        // file; without them this failure reads the same either way. The URL is kept
+        // because the deleted "no signatures found in <url>" branch was the only place
+        // a zero-signature .sig named which file was empty.
+        const detail = result.reasons?.join('; ') || 'no signature verified';
+        throw new VerificationFailure(`GPG signature verification failed for SHA256SUMS (${signatureUrl}): ${detail}`);
     }
 
     tasks.debug('GPG signature verification passed');
