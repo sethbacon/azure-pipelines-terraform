@@ -4,6 +4,34 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.1...v1.14.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** spend the replay credential on the one private checkout only ([#932](https://github.com/sethbacon/azure-pipelines-terraform/issues/932)) ([170097f](https://github.com/sethbacon/azure-pipelines-terraform/commit/170097fe0b033ae9034e731e91ad6c1068040a72))
+* explain a withheld registry sha256 instead of failing opaquely ([#941](https://github.com/sethbacon/azure-pipelines-terraform/issues/941)) ([d3e11e4](https://github.com/sethbacon/azure-pipelines-terraform/commit/d3e11e4b0cbe88f058f8caf301c470d9ba3c7b75))
+
+
+### Dependencies
+
+* bump pipeline-task-core to ^0.5.0 ([#948](https://github.com/sethbacon/azure-pipelines-terraform/issues/948)) ([d3e2cb1](https://github.com/sethbacon/azure-pipelines-terraform/commit/d3e2cb15c952d12ce73163fd5a0a3e10964c7390))
+
+
+### Refactor
+
+* consume retryAsync from pipeline-task-core, deleting 8 copies ([#940](https://github.com/sethbacon/azure-pipelines-terraform/issues/940)) ([a133204](https://github.com/sethbacon/azure-pipelines-terraform/commit/a13320425d6fbb3da6b7ded62a8b8817970f1aae))
+* consume the egress and path-segment guards from pipeline-task-core ([#942](https://github.com/sethbacon/azure-pipelines-terraform/issues/942)) ([2a26ec1](https://github.com/sethbacon/azure-pipelines-terraform/commit/2a26ec19f420e381fd160078b1f11a98ac7bac69))
+* consume the HTTP client from pipeline-task-core ([#949](https://github.com/sethbacon/azure-pipelines-terraform/issues/949)) ([1b31707](https://github.com/sethbacon/azure-pipelines-terraform/commit/1b317074cde47975eeacb9cce7a429903a390134))
+* consume the URL redaction guards from pipeline-task-core ([#944](https://github.com/sethbacon/azure-pipelines-terraform/issues/944)) ([0272505](https://github.com/sethbacon/azure-pipelines-terraform/commit/02725051c2f64498c54204f8e8a64967e302fe5d))
+* consume the verification guards from pipeline-task-core ([#943](https://github.com/sethbacon/azure-pipelines-terraform/issues/943)) ([8910f92](https://github.com/sethbacon/azure-pipelines-terraform/commit/8910f92a2e42a5d766b098536caf42e29e7fb632))
+* dedupe the truncateBody helper and single-source shared modules ([#934](https://github.com/sethbacon/azure-pipelines-terraform/issues/934)) ([f22eca5](https://github.com/sethbacon/azure-pipelines-terraform/commit/f22eca588d5407fc63b5cc5abf8565e6902721ad)), closes [#300](https://github.com/sethbacon/azure-pipelines-terraform/issues/300)
+
+
+### Security
+
+* consume the published drift contract and its masking fix ([#936](https://github.com/sethbacon/azure-pipelines-terraform/issues/936)) ([655c381](https://github.com/sethbacon/azure-pipelines-terraform/commit/655c3816f0d054152f10cf5ae1810ee523f5a005))
+
 ## [1.14.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.0...v1.14.1) (2026-08-10)
 
 
