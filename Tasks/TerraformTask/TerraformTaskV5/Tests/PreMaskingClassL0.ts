@@ -55,13 +55,22 @@ interface SourceSite {
 }
 
 /**
- * M3: the WHATWG URL setter percent-encodes the password, so the string
- * url.toString() embeds is byte-different from the raw proxyPassword that was
- * registered. All three http-client.ts copies are byte-identical (gated by
- * scripts/check-shared-modules.js), so all three carry the same row.
+ * M3: the WHATWG URL setter percent-encodes the password, so the string the
+ * dispatcher URL embeds is byte-different from the raw proxyPassword — the
+ * agent's masker matches registered literals, never derivations of them.
+ * Assembling that URL now happens in pipeline-task-core's resolveProxy(), which
+ * cannot call setSecret itself (the package does not import the task lib), so
+ * it returns every spelling it produced and registering them stays the caller's
+ * obligation. That makes this row MORE load-bearing than when the encoding was
+ * inline: the guard is the only thing tying the returned secrets to a setSecret
+ * call before the URL reaches ProxyAgent. All three http-client.ts copies are
+ * byte-identical (gated by scripts/check-shared-modules.js), so all three carry
+ * the same row.
  */
-const PROXY_ENCODED_GUARD = /url\.password = proxy\.proxyPassword \?\? "";[\s\S]{0,1200}?if \(url\.password\) \{\s*\n\s*tasks\.setSecret\(url\.password\);\s*\n\s*\}\s*\n\s*proxyUrl = url\.toString\(\);/;
-const PROXY_ENCODED_DEFECT = /url\.password = proxy\.proxyPassword \?\? "";\s*\n\s*proxyUrl = url\.toString\(\);/;
+const PROXY_ENCODED_GUARD = /for \(const secret of resolved\.secrets\) \{\s*\n\s*tasks\.setSecret\(secret\);\s*\n\s*\}[\s\S]{0,400}?new ProxyAgent\(resolved\.proxyUrl\)/;
+// Tempered so it can only match when NO registration intervenes: in the correct
+// shape the setSecret loop sits between the two, and the match cannot span it.
+const PROXY_ENCODED_DEFECT = /resolveProxy\((?:(?!tasks\.setSecret)[\s\S]){0,800}?new ProxyAgent\(/;
 
 /**
  * M5: the registry-supplied pre-signed download_url carries a live signing token

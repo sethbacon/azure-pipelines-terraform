@@ -95,17 +95,32 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/http-client.ts',
-        fn: 'fetchWithTimeout', sink: 'fetch', verdict: 'PROXIED',
-        why: 'installer transport; spreads buildFetchOptions()',
+        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        why: 'installer transport, now delegated to pipeline-task-core: the package cannot read the agent proxy itself, so this must inject fetchOptions from buildFetchOptions()',
+    },
+    {
+        file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/http-client.ts',
+        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        why: 'the same transport with the registry-specific failure message; a second construction is a second place the injection could be dropped',
     },
     {
         file: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/http-client.ts',
-        fn: 'fetchWithTimeout', sink: 'fetch', verdict: 'PROXIED',
+        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        why: 'byte-identical copy of the installer transport',
+    },
+    {
+        file: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/http-client.ts',
+        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
         why: 'byte-identical copy of the installer transport',
     },
     {
         file: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/http-client.ts',
-        fn: 'fetchWithTimeout', sink: 'fetch', verdict: 'PROXIED',
+        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        why: 'byte-identical copy of the installer transport',
+    },
+    {
+        file: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/http-client.ts',
+        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
         why: 'byte-identical copy of the installer transport',
     },
     // --- node:https, proxied via the CONNECT-tunnelling ProxyTunnelAgent ---

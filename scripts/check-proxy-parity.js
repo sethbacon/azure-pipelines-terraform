@@ -64,6 +64,15 @@ const PROXY_OPTION_BUILDERS = ['buildFetchOptions', 'buildProxyFetchOptions'];
 const FETCH_SINKS = ['fetch'];
 const NODE_HTTP_SINKS = ['https.request', 'https.get', 'http.request', 'http.get'];
 
+/**
+ * Factories that own the real `fetch()` on this repo's behalf, in a package that
+ * cannot read the agent's proxy itself. Delegating the transport moves the real
+ * fetch() out of this tree, so without this rule the gate simply stops seeing
+ * the call site and passes vacuously. The proxy decision is still made here, as
+ * an injected option, so it is still checked here.
+ */
+const DELEGATED_FETCH_SINKS = ['createHttpClient'];
+
 /** Proxy-aware by construction inside azure-pipelines-tool-lib (see header). */
 const TOOL_LIB_SINKS = ['downloadTool'];
 
@@ -281,6 +290,25 @@ for (const file of files) {
             const hasDispatcher = /(^|[^\w$])dispatcher\s*:/.test(args);
             record(m.index, sink, spreadsBuilder || hasDispatcher ? 'PROXIED' : 'UNPROXIED',
                 spreadsBuilder ? 'spreads a proxy option builder' : hasDispatcher ? 'supplies an undici dispatcher' : 'no dispatcher and no proxy-option spread');
+        }
+    }
+
+    for (const sink of DELEGATED_FETCH_SINKS) {
+        const re = new RegExp(`(?<![.\\w$])${sink}\\s*\\(`, 'g');
+        let m;
+        while ((m = re.exec(masked)) !== null) {
+            const call = callText(masked, m.index + m[0].length - 1);
+            // The options are commonly assembled as `{ ...injected, ... }`, so a
+            // literal read of the call text alone would miss the injection and
+            // report a correctly-proxied site as UNPROXIED. Resolve one level of
+            // local `const <ident> = { ... }` for every spread, the same way the
+            // node:http sinks resolve a hoisted options object.
+            const spreads = [...call.matchAll(/\.\.\.\s*([A-Za-z_$][\w$]*)/g)].map((s) => s[1]);
+            const options = call + spreads.map((id) => resolveOptionsText(masked, m.index, id)).join('');
+            const injects = /(^|[^\w$])fetchOptions\s*:/.test(options) &&
+                PROXY_OPTION_BUILDERS.some((b) => new RegExp(`(^|[^\\w$])${b}\\b`).test(options));
+            record(m.index, sink, injects ? 'PROXIED' : 'UNPROXIED',
+                injects ? 'injects fetchOptions from a proxy option builder' : 'no fetchOptions injection, so the delegated fetch cannot reach the agent proxy');
         }
     }
 
