@@ -1015,6 +1015,25 @@ surface drift in SARIF-aware tooling.
 > (GitHub code scanning, a SIEM). The JUnit results the policy-check task also emits render
 > natively in the **Tests** tab, so JUnit is the zero-setup path.
 
+**Completeness markers.** The report and the callback body carry five fields
+describing what the run did **not** do, straight from the drift contract:
+
+| Field | Meaning |
+| --- | --- |
+| `unparseable` | the document did not have the shape of a plan — nothing was actually checked |
+| `unmasked` | a change carried no sensitivity metadata, so nothing was redacted for it |
+| `truncated` | a bound was reached and the summary is not the whole story |
+| `omitted_entries` | summary rows dropped by the entry cap (**the counts still include them**) |
+| `omitted_attrs` | changed attributes dropped by the per-row cap, across all rows |
+
+`unparseable` is the one that changes an answer. Without it a truncated
+`terraform show -json`, a wrong file, an empty `{}` and a genuinely clean plan
+all leave the agent as `added: 0, changed: 0, destroyed: 0, drifted: false` —
+byte-identical bodies — so "we checked and it was clean" and "we never finished
+checking" were the same report, and TSM auto-resolved the live drift record on
+either. Gate on `driftDetected` by all means, but treat `unparseable` as a
+failure of the check rather than as a clean result.
+
 Module provenance: `includeModuleProvenance` (default `true`) adds the
 configuration's module calls and locked module versions — read from
 `moduleManifest` (default `.terraform/modules/modules.json`) — to the report and

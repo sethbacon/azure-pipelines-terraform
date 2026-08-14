@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as net from 'net';
 import * as https from 'https';
 import tasks = require('azure-pipelines-task-lib/task');
+import { summarize } from '@4cloudguru/terraform-drift-contract';
 import { postJson, postJsonWithRetry, truncateBody } from '../src/callback';
 import { createHttpsClient } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
@@ -797,5 +798,156 @@ describe('TerraformDriftReport Test Suite', function () {
                 'should warn that TLS verification is off',
             );
         }, tr);
+    });
+});
+
+// #950 — the completeness markers: what the check did NOT do.
+//
+// The callback body was assembled by naming the contract's fields one at a time
+// into a `Record<string, unknown>`. Contract 1.2.0 added five markers and every
+// one was dropped, invisibly: a pick list cannot report a field it never
+// mentions, and the destination type accepted anything, so `tsc` had nothing to
+// say either. The result was that a plan this task could not read left the agent
+// as `drifted: false` with zero counts -- byte-identical to a verified-clean run
+// -- and TSM auto-resolved the live drift record on it.
+//
+// Every case asserts BOTH directions. A body that hardcoded `unparseable: false`
+// passes any test that only ever feeds it a readable plan, and one that
+// hardcoded `true` passes any test that only feeds it a broken one; only the
+// pair distinguishes a forwarded value from a constant.
+describe('TerraformDriftReport completeness markers (#950)', function () {
+    this.timeout(30000);
+
+    const MARKERS = ['unparseable', 'unmasked', 'truncated', 'omitted_entries', 'omitted_attrs'] as const;
+
+    interface Posted extends Record<string, unknown> {
+        added: number;
+        changed: number;
+        destroyed: number;
+        drifted: boolean;
+        summary: unknown[];
+    }
+
+    // Runs the shared fixture for one case and returns BOTH the bytes it would
+    // have POSTed and the summary artifact it wrote. The two are the same object
+    // in src/index.ts, and #950 dropped the markers from both; asserting only one
+    // would pass on a refactor that split them.
+    async function runCase(name: string): Promise<{ posted: Posted; artifact: Posted; tr: ttm.MockTestRunner }> {
+        const postedFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tdr-posted-')), 'posted.json');
+        process.env['TDR_MARKER_CASE'] = name;
+        process.env['TDR_MARKER_POSTED'] = postedFile;
+        try {
+            const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCompletenessMarkers.js'));
+            await tr.runAsync();
+            assert(tr.succeeded, `task should have succeeded for case ${name}: ${tr.stdout}\n${tr.stderr}`);
+            assert(fs.existsSync(postedFile), `no callback body was captured for case ${name}: ${tr.stdout}`);
+            const posted = JSON.parse(fs.readFileSync(postedFile, 'utf-8')) as Posted;
+
+            const line = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=summaryFilePath;'));
+            assert(line, `summaryFilePath output variable not found: ${tr.stdout}`);
+            const artifactPath = line!.slice(line!.indexOf(']') + 1).trim();
+            const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8')) as Posted;
+            return { posted, artifact, tr };
+        } finally {
+            delete process.env['TDR_MARKER_CASE'];
+            delete process.env['TDR_MARKER_POSTED'];
+        }
+    }
+
+    // The load-bearing one. This body is 0/0/0 + drifted:false -- identical to
+    // the clean case below on every other field. `unparseable` is the only thing
+    // separating "we checked and it was clean" from "we never finished
+    // checking", and the receiver resolved the record on both until it arrived.
+    it('an unreadable document is POSTed as unparseable, not as clean', async () => {
+        const { posted, artifact } = await runCase('unreadable');
+        assert.strictEqual(posted.unparseable, true, 'unparseable must travel');
+        assert.deepStrictEqual(
+            [posted.added, posted.changed, posted.destroyed, posted.drifted],
+            [0, 0, 0, false],
+            'an unreadable document is otherwise indistinguishable from a clean one',
+        );
+        assert.strictEqual(artifact.unparseable, true, 'the on-agent summary artifact must carry it too');
+    });
+
+    // Positive control. A hardcoded `unparseable: true` satisfies the assertion
+    // above; only a run where the value is genuinely false proves the marker is
+    // forwarded rather than pinned.
+    it('a genuinely clean plan is POSTed as parseable (positive control)', async () => {
+        const { posted, artifact } = await runCase('clean');
+        assert.strictEqual(posted.unparseable, false);
+        assert.strictEqual(artifact.unparseable, false);
+        assert.deepStrictEqual([posted.added, posted.changed, posted.destroyed, posted.drifted], [0, 0, 0, false]);
+    });
+
+    it('a change carrying no sensitivity metadata sets unmasked', async () => {
+        const { posted } = await runCase('unmasked');
+        assert.strictEqual(posted.unmasked, true);
+    });
+
+    it('a change carrying sensitivity mirrors does not (positive control)', async () => {
+        const { posted } = await runCase('masked');
+        assert.strictEqual(posted.unmasked, false);
+    });
+
+    it('a capped summary POSTs truncated and how many rows were dropped', async () => {
+        const { posted } = await runCase('cappedEntries');
+        assert.strictEqual(posted.truncated, true);
+        assert.strictEqual(posted.omitted_entries, 3);
+        // The counts are NOT capped, so `drifted` stays truthful while the list
+        // is partial. That discrepancy is only legible because the marker rides
+        // along with it.
+        assert.strictEqual(posted.added, 503, 'counts must not be capped');
+        assert.strictEqual(posted.summary.length, 500, 'the summary is capped at the contract bound');
+    });
+
+    it('a capped attribute list POSTs how many attrs were dropped', async () => {
+        const { posted } = await runCase('cappedAttrs');
+        assert.strictEqual(posted.truncated, true);
+        assert.strictEqual(posted.omitted_attrs, 4);
+    });
+
+    it('an uncapped report says so rather than staying silent (positive control)', async () => {
+        const { posted } = await runCase('unmasked');
+        assert.strictEqual(posted.truncated, false);
+        assert.strictEqual(posted.omitted_entries, 0);
+        assert.strictEqual(posted.omitted_attrs, 0);
+    });
+
+    // The class guard, and the reason the body is a spread rather than a pick
+    // list: this fails on the NEXT field the contract adds, not just on the five
+    // dropped this time. It re-derives the expectation from the resolved package,
+    // so a contract bump that widens Result reddens here -- in the producer that
+    // emits the payload -- instead of arriving at TSM as a silent omission.
+    it('every field the contract computes is forwarded, with the contract-computed value', async () => {
+        const { posted } = await runCase('cappedEntries');
+        const computed = summarize({
+            resource_changes: Array.from({ length: 503 }, (_unused, i) => ({
+                address: `aws_s3_bucket.b${i}`,
+                change: { actions: ['create'], before: null, after: {} },
+            })),
+        }) as unknown as Record<string, unknown>;
+
+        const dropped = Object.keys(computed).filter(k => !(k in posted));
+        assert.deepStrictEqual(dropped, [], `the callback body drops contract fields: ${dropped.join(', ')}`);
+        for (const marker of MARKERS) {
+            assert.deepStrictEqual(
+                posted[marker],
+                computed[marker],
+                `${marker} is not the contract-computed value (a constant would pass a one-sided test)`,
+            );
+        }
+    });
+
+    // The names are not this task's to choose. TSM decodes them as the json tags
+    // of `completeness` in internal/api/drift_records.go, and its own generated
+    // jq templates already post exactly these keys. Because that callback
+    // deliberately does not use DisallowUnknownFields -- its token is one-shot,
+    // so a rejected body would strand the run -- a renamed marker is dropped in
+    // silence rather than reported.
+    it('uses the snake_case wire names the receiver decodes', async () => {
+        const { posted } = await runCase('unmasked');
+        for (const marker of MARKERS) {
+            assert(marker in posted, `the callback body must carry ${marker}; got ${Object.keys(posted).join(', ')}`);
+        }
     });
 });

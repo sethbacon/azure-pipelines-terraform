@@ -3,7 +3,7 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 import { randomUUID } from 'crypto';
-import { summarize, moduleCallsPlan, Plan } from '@4cloudguru/terraform-drift-contract';
+import { summarize, moduleCallsPlan, Plan, Result } from '@4cloudguru/terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
 import { writeSecretFile, scrubFile } from './secure-temp';
@@ -17,6 +17,46 @@ import { writeSecretFile, scrubFile } from './secure-temp';
  * legitimately tens of MB, but a runaway can't exhaust the agent.
  */
 export const MAX_PLAN_JSON_BYTES = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * The wire contract with TSM: what this task POSTs to the drift callback, and
+ * byte-for-byte what it writes as the on-agent summary artifact.
+ *
+ * It used to be a bare `Record<string, unknown>` assembled by naming the
+ * contract's fields one at a time (#950). Both halves of that were the bug. The
+ * pick list could only ever describe the contract as of the day it was written,
+ * and `Record<string, unknown>` accepts anything, so `tsc` could not report that
+ * `summarize()` had begun returning fields the body did not carry. The omission
+ * was invisible to the entire toolchain.
+ *
+ * Contract 1.2.0 is where that bill came due: it added five markers describing
+ * what a check did NOT do -- `unparseable`, `unmasked`, `truncated`,
+ * `omitted_entries`, `omitted_attrs` -- and this task forwarded none of them.
+ * `unparseable` is the one that changed an answer. A truncated `terraform show
+ * -json`, a wrong file and an empty `{}` all summarize to `added: 0, changed: 0,
+ * destroyed: 0, drifted: false`, byte-identical to a verified-clean plan, and
+ * TSM auto-resolved the live drift record on receiving one.
+ *
+ * So `extends Result` rather than a copy of its members, and the body below is a
+ * SPREAD of the summarize() result: the contract's own type is the field list,
+ * every field of it is required here, a field the contract adds next is
+ * forwarded by construction, and dropping one is a compile error rather than a
+ * silent omission.
+ *
+ * The wire names are the contract's field names unchanged -- which is what the
+ * backend decodes (`completeness`, internal/api/drift_records.go) and what its
+ * generated jq templates already post. That callback deliberately does NOT use
+ * DisallowUnknownFields, because its token is one-shot and a rejected body would
+ * strand the run permanently; the cost of that leniency is that a renamed or
+ * missing key is dropped in silence, which is exactly how this went unnoticed.
+ */
+export interface CallbackBody extends Result {
+    status: string;
+    detail: string;
+    /** Module provenance; present only with includeModuleProvenance. */
+    plan?: unknown;
+    module_locks?: unknown;
+}
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
 // module_locks field; null when absent/unreadable/oversized (the backend then
@@ -133,13 +173,12 @@ async function run(): Promise<void> {
         const detail = tasks.getInput('detail', false) || '';
         const includeProvenance = tasks.getBoolInput('includeModuleProvenance', false);
 
-        const body: Record<string, unknown> = {
+        // Spread, not a pick list. Everything the contract computed goes on the
+        // wire, including the markers that say what this check did NOT do; only
+        // the two fields the contract does not own are added here.
+        const body: CallbackBody = {
+            ...result,
             status: 'completed',
-            added: result.added,
-            changed: result.changed,
-            destroyed: result.destroyed,
-            drifted: result.drifted,
-            summary: result.summary,
             detail,
         };
         if (includeProvenance) {
