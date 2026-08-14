@@ -260,7 +260,7 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 
 ## TerraformDocsInstaller Task (TerraformDocsInstallerV1)
 
-Source: `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/`. Installs **terraform-docs** from `official` (GitHub releases `terraform-docs/terraform-docs`), `registry` (terraform-registry-backend), or `mirror` sources. terraform-docs ships as a `.tar.gz` (Unix) / `.zip` (Windows) archive with a single `terraform-docs-v{version}.sha256sum` file and **no** detached GPG/cosign signature, so — like OPA — it is sha256-verified against the same GitHub release origin (HTTPS + GitHub's release infrastructure is the trust root). Reuses the HTTPS-pinned `http-client.ts` from TerraformInstallerV1 (byte-identical, enforced by `scripts/check-shared-modules.js`); it does not use `gpg-verifier.ts`/`hashicorp-gpg-key.ts`. `latest` resolves via the GitHub releases API. Output variables: `terraformDocsLocation`, `terraformDocsDownloadedFrom`.
+Source: `Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/`. Installs **terraform-docs** from `official` (GitHub releases `terraform-docs/terraform-docs`), `registry` (terraform-registry-backend), or `mirror` sources. terraform-docs ships as a `.tar.gz` (Unix) / `.zip` (Windows) archive with a single `terraform-docs-v{version}.sha256sum` file and **no** detached GPG/cosign signature, so — like OPA — it is sha256-verified against the same GitHub release origin (HTTPS + GitHub's release infrastructure is the trust root). Reuses the `http-client.ts` adapter from TerraformInstallerV1 (byte-identical, enforced by `scripts/check-shared-modules.js`), whose HTTPS-pinned transport now comes from `@4cloudguru/pipeline-task-core`; it does not use `gpg-verifier.ts`/`hashicorp-gpg-key.ts`. `latest` resolves via the GitHub releases API. Output variables: `terraformDocsLocation`, `terraformDocsDownloadedFrom`.
 
 ## TerraformDocs Task (TerraformDocsV1)
 
@@ -268,7 +268,7 @@ Source: `Tasks/TerraformDocs/TerraformDocsV1/src/`. Runs terraform-docs to gener
 
 ## PolicyAgentInstaller Task (PolicyAgentInstallerV1)
 
-Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** (GPG-signed zip from releases.hashicorp.com) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1. `latest` resolves via the checkpoint API (Sentinel) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
+Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** (GPG-signed zip from releases.hashicorp.com) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1 (the last of which is now a thin adapter over `@4cloudguru/pipeline-task-core`'s client). `latest` resolves via the checkpoint API (Sentinel) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
 
 ## TerraformPolicyCheck Task (TerraformPolicyCheckV1)
 

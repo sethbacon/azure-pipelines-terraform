@@ -1,485 +1,93 @@
 // SHARED MODULE — intentionally duplicated across TerraformInstallerV1/src,
 // PolicyAgentInstallerV1/src, and TerraformDocsInstallerV1/src. CI
 // (scripts/check-shared-modules.js) enforces that the copies stay
-// byte-identical, failing the build on any divergence, so a fix or key
-// rotation here MUST be applied to ALL THREE copies. This duplication is
-// deliberate (each task bundles independently) — not drift to be flagged.
+// byte-identical, so a change here MUST be applied to ALL THREE copies. Each
+// task bundles independently, so the duplication is deliberate — not drift.
 //
-// Also shared conceptually (not CI-enforced across repos) with
-// azure-pipelines-packer's PackerInstallerV1 copy: this file was brought up
-// to parity with packer's hardening on 2026-07-04 (redirect re-validation +
-// MAX_REDIRECTS, a typed HttpError + withRetry backoff wrapper,
-// fetchTextAllow404/fetchBufferAllow404, and proxy-password masking).
-// Apply future fixes to both repos' copies where they still apply.
+// The client itself now comes from @4cloudguru/pipeline-task-core, which took
+// the UNION of this file and azure-pipelines-packer's copy: this side
+// contributed the response-size cap, 429/Retry-After handling and the GitHub
+// asset-redirect exception, packer's contributed the retry-safe download
+// attempt. What remains here is only what the package refuses to own — it
+// imports neither azure-pipelines-task-lib nor undici, so proxy dispatch,
+// secret masking, localized message text and the redirect policy are injected
+// from the task.
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
-import { retryAsync } from '@4cloudguru/pipeline-task-core';
-import * as fs from 'fs';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
+import {
+    createHttpClient,
+    resolveProxy,
+    anyRedirectPolicy,
+    sameHostOnly,
+    githubAssetRedirects,
+    parseRetryAfterMs as coreParseRetryAfterMs,
+    DOWNLOAD_TIMEOUT_MS as CORE_DOWNLOAD_TIMEOUT_MS,
+    METADATA_TIMEOUT_MS as CORE_METADATA_TIMEOUT_MS,
+} from '@4cloudguru/pipeline-task-core';
 
-/**
- * Per-request timeouts (ms). Without an AbortController a hung TCP connection
- * stalls the install until the agent job timeout. Metadata lookups are quick;
- * binary downloads need a far larger ceiling.
- */
-export const METADATA_TIMEOUT_MS = 60_000;
-export const DOWNLOAD_TIMEOUT_MS = 600_000;
-
-const MAX_REDIRECTS = 5;
-const RETRY_ATTEMPTS = 3;
-const RETRY_BASE_MS = 200;
-
-/**
- * Upper bound on the non-JSON response body echoed in a fetchJson parse-failure
- * message, so a credential-reflecting 2xx body (e.g. a captive portal or an auth
- * proxy's HTML error page returned with a 200) cannot be dumped to the log whole.
- */
-const JSON_ERROR_BODY_CHARS = 512;
-
-/** Upper bound (ms) on an honored HTTP 429 Retry-After, so a hostile/misconfigured server cannot stall the install. */
-const RETRY_AFTER_CAP_MS = 30_000;
-
-/**
- * Upper bound on a response body buffered in memory. Node's built-in fetch()
- * has no default limit on response.json()/.text()/.arrayBuffer() -- they
- * buffer until stream end or process OOM, so a compromised/malicious endpoint
- * behind a registryUrl/mirrorUrl input could otherwise exhaust agent memory.
- * Mirrors the 10MB cap already enforced by the credential-bearing
- * https-client.ts/servicenow-http.ts families (see the "why two module
- * families" note in check-shared-modules.js). The actual Terraform/OpenTofu
- * binary download does not go through this client -- it uses
- * azure-pipelines-tool-lib's downloadTool(), which streams to a temp file --
- * so this only bounds the small metadata/checksum/signature payloads that do.
- */
-const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-
-/**
- * Error carrying whether the failure is worth retrying (transient) vs
- * deterministic (4xx / insecure URL). `retryAfterMs` carries the capped 429
- * Retry-After delay when the server sent one (#584); undefined otherwise, in
- * which case withRetry falls back to its exponential backoff.
- */
-class HttpError extends Error {
-    constructor(message: string, readonly retryable: boolean, readonly retryAfterMs?: number) {
-        super(message);
-        this.name = 'HttpError';
-    }
-}
-
-/**
- * A response status worth retrying: a server-side 5xx, or 429 Too Many Requests
- * (#584). GitHub's release API (called unauthenticated for OpenTofu/OPA/
- * terraform-docs latest resolution), the checkpoint API, and the registry
- * endpoints all rate-limit with 429, so a single 429 must back off rather than
- * fail the install outright.
- */
-function isRetryableHttpStatus(status: number): boolean {
-    return status >= 500 || status === 429;
-}
-
-/**
- * Parse an HTTP `Retry-After` header into a capped millisecond delay, or
- * undefined when it is absent/blank/invalid (the caller then falls back to its
- * exponential backoff). Accepts both the delta-seconds form (`Retry-After: 120`)
- * and the HTTP-date form; a past date is treated as invalid. Clamped to
- * RETRY_AFTER_CAP_MS so a hostile/misconfigured server cannot stall the install.
- */
-export function parseRetryAfterMs(value: string | null | undefined): number | undefined {
-    if (value === null || value === undefined) {
-        return undefined;
-    }
-    const trimmed = value.trim();
-    if (trimmed === '') {
-        return undefined;
-    }
-    if (/^\d+$/.test(trimmed)) {
-        const seconds = Number(trimmed);
-        if (!Number.isFinite(seconds)) {
-            return undefined;
-        }
-        return Math.min(seconds * 1000, RETRY_AFTER_CAP_MS);
-    }
-    const dateMs = Date.parse(trimmed);
-    if (Number.isNaN(dateMs)) {
-        return undefined;
-    }
-    const delta = dateMs - Date.now();
-    return delta > 0 ? Math.min(delta, RETRY_AFTER_CAP_MS) : undefined;
-}
-
-/** The capped 429 Retry-After delay from a response, or undefined for any other status/absent header. */
-function retryAfterMsFromResponse(response: Response): number | undefined {
-    return response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after')) : undefined;
-}
+// Re-exported as values rather than `export { ... }`, which compiles to getter
+// thunks that count as uncovered functions no test can meaningfully reach.
+export const METADATA_TIMEOUT_MS = CORE_METADATA_TIMEOUT_MS;
+export const DOWNLOAD_TIMEOUT_MS = CORE_DOWNLOAD_TIMEOUT_MS;
+export const parseRetryAfterMs = coreParseRetryAfterMs;
 
 function buildFetchOptions(): RequestInit {
-    const proxy = tasks.getHttpProxyConfiguration();
-    if (!proxy) return {};
+    const resolved = resolveProxy(tasks.getHttpProxyConfiguration());
+    if (!resolved) return {};
 
-    let proxyUrl = proxy.proxyUrl;
-    if (proxy.proxyUsername) {
-        if (proxy.proxyPassword) {
-            tasks.setSecret(proxy.proxyPassword);
-        }
-        let url: URL;
-        try {
-            url = new URL(proxy.proxyUrl);
-        } catch (err) {
-            throw new Error(`Invalid proxy URL configured on the agent: ${err instanceof Error ? err.message : err}`);
-        }
-        url.username = proxy.proxyUsername;
-        url.password = proxy.proxyPassword ?? "";
-        // url.password is now the WHATWG URL setter's PERCENT-ENCODED form (e.g.
-        // 'p@ss' -> 'p%40ss') — a byte-different string from the raw
-        // proxyPassword already setSecret()'d above. ADO's log masker matches
-        // literal registered strings, not derivations, so this encoded form
-        // (which is what url.toString() below actually embeds in proxyUrl, and
-        // therefore what an undici/ProxyAgent connection-failure message would
-        // surface) needs its own registration too. Matches the derived-form
-        // masking proxy-config.ts and the https-client.ts/servicenow-http.ts
-        // families already do (#684).
-        if (url.password) {
-            tasks.setSecret(url.password);
-        }
-        proxyUrl = url.toString();
+    // Every spelling of the credential the resolver found, including the
+    // percent-encoded form the dispatcher URL actually embeds and any userinfo
+    // already inside Agent.ProxyUrl: the agent's masker matches registered
+    // literals, never derivations of them.
+    for (const secret of resolved.secrets) {
+        tasks.setSecret(secret);
     }
 
     return {
         // @ts-expect-error Node.js fetch accepts undici dispatcher
-        dispatcher: new ProxyAgent(proxyUrl)
+        dispatcher: new ProxyAgent(resolved.proxyUrl)
     };
 }
 
-/**
- * GitHub release-asset URLs (https://github.com/<org>/<repo>/releases/download/...)
- * answer with a 302 onto GitHub's asset CDN at a *.githubusercontent.com host
- * (e.g. objects.githubusercontent.com, release-assets.githubusercontent.com), so
- * a strict same-host rule would fail every GitHub-sourced verification-material
- * fetch closed (OpenTofu SHA256SUMS, OPA .sha256, terraform-docs .sha256sum).
- * This narrowly allows that one boundary: the redirect must have been issued by
- * the TLS-authenticated github.com origin itself, the target must stay https://
- * (no protocol downgrade), and the target host must sit under GitHub's own
- * githubusercontent.com asset domain. The suffix match keeps working when GitHub
- * rotates the CDN label; every other origin and every non-GitHub target host
- * stays refused.
- */
-function isGithubAssetRedirect(originHost: string, next: URL): boolean {
-    return (originHost === 'github.com' || originHost === 'www.github.com')
-        && next.protocol === 'https:'
-        && next.host.endsWith('.githubusercontent.com');
-}
+const injected = {
+    // Re-evaluated per attempt, so a proxy change between retries is picked up.
+    fetchOptions: buildFetchOptions,
+    debug: (message: string) => tasks.debug(message),
+    // These installers download release assets from github.com (OpenTofu, OPA,
+    // terraform-docs), which 302 onto GitHub's own *.githubusercontent.com CDN.
+    // The package makes that exception opt-in; this repo has always applied it
+    // to every caller, so it stays enabled here to preserve behaviour exactly.
+    redirectPolicy: anyRedirectPolicy(sameHostOnly, githubAssetRedirects),
+};
 
-/**
- * Fetches an https:// URL under a wall-clock timeout that covers the connection,
- * every redirect hop, the response headers, AND body consumption — the consume
- * callback runs inside the timeout guard, so a stalled body stream is bounded
- * too. On timeout the request is aborted and a clear error is thrown rather
- * than hanging the job.
- *
- * Redirects are followed manually (not via fetch's automatic redirect:'follow')
- * so each hop's Location can be re-validated before following it: it must stay
- * https:// AND stay on the original host, with one narrow exception for
- * github.com release-asset redirects onto GitHub's own *.githubusercontent.com
- * CDN (see isGithubAssetRedirect). The remaining callers (checkpoint API,
- * registry version/info endpoints, releases.hashicorp.com SHA256SUMS/.sig) have
- * no legitimate reason to redirect to a different host, so any other off-host
- * redirect is refused rather than followed.
- */
-export async function fetchWithTimeout<T>(
-    url: string,
-    timeoutMs: number,
-    consume: (response: Response) => Promise<T>,
-    isRedirectHostAllowed: (originHost: string, next: URL) => boolean | Promise<boolean> = (originHost, next) =>
-        next.host === originHost || isGithubAssetRedirect(originHost, next),
-): Promise<T> {
-    if (!url.startsWith('https://')) {
-        throw new HttpError(tasks.loc("InsecureUrlRejected", url), false);
-    }
-    const originHost = new URL(url).host;
+const insecureUrl = (url: string) => tasks.loc("InsecureUrlRejected", url);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        let currentUrl = url;
-        for (let redirects = 0; ; redirects++) {
-            const response = await fetch(currentUrl, { ...buildFetchOptions(), signal: controller.signal, redirect: 'manual' });
-            const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
-            if (!location) {
-                return await consume(response);
-            }
-            if (redirects >= MAX_REDIRECTS) {
-                throw new HttpError(`Too many redirects fetching ${url} (limit ${MAX_REDIRECTS}).`, false);
-            }
-            const next = new URL(location, currentUrl);
-            if (next.protocol !== 'https:') {
-                throw new HttpError(tasks.loc("InsecureUrlRejected", next.toString()), false);
-            }
-            if (!(await isRedirectHostAllowed(originHost, next))) {
-                throw new HttpError(`Refusing to follow an off-host redirect (${originHost} -> ${next.host}) while fetching ${url}.`, false);
-            }
-            currentUrl = next.toString();
-        }
-    } catch (err) {
-        if (controller.signal.aborted) {
-            throw new HttpError(`Request to ${url} timed out after ${timeoutMs}ms.`, true);
-        }
-        throw err;
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
-/**
- * Downloads a URL directly to a local file, streaming the response body to
- * disk rather than buffering it in memory -- matching the memory profile of
- * azure-pipelines-tool-lib's downloadTool() for a large Terraform/OpenTofu/
- * OPA/terraform-docs archive. Unlike downloadTool(), redirects are followed
- * manually (via fetchWithTimeout) so `isHostAllowed` re-validates the host at
- * EVERY hop, not just the initial URL -- closing the gap where a compromised
- * registry could return an allowlisted download_url that itself 302s to an
- * arbitrary host (#679). `isHostAllowed` should throw with a caller-specific
- * message on a disallowed host rather than returning a bare boolean, so the
- * error text can name the actual offending host/allowlist.
- *
- * Wrapped in the same withRetry() as fetchJson/fetchText/fetchBuffer* (#879):
- * this is by far the largest and longest request the installer makes, so a
- * transient 5xx/socket failure here used to fail the whole task while a blip
- * on a tiny metadata GET was retried. See attemptDownloadToFile for the
- * per-attempt retry-safety design (clean destination state, re-run host
- * authorization, never retry an authorization rejection).
- */
-export async function downloadToFile(
-    url: string,
-    destPath: string,
-    timeoutMs: number,
-    isHostAllowed: (hostname: string) => void | Promise<void>,
-): Promise<void> {
-    await withRetry(() => attemptDownloadToFile(url, destPath, timeoutMs, isHostAllowed));
-}
-
-/**
- * A single downloadToFile attempt. Safe to retry: it clears any partial file a
- * PRIOR attempt left behind before opening its own write stream (a retry must
- * never resume into / append onto a truncated download), and re-runs
- * isHostAllowed from scratch for the initial host and every redirect hop (a
- * retry must never reuse a stale authorization decision or skip it on a later
- * attempt). isHostAllowed's rejection is reclassified as a non-retryable
- * HttpError by assertHostAllowed below -- an egress-authorization rejection is
- * a deterministic security decision, never a transient network condition, and
- * retrying it would waste the download's retry budget and could give a
- * DNS-rebinding host repeated chances within one run to flip from rejected to
- * allowed.
- */
-async function attemptDownloadToFile(
-    url: string,
-    destPath: string,
-    timeoutMs: number,
-    isHostAllowed: (hostname: string) => void | Promise<void>,
-): Promise<void> {
-    // Best-effort: clear whatever a prior failed attempt left at destPath so
-    // this attempt starts from a clean, empty state. fs.createWriteStream's
-    // default 'w' flag already truncates on open, so this is defense-in-depth
-    // that makes the clean-state guarantee explicit rather than implicit.
-    try {
-        fs.unlinkSync(destPath);
-    } catch {
-        // Nothing to remove (the common case, including the very first
-        // attempt) or removal itself failed; either way let the write stream
-        // open below surface any real problem.
-    }
-    // Validate the initial URL's own host before any network call --
-    // fetchWithTimeout's redirect-validator callback below only re-checks
-    // subsequent Location targets, never the URL it was first called with.
-    await assertHostAllowed(isHostAllowed, new URL(url).hostname);
-    try {
-        await fetchWithTimeout(
-            url,
-            timeoutMs,
-            async (response) => {
-                if (!response.ok) {
-                    throw new HttpError(`Download from ${url} failed with HTTP ${response.status}.`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-                }
-                if (!response.body) {
-                    throw new HttpError(`Download from ${url} returned an empty response body.`, false);
-                }
-                await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(destPath));
-            },
-            async (_originHost, next) => {
-                // Re-validate every redirect hop against the same allowlist (#679).
-                // isHostAllowed may itself perform an async DNS lookup (e.g. the
-                // installers' default-path check also resolves the hostname via
-                // resolvesToPrivateOrLinkLocalAddress), so await it here rather
-                // than assuming it is synchronous (#769).
-                await assertHostAllowed(isHostAllowed, next.host);
-                return true;
-            },
-        );
-    } catch (err) {
-        // A write-stream failure partway through (disk full, permission
-        // denied) leaves a truncated file at destPath; a non-2xx/host-
-        // rejection failure never opens the write stream at all. Best-effort
-        // remove whatever partial file might exist so a caller (or the next
-        // retry attempt) never mistakes it for a complete, verifiable download.
-        try {
-            fs.unlinkSync(destPath);
-        } catch {
-            // Nothing to remove (the common case -- the failure happened
-            // before any bytes were written) or removal itself failed; either
-            // way this must not mask the real error above.
-        }
-        throw err;
-    }
-}
-
-/**
- * Invokes the caller's egress-authorization callback and reclassifies any
- * rejection as a non-retryable HttpError, so withRetry's default "an unknown
- * error is transient" classification can never apply to it -- see
- * attemptDownloadToFile's doc comment for why that matters.
- */
-async function assertHostAllowed(isHostAllowed: (hostname: string) => void | Promise<void>, hostname: string): Promise<void> {
-    try {
-        await isHostAllowed(hostname);
-    } catch (err) {
-        throw new HttpError(err instanceof Error ? err.message : String(err), false);
-    }
-}
-
-
-
-/**
- * Retries a fetch on transient failures (network error, timeout, 5xx, 429) with
- * exponential backoff. Delegates to the shared retry.ts helper (retryAsync) so the
- * installer family shares the one bounded-backoff loop with the rest of the repo
- * (#645); the exact previous semantics are preserved via predicates:
- *   - total attempts = RETRY_ATTEMPTS (retries + the initial try),
- *   - a non-HttpError (network/DNS/TLS failure) is transient; an HttpError is
- *     retried only when its `retryable` flag is set,
- *   - a capped 429 Retry-After is honored when the server sent one (#584),
- *     otherwise the RETRY_BASE_MS * 2**n exponential backoff is used.
- */
-function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    return retryAsync(fn, {
-        retries: RETRY_ATTEMPTS - 1,
-        baseDelayMs: RETRY_BASE_MS,
-        // A non-HttpError is a network/DNS/TLS failure — treat as transient.
-        retryError: (err) => (err instanceof HttpError ? err.retryable : true),
-        // Honor a capped 429 Retry-After when the server sent one (#584);
-        // otherwise fall back to the exponential backoff (backoffMs).
-        delayMs: (_attempt, backoffMs, outcome) =>
-            outcome.kind === 'error' && outcome.error instanceof HttpError && outcome.error.retryAfterMs !== undefined
-                ? outcome.error.retryAfterMs
-                : backoffMs,
-        onRetry: (attempt, _delayMs, outcome) => {
-            const err = outcome.kind === 'error' ? outcome.error : undefined;
-            tasks.debug(`Fetch attempt ${attempt + 1} failed (${err instanceof Error ? err.message : String(err)}); retrying...`);
-        },
+// Each client gets its own factory so the proxy-parity signature can name which
+// construction it is reporting; two bare module-level calls are indistinguishable
+// to it, and an unnamed site is the one thing that gate exists to avoid.
+function createDefaultClient() {
+    return createHttpClient({
+        ...injected,
+        messages: { insecureUrl, requestFailed: (url, status) => `Failed to fetch ${url}: HTTP ${status}` },
     });
 }
 
-/**
- * Reads a fetch Response body into memory with a hard byte-count guard,
- * cancelling the stream rather than buffering an unbounded/oversized response.
- */
-async function readBoundedArrayBuffer(response: Response, url: string): Promise<ArrayBuffer> {
-    if (!response.body) {
-        return response.arrayBuffer();
-    }
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for (; ;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > MAX_RESPONSE_BYTES) {
-            await reader.cancel(`Response exceeded ${MAX_RESPONSE_BYTES} bytes.`).catch(() => { /* best-effort */ });
-            throw new HttpError(`Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes.`, false);
-        }
-        chunks.push(value);
-    }
-    const out = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-        out.set(chunk, offset);
-        offset += chunk.byteLength;
-    }
-    return out.buffer;
+// Registry metadata keeps its own localized message: "Registry request failed"
+// is wrong on a releases.hashicorp.com SHA256SUMS fetch, which is not one.
+function createRegistryClient() {
+    return createHttpClient({
+        ...injected,
+        messages: { insecureUrl, requestFailed: (url, status) => tasks.loc("RegistryRequestFailed", url, status) },
+    });
 }
 
-export function fetchJson<T>(url: string): Promise<T> {
-    return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
-        if (!response.ok) {
-            throw new HttpError(tasks.loc("RegistryRequestFailed", url, response.status), isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-        }
-        const buf = await readBoundedArrayBuffer(response, url);
-        const text = Buffer.from(buf).toString('utf8');
-        try {
-            return JSON.parse(text) as T;
-        } catch {
-            // A 2xx whose body is not valid JSON (a captive portal, a misconfigured
-            // proxy/WAF, or an internal registry returning an HTML error page with a
-            // 200 status) is a DETERMINISTIC failure, not a transient one. Classify it
-            // as a non-retryable HttpError so withRetry does not waste RETRY_ATTEMPTS
-            // retries on it (a bare JSON.parse SyntaxError would default to retryable),
-            // and surface a clear, body-bounded diagnostic instead of a raw
-            // "Unexpected token ... in JSON" — mirroring module-publish's parseJson().
-            throw new HttpError(`Response from ${url} was not valid JSON; first ${JSON_ERROR_BODY_CHARS} bytes: ${text.slice(0, JSON_ERROR_BODY_CHARS)}`, false);
-        }
-    }));
-}
+const client = createDefaultClient();
+const registryClient = createRegistryClient();
 
-export function fetchText(url: string): Promise<string> {
-    return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
-        if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-        }
-        // The returned promise is awaited inside fetchWithTimeout's guard, so the
-        // body read stays bounded by the timeout without a redundant await here.
-        const buf = await readBoundedArrayBuffer(response, url);
-        return Buffer.from(buf).toString('utf8');
-    }));
-}
-
-/**
- * Like fetchText, but returns null on a 404 (resource genuinely absent) so
- * callers can distinguish "not published" from a transient/other failure
- * without substring-matching error text. Other non-2xx and network errors
- * still throw (5xx is retried).
- */
-export function fetchTextAllow404(url: string): Promise<string | null> {
-    return withRetry(() => fetchWithTimeout(url, METADATA_TIMEOUT_MS, async (response) => {
-        if (response.status === 404) return null;
-        if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-        }
-        const buf = await readBoundedArrayBuffer(response, url);
-        return Buffer.from(buf).toString('utf8');
-    }));
-}
-
-export function fetchBuffer(url: string): Promise<Uint8Array> {
-    return withRetry(() => fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS, async (response) => {
-        if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-        }
-        return new Uint8Array(await readBoundedArrayBuffer(response, url));
-    }));
-}
-
-/**
- * Like fetchBuffer, but returns null on a 404 (resource genuinely absent) so
- * callers can distinguish "not published" from a transient/other failure
- * without substring-matching error text. Other non-2xx and network errors
- * still throw (5xx is retried).
- */
-export function fetchBufferAllow404(url: string): Promise<Uint8Array | null> {
-    return withRetry(() => fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS, async (response) => {
-        if (response.status === 404) return null;
-        if (!response.ok) {
-            throw new HttpError(`Failed to fetch ${url}: HTTP ${response.status}`, isRetryableHttpStatus(response.status), retryAfterMsFromResponse(response));
-        }
-        return new Uint8Array(await readBoundedArrayBuffer(response, url));
-    }));
-}
+export const fetchWithTimeout = client.fetchWithTimeout;
+export const fetchText = client.fetchText;
+export const fetchTextAllow404 = client.fetchTextAllow404;
+export const fetchBuffer = client.fetchBuffer;
+export const fetchBufferAllow404 = client.fetchBufferAllow404;
+export const downloadToFile = client.downloadToFile;
+export const fetchJson = registryClient.fetchJson;
