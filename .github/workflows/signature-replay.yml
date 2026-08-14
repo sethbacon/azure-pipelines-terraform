@@ -112,6 +112,18 @@ jobs:
           persist-credentials: false
           repository: 4cloudguru/pipeline-task-core
           path: suite/pipeline-task-core
+      # The SECOND shared destination package, added to SIGNATURE_SCOPE in 2026-08.
+      # The two ADO extensions are splitting their duplicated modules across two
+      # packages rather than one: pipeline-task-core stays platform-agnostic (it
+      # imports neither azure-pipelines-task-lib nor undici) and pipeline-task-ado
+      # takes the code that must name Azure DevOps. Nothing consumes it yet, which
+      # is not a reason to leave it out -- in scope.json and absent here is exit 2
+      # for the whole job, not a quieter run.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: 4cloudguru/pipeline-task-ado
+          path: suite/pipeline-task-ado
       # The two ADO extensions are siblings that COPY modules between each other
       # rather than sharing a versioned one, so a class found in either is
       # presumed in the other and every signature runs in both.
