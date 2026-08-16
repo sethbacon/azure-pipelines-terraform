@@ -1,208 +1,77 @@
 /**
- * Minimal hardened HTTPS client for the ServiceNow REST API.
+ * The ServiceNow REST API client.
  *
- * Built on Node's raw https.request (no axios) to match this repo's
- * credential-bearing transport posture: an https:// guard (refuse to send the
- * bearer/basic credential over cleartext), a socket timeout, a bounded
- * response buffer, and agent proxy support (tasks.getHttpProxyConfiguration(),
- * via a CONNECT-tunneling https.Agent -- see buildProxyAgent()/ProxyTunnelAgent
- * below). Supports exactly what the ServiceNow table + attachment APIs
- * need — GET/POST/PATCH/DELETE with query params and JSON, form-urlencoded, or
- * raw-binary (attachment upload) bodies.
+ * The TRANSPORT is @4cloudguru/pipeline-task-core's httpsRequest: the https://
+ * guard (refuse to send the bearer/basic credential over cleartext), the socket
+ * timeout, the bounded response buffer, and agent proxy support via a
+ * CONNECT-tunnelling https.Agent. What stays here is what is actually specific
+ * to this API — query-string params, JSON/form/raw-binary body encoding, and
+ * axios-like non-2xx REJECTION, which several call sites rely on to fall back or
+ * return null.
  *
- * Like axios (which this replaces), a non-2xx response REJECTS: several call
- * sites rely on that to fall back or return null.
+ * That split is the point. Until now this was a third, independently-maintained
+ * credential-bearing transport alongside TerraformModulePublish's and
+ * TerraformDriftReport's https-client.ts, kept in step by three `#region shared:`
+ * families in scripts/check-shared-modules.js — with the https-only guard itself
+ * outside every gate, tracked by hand. A repo-local gate cannot see across a
+ * repository boundary, and this task is moving to azure-pipelines-release-docs;
+ * a versioned dependency survives that move, a region marker does not.
  *
- * This is a third, independently-maintained credential-bearing transport
- * alongside Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts
- * (shared byte-for-byte with TerraformDriftReport and enforced by
- * scripts/check-shared-modules.js). It is not merged into that shared client
- * because this API needs JSON-body encoding, query-string params, and
- * axios-like non-2xx rejection that the other client's callers don't — see the
- * tracking note in check-shared-modules.js for the split: the ProxyTunnelAgent
- * class below, and the request-timeout/response-cap constants, are both
- * byte-identity-gated automatically via that script's REGION_FAMILIES (the
- * `#region shared:ProxyTunnelAgent` / `#region shared:HttpHardeningConstants`
- * markers bracketing them here and in both https-client.ts copies) — only the
- * https-only guard itself remains a hand-tracked parallel (#722).
+ * Built on raw https.request rather than fetch/undici, deliberately: fetch has
+ * no `agent` option at all, so a port would silently drop the agent-proxy
+ * support below and every test that drives a request through a real CONNECT
+ * proxy (see Tests/ProxyL0.ts).
  */
 
 import * as https from 'https';
-import * as http from 'http';
-import * as tls from 'tls';
-import * as net from 'net';
-import { Duplex } from 'stream';
 import { URL } from 'url';
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
-import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
+import {
+    retryAsync,
+    parseRetryAfterMs,
+    createProxyTunnelAgent,
+    httpsRequest,
+    DEFAULT_REQUEST_TIMEOUT_MS as CORE_DEFAULT_REQUEST_TIMEOUT_MS,
+    truncateBody,
+} from '@4cloudguru/pipeline-task-core';
 
 /**
- * Per-request socket timeout (ms) and the upper bound on the response body
- * buffered in memory (ServiceNow table/attachment responses are small JSON, so
- * this only guards against a misbehaving/hostile endpoint). Byte-identical
- * with both https-client.ts copies via the `HttpHardeningConstants` region
- * below (#722) — this used to be a hand-tracked parallel; edit every copy
- * together.
+ * Re-exported so this module's own callers keep importing it from here. The
+ * value is the package's, shared with every other credential-bearing transport
+ * in the estate rather than hand-copied into each.
  */
-// #region shared:HttpHardeningConstants -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
-export const DEFAULT_REQUEST_TIMEOUT_MS = 100_000;
-const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-// #endregion shared:HttpHardeningConstants
+export const DEFAULT_REQUEST_TIMEOUT_MS = CORE_DEFAULT_REQUEST_TIMEOUT_MS;
 
-/**
- * An https.Agent that tunnels every connection through the agent's configured
- * HTTP(S) proxy via an HTTP CONNECT request, then upgrades the tunneled socket
- * to TLS, instead of connecting to the target host directly. Mirrors the
- * proxy-awareness already implemented for the installer family
- * (tasks.getHttpProxyConfiguration() + undici's ProxyAgent in
- * TerraformInstallerV1/src/http-client.ts) and for the shared
- * TerraformModulePublish/TerraformDriftReport https-client.ts, adapted here to
- * this module's own raw https.request transport (see the file header for why
- * this is an independent copy rather than a shared module).
- */
-// #region shared:ProxyTunnelAgent -- byte-identical across ModulePublish/DriftReport https-client.ts and PublishKbArticle servicenow-http.ts; enforced by scripts/check-shared-modules.js (REGION_FAMILIES). Edit every copy together.
-class ProxyTunnelAgent extends https.Agent {
-    constructor(
-        private readonly proxyHostname: string,
-        private readonly proxyPort: number,
-        private readonly proxyAuthHeader: string | undefined,
-        private readonly tunnelTimeoutMs: number,
-    ) {
-        super();
-    }
 
-    createConnection(
-        options: https.RequestOptions,
-        callback?: (err: Error | null, stream: Duplex) => void,
-    ): Duplex | null | undefined {
-        const targetHost = String(options.hostname ?? options.host ?? '');
-        const targetPort = options.port ? Number(options.port) : 443;
-        const target = `${targetHost}:${targetPort}`;
-        let settled = false;
-        let tlsSocket: tls.TLSSocket | undefined;
-        // Boxed so settle() (defined before the timer is armed) can clear it.
-        const deadline: { timer?: ReturnType<typeof setTimeout> } = {};
-        const connectReq = http.request({
-            host: this.proxyHostname,
-            port: this.proxyPort,
-            method: 'CONNECT',
-            path: target,
-            headers: {
-                Host: target,
-                ...(this.proxyAuthHeader ? { 'Proxy-Authorization': this.proxyAuthHeader } : {}),
-            },
-        });
-        // Settle this connection attempt exactly once, then stop the deadline timer.
-        // On failure, actively tear down the pending CONNECT request and any
-        // half-open TLS socket so a wedged proxy leaves nothing dangling.
-        const settle = (err: Error | null, stream?: tls.TLSSocket) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            if (deadline.timer) {
-                clearTimeout(deadline.timer);
-            }
-            if (err) {
-                connectReq.destroy();
-                tlsSocket?.destroy();
-            }
-            callback?.(err, (stream ?? undefined) as unknown as Duplex);
-        };
-        // Bound the whole CONNECT round-trip AND the inner TLS handshake below with
-        // the caller's configured timeout. The outer request's req.setTimeout() only
-        // arms once this createConnection callback fires (invoking that callback is
-        // what emits the request's 'socket' event), so a proxy that accepts the TCP
-        // connection but never answers the CONNECT -- a wedged/overloaded corporate
-        // proxy -- would otherwise hang past timeoutMs until the agent job timeout.
-        // This timer is that phase's only deadline; it is cleared the instant the
-        // tunnel is established (or fails), after which req.setTimeout() takes over.
-        deadline.timer = setTimeout(
-            () => settle(new Error(`Proxy CONNECT tunnel to ${target} via ${this.proxyHostname}:${this.proxyPort} timed out after ${this.tunnelTimeoutMs}ms.`)),
-            this.tunnelTimeoutMs,
-        );
-        connectReq.on('connect', (res, socket) => {
-            if (res.statusCode !== 200) {
-                socket.destroy();
-                settle(new Error(`Proxy CONNECT to ${target} failed with status ${res.statusCode}.`));
-                return;
-            }
-            try {
-                // Node's TLS SNI extension (servername) may not carry an IP-address
-                // literal (RFC 6066) -- Node throws synchronously if asked to. Node's
-                // own default (non-proxied) connection path silently omits servername
-                // in that case; mirror that here rather than sending SNI only when the
-                // target host is a literal IP.
-                const sniName = options.servername || targetHost;
-                const tlsOptions: tls.ConnectionOptions = {
-                    socket,
-                    servername: net.isIP(sniName) ? undefined : sniName,
-                };
-                // Only set rejectUnauthorized when the caller passed an explicit value.
-                // Node's own TLS layer treats an explicitly-present `undefined` key
-                // differently from an absent one: an absent key falls back to the
-                // NODE_TLS_REJECT_UNAUTHORIZED env var (matching the non-proxied
-                // https.request default path), while an explicit `undefined` does not.
-                if (options.rejectUnauthorized !== undefined) {
-                    tlsOptions.rejectUnauthorized = options.rejectUnauthorized;
-                }
-                tlsSocket = tls.connect(tlsOptions);
-                tlsSocket.once('secureConnect', () => settle(null, tlsSocket));
-                tlsSocket.once('error', (err) => settle(err));
-            } catch (err) {
-                socket.destroy();
-                settle(err instanceof Error ? err : new Error(String(err)));
-            }
-        });
-        connectReq.on('error', (err) => settle(err));
-        connectReq.end();
-        return undefined;
-    }
-}
-// #endregion shared:ProxyTunnelAgent
 
 /**
  * Reads the agent's configured HTTP(S) proxy (tasks.getHttpProxyConfiguration())
- * and, when one is set, returns a ProxyTunnelAgent that routes the connection
- * through it. Returns undefined when no proxy is configured, so callers fall
- * back to a direct connection (the previous, unproxied behavior) unchanged.
+ * and, when one is set, returns an agent that routes the connection through it.
+ * Returns undefined when no proxy is configured, so callers fall back to a
+ * direct connection unchanged.
  *
  * azure-pipelines-task-lib is require()'d lazily here (instead of a top-level
  * import) so merely importing this module never loads it -- see the identical
  * note in https-client.ts's buildProxyAgent for the mock-run test-harness
  * ordering hazard this avoids.
  *
+ * The masking cannot be forgotten: createProxyTunnelAgent takes registerSecret
+ * as a REQUIRED option, so dropping the tasks.setSecret wiring is a compile
+ * error rather than a silently unmasked proxy password. ADO's masker matches
+ * literal registered strings only, which is why the package hands back every
+ * spelling of the credential (raw password, percent-encoded form, and the
+ * derived base64 Basic value) rather than only the one the operator typed --
+ * the same reason auth.ts's basicAuthHeader() registers its encoded form.
+ *
  * @param tunnelTimeoutMs bounds the proxy CONNECT round-trip and inner TLS
- *        handshake, which run before the outer request's socket-timeout can
- *        arm; passed straight through to the returned ProxyTunnelAgent.
+ *        handshake, which run before the outer request's socket-timeout can arm.
  */
 function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
     const tasks = require('azure-pipelines-task-lib/task') as typeof TaskLib;
-    const proxy = tasks.getHttpProxyConfiguration();
-    if (!proxy) {
-        return undefined;
-    }
-    let proxyUrl: URL;
-    try {
-        proxyUrl = new URL(proxy.proxyUrl);
-    } catch (err) {
-        throw new Error(`Invalid proxy URL configured on the agent: ${err instanceof Error ? err.message : err}`);
-    }
-    let proxyAuthHeader: string | undefined;
-    if (proxy.proxyUsername) {
-        if (proxy.proxyPassword) {
-            tasks.setSecret(proxy.proxyPassword);
-        }
-        // ADO's log masking matches literal registered strings only, so the
-        // derived base64 form needs its own setSecret registration even though
-        // the plain password above is already masked (mirrors the encoded-form
-        // registration in auth.ts basicAuthHeader()).
-        const proxyCredentials = Buffer.from(`${proxy.proxyUsername}:${proxy.proxyPassword ?? ''}`).toString('base64');
-        tasks.setSecret(proxyCredentials);
-        proxyAuthHeader = `Basic ${proxyCredentials}`;
-    }
-    const proxyPort = Number(proxyUrl.port || (proxyUrl.protocol === 'https:' ? 443 : 80));
-    return new ProxyTunnelAgent(proxyUrl.hostname, proxyPort, proxyAuthHeader, tunnelTimeoutMs);
+    return createProxyTunnelAgent(tasks.getHttpProxyConfiguration(), {
+        tunnelTimeoutMs,
+        registerSecret: (secret: string) => tasks.setSecret(secret),
+    });
 }
 
 export interface SnRequestOptions {
@@ -257,28 +126,6 @@ function encodeBody(body: SnRequestOptions['body']): Buffer | undefined {
     return Buffer.from(JSON.stringify(body), 'utf8');
 }
 
-// #region shared:TruncateBody
-/**
- * Bounds a remote response body before it is interpolated into a thrown error
- * or log line, so a large — or credential-reflecting — body cannot be dumped
- * wholesale. The credential itself is also registered with setSecret(), so the
- * agent masks it; this is defense-in-depth against verbose error bodies.
- *
- * Callers that scrub known request secrets out of a body do so BEFORE calling
- * this, so a secret straddling the truncation boundary is still scrubbed whole.
- *
- * Duplicated verbatim into every transport that interpolates a remote body into
- * an error message (#407), and byte-compared across all four copies by
- * scripts/check-shared-modules.js — so a future hardening change here cannot
- * land in one transport and be silently missed in the others.
- */
-export function truncateBody(body: string, max = 500): string {
-    if (!body) {
-        return '';
-    }
-    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
-}
-// #endregion shared:TruncateBody
 
 /** Remove known request secrets from a response body (see SnRequestOptions.scrubValues). */
 function scrubSecrets(body: string, secrets: string[] | undefined): string {
@@ -295,106 +142,70 @@ function scrubSecrets(body: string, secrets: string[] | undefined): string {
  * Issue a request to the ServiceNow REST API. Resolves with the HTTP status and
  * the parsed JSON body (empty object when there is no JSON body); rejects on a
  * non-HTTPS URL, transport error, timeout, or non-2xx status.
+ *
+ * The URL is parsed HERE rather than by the transport, so an operator-supplied
+ * instance URL that will not parse fails with a message naming ServiceNow
+ * instead of a bare TypeError.
  */
-export function snRequest(
+export async function snRequest(
     method: string,
     url: string,
     options: SnRequestOptions = {},
 ): Promise<SnResponse> {
-    return new Promise<SnResponse>((resolve, reject) => {
-        let parsed: URL;
-        try {
-            parsed = new URL(url);
-        } catch {
-            reject(new Error(`Invalid ServiceNow URL: ${url}`));
-            return;
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        throw new Error(`Invalid ServiceNow URL: ${url}`);
+    }
+
+    if (options.params) {
+        for (const [key, value] of Object.entries(options.params)) {
+            parsed.searchParams.set(key, value);
         }
+    }
 
-        if (parsed.protocol !== 'https:') {
-            reject(new Error(
-                `Refusing to send credentials over a non-HTTPS URL (scheme '${parsed.protocol}//' on host '${parsed.host}'). Use an https:// URL.`,
-            ));
-            return;
-        }
+    const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
-        if (options.params) {
-            for (const [key, value] of Object.entries(options.params)) {
-                parsed.searchParams.set(key, value);
-            }
-        }
-
-        const bodyBuf = encodeBody(options.body);
-        const headers: Record<string, string> = { ...(options.headers ?? {}) };
-        if (bodyBuf) {
-            headers['Content-Length'] = String(bodyBuf.length);
-        }
-
-        const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-
-        const req = https.request(
-            {
-                method,
-                hostname: parsed.hostname,
-                port: parsed.port || 443,
-                path: parsed.pathname + parsed.search,
-                headers,
-                agent: buildProxyAgent(timeoutMs),
-            },
-            (res) => {
-                const chunks: Buffer[] = [];
-                let total = 0;
-                let overflowed = false;
-
-                res.on('data', (chunk: Buffer) => {
-                    total += chunk.length;
-                    if (total > MAX_RESPONSE_BYTES) {
-                        overflowed = true;
-                        req.destroy(new Error(`Response from ${parsed.host} exceeded ${MAX_RESPONSE_BYTES} bytes.`));
-                        return;
-                    }
-                    chunks.push(chunk);
-                });
-
-                res.on('end', () => {
-                    if (overflowed) {
-                        return;
-                    }
-                    const status = res.statusCode ?? 0;
-                    const raw = Buffer.concat(chunks).toString('utf8');
-                    let data: Record<string, unknown> = {};
-                    if (raw) {
-                        try {
-                            data = JSON.parse(raw) as Record<string, unknown>;
-                        } catch {
-                            data = {};
-                        }
-                    }
-                    if (status < 200 || status >= 300) {
-                        // On a 429 Too Many Requests, capture a capped Retry-After so
-                        // withRetry can honor it (#584); other statuses carry none.
-                        const retryAfterMs = status === 429 ? parseRetryAfterMs(res.headers['retry-after']) : undefined;
-                        reject(new ServiceNowHttpError(
-                            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncateBody(scrubSecrets(raw, options.scrubValues))}`,
-                            status,
-                            retryAfterMs,
-                        ));
-                        return;
-                    }
-                    resolve({ status, data });
-                });
-            },
-        );
-
-        req.on('error', (err) => reject(err));
-        req.setTimeout(timeoutMs, () => {
-            req.destroy(new Error(`Request to ${parsed.host} timed out after ${timeoutMs}ms.`));
-        });
-
-        if (bodyBuf) {
-            req.write(bodyBuf);
-        }
-        req.end();
+    // The https:// guard, the socket timeout and the response byte cap all live
+    // in the shared transport. Content-Length is derived there from the encoded
+    // body, which is why encodeBody's "an empty buffer is still a body"
+    // distinction is preserved rather than collapsed to a truthiness check.
+    const { status, body: raw, headers } = await httpsRequest({
+        method,
+        url: parsed,
+        headers: options.headers,
+        body: encodeBody(options.body),
+        timeoutMs,
+        agent: buildProxyAgent(timeoutMs),
     });
+
+    let data: Record<string, unknown> = {};
+    if (raw) {
+        try {
+            data = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+            data = {};
+        }
+    }
+
+    // Non-2xx REJECTS, like the axios client this replaced: several call sites
+    // rely on that to fall back or return null. This is the ServiceNow-specific
+    // half of the split -- the transport returns a status and takes no view of
+    // it, because the sibling registry-publish client inspects the same status
+    // instead of throwing on it.
+    if (status < 200 || status >= 300) {
+        // On a 429 Too Many Requests, capture a capped Retry-After so
+        // withRetry can honor it (#584); other statuses carry none.
+        const retryAfterMs = status === 429 ? parseRetryAfterMs(headers['retry-after']) : undefined;
+        throw new ServiceNowHttpError(
+            `ServiceNow request ${method} ${parsed.pathname} failed with status ${status}: ${truncateBody(scrubSecrets(raw, options.scrubValues))}`,
+            status,
+            retryAfterMs,
+        );
+    }
+
+    return { status, data };
 }
 
 /**

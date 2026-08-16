@@ -6,8 +6,8 @@
 // #681 happened. This scanner finds any pair of same-basename .ts files
 // under two different tasks' src/ trees whose normalized content similarity
 // is high enough to be a probable duplicate, and fails if that specific pair
-// isn't already registered (as a FAMILIES dir+module pair, or a
-// REGION_FAMILIES file pair). It does not replace check-shared-modules.js --
+// isn't already registered as a FAMILIES dir+module pair. It does not replace
+// check-shared-modules.js --
 // a flagged pair should be registered there (for real byte-identity
 // enforcement), not "fixed" by silencing this scanner.
 //
@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { FAMILIES, REGION_FAMILIES } = require('./check-shared-modules.js');
+const { FAMILIES } = require('./check-shared-modules.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 
@@ -28,8 +28,7 @@ const repoRoot = path.resolve(__dirname, '..');
 // stdlib/task-lib symbols, ...) while still catching a genuine copy-paste
 // well before it drifts far enough to look unrelated. Tuned against the
 // current tree: at 0.85 this scanner is green (see fix-I.json / #760) with
-// every real near-duplicate already covered by a FAMILIES or REGION_FAMILIES
-// entry. If a future *unrelated* pair starts tripping it, prefer excluding
+// every real near-duplicate already covered by a FAMILIES entry. If a future *unrelated* pair starts tripping it, prefer excluding
 // that specific basename/pair over raising the threshold -- raising it would
 // blind the gate to real future copy-paste duplicates.
 const SIMILARITY_THRESHOLD = 0.85;
@@ -105,8 +104,7 @@ function union(parent, a, b) {
 }
 
 // A pair is already registered if it's transitively covered by FAMILIES for
-// the shared basename, or if both files appear together in the same
-// REGION_FAMILIES entry's `files` list.
+// the shared basename.
 //
 // "Transitively covered" matters because a dir can be the byte-identical
 // canonical source in more than one FAMILIES entry for the same module (a
@@ -136,11 +134,6 @@ function isRegistered(fileA, fileB, basename) {
     return true;
   }
 
-  const relA = relFromRoot(fileA);
-  const relB = relFromRoot(fileB);
-  for (const region of REGION_FAMILIES) {
-    if (region.files.includes(relA) && region.files.includes(relB)) return true;
-  }
   return false;
 }
 

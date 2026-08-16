@@ -123,20 +123,25 @@ const SITE_ROWS: SiteRow[] = [
         fn: 'createRegistryClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical copy of the installer transport',
     },
-    // --- node:https, proxied via the CONNECT-tunnelling ProxyTunnelAgent ---
+    // --- the raw-https transport, delegated to @4cloudguru/pipeline-task-core ---
+    // The real https.request() left this tree with the transport, so these rows
+    // moved from PROXIED (an agent read out of the call) to PROXIED-BY-PACKAGE
+    // (an agent read out of the call PLUS a version floor on the package that
+    // implements it). What is still decided here is the `agent` argument, and
+    // node:https reaches no proxy without one.
     {
         file: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
-        fn: 'createHttpsClient', sink: 'https.request', verdict: 'PROXIED',
+        fn: 'createHttpsClient', sink: 'httpsRequest', verdict: 'PROXIED-BY-PACKAGE',
         why: 'the drift callback carries a TSM token; agent comes from buildProxyAgent()',
     },
     {
         file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
-        fn: 'createHttpsClient', sink: 'https.request', verdict: 'PROXIED',
+        fn: 'createHttpsClient', sink: 'httpsRequest', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical transport shared with the drift report',
     },
     {
         file: 'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
-        fn: 'snRequest', sink: 'https.request', verdict: 'PROXIED',
+        fn: 'snRequest', sink: 'httpsRequest', verdict: 'PROXIED-BY-PACKAGE',
         why: 'ServiceNow Table API calls carry an OAuth/Basic credential',
     },
     // --- exemptions, each verified against the code it names ---
@@ -160,21 +165,13 @@ const SITE_ROWS: SiteRow[] = [
         fn: 'downloadTo', sink: 'downloadTool', verdict: 'EXEMPT-TOOL-LIB',
         why: 'same tool-lib transport',
     },
-    {
-        file: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
-        fn: 'constructor', sink: 'http.request', verdict: 'EXEMPT-PROXY-TRANSPORT',
-        why: 'this IS the CONNECT hop that establishes the tunnel, issued from inside the https.Agent subclass',
-    },
-    {
-        file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
-        fn: 'constructor', sink: 'http.request', verdict: 'EXEMPT-PROXY-TRANSPORT',
-        why: 'byte-identical CONNECT hop',
-    },
-    {
-        file: 'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
-        fn: 'constructor', sink: 'http.request', verdict: 'EXEMPT-PROXY-TRANSPORT',
-        why: 'byte-identical CONNECT hop',
-    },
+    // The three EXEMPT-PROXY-TRANSPORT rows that used to sit here — the CONNECT
+    // hop issued from inside each hand-copied ProxyTunnelAgent — are GONE, not
+    // reclassified: that class now lives in @4cloudguru/pipeline-task-core, so
+    // the call sites are genuinely not in this repository any more. Deleting
+    // them is what keeps this table an inventory rather than a wish list; the
+    // bidirectional check below fails on a vanished site exactly as it does on
+    // a new one, which is how this deletion had to be made deliberately.
     {
         file: 'src/tab/tabContent.tsx',
         fn: 'loadDigestItems', sink: 'fetch', verdict: 'EXEMPT-BROWSER',

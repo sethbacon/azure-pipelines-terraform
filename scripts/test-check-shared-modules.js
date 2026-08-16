@@ -6,28 +6,37 @@
 // in its own FAMILIES list or diff logic would otherwise pass CI while
 // verifying nothing.
 //
-// Runs check-shared-modules.js five times against a scratch copy of Tasks/
-// (+ src/, needed by the digest-contract family below):
+// Runs check-shared-modules.js against a scratch copy of Tasks/ (+ src/, needed
+// by the digest-contract family below):
 //   1. unmodified copy -> must exit 0
 //   2. one paired file (installer family, both dirs under Tasks/) deliberately
 //      diverged -> must exit non-zero
 //   3. one paired file from the plan/apply digest-contract family (design
 //      decision D4) deliberately diverged -> must exit non-zero. This family
 //      is exercised separately from case 2 because its second directory
-//      (src/tab) is NOT under Tasks/ — a bug that only resolved paths
+//      (src/tab) is NOT under Tasks/ -- a bug that only resolved paths
 //      relative to Tasks/ would pass case 2 while silently never comparing
 //      this family at all.
-//   4. the shared ProxyTunnelAgent REGION (a marked block inside a file that is
-//      NOT a whole-file copy — servicenow-http.ts) diverged inside its markers
-//      -> must exit non-zero, proving the REGION_FAMILIES comparison is wired in.
-//   5. a region marker deleted from one copy -> must exit non-zero (fail closed):
-//      a removed marker must be a hard failure, never a silently skipped check.
+//   4. `--fix` repairs a diverged copy from its canonical source, asserted on
+//      exact post-fix bytes so a --fix that "succeeded" by doing nothing still
+//      fails.
+//   5. the NON-VACUITY guard: a family that can compare nothing must be a hard
+//      failure, not a silent pass. Driven directly with synthetic families
+//      rather than through the scratch tree, because the failure it describes
+//      cannot be staged by editing files -- only by editing the FAMILIES list.
 // The scratch copy is removed afterwards either way.
+//
+// Cases for REGION_FAMILIES were removed with that mechanism: every block it
+// gated now comes from @4cloudguru/pipeline-task-core, no file in the tree
+// carries a `// #region shared:` marker, and a self-test asserting on a
+// mechanism with no members would itself be the vacuous check this file exists
+// to prevent.
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { FAMILIES, assertFamiliesAreComparable } = require('./check-shared-modules.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'check-shared-modules.js');
@@ -48,24 +57,6 @@ function runCheck(cwd) {
 // that it leaves a region host file's surrounding code untouched.
 function runFix(cwd) {
     return spawnSync(process.execPath, [scriptPath, '--fix'], { cwd, encoding: 'utf8' });
-}
-
-// Read the text strictly between a region's markers, mirroring
-// check-shared-modules.js's own extractRegion() closely enough to assert on
-// exact region content after a --fix run.
-function readRegion(file, region) {
-    const lines = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n');
-    const open = lines.findIndex(l => l.trimStart().startsWith(`// #region shared:${region}`));
-    const close = lines.findIndex(l => l.trimStart().startsWith(`// #endregion shared:${region}`));
-    if (open === -1 || close === -1 || close <= open) {
-        return null;
-    }
-    return lines.slice(open + 1, close).join('\n');
-}
-
-// Escape a literal string for safe interpolation into a RegExp.
-function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-shared-modules-selftest-'));
@@ -114,102 +105,17 @@ try {
         console.log('OK: check-shared-modules.js exits non-zero on a diverged digest-contract family copy (src/tab).');
     }
 
-    // Case 4: reset to a fully clean tree, then diverge ONLY the shared
-    // ProxyTunnelAgent REGION inside the ServiceNow transport (servicenow-http.ts
-    // is gated solely by REGION_FAMILIES, not any whole-file family) by inserting
-    // a line between its markers. With the tree otherwise pristine, a non-zero
-    // exit here can only come from the region comparison.
-    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
-    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
-    const regionTargetFile = path.join('Tasks', 'PublishKbArticle', 'PublishKbArticleV1', 'src', 'servicenow-http.ts');
-    const regionScratchTarget = path.join(scratchDir, regionTargetFile);
-    const regionEndMarker = '// #endregion shared:ProxyTunnelAgent';
-
-    const regionOriginal = fs.readFileSync(regionScratchTarget, 'utf8');
-    fs.writeFileSync(
-        regionScratchTarget,
-        regionOriginal.replace(regionEndMarker, `        // check-shared-modules self-test region divergence\r\n${regionEndMarker}`),
-    );
-
-    const regionDivergedResult = runCheck(scratchDir);
-    const regionDivergedOutput = `${regionDivergedResult.stdout}${regionDivergedResult.stderr}`;
-    if (regionDivergedResult.status === 0 || !regionDivergedOutput.includes("shared region 'ProxyTunnelAgent' diverged")) {
-        console.error('FAIL: check-shared-modules.js did not flag a diverged shared ProxyTunnelAgent region.');
-        console.error(regionDivergedResult.stdout, regionDivergedResult.stderr);
-        failed = true;
-    } else {
-        console.log("OK: check-shared-modules.js exits non-zero when a shared region's content diverges.");
-    }
-
-    // Case 5 (fail closed): reset, then DELETE the #endregion marker from the
-    // ServiceNow copy. A removed marker must be a hard failure, never a silently
-    // skipped check — otherwise deleting a marker would disable the gate unseen.
-    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
-    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
-    const regionClean = fs.readFileSync(regionScratchTarget, 'utf8');
-    // Remove the marker line plus its trailing newline, tolerating either CRLF
-    // (Windows working tree) or LF (ubuntu-latest CI checkout) endings — a
-    // hardcoded `\r\n` would be a no-op on an LF checkout, leaving the marker in
-    // place so the gate never fails closed and this self-test case flips red.
-    fs.writeFileSync(
-        regionScratchTarget,
-        regionClean.replace(new RegExp(`${escapeRegExp(regionEndMarker)}\\r?\\n`), ''),
-    );
-
-    const missingMarkerResult = runCheck(scratchDir);
-    const missingMarkerOutput = `${missingMarkerResult.stdout}${missingMarkerResult.stderr}`;
-    if (missingMarkerResult.status === 0 || !missingMarkerOutput.includes(regionEndMarker)) {
-        console.error('FAIL: check-shared-modules.js did not fail closed when a region marker was deleted.');
-        console.error(missingMarkerResult.stdout, missingMarkerResult.stderr);
-        failed = true;
-    } else {
-        console.log('OK: check-shared-modules.js fails closed when a shared-region marker is deleted.');
-    }
-
-    // Case 6: the truncateBody() region (#407). oci-token-exchange.ts carried a
-    // variant of this helper that sat outside EVERY parity mechanism before
-    // #407, so this case specifically diverges THAT copy: it is the one whose
-    // drift previously could not be detected at all. Asserting on the exact
-    // region name proves the failure comes from the TruncateBody comparison and
-    // not from some unrelated family tripping first.
-    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
-    fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
-    const truncateTargetFile = path.join('Tasks', 'TerraformTask', 'TerraformTaskV5', 'src', 'oci-token-exchange.ts');
-    const truncateScratchTarget = path.join(scratchDir, truncateTargetFile);
-    const truncateEndMarker = '// #endregion shared:TruncateBody';
-    const truncateOriginal = fs.readFileSync(truncateScratchTarget, 'utf8');
-    // Weaken the bound the way a careless edit would: raise the cap only here.
-    fs.writeFileSync(
-        truncateScratchTarget,
-        truncateOriginal.replace('max = 500', 'max = 50000'),
-    );
-
-    const truncateDivergedResult = runCheck(scratchDir);
-    const truncateDivergedOutput = `${truncateDivergedResult.stdout}${truncateDivergedResult.stderr}`;
-    if (truncateDivergedResult.status === 0 || !truncateDivergedOutput.includes("shared region 'TruncateBody' diverged")) {
-        console.error('FAIL: check-shared-modules.js did not flag a diverged shared TruncateBody region.');
-        console.error(truncateDivergedResult.stdout, truncateDivergedResult.stderr);
-        failed = true;
-    } else {
-        console.log("OK: check-shared-modules.js exits non-zero when the truncateBody bound diverges in one transport.");
-    }
-
-    // Case 7 (--fix, #300): with BOTH a whole-file family copy and a region copy
-    // deliberately diverged, `--fix` must rewrite each from its canonical source
-    // so a subsequent plain check passes. Asserts on exact post-fix content, not
-    // merely on a zero exit, so a --fix that "succeeded" by doing nothing (or by
-    // rewriting the wrong direction) still fails this case.
+    // Case 4 (--fix, #300): with a whole-file family copy deliberately diverged,
+    // `--fix` must rewrite it from its canonical source so a subsequent plain
+    // check passes. Asserts on exact post-fix content, not merely on a zero exit,
+    // so a --fix that "succeeded" by doing nothing (or by rewriting the wrong
+    // direction) still fails this case.
     fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
     fs.cpSync(path.join(repoRoot, 'src'), path.join(scratchDir, 'src'), { recursive: true });
     const fixFamilyTarget = path.join(scratchDir, targetFile);
     const fixFamilyCanonical = path.join(scratchDir, 'Tasks', 'TerraformInstaller', 'TerraformInstallerV1', 'src', 'http-client.ts');
     const canonicalFamilyContent = fs.readFileSync(fixFamilyCanonical, 'utf8');
     fs.appendFileSync(fixFamilyTarget, '\n// check-shared-modules --fix self-test divergence marker\n');
-
-    const fixRegionTarget = path.join(scratchDir, truncateTargetFile);
-    const fixRegionCanonicalFile = path.join(scratchDir, 'Tasks', 'TerraformModulePublish', 'TerraformModulePublishV1', 'src', 'https-client.ts');
-    const canonicalRegionContent = readRegion(fixRegionCanonicalFile, 'TruncateBody');
-    fs.writeFileSync(fixRegionTarget, fs.readFileSync(fixRegionTarget, 'utf8').replace('max = 500', 'max = 50000'));
 
     // Sanity: the tree really is broken before --fix runs, so a green result
     // below cannot come from having diverged nothing at all.
@@ -221,7 +127,6 @@ try {
     const fixResult = runFix(scratchDir);
     const postFixCheck = runCheck(scratchDir);
     const repairedFamily = fs.readFileSync(fixFamilyTarget, 'utf8');
-    const repairedRegion = readRegion(fixRegionTarget, 'TruncateBody');
 
     if (fixResult.status !== 0) {
         console.error('FAIL: check-shared-modules.js --fix exited non-zero.');
@@ -230,27 +135,42 @@ try {
     } else if (repairedFamily !== canonicalFamilyContent) {
         console.error('FAIL: --fix did not restore the whole-file family copy to the canonical bytes.');
         failed = true;
-    } else if (repairedRegion !== canonicalRegionContent) {
-        console.error('FAIL: --fix did not restore the shared region to the canonical bytes.');
-        failed = true;
     } else if (postFixCheck.status !== 0) {
         console.error('FAIL: the parity gate still fails after --fix repaired every copy.');
         console.error(postFixCheck.stdout, postFixCheck.stderr);
         failed = true;
     } else {
-        console.log('OK: --fix rewrites both a whole-file copy and a shared region from canonical.');
+        console.log('OK: --fix rewrites a whole-file copy from canonical.');
     }
 
-    // Case 8 (--fix must not clobber a region host file): splicing a region back
-    // into servicenow-http.ts/oci-token-exchange.ts must replace ONLY the text
-    // between the markers. A --fix implemented as a whole-file copy would pass
-    // case 7's region assertion while destroying the host file, so assert the
-    // surrounding code — the file's own class, unique to it — survived.
-    if (!fs.readFileSync(fixRegionTarget, 'utf8').includes('class OciTokenExchangeError')) {
-        console.error('FAIL: --fix clobbered the region host file\'s surrounding code.');
+    // Case 5 (non-vacuity): a family that compares NOTHING must be a hard
+    // failure. Retiring a module into a shared package is what empties a family
+    // (#949), and a one-directory family prints exactly what a clean four-file
+    // comparison prints. Driven directly, because no edit to the scratch tree
+    // can produce a malformed FAMILIES list.
+    const vacuousCases = [
+        { label: 'an empty FAMILIES list', families: [] },
+        { label: 'a single-directory family', families: [{ dirs: ['Tasks/A/src'], modules: ['x.ts'] }] },
+        { label: 'a family listing no modules', families: [{ dirs: ['Tasks/A/src', 'Tasks/B/src'], modules: [] }] },
+    ];
+    for (const { label, families } of vacuousCases) {
+        const problems = assertFamiliesAreComparable(families);
+        if (problems.length === 0) {
+            console.error(`FAIL: assertFamiliesAreComparable accepted ${label}, which compares nothing.`);
+            failed = true;
+        } else {
+            console.log(`OK: ${label} is rejected (${problems[0]}).`);
+        }
+    }
+
+    // ...and the real list must satisfy it, or every case above is theatre.
+    const realProblems = assertFamiliesAreComparable(FAMILIES);
+    if (realProblems.length > 0) {
+        console.error('FAIL: the repo\'s own FAMILIES list is not comparable:');
+        for (const problem of realProblems) console.error(`      ${problem}`);
         failed = true;
     } else {
-        console.log('OK: --fix leaves a region host file\'s surrounding code intact.');
+        console.log(`OK: the repo's own ${FAMILIES.length} families each compare at least two directories.`);
     }
 } finally {
     fs.rmSync(scratchDir, { recursive: true, force: true });

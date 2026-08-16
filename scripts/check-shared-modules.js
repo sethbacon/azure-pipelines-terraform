@@ -26,9 +26,14 @@ const FAMILIES = [
         ],
     },
     {
-        // Credential-bearing HTTPS transport (https-pin guard + socket timeout +
-        // body truncation) shared by the registry module publish (API key) and the
-        // drift callback (TSM token).
+        // Credential-bearing HTTPS transport shared by the registry module publish
+        // (API key) and the drift callback (TSM token). The transport itself now
+        // comes from @4cloudguru/pipeline-task-core; what these two copies still
+        // share is the task-side wiring the package refuses to own -- reading the
+        // agent's proxy configuration, registering the credential with the log
+        // masker, and the body/timeout/rejectUnauthorized arguments handed to it.
+        // Still a real comparison of two real files: a change to how either task
+        // constructs its client must land in both.
         dirs: [
             'Tasks/TerraformModulePublish/TerraformModulePublishV1/src',
             'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
@@ -191,33 +196,37 @@ const FAMILIES = [
     },
 ];
 
-// These two families are deliberately NOT merged into one shared client, even
-// though both enforce an https-only guard: they sit on different transport
-// primitives (fetch+AbortController vs raw https.request+req.setTimeout) and
-// different trust models (the installer family downloads public release
-// artifacts and sends no credential; the second family attaches a bearer
-// token/API key to every request). Each family is independently guarded
-// end-to-end by this script, which is the property that actually matters;
-// collapsing them into a single abstraction would be a large, risky rewrite
-// of working transport code for no behavior change.
+// The installer family and the credential-bearing family above are deliberately
+// NOT merged. They sit on different transport primitives (fetch+AbortController
+// vs raw https.request+req.setTimeout) and different trust models: the installer
+// family downloads public release artifacts and sends no credential, while the
+// second attaches a bearer token/API key to every request. Both now consume
+// @4cloudguru/pipeline-task-core, so the implementations are single-sourced even
+// though the two client shapes stay distinct.
 //
-// A THIRD credential-bearing transport exists outside this script's FAMILIES:
-// Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts. Its whole
-// file is not a byte-for-byte copy, so it is not in FAMILIES above, but it
-// intentionally mirrors the same hardening as the family above — an https-only
-// guard, a DEFAULT_REQUEST_TIMEOUT_MS socket timeout, and the same 10MB
-// MAX_RESPONSE_BYTES response cap (see truncate()/truncateBody()). It stays a
-// separate module rather than reusing https-client.ts because its call sites
-// need JSON-body encoding, query-string params, and axios-like non-2xx
-// rejection that the module-publish/drift-report clients don't. Its two most
-// hardening-sensitive shared pieces are gated automatically via the
-// REGION_FAMILIES mechanism below: the CONNECT-tunneling ProxyTunnelAgent class
-// (`#region shared:ProxyTunnelAgent`) and, as of #722, the request-timeout /
-// response-cap constants (`#region shared:HttpHardeningConstants`) — both
-// byte-compared against the two https-client.ts copies. Only the https-only
-// guard itself remains a hand-tracked parallel: a future hardening change to
-// it in https-client.ts should still be mirrored into servicenow-http.ts by
-// hand.
+// REGION FAMILIES REMOVED. This script used to carry a second mechanism,
+// REGION_FAMILIES, which byte-compared a marked block inside files that were not
+// whole-file copies. It existed for exactly three blocks -- the CONNECT-tunnelling
+// ProxyTunnelAgent class, the request-timeout/response-cap constants, and
+// truncateBody -- hand-copied across the two https-client.ts files,
+// PublishKbArticleV1's servicenow-http.ts and TerraformTaskV5's
+// oci-token-exchange.ts. All three now come from @4cloudguru/pipeline-task-core,
+// and so does the https-only guard that never made it into any gate at all.
+//
+// The mechanism went with them rather than being left declaring nothing. That is
+// not tidiness: a family that compares nothing prints the same "checks passed"
+// as one that compared four files and found no drift, which is the trap #949
+// came close to -- retiring http-client.ts emptied its families, and they only
+// kept working because the shims stayed. An empty REGION_FAMILIES would have
+// been that failure one level up, in the mechanism instead of a family.
+//
+// The reason the regions existed also stopped applying. PublishKbArticle is
+// moving to azure-pipelines-release-docs, where a gate in THIS repository cannot
+// see it; that move is what forced the extraction. Had the regions survived it,
+// they would have quietly stopped comparing anything real. If a future block
+// genuinely has to be duplicated into a file that is not a whole-file copy,
+// restore the mechanism from this file's history -- deliberately, with the
+// self-test cases that proved it fails closed.
 
 // Region families: unlike FAMILIES (whole-file byte-identity), each entry names a
 // marked region that must stay byte-identical across files that are otherwise NOT
@@ -228,55 +237,6 @@ const FAMILIES = [
 // its own surrounding code and still be gated. Fail-closed: a missing, duplicated,
 // or out-of-order marker in ANY listed file is a hard failure, so deleting a
 // marker can never silently skip the check.
-const REGION_FAMILIES = [
-    {
-        // The CONNECT-tunneling ProxyTunnelAgent, duplicated verbatim into the two
-        // https-client.ts copies (already whole-file-gated as a FAMILY above) and
-        // the ServiceNow transport servicenow-http.ts (not a whole-file copy).
-        region: 'ProxyTunnelAgent',
-        files: [
-            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
-            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
-            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
-        ],
-    },
-    {
-        // The per-request socket timeout and response-body byte cap, previously a
-        // hand-tracked parallel outside any parity gate (#722) -- now byte-
-        // compared the same way as ProxyTunnelAgent above.
-        region: 'HttpHardeningConstants',
-        files: [
-            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
-            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
-            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
-        ],
-    },
-    {
-        // truncateBody(): the last-line bound on how much of a remote response
-        // body can be interpolated into a thrown error or a log line. Every
-        // transport that surfaces a remote body in an error message carries it,
-        // and until #407 each carried its OWN copy: the two https-client.ts
-        // copies had a falsy guard, while TerraformTaskV5's oci-token-exchange.ts
-        // and PublishKbArticleV1's servicenow-http.ts had independently written
-        // variants without one (servicenow-http.ts even under a different name,
-        // truncate()). Two of the four sat outside every parity mechanism, so a
-        // tightening of the cap -- or a fix to the "does the marker itself leak
-        // length" question -- could land in one transport and be missed in the
-        // rest. All four are now byte-identical and gated here.
-        //
-        // A REGION family rather than a whole-file FAMILY because three of the
-        // four host files are not copies of each other in any other respect;
-        // this is the same reason ProxyTunnelAgent above is region-gated.
-        region: 'TruncateBody',
-        files: [
-            'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/https-client.ts',
-            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/https-client.ts',
-            'Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts',
-            'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts',
-        ],
-    },
-];
-
 // Normalize line endings so a CRLF checkout never reads as drift; the bytes that
 // matter (the key material, the verification logic) are still compared exactly.
 function read(relDir, file) {
@@ -285,50 +245,6 @@ function read(relDir, file) {
         return { ok: false, full };
     }
     return { ok: true, full, content: fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n') };
-}
-
-// Extract the text strictly between a region's `#region shared:<name>` and
-// `#endregion shared:<name>` markers, normalizing CRLF exactly like read()
-// above. A missing, duplicated, or out-of-order marker returns { ok: false } so
-// the caller fails closed instead of comparing an empty or partial region.
-function extractRegion(relPath, region) {
-    const full = path.resolve(relPath);
-    if (!fs.existsSync(full)) {
-        return { ok: false, full, reason: `file missing: ${relPath}` };
-    }
-    const lines = fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n').split('\n');
-    // Match the actual `// #region ...` line-comment markers, not prose that
-    // merely mentions the region name (e.g. a backticked reference in a header
-    // comment), so a doc mention can never be miscounted as a marker.
-    const openToken = `// #region shared:${region}`;
-    const closeToken = `// #endregion shared:${region}`;
-    const opens = [];
-    const closes = [];
-    lines.forEach((line, i) => {
-        const trimmed = line.trimStart();
-        if (trimmed.startsWith(openToken)) opens.push(i);
-        if (trimmed.startsWith(closeToken)) closes.push(i);
-    });
-    if (opens.length !== 1 || closes.length !== 1) {
-        return {
-            ok: false,
-            full,
-            reason: `expected exactly one '${openToken}' and one '${closeToken}' marker in ${relPath} (found ${opens.length} open, ${closes.length} close)`,
-        };
-    }
-    if (closes[0] <= opens[0]) {
-        return { ok: false, full, reason: `'${closeToken}' precedes its '${openToken}' in ${relPath}` };
-    }
-    return {
-        ok: true,
-        full,
-        content: lines.slice(opens[0] + 1, closes[0]).join('\n'),
-        // Marker positions, so --fix can splice a canonical region back in without
-        // disturbing the host file's own surrounding code.
-        lines,
-        openLine: opens[0],
-        closeLine: closes[0],
-    };
 }
 
 // --fix support (#300). The parity gate tells you a canonical module and its
@@ -347,13 +263,45 @@ function writeFamilyCopy(canonicalFull, targetFull) {
     fs.copyFileSync(canonicalFull, targetFull);
 }
 
-function writeRegionCopy(canonicalContent, target) {
-    const spliced = [
-        ...target.lines.slice(0, target.openLine + 1),
-        ...canonicalContent.split('\n'),
-        ...target.lines.slice(target.closeLine),
-    ];
-    fs.writeFileSync(target.full, spliced.join('\n'));
+/**
+ * A family that compares NOTHING must never report the same thing as a family
+ * that compared four files and found no drift.
+ *
+ * This is the #949 lesson made mechanical. Retiring http-client.ts into a
+ * package left its families enumerating shims; had the shims not remained, the
+ * `dirs` lists would have collapsed to one entry each and every loop below would
+ * have run zero comparisons while the script still printed "All shared-module
+ * parity checks passed." A single-directory family is not a weak check, it is an
+ * absent one wearing the same output.
+ *
+ * So: at least one family, at least two directories in each, at least one module
+ * in each. A family that no longer has a job should be DELETED (and its removal
+ * explained), never left declaring a set it cannot compare.
+ *
+ * Exported so the self-test can drive it with synthetic inputs -- the failure it
+ * describes cannot be staged by editing the repo tree, only by editing this list.
+ */
+function assertFamiliesAreComparable(families) {
+    const problems = [];
+    if (!Array.isArray(families) || families.length === 0) {
+        problems.push('FAMILIES is empty: nothing is gated, and every run would pass vacuously.');
+        return problems;
+    }
+    families.forEach((family, index) => {
+        const label = `FAMILIES[${index}]${family?.dirs?.[0] ? ` (${family.dirs[0]})` : ''}`;
+        const dirs = Array.isArray(family?.dirs) ? family.dirs : [];
+        const modules = Array.isArray(family?.modules) ? family.modules : [];
+        if (dirs.length < 2) {
+            problems.push(
+                `${label} names ${dirs.length} director${dirs.length === 1 ? 'y' : 'ies'}: ` +
+                'a family needs at least two to compare anything. Delete the family if it no longer has a job.',
+            );
+        }
+        if (modules.length === 0) {
+            problems.push(`${label} lists no modules, so it compares nothing.`);
+        }
+    });
+    return problems;
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -364,6 +312,15 @@ function main(argv = process.argv.slice(2)) {
     const fix = argv.includes('--fix');
     let hasError = false;
     let fixedCount = 0;
+
+    // Before comparing anything, check there IS something to compare.
+    const structuralProblems = assertFamiliesAreComparable(FAMILIES);
+    if (structuralProblems.length > 0) {
+        for (const problem of structuralProblems) {
+            console.error(`FAIL: ${problem}`);
+        }
+        process.exit(1);
+    }
 
     for (const { dirs, modules } of FAMILIES) {
         const [canonicalDir, ...otherDirs] = dirs;
@@ -399,38 +356,6 @@ function main(argv = process.argv.slice(2)) {
         }
     }
 
-    for (const { region, files } of REGION_FAMILIES) {
-        const [canonicalFile, ...otherFiles] = files;
-        const base = extractRegion(canonicalFile, region);
-        if (!base.ok) {
-            console.error(`FAIL: ${base.reason}`);
-            hasError = true;
-            continue;
-        }
-        for (const file of otherFiles) {
-            const other = extractRegion(file, region);
-            if (!other.ok) {
-                console.error(`FAIL: ${other.reason}`);
-                hasError = true;
-                continue;
-            }
-            if (other.content !== base.content) {
-                if (fix) {
-                    writeRegionCopy(base.content, other);
-                    console.log(`FIXED: region '${region}' rewritten from canonical (${canonicalFile} -> ${file})`);
-                    fixedCount++;
-                } else {
-                    console.error(`FAIL: shared region '${region}' diverged between ${canonicalFile} and ${file}`);
-                    console.error(`      reconcile both copies (canonical: ${base.full})`);
-                    console.error(`      or run: npm run sync:shared`);
-                    hasError = true;
-                }
-            } else {
-                console.log(`OK: region '${region}' identical (${canonicalFile} == ${file})`);
-            }
-        }
-    }
-
     if (hasError) {
         process.exit(1);
     }
@@ -440,7 +365,15 @@ function main(argv = process.argv.slice(2)) {
             : `Synced ${fixedCount} cop${fixedCount === 1 ? 'y' : 'ies'} from canonical. Review the diff before committing.`);
         return;
     }
-    console.log('All shared-module parity checks passed.');
+    const comparisons = FAMILIES.reduce(
+        (total, { dirs, modules }) => total + (dirs.length - 1) * modules.length,
+        0,
+    );
+    // Says how much was compared, not merely that nothing failed: "found no
+    // drift" and "compared nothing" must not print the same line.
+    console.log(
+        `All shared-module parity checks passed (${FAMILIES.length} families, ${comparisons} file comparisons).`,
+    );
 }
 
 // Exported so scripts/check-near-duplicate-modules.js can share this single
@@ -451,4 +384,4 @@ if (require.main === module) {
     main();
 }
 
-module.exports = { FAMILIES, REGION_FAMILIES, main };
+module.exports = { FAMILIES, assertFamiliesAreComparable, main };

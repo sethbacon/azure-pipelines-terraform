@@ -298,7 +298,7 @@ Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terra
 | `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot)                                       |
 | `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                                                                |
 | `secure-temp.ts`  | Restrictive temp-file primitives (owner-only 0600 + `O_EXCL` on Unix, a restrictive icacls DACL on Windows; both fail closed) — byte-identical copy of TerraformTaskV5's |
-| `https-client.ts` | Shared HTTPS client, HTTPS-only (shared with TerraformModulePublish)                                                                                                     |
+| `https-client.ts` | Task-side wiring over `@4cloudguru/pipeline-task-core`'s raw-https transport: the agent proxy tunnel and the log-masker registration the package cannot read for itself; byte-identical copy in TerraformModulePublishV1 |
 
 Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`, `summaryFilePath` (opt-in `cleanupSummaryFile` removes it after use), `sarifFilePath`.
 
@@ -312,7 +312,7 @@ Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes 
 | `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
 | `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
 | `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
-| `https-client.ts`      | Shared HTTPS client, HTTPS-only (shared with TerraformDriftReport)                                      |
+| `https-client.ts`      | Task-side wiring over `@4cloudguru/pipeline-task-core`'s raw-https transport; byte-identical copy in TerraformDriftReportV1 |
 | `types.ts`             | Shared type definitions for both publishers                                                             |
 
 ## Markdown2Html Task (Markdown2HtmlV1)
@@ -343,7 +343,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `index.ts`             | Entry point — orchestrates the create/update/workflow flow                                                                                                        |
 | `auth.ts`              | OAuth client-credentials and Basic auth; masks secrets including derived/encoded forms                                                                            |
 | `servicenow-client.ts` | ServiceNow Table API client — every `sysparm_query` interpolation goes through `assertQueryValueSafe()`                                                           |
-| `servicenow-http.ts`   | Shared HTTP client with bounded retry (transport + 5xx only, never a received 4xx)                                                                                |
+| `servicenow-http.ts`   | ServiceNow layer over `@4cloudguru/pipeline-task-core`'s raw-https transport: query params, body encoding, non-2xx rejection, and bounded retry (transport + 5xx/429 only, never a received 4xx) |
 | `attachments.ts`       | Image-attachment upload/list/sync                                                                                                                                 |
 | `image-rewrite.ts`     | Rewrites local `<img src>` references to uploaded attachment URLs                                                                                                 |
 | `html-validate.ts`     | Security gate for article HTML before publish; `force` only bypasses the content-loss heuristic, never the security checks                                        |
