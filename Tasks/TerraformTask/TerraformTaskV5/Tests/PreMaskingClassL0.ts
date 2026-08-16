@@ -72,7 +72,7 @@ interface SourceSite {
  * is that check. See ADO_PACKAGE_FLOOR.
  */
 const ADO_PACKAGE = '@4cloudguru/pipeline-task-ado';
-const ADO_PACKAGE_FLOOR = '0.2.0';
+const ADO_PACKAGE_FLOOR = '0.3.0';
 
 /**
  * M5: the registry-supplied pre-signed download_url carries a live signing token
