@@ -19,7 +19,7 @@
   },
   "minimumAgentVersion": "2.144.0",
   "dependencies": {
-    "@4cloudguru/pipeline-task-core": "^0.5.0",
+    "@4cloudguru/pipeline-task-core": "^0.6.0",
     "@4cloudguru/terraform-drift-contract": "^1.2.0",
     "azure-pipelines-task-lib": "^5.2.10"
   },

@@ -219,9 +219,11 @@ describe('http client transport: agent proxy support', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
     const t = tasks as any;
     const origGetProxy = t.getHttpProxyConfiguration;
+    const origSetSecret = t.setSecret;
 
     afterEach(() => {
         t.getHttpProxyConfiguration = origGetProxy;
+        t.setSecret = origSetSecret;
     });
 
     it('routes a request through a configured HTTP CONNECT proxy', async () => {
@@ -243,6 +245,45 @@ describe('http client transport: agent proxy support', function () {
             assert.strictEqual(resp.status, 200);
             assert.strictEqual(seen.length, 1, 'the proxy should have seen exactly one CONNECT');
             assert.strictEqual(seen[0].target, `127.0.0.1:${targetPort}`);
+        } finally {
+            target.close();
+            proxy.close();
+        }
+    });
+
+    it('sends Proxy-Authorization and masks the proxy password as a secret when credentials are configured', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+
+        const expectedAuth = `Basic ${Buffer.from('proxyuser:p@ss').toString('base64')}`;
+        const { server: proxy, seen } = startConnectProxy({ requireAuthHeader: expectedAuth });
+        await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+        const proxyPort = (proxy.address() as net.AddressInfo).port;
+
+        const maskedSecrets: string[] = [];
+        t.setSecret = (v: string) => maskedSecrets.push(v);
+        t.getHttpProxyConfiguration = () => ({
+            proxyUrl: `http://127.0.0.1:${proxyPort}`,
+            proxyUsername: 'proxyuser',
+            proxyPassword: 'p@ss',
+        });
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/api`, {});
+            assert.strictEqual(resp.status, 200);
+            assert.strictEqual(seen.length, 1);
+            assert.strictEqual(seen[0].proxyAuthorization, expectedAuth);
+            assert.ok(maskedSecrets.includes('p@ss'), 'the proxy password should be registered as a secret');
+            // ADO's masker matches literal registered strings only, so the derived
+            // base64 credential must be registered separately from the raw password (#546).
+            assert.ok(
+                maskedSecrets.includes(Buffer.from('proxyuser:p@ss').toString('base64')),
+                'the derived base64 Basic credential should be registered as a secret too',
+            );
         } finally {
             target.close();
             proxy.close();
@@ -293,6 +334,23 @@ describe('http client transport: agent proxy support', function () {
             );
         } finally {
             proxy.close();
+        }
+    });
+
+    it('connects directly (no proxy) when the agent has none configured', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"ok":true}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => undefined;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('GET', `https://127.0.0.1:${targetPort}/api`, {});
+            assert.strictEqual(resp.status, 200);
+        } finally {
+            target.close();
         }
     });
 });

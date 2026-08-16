@@ -1,7 +1,7 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
 import { buildProxyFetchOptions } from './proxy-config';
-import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseRetryAfterMs, truncateBody as coreTruncateBody } from '@4cloudguru/pipeline-task-core';
 
 /**
  * Number of total token-exchange attempts and the initial backoff, matching the
@@ -25,28 +25,19 @@ class OciTokenExchangeError extends Error {
     }
 }
 
-// #region shared:TruncateBody
 /**
  * Bounds a remote response body before it is interpolated into a thrown error
  * or log line, so a large — or credential-reflecting — body cannot be dumped
- * wholesale. The credential itself is also registered with setSecret(), so the
- * agent masks it; this is defense-in-depth against verbose error bodies.
+ * wholesale. Re-exported as a value (not `export { ... }`, which compiles to a
+ * getter thunk no test can reach) so this module's existing importers are
+ * unchanged.
  *
- * Callers that scrub known request secrets out of a body do so BEFORE calling
- * this, so a secret straddling the truncation boundary is still scrubbed whole.
- *
- * Duplicated verbatim into every transport that interpolates a remote body into
- * an error message (#407), and byte-compared across all four copies by
- * scripts/check-shared-modules.js — so a future hardening change here cannot
- * land in one transport and be silently missed in the others.
+ * Was a verbatim copy here, byte-compared against three sibling transports by
+ * a `#region shared:` family in scripts/check-shared-modules.js. Two of those
+ * siblings are leaving this repository, where that gate cannot follow them, so
+ * the single implementation now lives in @4cloudguru/pipeline-task-core.
  */
-export function truncateBody(body: string, max = 500): string {
-    if (!body) {
-        return '';
-    }
-    return body.length > max ? `${body.slice(0, max)}… (truncated)` : body;
-}
-// #endregion shared:TruncateBody
+export const truncateBody = coreTruncateBody;
 
 /**
  * Remove any occurrence of a known request secret (here the OIDC subject_token
