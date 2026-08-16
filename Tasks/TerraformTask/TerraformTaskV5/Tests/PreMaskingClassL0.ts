@@ -58,19 +58,21 @@ interface SourceSite {
  * M3: the WHATWG URL setter percent-encodes the password, so the string the
  * dispatcher URL embeds is byte-different from the raw proxyPassword — the
  * agent's masker matches registered literals, never derivations of them.
- * Assembling that URL now happens in pipeline-task-core's resolveProxy(), which
- * cannot call setSecret itself (the package does not import the task lib), so
- * it returns every spelling it produced and registering them stays the caller's
- * obligation. That makes this row MORE load-bearing than when the encoding was
- * inline: the guard is the only thing tying the returned secrets to a setSecret
- * call before the URL reaches ProxyAgent. All three http-client.ts copies are
- * byte-identical (gated by scripts/check-shared-modules.js), so all three carry
- * the same row.
+ *
+ * This class NO LONGER HAS A SOURCE ROW IN THIS REPO. Assembling the proxy URL,
+ * registering every spelling it produced, and building the dispatcher all moved
+ * into @4cloudguru/pipeline-task-ado's buildAdoFetchOptions, so the regexes that
+ * used to pin the ordering here now match nothing — and a source assertion that
+ * cannot fail is worse than no assertion, because it reads as coverage.
+ *
+ * What is still checkable from here is PROVENANCE: that each installer depends
+ * on a version of the package known to contain the wiring AND the test that
+ * asserts its ordering (both events share one log there, and the assertion is
+ * that no dispatcher is constructed before the last setSecret). The floor below
+ * is that check. See ADO_PACKAGE_FLOOR.
  */
-const PROXY_ENCODED_GUARD = /for \(const secret of resolved\.secrets\) \{\s*\n\s*tasks\.setSecret\(secret\);\s*\n\s*\}[\s\S]{0,400}?new ProxyAgent\(resolved\.proxyUrl\)/;
-// Tempered so it can only match when NO registration intervenes: in the correct
-// shape the setSecret loop sits between the two, and the match cannot span it.
-const PROXY_ENCODED_DEFECT = /resolveProxy\((?:(?!tasks\.setSecret)[\s\S]){0,800}?new ProxyAgent\(/;
+const ADO_PACKAGE = '@4cloudguru/pipeline-task-ado';
+const ADO_PACKAGE_FLOOR = '0.2.0';
 
 /**
  * M5: the registry-supplied pre-signed download_url carries a live signing token
@@ -81,27 +83,6 @@ const PRESIGNED_GUARD = /const urlTokenSecrets = extractUrlTokenSecrets\(data\.d
 const PRESIGNED_DEFECT = /tasks\.loc\("InsecureUrlRejected", data\.download_url\)/;
 
 const SOURCE_SITES: SourceSite[] = [
-    {
-        mechanism: 'M3',
-        site: 'TerraformInstallerV1/src/http-client.ts:buildFetchOptions',
-        file: path.join(TF_INSTALLER, 'http-client.ts'),
-        guard: PROXY_ENCODED_GUARD,
-        defect: PROXY_ENCODED_DEFECT,
-    },
-    {
-        mechanism: 'M3',
-        site: 'PolicyAgentInstallerV1/src/http-client.ts:buildFetchOptions',
-        file: path.join(POLICY_INSTALLER, 'http-client.ts'),
-        guard: PROXY_ENCODED_GUARD,
-        defect: PROXY_ENCODED_DEFECT,
-    },
-    {
-        mechanism: 'M3',
-        site: 'TerraformDocsInstallerV1/src/http-client.ts:buildFetchOptions',
-        file: path.join(DOCS_INSTALLER, 'http-client.ts'),
-        guard: PROXY_ENCODED_GUARD,
-        defect: PROXY_ENCODED_DEFECT,
-    },
     {
         mechanism: 'M5',
         site: 'TerraformInstallerV1/src/terraform-installer.ts:downloadZipFromRegistry (pre-signed download_url)',
@@ -163,6 +144,38 @@ describe('Pre-mask defect class — credential emitted before it was registered 
                     !row.defect.test(source),
                     `pre-fix defect shape is back at ${row.site}: ${row.defect}`,
                 );
+            });
+        }
+    });
+
+    // M3's source rows are gone: the proxy URL assembly and the secret
+    // registration that must precede it now live in pipeline-task-ado. Deleting
+    // them without this would quietly retire the class from this repo, so what
+    // replaces them is the one thing still checkable here — that every installer
+    // consuming that wiring pins a version known to contain it, and the test
+    // that asserts its ordering.
+    describe('M3 — delegated to pipeline-task-ado, checked by version floor', () => {
+        const installers: ReadonlyArray<readonly [string, string]> = [
+            ['TerraformInstallerV1', path.join(TF_INSTALLER, '..', 'package.json')],
+            ['PolicyAgentInstallerV1', path.join(POLICY_INSTALLER, '..', 'package.json')],
+            ['TerraformDocsInstallerV1', path.join(DOCS_INSTALLER, '..', 'package.json')],
+        ];
+
+        for (const [name, manifest] of installers) {
+            it(`${name} pins ${ADO_PACKAGE} >= ${ADO_PACKAGE_FLOOR}`, () => {
+                const json = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+                const range: string | undefined = (json.dependencies || {})[ADO_PACKAGE];
+                assert.ok(range, `${name} does not depend on ${ADO_PACKAGE}, so the proxy masking wiring has no declared source`);
+
+                // Only a caret or exact range pins a floor that can be reasoned
+                // about; `*` or a git URL cannot be shown to include the fix.
+                const parsed = /^\^?(\d+)\.(\d+)\.(\d+)/.exec(range.trim());
+                assert.ok(parsed, `${name} pins ${ADO_PACKAGE} as ${range}, which cannot be shown to include the masking fix`);
+
+                const actual = parsed.slice(1, 4).map(Number);
+                const floor = ADO_PACKAGE_FLOOR.split('.').map(Number);
+                const ordered = actual[0] - floor[0] || actual[1] - floor[1] || actual[2] - floor[2];
+                assert.ok(ordered >= 0, `${name} pins ${ADO_PACKAGE}@${range}, below the ${ADO_PACKAGE_FLOOR} floor that carries the pre-mask ordering`);
             });
         }
     });

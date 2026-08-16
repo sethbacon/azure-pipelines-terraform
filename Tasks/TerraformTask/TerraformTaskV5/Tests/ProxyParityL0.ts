@@ -95,32 +95,32 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/http-client.ts',
-        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
-        why: 'installer transport, now delegated to pipeline-task-core: the package cannot read the agent proxy itself, so this must inject fetchOptions from buildFetchOptions()',
+        fn: 'createDefaultClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'installer transport; the proxy decision itself now lives in pipeline-task-ado, so there is no fetchOptions here to inspect and the site is held to a version floor instead',
     },
     {
         file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/http-client.ts',
-        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
-        why: 'the same transport with the registry-specific failure message; a second construction is a second place the injection could be dropped',
+        fn: 'createRegistryClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'the same transport with the registry-specific failure message; a second construction is a second site the floor has to cover',
     },
     {
         file: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/http-client.ts',
-        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        fn: 'createDefaultClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical copy of the installer transport',
     },
     {
         file: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/http-client.ts',
-        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        fn: 'createRegistryClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical copy of the installer transport',
     },
     {
         file: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/http-client.ts',
-        fn: 'createDefaultClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        fn: 'createDefaultClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical copy of the installer transport',
     },
     {
         file: 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/http-client.ts',
-        fn: 'createRegistryClient', sink: 'createHttpClient', verdict: 'PROXIED',
+        fn: 'createRegistryClient', sink: 'createAdoHttpClient', verdict: 'PROXIED-BY-PACKAGE',
         why: 'byte-identical copy of the installer transport',
     },
     // --- node:https, proxied via the CONNECT-tunnelling ProxyTunnelAgent ---

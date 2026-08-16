@@ -73,8 +73,66 @@ const NODE_HTTP_SINKS = ['https.request', 'https.get', 'http.request', 'http.get
  */
 const DELEGATED_FETCH_SINKS = ['createHttpClient'];
 
+/**
+ * Factories where the proxy DECISION itself has left this repo, not just the
+ * fetch() call: @4cloudguru/pipeline-task-ado reads the agent proxy, registers
+ * every spelling of the credential and builds the dispatcher internally, so
+ * there is no fetchOptions here to inspect and the shape check above cannot
+ * apply.
+ *
+ * A site that cannot be shape-checked must still be checked, or it silently
+ * leaves the inventory and the gate passes by seeing nothing — the exact
+ * failure this file exists to prevent, and one this repo has now hit twice
+ * (#949, and again on the move to the ado package). What is verifiable here is
+ * PROVENANCE: that the task depends on a version of the package known to carry
+ * the wiring and the tests that assert its ordering. So the assertion becomes a
+ * version floor, and the site stays in the report either way.
+ */
+const PACKAGE_DELEGATED_SINKS = {
+    createAdoHttpClient: { pkg: '@4cloudguru/pipeline-task-ado', min: '0.2.0' },
+};
+
 /** Proxy-aware by construction inside azure-pipelines-tool-lib (see header). */
 const TOOL_LIB_SINKS = ['downloadTool'];
+
+/** The package.json of the task that owns `file`, or null above the task roots. */
+function declaredDependency(file, pkg) {
+    let dir = path.dirname(path.resolve(file));
+    const stop = path.resolve(__dirname, '..');
+    while (dir.startsWith(stop)) {
+        const manifest = path.join(dir, 'package.json');
+        if (fs.existsSync(manifest)) {
+            try {
+                const json = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+                const range = (json.dependencies || {})[pkg];
+                if (range) return range;
+            } catch {
+                return null;
+            }
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return null;
+}
+
+/**
+ * Deliberately narrow: only a caret or exact range pins a floor this gate can
+ * reason about. `*`, `latest` or a git URL cannot be shown to include the fix,
+ * so they are treated as NOT satisfying it rather than waved through.
+ */
+function satisfiesFloor(range, min) {
+    const parsed = /^\^?(\d+)\.(\d+)\.(\d+)/.exec(String(range).trim());
+    if (!parsed) return false;
+    const floor = min.split('.').map(Number);
+    const actual = parsed.slice(1).map(Number);
+    for (let i = 0; i < 3; i += 1) {
+        if (actual[i] > floor[i]) return true;
+        if (actual[i] < floor[i]) return false;
+    }
+    return true;
+}
 
 function walk(dir, out = []) {
     let entries;
@@ -312,6 +370,19 @@ for (const file of files) {
         }
     }
 
+    for (const [sink, { pkg, min }] of Object.entries(PACKAGE_DELEGATED_SINKS)) {
+        const re = new RegExp(`(?<![.\\w$])${sink}\\s*\\(`, 'g');
+        let m;
+        while ((m = re.exec(masked)) !== null) {
+            const declared = declaredDependency(file, pkg);
+            const ok = declared !== null && satisfiesFloor(declared, min);
+            record(m.index, sink, ok ? 'PROXIED-BY-PACKAGE' : 'UNPROXIED',
+                ok
+                    ? `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min})`
+                    : `delegates the proxy decision to ${pkg}, but the owning task declares ${declared ?? 'no dependency on it'} (floor ${min})`);
+        }
+    }
+
     for (const sink of NODE_HTTP_SINKS) {
         const re = new RegExp(`(?<![\\w$])${sink.replace('.', '\\.')}\\s*\\(`, 'g');
         let m;
@@ -350,7 +421,7 @@ if (JSON_OUTPUT) {
     process.exit(failures ? 1 : 0);
 }
 
-const order = ['UNPROXIED', 'PROXIED', 'EXEMPT-TOOL-LIB', 'EXEMPT-PROXY-TRANSPORT', 'EXEMPT-BROWSER'];
+const order = ['UNPROXIED', 'PROXIED', 'PROXIED-BY-PACKAGE', 'EXEMPT-TOOL-LIB', 'EXEMPT-PROXY-TRANSPORT', 'EXEMPT-BROWSER'];
 for (const verdict of order) {
     const group = sites.filter((s) => s.verdict === verdict);
     if (!group.length) continue;
