@@ -89,7 +89,17 @@ const DELEGATED_FETCH_SINKS = ['createHttpClient'];
  * version floor, and the site stays in the report either way.
  */
 const PACKAGE_DELEGATED_SINKS = {
-    createAdoHttpClient: { pkg: '@4cloudguru/pipeline-task-ado', min: '0.2.0' },
+    createAdoHttpClient: {
+        pkg: '@4cloudguru/pipeline-task-ado',
+        min: '0.3.0',
+        // The package delegates onward to core, so the direct floor above only
+        // vouches for the wiring - not for which implementation it wires up.
+        // ado@0.2.0 declared core ^0.3.1 while the tasks declared ^0.5.0, and
+        // caret on a 0.x version is patch-only, so the ranges were disjoint,
+        // npm nested a second copy, and the delegated client ran the older one.
+        // Both floors passed throughout. Hence the resolved check below.
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.5.0' },
+    },
 };
 
 /** Proxy-aware by construction inside azure-pipelines-tool-lib (see header). */
@@ -132,6 +142,70 @@ function satisfiesFloor(range, min) {
         if (actual[i] < floor[i]) return false;
     }
     return true;
+}
+
+/** The lockfile of the task that owns `file` — what `npm ci` actually installs. */
+function lockfileFor(file) {
+    let dir = path.dirname(path.resolve(file));
+    const stop = path.resolve(__dirname, '..');
+    while (dir.startsWith(stop)) {
+        const lock = path.join(dir, 'package-lock.json');
+        if (fs.existsSync(lock)) return lock;
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return null;
+}
+
+/**
+ * Every copy of `dep` the owning task installs, top-level or nested. Read from
+ * the lockfile rather than the manifests because two compatible-LOOKING ranges
+ * can still resolve to two different copies, and only the lockfile shows it.
+ * Returns null when there is nothing to read, which the caller fails closed on.
+ */
+function installedCopies(file, dep) {
+    const lock = lockfileFor(file);
+    if (!lock) return null;
+    let json;
+    try {
+        json = JSON.parse(fs.readFileSync(lock, 'utf8'));
+    } catch {
+        return null;
+    }
+    const suffix = `node_modules/${dep}`;
+    return Object.entries(json.packages || {})
+        .filter(([key]) => key === suffix || key.endsWith(`/${suffix}`))
+        .map(([key, value]) => ({ path: key, version: value && value.version }));
+}
+
+/**
+ * Resolves the delegated sink's verdict: the owning task must declare the
+ * delegating package at or above its floor AND, when that package delegates
+ * onward, the onward dependency must resolve to exactly one copy at or above
+ * its own floor.
+ */
+function packageDelegationVerdict(file, { pkg, min, carries }) {
+    const declared = declaredDependency(file, pkg);
+    if (declared === null || !satisfiesFloor(declared, min)) {
+        return { ok: false, why: `delegates the proxy decision to ${pkg}, but the owning task declares ${declared ?? 'no dependency on it'} (floor ${min})` };
+    }
+    if (!carries) {
+        return { ok: true, why: `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min})` };
+    }
+
+    const copies = installedCopies(file, carries.pkg);
+    if (copies === null) {
+        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}, but no lockfile was readable to show which copy is installed` };
+    }
+    if (copies.length !== 1) {
+        const seen = copies.map((c) => `${c.version} at ${c.path}`).join(', ') || 'none';
+        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}, which resolves to ${copies.length} copies (${seen}) — the delegated call runs whichever one is nested, not the one this task imports` };
+    }
+    if (!satisfiesFloor(copies[0].version, carries.min)) {
+        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}@${copies[0].version}, below the ${carries.min} floor` };
+    }
+    return { ok: true, why: `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min}), resolving a single ${carries.pkg}@${copies[0].version} (floor ${carries.min})` };
 }
 
 function walk(dir, out = []) {
@@ -370,16 +444,12 @@ for (const file of files) {
         }
     }
 
-    for (const [sink, { pkg, min }] of Object.entries(PACKAGE_DELEGATED_SINKS)) {
+    for (const [sink, spec] of Object.entries(PACKAGE_DELEGATED_SINKS)) {
         const re = new RegExp(`(?<![.\\w$])${sink}\\s*\\(`, 'g');
         let m;
         while ((m = re.exec(masked)) !== null) {
-            const declared = declaredDependency(file, pkg);
-            const ok = declared !== null && satisfiesFloor(declared, min);
-            record(m.index, sink, ok ? 'PROXIED-BY-PACKAGE' : 'UNPROXIED',
-                ok
-                    ? `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min})`
-                    : `delegates the proxy decision to ${pkg}, but the owning task declares ${declared ?? 'no dependency on it'} (floor ${min})`);
+            const { ok, why } = packageDelegationVerdict(file, spec);
+            record(m.index, sink, ok ? 'PROXIED-BY-PACKAGE' : 'UNPROXIED', why);
         }
     }
 
