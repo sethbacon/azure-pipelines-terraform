@@ -4,6 +4,20 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.2...v1.14.3) (2026-08-16)
+
+
+### Bug Fixes
+
+* forward the drift contract's completeness markers ([#953](https://github.com/sethbacon/azure-pipelines-terraform/issues/953)) ([f136b91](https://github.com/sethbacon/azure-pipelines-terraform/commit/f136b91be69e21e137c264d7c08b1be22c22459f)), closes [#950](https://github.com/sethbacon/azure-pipelines-terraform/issues/950)
+* pin pipeline-task-ado 0.3.0 and gate the transitive core version ([#956](https://github.com/sethbacon/azure-pipelines-terraform/issues/956)) ([1e91b2f](https://github.com/sethbacon/azure-pipelines-terraform/commit/1e91b2f7d9a8d298f02e11bac480fabd8cd7ff73))
+
+
+### Refactor
+
+* consume the ADO HTTP client from pipeline-task-ado ([#955](https://github.com/sethbacon/azure-pipelines-terraform/issues/955)) ([a9661a4](https://github.com/sethbacon/azure-pipelines-terraform/commit/a9661a416907fe76c50a4ab91b416320d0a4530d))
+* consume the GPG verification from pipeline-task-core ([#951](https://github.com/sethbacon/azure-pipelines-terraform/issues/951)) ([66a2955](https://github.com/sethbacon/azure-pipelines-terraform/commit/66a2955b12bfabebbec329266a28b093f2ba9025))
+
 ## [1.14.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.1...v1.14.2) (2026-08-14)
 
 
