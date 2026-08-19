@@ -132,6 +132,18 @@ jobs:
           persist-credentials: false
           repository: sethbacon/azure-pipelines-packer
           path: suite/azure-pipelines-packer
+
+      # The THIRD ADO extension, and today a scaffold: it has no Tasks/ tree, so
+      # scope.json gives it a signature-free kind and no `ado-extension`
+      # signature is pointed at an empty task surface (that would be exit 2, and
+      # exit 2 is could-not-run, never clean). It is in SIGNATURE_SCOPE all the
+      # same, and in scope.json but absent here is exit 2 for the whole job
+      # rather than a quieter run.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          repository: sethbacon/azure-pipelines-release-docs
+          path: suite/azure-pipelines-release-docs
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
