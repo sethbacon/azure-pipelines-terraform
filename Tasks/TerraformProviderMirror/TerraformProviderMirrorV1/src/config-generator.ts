@@ -5,6 +5,9 @@ export interface ProviderMirrorConfig {
     allowDirectFallback: boolean;
     directExcludePatterns: string[];
     directIncludePatterns: string[];
+    // Optional so pre-#960 config literals keep compiling unchanged; index.ts always supplies [].
+    mirrorExcludePatterns?: string[];
+    mirrorIncludePatterns?: string[];
 }
 
 export function validateMirrorUrl(url: string): void {
@@ -55,28 +58,35 @@ function escapeHclString(value: string): string {
         .replace(/\r/g, '\\n');
 }
 
+// Terraform accepts both include and exclude on one installation method and lets
+// exclude win on overlap (#872); emitting only one silently discards the other list.
+function formatIncludeExclude(includePatterns: string[], excludePatterns: string[]): string {
+    let lines = '';
+    if (includePatterns.length > 0) {
+        const formatted = includePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
+        lines += `    include = [${formatted}]\n`;
+    }
+    if (excludePatterns.length > 0) {
+        const formatted = excludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
+        lines += `    exclude = [${formatted}]\n`;
+    }
+    return lines;
+}
+
 export function generateProviderInstallationConfig(config: ProviderMirrorConfig): string {
     const mirrorUrl = config.mirrorUrl.replace(/\/+$/, '');
 
     let hcl = 'provider_installation {\n';
     hcl += '  network_mirror {\n';
     hcl += `    url = "${escapeHclString(mirrorUrl)}/"\n`;
+    // #960: without these, network_mirror matches every provider unconditionally and a
+    // directIncludePatterns override can never actually bypass it.
+    hcl += formatIncludeExclude(config.mirrorIncludePatterns ?? [], config.mirrorExcludePatterns ?? []);
     hcl += '  }\n';
 
     if (config.allowDirectFallback) {
         hcl += '  direct {\n';
-
-        // Terraform accepts both on one installation method and lets exclude win
-        // (#872); emitting only one silently discards the operator's other list.
-        if (config.directIncludePatterns.length > 0) {
-            const formatted = config.directIncludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
-            hcl += `    include = [${formatted}]\n`;
-        }
-        if (config.directExcludePatterns.length > 0) {
-            const formatted = config.directExcludePatterns.map(p => `"${escapeHclString(p)}"`).join(', ');
-            hcl += `    exclude = [${formatted}]\n`;
-        }
-
+        hcl += formatIncludeExclude(config.directIncludePatterns, config.directExcludePatterns);
         hcl += '  }\n';
     }
 

@@ -118,6 +118,13 @@ Write a `.terraformrc` that routes provider downloads through a network mirror. 
     directIncludePatterns: |
       registry.terraform.io/hashicorp/azurerm
       registry.terraform.io/hashicorp/aws
+    # Terraform combines every installation method whose patterns match a provider
+    # and picks the newest version reported across all of them, so listing a
+    # provider in directIncludePatterns alone does not stop the mirror being
+    # consulted for it -- also exclude it from the mirror to genuinely bypass it.
+    mirrorExcludePatterns: |
+      registry.terraform.io/hashicorp/azurerm
+      registry.terraform.io/hashicorp/aws
 ```
 
 ---
@@ -1018,13 +1025,13 @@ surface drift in SARIF-aware tooling.
 **Completeness markers.** The report and the callback body carry five fields
 describing what the run did **not** do, straight from the drift contract:
 
-| Field | Meaning |
-| --- | --- |
-| `unparseable` | the document did not have the shape of a plan — nothing was actually checked |
-| `unmasked` | a change carried no sensitivity metadata, so nothing was redacted for it |
-| `truncated` | a bound was reached and the summary is not the whole story |
-| `omitted_entries` | summary rows dropped by the entry cap (**the counts still include them**) |
-| `omitted_attrs` | changed attributes dropped by the per-row cap, across all rows |
+| Field             | Meaning                                                                      |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `unparseable`     | the document did not have the shape of a plan — nothing was actually checked |
+| `unmasked`        | a change carried no sensitivity metadata, so nothing was redacted for it     |
+| `truncated`       | a bound was reached and the summary is not the whole story                   |
+| `omitted_entries` | summary rows dropped by the entry cap (**the counts still include them**)    |
+| `omitted_attrs`   | changed attributes dropped by the per-row cap, across all rows               |
 
 `unparseable` is the one that changes an answer. Without it a truncated
 `terraform show -json`, a wrong file, an empty `{}` and a genuinely clean plan
