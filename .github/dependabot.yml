@@ -216,3 +216,27 @@ updates:
       # fixed 0.24.x+ release exists, instead of ignoring tfx-cli forever.
       - dependency-name: "tfx-cli"
         versions: [">=0.23.3", "<0.24.0"]
+
+  # ---------------------------------------------------------------------------
+  # npm (.github/commit-message-check: the parser the PR gate shares with
+  # release-please)
+  # ---------------------------------------------------------------------------
+  # The gate is only meaningful while it parses the way release-please does, so
+  # these bumps want checking against release-please's own dependency rather
+  # than merging on green.
+  - package-ecosystem: npm
+    directory: /.github/commit-message-check
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      commit-message-check:
+        patterns:
+          - "*"

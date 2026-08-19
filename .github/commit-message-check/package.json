@@ -1,0 +1,9 @@
+{
+  "name": "commit-message-check",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Parses the commit a pull request would squash into main, using the parser release-please itself resolves.",
+  "dependencies": {
+    "@conventional-commits/parser": "0.4.1"
+  }
+}
