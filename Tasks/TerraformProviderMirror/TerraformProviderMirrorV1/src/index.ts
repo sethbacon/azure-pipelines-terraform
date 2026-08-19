@@ -20,6 +20,18 @@ async function run() {
         const allowDirectFallback = tasks.getBoolInput('allowDirectFallback', false);
         const directExcludePatterns = parseMultiLineInput(tasks.getInput('directExcludePatterns', false));
         const directIncludePatterns = parseMultiLineInput(tasks.getInput('directIncludePatterns', false));
+        const mirrorExcludePatterns = parseMultiLineInput(tasks.getInput('mirrorExcludePatterns', false));
+        const mirrorIncludePatterns = parseMultiLineInput(tasks.getInput('mirrorIncludePatterns', false));
+
+        // #960: directIncludePatterns alone never bypasses the mirror -- warn when a
+        // direct-include pattern has no matching mirror exclusion, since allowDirectFallback
+        // is the only condition under which the direct block (and this override) has any effect.
+        if (allowDirectFallback && directIncludePatterns.length > 0) {
+            const notExcludedFromMirror = directIncludePatterns.filter(p => !mirrorExcludePatterns.includes(p));
+            if (notExcludedFromMirror.length > 0) {
+                tasks.warning(tasks.loc('DirectIncludeNotExcludedFromMirror', notExcludedFromMirror.join(', ')));
+            }
+        }
 
         // mirrorUrl may embed basic-auth userinfo for an internal mirror. Mask it
         // before it can reach the console (the config echo below) or a validation
@@ -37,6 +49,8 @@ async function run() {
             allowDirectFallback,
             directExcludePatterns,
             directIncludePatterns,
+            mirrorExcludePatterns,
+            mirrorIncludePatterns,
         };
 
         console.log(tasks.loc('GeneratingConfig', redactUrlUserInfo(mirrorUrl)));

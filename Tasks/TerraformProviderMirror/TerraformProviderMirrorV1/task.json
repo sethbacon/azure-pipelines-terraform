@@ -56,7 +56,31 @@
             "defaultValue": "",
             "required": false,
             "visibleRule": "allowDirectFallback = true",
-            "helpMarkDown": "Provider namespace patterns to include for direct download (one per line). When specified, only these providers can use direct download; all others must use the mirror. Example: registry.terraform.io/hashicorp/*",
+            "helpMarkDown": "Provider namespace patterns to include for direct download (one per line). When specified, only these providers can use direct download; all others must use the mirror. This does not, by itself, stop the mirror being consulted for these providers -- also list them in 'Exclude from mirror' below to actually bypass it. Example: registry.terraform.io/hashicorp/*",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
+        },
+        {
+            "name": "mirrorExcludePatterns",
+            "type": "multiLine",
+            "label": "Exclude from mirror (force direct)",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Provider namespace patterns to exclude from the network mirror (one per line). Terraform consults every installation method whose patterns match a provider and selects the newest version reported across all of them, so a provider must be excluded here -- not just included for direct download -- to stop the mirror being consulted for it. Example: registry.terraform.io/hashicorp/aws",
+            "properties": {
+                "rows": "3",
+                "resizable": "true"
+            }
+        },
+        {
+            "name": "mirrorIncludePatterns",
+            "type": "multiLine",
+            "label": "Include for mirror",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "Provider namespace patterns to include for the network mirror (one per line). When specified, only these providers are fetched from the mirror; every other provider bypasses it. Leave empty to let the mirror match every provider not excluded above.",
             "properties": {
                 "rows": "3",
                 "resizable": "true"
@@ -93,6 +117,7 @@
         "ConfigWritten": "Configuration written to: %s",
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
         "InvalidUrl": "Invalid mirror URL: %s",
-        "AgentTempDirectoryNotSet": "Neither the Agent.TempDirectory pipeline variable nor the AGENT_TEMPDIRECTORY environment variable is set. This task requires an agent-managed temp directory to write the generated .terraformrc and refuses to fall back to a hardcoded path. This should only happen when running outside a genuine Azure DevOps agent."
+        "AgentTempDirectoryNotSet": "Neither the Agent.TempDirectory pipeline variable nor the AGENT_TEMPDIRECTORY environment variable is set. This task requires an agent-managed temp directory to write the generated .terraformrc and refuses to fall back to a hardcoded path. This should only happen when running outside a genuine Azure DevOps agent.",
+        "DirectIncludeNotExcludedFromMirror": "The mirror will still be consulted for these direct-include provider(s) because they are not also excluded from the mirror: %s. Terraform combines every matching installation method and may still select a version only the mirror reported. Add the same pattern(s) to 'Exclude from mirror (force direct)' to actually bypass the mirror."
     }
 }

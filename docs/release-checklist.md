@@ -40,6 +40,7 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] `PipelineTerraformProviderMirror@1` with a valid mirror URL — generates `.terraformrc` and sets `TF_CLI_CONFIG_FILE`
 - [ ] `PipelineTerraformProviderMirror@1` with `allowDirectFallback: false` — config contains only `network_mirror` block
+- [ ] `PipelineTerraformProviderMirror@1` with `directIncludePatterns` + matching `mirrorExcludePatterns` — generated `network_mirror` block excludes the provider, no warning logged
 - [ ] Subsequent `terraform init` downloads providers from the configured mirror
 
 ## 4c. Policy agent installer smoke test
