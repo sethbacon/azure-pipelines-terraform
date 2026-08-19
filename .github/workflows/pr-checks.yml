@@ -96,3 +96,55 @@ jobs:
       - name: Verify per-task Minor bumps
         if: ${{ startsWith(github.event.pull_request.head.ref, 'release-please--') }}
         run: node scripts/check-minor-bumps.js
+
+  # ── The merged commit has to be readable by release-please ─────────────
+  # release-please chooses what to release by parsing the commits on main
+  # with a strict reading of the Conventional Commits grammar. A message it
+  # cannot parse is not an error to it: it logs `commit could not be parsed`
+  # at debug level, reports success, and drops the commit. That change then
+  # gets no changelog entry and no version bump, and never will -- every
+  # later run re-reads the same commit and skips it again.
+  #
+  # This is not hypothetical. terraform-state-manager-backend#405, a
+  # dependency migration that cleared seven advisories, merged with a body
+  # line that happened to begin with `WithArgs(pq.Array(...))`. The grammar
+  # reads a line starting with `name(` as a structured token, so its
+  # brackets have to be flat and closed, and nested ones void the whole
+  # commit. The same text one word further along the line is ordinary prose
+  # and parses cleanly. Whether that release got cut came down to where the
+  # paragraph wrapped.
+  #
+  # Its sibling repository made the identical change and released normally,
+  # on the same config and the same action version. Nothing in CI could tell
+  # the two apart, because a PR title check reads only the title and both
+  # titles were correct.
+  release-please-can-read-the-commit:
+    name: release-please can read the merged commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install the parser release-please uses
+        working-directory: .github/commit-message-check
+        run: npm ci
+
+      - name: Parse the commit this PR would squash into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | {sha: .sha, message: .commit.message, parents: (.parents | length)}' \
+            > commits.ndjson
+
+          node .github/commit-message-check/verify.mjs commits.ndjson
