@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.3...v1.14.4) (2026-08-19)
+
+
+### Bug Fixes
+
+* let TerraformProviderMirror actually exclude a provider from the network mirror ([#962](https://github.com/sethbacon/azure-pipelines-terraform/issues/962)) ([f13f6c8](https://github.com/sethbacon/azure-pipelines-terraform/commit/f13f6c8f0ca5a98d186194694afe1edce74c0c93)), closes [#960](https://github.com/sethbacon/azure-pipelines-terraform/issues/960)
+
+
+### Documentation
+
+* flag the retiring Azure DevOps WIF issuer in the AWS/GCP/OCI setup guides ([#963](https://github.com/sethbacon/azure-pipelines-terraform/issues/963)) ([6bf077e](https://github.com/sethbacon/azure-pipelines-terraform/commit/6bf077e8ddc4c4cb3ac457d30907a6f3218d9dfd))
+
+
+### Refactor
+
+* consume the second HTTPS family from pipeline-task-core ([#957](https://github.com/sethbacon/azure-pipelines-terraform/issues/957)) ([0048c69](https://github.com/sethbacon/azure-pipelines-terraform/commit/0048c69c1ceeb6dff6a9088b3a138a9c8a89c52d))
+
 ## [1.14.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.2...v1.14.3) (2026-08-16)
 
 
