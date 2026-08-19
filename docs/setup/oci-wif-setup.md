@@ -13,6 +13,19 @@ This flow is more involved to set up than the [AWS](aws-wif-setup.md) and [GCP](
 - IAM permissions to create a group and write a policy in the target compartment
 - Your Azure DevOps organization ID (found in `https://dev.azure.com/{org}/_settings/organizationAad`)
 
+## Important: the Azure DevOps issuer used below is being retired
+
+Everything in this guide trusts the Azure DevOps OIDC issuer, `https://vstoken.dev.azure.com/`. Microsoft has deprecated that issuer in favor of Microsoft Entra-issued tokens and will retire it:
+
+| Milestone  | Date        |
+| ---------- | ----------- |
+| Deprecated | 1 July 2026 |
+| Retired    | 1 July 2027 |
+
+The service connection type this task uses (`PTTOCIServiceEndpoint`) is a placeholder connection with no Entra app registration behind it, so it has no federated credential of its own and keeps minting `vstoken`-format tokens today. Whether the OIDC request API will still mint tokens for a non-WIF-scheme connection after retirement is an open question, along with the eventual fix direction — see [issue #959](https://github.com/sethbacon/azure-pipelines-terraform/issues/959) for the full analysis and to track progress. There is nothing to change in this guide today, but the Identity Propagation Trust's `issuer`/`publicKeyEndpoint` below will need to be revisited before 1 July 2027; do not assume the setup here is permanent.
+
+**Confirmed empirically (2026-08-19):** requesting a token from the same generic OIDC endpoint this task uses, with no service connection referenced, against a live Azure DevOps organization still returned a token issued by `vstoken.dev.azure.com` -- the Entra-issuer cutover described above has not reached this code path yet. This is consistent with the retirement being scoped to the "workload identity federation service connection" feature specifically (a connection with a real Entra app or managed identity attached), which this task's placeholder connection type never had in the first place. Re-test before relying on this long-term -- Microsoft has not published a statement either way for this specific case, and this result reflects one organization on one date, not a guarantee.
+
 ## Step 1: Create an Identity Domain application for token exchange
 
 1. In the OCI Console, go to **Identity & Security** → **Domains** → select your domain → **Applications** → **Add application**
