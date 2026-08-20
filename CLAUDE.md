@@ -40,6 +40,20 @@ feat: add registry download strategy to terraform installer
 Closes #12
 ```
 
+**One merged commit announces exactly ONE breaking change.** This repo squashes
+with `squash_merge_commit_message=COMMIT_MESSAGES`, so every commit body in a PR
+is concatenated into one merge commit — and release-please keeps only the
+**first** `BREAKING CHANGE:` footer, reading a `!` marker only from the header.
+A second declaration anywhere in the PR ships with no changelog entry and no
+notice (terraform-registry-backend v4.0.0 shipped two that way). Moving the
+footers into separate commits does not help; the squash concatenates them back.
+Open one PR per breaking change, or combine them into a single footer and write
+each one up in the upgrade guide. A footer plus a `!` header in the *same*
+commit is one declaration, not two. The `Breaking-change footers survive the
+squash` job in `.github/workflows/pr-checks.yml` counts them across the PR;
+`scripts/test-breaking-change-footers.js` extracts that script from the workflow
+and proves it still rejects, in the required `Lint GitHub Actions` job.
+
 ## Workflow Per Change
 
 1. Create branch from `main`: `git checkout -b feature/<description> main`

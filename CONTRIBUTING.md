@@ -95,13 +95,38 @@ directories and their per-task test commands.
    - `Build and Test Markdown2Html V1`
    - `Build and Test Publish KB Article V1`
    - `Build and Test Tab` — type-checks and builds the Terraform results tab.
-   - `Lint GitHub Actions` — actionlint.
+   - `Lint GitHub Actions` — actionlint, plus the self-test that proves the
+     breaking-change footer guard in `.github/workflows/pr-checks.yml` still
+     rejects what it claims to (`scripts/test-breaking-change-footers.js`).
    - `Scan Workflows (zizmor)` — workflow-security scan.
    <!-- ci-jobs:end -->
 
    This list is checked against `.github/workflows/unit-test.yml` by
    `scripts/check-docs-claims.js`, in both directions, so it cannot drift as jobs
    are added or renamed. Adding a task means adding its job here too.
+
+   `.github/workflows/pr-checks.yml` gates the PR as well, with the conventional
+   title check, dependency review, the Release-PR Minor-bump backstop, and the
+   two release-parsing guards: `release-please can read the merged commit` builds
+   the single message this PR would squash into `main` and parses it, while
+   `Breaking-change footers survive the squash` counts breaking-change
+   declarations across the commits being concatenated.
+
+## One breaking change per merged commit
+
+This repository squash-merges with `squash_merge_commit_message=COMMIT_MESSAGES`,
+so every commit body in a PR is concatenated into one merge commit — and
+release-please keeps only the **first** `BREAKING CHANGE:` footer of a commit,
+reading a `!` marker only from its header. A second declaration anywhere in the
+PR is dropped in silence: no changelog entry, no upgrade note, and nothing
+failing to say so. terraform-registry-backend v4.0.0 shipped two undocumented
+breaking changes exactly this way.
+
+Splitting the footers across separate commits does not help; the squash
+concatenates them back. Either open one PR per breaking change, or combine them
+into a single `BREAKING CHANGE:` footer and write each one up in the upgrade
+guide. A footer and a `!` header in the same commit are one declaration, not
+two, and are fine.
 
 6. Squash-merge when CI passes and the PR is approved; the branch is deleted automatically.
 
