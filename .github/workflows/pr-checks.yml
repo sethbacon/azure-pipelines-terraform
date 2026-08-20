@@ -181,6 +181,21 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      # This job runs only shell, so before this step it reached no action at
+      # all -- and a job that never runs an action never runs harden-runner
+      # either. The gate reports that as an egress finding rather than treating
+      # "no actions" as "nothing to protect": the shell here still talks to the
+      # GitHub API with a token.
+      #
+      # hardening-exception: egress-audit — this job calls the GitHub API to count
+      #   breaking-change declarations across the PR's commits and runs no other
+      #   network operation; harden-runner has never run in this repository, so no
+      #   endpoint baseline exists and a block policy written without one fails
+      #   closed on its first run; audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
       - name: Count breaking-change declarations across this PR's commits
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
