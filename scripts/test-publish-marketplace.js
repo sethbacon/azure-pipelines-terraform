@@ -93,6 +93,31 @@ const TRANSIENT_RESET = { out: 'Error: read ECONNRESET', code: 1 };
 const PERMANENT = { out: 'Error: TF400898: manifest is invalid: missing publisher', code: 1 };
 const ALREADY = { out: 'Error: The extension version 1.2.7 already exists.', code: 1 };
 
+// The two shapes tfx ACTUALLY emitted when v1.14.4's release failed twice
+// (2026-08-20), reproduced verbatim. Neither was classified correctly before:
+// the first was read as a non-retryable failure although the upload had
+// succeeded, and the second matched none of ALREADY_PUBLISHED's alternatives.
+const VALIDATION_TIMEOUT = {
+    out: [
+        'error: Error: Validation is taking much longer than usual. TFX is exiting. To get the validation status, you may run the command below. This extension will be available after validation is successful.',
+        'error: ',
+        'error: tfx extension isvalid --publisher sethbacon --extension-id pipeline-tasks-terraform --version 1.14.4 --service-url https://marketplace.visualstudio.com/ --token <your PAT>',
+    ].join('\n'),
+    code: 255,
+};
+const ISVALID_OK = { out: 'Extension is valid', code: 0 };
+const ISVALID_BAD = { out: 'Extension validation failed: invalid manifest', code: 0 };
+// Same version on both sides: a previous attempt or run already landed it.
+const DUP_SAME = {
+    out: 'error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.14.4  Updated version: 1.14.4',
+    code: 255,
+};
+// A LOWER version than what is live: a real mistake, not a lost response.
+const DUP_OLDER = {
+    out: 'error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.15.0  Updated version: 1.14.4',
+    code: 255,
+};
+
 // Each row is one enumerated behaviour of the wrapper.
 const CASES = [
     {
@@ -143,6 +168,38 @@ const CASES = [
         expectExit: 1,
         expectCalls: 1,
         why: 'the same message on the FIRST attempt is a real duplicate-version error and still fails',
+    },
+    {
+        name: 'validation-timeout-then-valid',
+        script: [VALIDATION_TIMEOUT, ISVALID_OK],
+        expectExit: 0,
+        expectCalls: 2,
+        why: 'tfx giving up on the validation WAIT is not a publish failure -- the upload landed, so the '
+            + 'script asks isvalid and completes the release instead of stranding it in draft (v1.14.4)',
+    },
+    {
+        name: 'validation-timeout-then-invalid',
+        script: [VALIDATION_TIMEOUT, ISVALID_BAD],
+        expectExit: 255,
+        expectCalls: 2,
+        why: 'if the Marketplace says the uploaded version is INVALID, that is a real failure and must not '
+            + 'be papered over by the same branch that rescues a slow validation',
+    },
+    {
+        name: 'duplicate-same-version-first-attempt',
+        script: [DUP_SAME, ISVALID_OK],
+        expectExit: 0,
+        expectCalls: 2,
+        why: 'a workflow-level RE-RUN is a fresh process at attempt 1, so the old attempt>1 gate could never '
+            + 'serve it; the version being published is already live, which is evidence the work is done',
+    },
+    {
+        name: 'duplicate-older-version-first-attempt',
+        script: [DUP_OLDER],
+        expectExit: 255,
+        expectCalls: 1,
+        why: 'publishing a version LOWER than the one live is a real rejection and still fails on attempt 1 '
+            + '-- the property the original attempt>1 gate existed to protect',
     },
 ];
 
