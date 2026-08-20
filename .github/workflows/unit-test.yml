@@ -35,6 +35,8 @@ jobs:
         run: node scripts/check-versions.js
       - name: Validate task list consistency
         run: node scripts/check-task-list.js
+      - name: Validate WIF audience parity across the setup guides
+        run: node scripts/check-wif-audience-parity.js
       - name: Self-test check-versions.js
         run: node scripts/test-check-versions.js
       - name: Self-test check-minor-bumps.js

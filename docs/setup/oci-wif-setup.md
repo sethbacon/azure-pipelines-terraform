@@ -75,7 +75,7 @@ curl -X POST "https://<identity-domain-admin-url>/admin/v1/IdentityPropagationTr
       { "rule": "sub eq *", "value": "<service-user-id-from-step-2>" }
     ],
     "clientClaimName": "aud",
-    "clientClaimValues": ["api://AzureADTokenV2"]
+    "clientClaimValues": ["api://AzureADTokenExchange"]
   }'
 ```
 
@@ -113,7 +113,7 @@ Prefer resource-type-specific verbs/compartments over `manage all-resources` at 
 
 At runtime (`oci-terraform-command-handler.ts` / `oci-token-exchange.ts`), the task:
 
-1. Requests an OIDC token from Azure DevOps for the service connection (signed by `vstoken.dev.azure.com`, default `api://AzureADTokenV2` audience — the same token-issuance path used for AWS/GCP/AzureRM WIF)
+1. Requests an OIDC token from Azure DevOps for the service connection (signed by `vstoken.dev.azure.com`, default `api://AzureADTokenExchange` audience — the same token-issuance path used for AWS/GCP/AzureRM WIF)
 2. Generates an ephemeral RSA-2048 key pair in memory, unique to this task run
 3. POSTs the OIDC JWT, the `ociWifClientId`, and the ephemeral public key to `{ociWifIdentityDomainUrl}/oauth2/v1/token` (RFC 8693 token exchange). The destination host is validated against OCI's known Identity Domains realms (`*.identity.oraclecloud.com`, `*.identity.oraclegovcloud.com`, `*.identity.oraclegovcloud.uk`, `*.identity.oraclecloud.eu`) before the JWT is ever sent, and the request refuses to follow any redirect
 4. OCI validates the JWT against the Identity Propagation Trust from Step 3, checks the `clientClaimName`/`clientClaimValues` condition, maps it to the service user, and returns a UPST bound (proof-of-possession) to the ephemeral public key
@@ -123,7 +123,7 @@ At runtime (`oci-terraform-command-handler.ts` / `oci-token-exchange.ts`), the t
 
 The UPST and the tenancy's normal session-token lifetime apply — there is no static long-lived credential to rotate or leak.
 
-> **Audience scoping:** the OIDC token minted for OCI carries the same default `api://AzureADTokenV2` audience used for every cloud in this extension — the task does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. It is the Identity Propagation Trust's `issuer`, `clientClaimName`/`clientClaimValues`, and `subjectClaimName` conditions (Step 3) that form the actual security boundary. Scope `clientClaimValues` to your audience and, where possible, add a `sub`-based condition restricting the trust to this specific service connection's `sc://<org>/<project>/<service-connection>` subject, mirroring the AWS/GCP guides' `sub` trust-policy condition — otherwise any service connection in the organization that can request an OIDC token could exchange it through this trust. This is an operator responsibility, not something the task enforces on your behalf.
+> **Audience scoping:** the OIDC token minted for OCI carries the same default `api://AzureADTokenExchange` audience used for every cloud in this extension — the task does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. It is the Identity Propagation Trust's `issuer`, `clientClaimName`/`clientClaimValues`, and `subjectClaimName` conditions (Step 3) that form the actual security boundary. Scope `clientClaimValues` to your audience and, where possible, add a `sub`-based condition restricting the trust to this specific service connection's `sc://<org>/<project>/<service-connection>` subject, mirroring the AWS/GCP guides' `sub` trust-policy condition — otherwise any service connection in the organization that can request an OIDC token could exchange it through this trust. This is an operator responsibility, not something the task enforces on your behalf.
 
 ## Troubleshooting
 
