@@ -49,9 +49,41 @@ const baseDelayMs = parseInt(process.env.PUBLISH_RETRY_BASE_MS || '5000', 10);
 // non-digit boundaries so a version string like "1.503.0" cannot look like a 503.
 const TRANSIENT = /(?:^|[^\d.])(?:429|500|502|503|504)(?![\d.])|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|EPIPE|socket hang up|Service Unavailable|Bad Gateway|Gateway Time-?out|Internal Server Error|TooManyRequests|Too Many Requests|request timed out|network (?:error|timeout)/i;
 
-// The version is already on the Marketplace. Only meaningful on a RETRY, where
-// it means a previous attempt succeeded upstream and we lost the response.
-const ALREADY_PUBLISHED = /already exists|already been published|already published|version .{0,40}\bexists\b/i;
+// The version is already on the Marketplace.
+//
+// The first three alternatives were written against error strings tfx does NOT
+// emit for a duplicate version. What it actually says is:
+//
+//   error: Version number must increase each time an extension is published.
+//     Extension: <publisher>.<id>  Current version: X  Updated version: X
+//
+// which matched none of them -- so the "retrying a publish is only safe because
+// of the already-published handling" claim in the header was, until now, false:
+// the handling existed and could never fire for the error it was written for.
+// Found when v1.14.4's release was re-run (2026-08-20). The older patterns are
+// kept because tfx has used them for other duplicate shapes.
+const ALREADY_PUBLISHED = /already exists|already been published|already published|version .{0,40}\bexists\b|Version number must increase/i;
+
+// tfx uploaded the extension, then gave up WAITING for Marketplace validation:
+//
+//   error: Validation is taking much longer than usual. TFX is exiting. To get
+//   the validation status, you may run the command below. This extension will
+//   be available after validation is successful.
+//
+// This is not a failure. The upload landed -- v1.14.4 went live at 15:14 while
+// tfx exited 255 at 15:15 -- but exit 255 was read as a non-retryable error,
+// which failed the job, SKIPPED the undraft step, and left the release stranded
+// in draft while the extension was public. Worse, it poisoned the retry path:
+// re-running then hits the duplicate-version error above, so the recovery route
+// is guaranteed to fail with an error that looks like an unrelated second bug.
+const VALIDATION_PENDING = /Validation is taking much longer than usual|extension will be available after validation/i;
+
+// tfx prints the exact isvalid invocation in that message, parameters included.
+// Parsing them is how this script asks the Marketplace what is actually true
+// rather than inferring an outcome from an exit code.
+const ISVALID_HINT = /--publisher\s+(\S+)[\s\S]*?--extension-id\s+(\S+)[\s\S]*?--version\s+(\S+)/;
+// The duplicate message names the extension and both versions.
+const DUPLICATE_DETAIL = /Extension:\s*(\S+)\s+Current version:\s*(\S+)\s+Updated version:\s*(\S+)/i;
 
 function fail(message) {
     console.error(`publish-marketplace: ${message}`);
@@ -88,6 +120,42 @@ function publishOnce() {
     });
 }
 
+/**
+ * Ask the Marketplace whether a version is actually there and valid.
+ *
+ * This exists so the two ambiguous outcomes below are resolved by EVIDENCE
+ * rather than by a counter. The previous design inferred "a previous attempt
+ * must have succeeded" from `attempt > 1`, which is only true within one
+ * process -- a workflow-level re-run starts a fresh process at attempt 1, so
+ * the safety net could never fire for the case that needs it most.
+ *
+ * Resolves 'valid' | 'invalid' | 'unknown'. 'unknown' means the check itself
+ * could not answer, which is deliberately NOT treated as either outcome.
+ */
+function isPublishedAndValid({ publisher, extensionId, version }) {
+    return new Promise((resolve) => {
+        if (!publisher || !extensionId || !version) return resolve('unknown');
+        const child = spawn(tfx, [
+            'extension', 'isvalid',
+            '--publisher', publisher,
+            '--extension-id', extensionId,
+            '--version', version,
+            '--auth-type', 'pat',
+        ], { stdio: ['pipe', 'pipe', 'pipe'] });
+        let out = '';
+        child.stdout.on('data', (c) => { out += c; process.stdout.write(c); });
+        child.stderr.on('data', (c) => { out += c; process.stderr.write(c); });
+        child.on('error', () => resolve('unknown'));
+        child.on('close', (code) => {
+            if (code === 0) return resolve(/\binvalid\b|validation failed/i.test(out) ? 'invalid' : 'valid');
+            if (/\binvalid\b|validation failed/i.test(out)) return resolve('invalid');
+            resolve('unknown');
+        });
+        child.stdin.on('error', () => {});
+        child.stdin.end(`${token}\n`);
+    });
+}
+
 async function main() {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         console.log(`publish-marketplace: attempt ${attempt}/${maxAttempts}`);
@@ -98,10 +166,61 @@ async function main() {
             return 0;
         }
 
-        if (attempt > 1 && ALREADY_PUBLISHED.test(output)) {
+        // Uploaded, but tfx stopped waiting for validation. Ask the
+        // Marketplace instead of guessing from the exit code.
+        if (VALIDATION_PENDING.test(output)) {
+            const m = output.match(ISVALID_HINT);
+            const target = m ? { publisher: m[1], extensionId: m[2], version: m[3] } : {};
             console.log(
-                `publish-marketplace: attempt ${attempt} reports the version is already published — ` +
-                'a previous attempt reached the Marketplace and its response was lost. Treating the publish as complete.',
+                'publish-marketplace: tfx stopped waiting for Marketplace validation. The upload itself ' +
+                'succeeded — checking whether the version is live rather than failing the release.',
+            );
+            const state = await isPublishedAndValid(target);
+            if (state === 'valid') {
+                console.log('publish-marketplace: the version is published and valid. Treating the publish as complete.');
+                return 0;
+            }
+            if (state === 'invalid') {
+                console.error('publish-marketplace: the Marketplace reports the uploaded version as INVALID. Failing.');
+                return code || 1;
+            }
+            // Could not determine. Fail rather than assume -- but say plainly
+            // what state the release is in, because the upload DID land and a
+            // retry will now hit the duplicate-version path below.
+            console.error(
+                'publish-marketplace: could not determine the validation state. The upload reached the ' +
+                'Marketplace, so the version may still go live on its own; re-running this job will report ' +
+                'the version as already published, which this script now treats as success. ' +
+                'Check with: tfx extension isvalid --publisher <p> --extension-id <id> --version <v>',
+            );
+            return code || 1;
+        }
+
+        // Already on the Marketplace. Resolved by evidence, not by attempt
+        // count: a workflow-level re-run is a fresh process whose attempt
+        // counter starts at 1, which is exactly the case the old
+        // `attempt > 1` gate could not serve.
+        if (ALREADY_PUBLISHED.test(output)) {
+            const d = output.match(DUPLICATE_DETAIL);
+            const sameVersion = d && d[2] === d[3];
+            const target = d
+                ? { publisher: (d[1].split('.')[0]), extensionId: d[1].split('.').slice(1).join('.'), version: d[3] }
+                : {};
+            if (!sameVersion && attempt === 1) {
+                console.error(
+                    'publish-marketplace: the Marketplace already holds a DIFFERENT version than the one being ' +
+                    'published, on a first attempt. That is a real rejection, not a lost response. Failing.',
+                );
+                return code || 1;
+            }
+            const state = await isPublishedAndValid(target);
+            if (state === 'invalid') {
+                console.error('publish-marketplace: the published version exists but is INVALID. Failing.');
+                return code || 1;
+            }
+            console.log(
+                `publish-marketplace: the version being published is already on the Marketplace (${state}). ` +
+                'A previous attempt or run reached it successfully. Treating the publish as complete.',
             );
             return 0;
         }
