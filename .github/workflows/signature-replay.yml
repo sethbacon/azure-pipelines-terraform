@@ -52,7 +52,17 @@ concurrency:
 jobs:
   replay:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
+      # hardening-exception: egress-audit — this job installs from the npm registry,
+      #   downloads Go modules and tools from the module proxy, and transfers
+      #   artifacts through the Actions API; harden-runner has never run in this
+      #   repository, so no endpoint baseline exists and a block policy written
+      #   without one fails closed on its first run; audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
       # ── THE FIRST STEP, AND IT HAS TO STAY THE FIRST STEP ────────────────
       #
       # WHAT THIS CLOSES. SUITE_READ_APP_KEY is in this repository's DEPENDABOT

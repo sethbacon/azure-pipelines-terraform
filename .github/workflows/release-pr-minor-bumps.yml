@@ -37,6 +37,14 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
       startsWith(github.event.pull_request.head.ref, 'release-please--')
     steps:
+      # hardening-exception: egress-audit — this job clones this repository;
+      #   harden-runner has never run in this repository, so no endpoint baseline
+      #   exists and a block policy written without one fails closed on its first run;
+      #   audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
       - name: Get GitHub App token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: token
