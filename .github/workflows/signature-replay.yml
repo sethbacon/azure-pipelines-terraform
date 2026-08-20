@@ -53,6 +53,182 @@ jobs:
   replay:
     runs-on: ubuntu-latest
     steps:
+      # ── THE FIRST STEP, AND IT HAS TO STAY THE FIRST STEP ────────────────
+      #
+      # WHAT THIS CLOSES. SUITE_READ_APP_KEY is in this repository's DEPENDABOT
+      # secret store, mirrored there on 2026-08-18, because a run Dependabot
+      # authors reads that store and not the Actions one — and until it was
+      # mirrored `replay`, a REQUIRED merge-blocking context, could not pass on
+      # a single Dependabot PR. sethbacon/azure-pipelines-packer#263 named that
+      # mirror as the fix and made it conditional on a compensating check that
+      # refuses to run when this workflow differs from main's. The reason is
+      # that on `pull_request` the definition that runs comes from the PR head,
+      # and Dependabot edits THIS FILE every time it bumps one of the `uses:`
+      # pins below — so a Dependabot commit can both rewrite this job and hold
+      # the GitHub App private key that arms it. This step is that compensating
+      # check, ported from the implementation proven in
+      # sethbacon/azure-pipelines-packer#275. Without it the mirror is an
+      # unguarded key.
+      #
+      # WHY A STEP AND NOT A JOB. `replay` is a REQUIRED, merge-blocking
+      # context. A separate guard job with `needs:` would leave THIS job
+      # reporting `skipped` whenever the guard fired, and a skipped required
+      # context is either a permanent block on every PR or is read as a pass —
+      # an outage in one direction, a guard whose failure clears the merge in
+      # the other. Failing inside the job keeps `replay` reporting, as a
+      # failure, which is the only shape that both blocks and stays visible.
+      #
+      # WHY FIRST, AND WHY IT USES NO ACTION. Steps run in order and a failed
+      # step ends the job, so a guard in position one decides before anything
+      # untrusted has executed: not the eighteen checkouts below, not
+      # setup-python/go/node, and above all not the poisoned
+      # pin a malicious bump would have introduced. Behind a compromised action
+      # the job is already lost — it can idle on the runner and read the minted
+      # token out of the environment later — so "before any action runs" is the
+      # only position worth anything. That property dies if this step moves down
+      # or grows a `uses:` of its own, so it is plain shell over the
+      # pre-installed `gh` CLI and pins nothing. Which is also why porting it
+      # here could not desynchronise any of this file's own pins: the block
+      # carries none.
+      #
+      # This repository pins actions/checkout at v6.0.3 where the rest of the
+      # family is on v7.0.1. That divergence is untouched here, and could not
+      # have been disturbed: the block below has no `uses:` line to carry a
+      # stale version comment into, which is what zizmor's `ref-version-mismatch`
+      # would otherwise have caught.
+      #
+      # WHAT IT DOES NOT PROTECT AGAINST — read this before trusting it. A
+      # secret reaches only a job that names it, and signature-replay.yml is the
+      # only workflow in this repo that names SUITE_READ_APP_KEY, so this one
+      # file is the whole Dependabot-reachable surface of that key. But:
+      #   * An UNCHANGED file is not a safe file. This compares text, not
+      #     dependencies. A SHA pin is immutable content, yet a composite action
+      #     at an honest SHA can still resolve its own `uses:` by tag, and a pin
+      #     that was already malicious when it landed matches main happily.
+      #     Identical-to-main means "no unreviewed change here", never "safe".
+      #   * It establishes nothing against anyone who can push arbitrary YAML to
+      #     a branch of this repo. They delete this step — or ignore this file
+      #     and add an `on: push` workflow that reads the secret outright. That
+      #     is repo-write access, which no in-repo control answers. Fork PRs are
+      #     given no secrets at all, so the population this can actually protect
+      #     against is exactly one: commits Dependabot authors on branches here.
+      #   * It cannot vouch for main. main's copy IS the baseline, so anything
+      #     that merges to main becomes this step's definition of clean.
+      #   * IT CANNOT SURVIVE ITS OWN DELETION. On `pull_request` the definition
+      #     that runs is the head's, so a head that removes this step removes
+      #     the thing that would have noticed — the job then mints the key with
+      #     no guard at all, and there is no failing exit code because nothing
+      #     ran. Verified, not assumed. What this covers is edits that leave the
+      #     step standing, which is exactly the case it was written for:
+      #     Dependabot rewrites `uses:` pins and dependency manifests, it does
+      #     not delete steps. `pull_request_target` would see the deletion,
+      #     because it runs main's copy — but it runs beside this job rather
+      #     than before it, so the key is already minted by the time it reports.
+      #     It buys a privileged-context surface in exchange for blocking a
+      #     merge to an adversary who has already taken the key, and was
+      #     rejected on that trade rather than overlooked.
+      #
+      # IT IS NOT A LOCK ON THIS FILE, which would be worse than the exposure.
+      # It arms only when the run draws from the Dependabot store, so a human PR
+      # edits this workflow freely — including the PR that introduced the step.
+      # When Dependabot legitimately bumps a pin here, the escape is the one
+      # #263 already documented: push any commit to the branch as a human
+      # ("Update branch" is enough), after which the run is human-actored, its
+      # secrets come from the ACTIONS store, and this stands down. That is a
+      # person choosing to read a workflow diff before it runs with a key, which
+      # is the review this whole step exists to force.
+      - name: Refuse to run a Dependabot-edited copy of this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Bound here rather than interpolated into `run:`, because `${{ }}`
+          # expanded inside a shell body is zizmor's template-injection audit,
+          # and this step of all steps should not model the class it contains.
+          EVENT_NAME: ${{ github.event_name }}
+          # `github.actor` is the actor of the ORIGINAL run, which is what
+          # decides the secret store; `github.triggering_actor` changes to the
+          # human who clicks "Re-run jobs" while the Dependabot store is still
+          # in play, so using it here would let a re-run disarm the guard.
+          RUN_ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUNNING_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WF_PATH: .github/workflows/signature-replay.yml
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Event is '$EVENT_NAME': there is no PR head to substitute and no"
+            echo "Dependabot secret store in play. Guard not applicable."
+            exit 0
+          fi
+
+          case "$RUN_ACTOR" in
+            'dependabot[bot]' | 'dependabot-preview[bot]') ;;
+            *)
+              echo "Actor '$RUN_ACTOR' is not Dependabot, so this run reads the ACTIONS"
+              echo "secret store, which no Dependabot-authored commit can reach. Edits to"
+              echo "this workflow on this PR are ordinary reviewed changes. Guard stands down."
+              exit 0
+              ;;
+          esac
+
+          # git blob SHA of WF_PATH at a ref, empty when it cannot be read there.
+          # The hex check is not defensive tidiness, it is the whole correctness
+          # of this function: on a 404 `gh api` prints its JSON error body to
+          # STDOUT, so without it two FAILED lookups both return the same "Not
+          # Found" text, compare equal, and clear the guard. That was observed,
+          # not imagined — rename this file and the pre-check version reported
+          # "identical to main" against a path that existed at neither end. A
+          # lookup that could not see anything must never read as a clean one.
+          blob() {
+            local out
+            out="$(gh api "repos/${REPO}/contents/${WF_PATH}?ref=$1" --jq '.sha' 2>/dev/null || true)"
+            if printf '%s' "$out" | grep -Eq '^[0-9a-f]{40}$'; then
+              printf '%s' "$out"
+            fi
+          }
+
+          # What GitHub is executing on a `pull_request` event is the copy in the
+          # merge commit, which is `github.sha`. head.sha is only a fallback for
+          # a merge ref that will not resolve (a conflicted PR has none).
+          running="$(blob "$RUNNING_SHA")"
+          [ -n "$running" ] || running="$(blob "$HEAD_SHA")"
+          if [ -z "$running" ]; then
+            echo "::error title=signature-replay integrity guard::Could not read ${WF_PATH} at the commit under test. Refusing to mint SUITE_READ_APP_KEY: this guard fails closed."
+            exit 1
+          fi
+
+          # Either baseline clears it. base.sha is the base tip this PR's merge
+          # ref was computed against; base.ref is main as of right now. The two
+          # diverge whenever main moves after the event fired, and a PR that
+          # never touched this file must not be failed for someone else's merge.
+          for baseline in "$BASE_SHA" "$BASE_REF"; do
+            [ -n "$baseline" ] || continue
+            candidate="$(blob "$baseline")"
+            if [ -n "$candidate" ] && [ "$candidate" = "$running" ]; then
+              echo "${WF_PATH} under test is blob ${running}, identical to ${baseline}."
+              echo "This Dependabot PR does not change the workflow that is about to hold"
+              echo "SUITE_READ_APP_KEY. Proceeding."
+              exit 0
+            fi
+          done
+
+          echo "This is a Dependabot-authored run, so SUITE_READ_APP_KEY comes from the"
+          echo "DEPENDABOT secret store — and ${WF_PATH} at the commit under test (blob"
+          echo "${running}) does not match ${BASE_REF}. The workflow about to receive a"
+          echo "GitHub App private key is therefore not the reviewed one."
+          echo
+          echo "To resolve, read the diff first:"
+          echo "  gh pr diff ${PR_NUMBER} --repo ${REPO} -- ${WF_PATH}"
+          echo "If the change is wanted, push any commit to the branch as a human — the"
+          echo "\"Update branch\" button is enough. The next run is human-actored, draws"
+          echo "from the ACTIONS store instead, and this guard stands down."
+          echo "::error title=signature-replay integrity guard::${WF_PATH} differs from ${BASE_REF} on a Dependabot-authored run. Refusing to mint SUITE_READ_APP_KEY into an unreviewed workflow. Review the diff, then push a human commit to the branch to re-run against the Actions secret store."
+          exit 1
+
       # Every repo in SIGNATURE_SCOPE must be present. A signature that cannot
       # run against a repo establishes nothing about it, and the job exits 2
       # rather than pretending otherwise — so these checkouts are load-bearing,
