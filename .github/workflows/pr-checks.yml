@@ -131,6 +131,27 @@ jobs:
   # silence: the change ships with no changelog entry, no upgrade note, and
   # nothing failing to say so.
   #
+  # WHAT COUNTS is release-please's rule, not the spec's, and the two spellings
+  # of the token are NOT symmetric there. Verified against release-please
+  # 17.11.1's own parser rather than its documentation: `BREAKING CHANGE:`, with
+  # a space, is read only at the START of a line, while the hyphenated spelling
+  # is ALSO matched by an unanchored regex over the commit body -- mid-sentence,
+  # indented, inside a fenced code block, even inside a longer word -- with the
+  # remainder of that line taken as the description.
+  #
+  # This guard used to count only line-anchored matches, so it UNDER-counted
+  # against release-please and passed commits release-please treats as breaking.
+  # abacdb5 in azure-pipelines-terraform, the commit that ADDED the guard there,
+  # is the case: a sentence in its body NAMING the hyphenated spelling made
+  # release-please propose a MAJOR bump over 1.14.4 with a changelog entry
+  # reading "` spelling". The guard counted it 0.
+  #
+  # So the count below is release-please's count -- no more, and no less, since a
+  # guard that rejects legitimate prose is one people route around and then
+  # delete. On top of it the guard rejects a hyphenated token found off the start
+  # of a line at all: that is never a declaration anybody WROTE, and it always
+  # buys a major version bump nobody asked for.
+  #
   # This is not hypothetical. terraform-registry-backend v4.0.0 published with
   # two undocumented breaking changes this way -- one of them 403s any CI job
   # calling `/auth/refresh` with an API key -- and
@@ -209,14 +230,47 @@ jobs:
 
           total=0
           report=""
+          strays=0
+          stray_report=""
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             sha=$(jq -r '.sha' <<<"$line")
             msg=$(jq -r '.msg' <<<"$line")
             subject=$(head -n1 <<<"$msg")
 
-            # Spec allows both spellings of the footer token.
-            footers=$(grep -cE '^BREAKING[ -]CHANGE:' <<<"$msg" || true)
+            # release-please recognises the two spellings of the token by
+            # DIFFERENT rules, and they are not interchangeable. Verified
+            # against release-please 17.11.1's own parser rather than its docs:
+            #
+            #   `BREAKING CHANGE:`, with a space, counts only where the
+            #   Conventional Commits grammar sees a footer -- at the START of a
+            #   line, with no leading whitespace. Mid-sentence or indented it is
+            #   prose, and release-please ignores it.
+            #
+            #   The hyphenated spelling counts EVERYWHERE. release-please's
+            #   postProcessCommits runs an UNANCHORED regex over the commit body
+            #   and takes the rest of the matching line as the description, so it
+            #   fires mid-sentence, indented, inside a fenced code block, and
+            #   even inside a longer word such as NON-BREAKING-CHANGE:.
+            #
+            # Both are read out of the BODY, so the same token in the subject
+            # line is not a declaration.
+            #
+            # Counting only line-anchored matches is what let abacdb5 through:
+            # a sentence NAMING the hyphenated spelling was read as a real
+            # declaration, and release-please proposed a MAJOR bump whose
+            # changelog entry was the remainder of that sentence.
+            body=$(tail -n +2 <<<"$msg")
+            spaced=$(grep -cE '^BREAKING CHANGE:' <<<"$body" || true)
+            # Occurrences, not lines. The squash concatenates every body into one
+            # and that regex is not global, so a second match on the same line is
+            # dropped exactly as surely as one in a later commit.
+            hyphenated=$(grep -oF 'BREAKING-CHANGE:' <<<"$body" | grep -c '' || true)
+            anchored=$(grep -cE '^BREAKING-CHANGE:' <<<"$body" || true)
+            # A hyphenated token anywhere but the start of a line is a
+            # declaration nobody WROTE and release-please acts on regardless.
+            stray=$((hyphenated - anchored))
+            footers=$((spaced + hyphenated))
             if [ "$footers" -gt 0 ]; then
               # A footer wins over the header's `!`, so they are not additive.
               n="$footers"
@@ -229,12 +283,41 @@ jobs:
             if [ "$n" -gt 0 ]; then
               report="${report}  ${sha}  ${n} declaration(s)  ${subject}"$'\n'
             fi
+            if [ "$stray" -gt 0 ]; then
+              strays=$((strays + stray))
+              stray_report="${stray_report}  ${sha}  ${stray} off the start of a line  ${subject}"$'\n'
+            fi
             total=$((total + n))
           done < commits.ndjson
 
           echo "Breaking-change declarations in this PR: $total"
           if [ -n "$report" ]; then
             printf 'Where they are:\n%s' "$report"
+          fi
+
+          if [ "$strays" -gt 0 ]; then
+            printf 'Not written as a footer:\n%s' "$stray_report"
+            {
+              echo "### A breaking change nobody declared"
+              echo
+              echo "This pull request carries **$strays** hyphenated breaking-change"
+              echo "token(s) somewhere other than the start of a line. release-please"
+              echo "matches that spelling ANYWHERE in a commit body -- mid-sentence,"
+              echo "indented, inside a fenced code block -- and takes the rest of the"
+              echo "line as the description. Prose that merely NAMES the token therefore"
+              echo "forces a MAJOR version bump and writes a changelog entry out of the"
+              echo "remainder of the sentence."
+              echo
+              echo '```'
+              printf '%s' "$stray_report"
+              echo '```'
+              echo
+              echo "To write ABOUT the token, drop the colon, or use the spaced spelling,"
+              echo "which release-please reads only at the start of a line. To declare a"
+              echo "real breaking change, put the footer at the start of its own line."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::This PR has $strays breaking-change token(s) off the start of a line; release-please reads each one as a declaration. See the job summary."
+            exit 1
           fi
 
           if [ "$total" -le 1 ]; then

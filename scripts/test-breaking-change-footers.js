@@ -25,7 +25,15 @@
 //   footer-plus-bang-one-commit  a footer and a `!` in ONE commit is ONE
 //                                declaration, not two — the footer wins
 //   hyphen-spelling              `BREAKING-CHANGE:` is the same token
-//   prose-mention                a mid-line mention is prose, not a footer
+//   prose-mention                a mid-line mention of the SPACED spelling is
+//                                prose, and release-please agrees
+//   hyphenated-footer-alone      a real hyphenated footer is ONE declaration
+//                                and must not be rejected
+//   abacdb5-accidental-declaration
+//                                THE regression: release-please reads the
+//                                hyphenated token mid-sentence, so prose that
+//                                merely names it declares a breaking change
+//   two-mid-line-mentions        two of those in one PR is two declarations
 //   summary-names-the-commits    the failure says WHICH commits, in the job
 //                                summary a reviewer actually reads
 //   gh-unavailable               it FAILS CLOSED when it cannot read the
@@ -79,7 +87,14 @@ function extractRunBlock(yaml, key) {
     const runAt = body.findIndex((line) => /^\s+run:\s*\|\s*$/.test(line));
     if (runAt === -1) return { error: `job \`${key}\` has no \`run: |\` block` };
 
-    const indent = /^(\s+)/.exec(body[runAt + 1] || '');
+    // Indent comes from the first NON-BLANK line of the block. Taking it
+    // from `runAt + 1` unconditionally would turn a block that merely opens
+    // with a blank line -- which is what deleting the `set -euo pipefail`
+    // line leaves behind -- into "block is empty", and this file would then
+    // report that instead of running the cases against the guard it still has.
+    let firstBody = runAt + 1;
+    while (firstBody < body.length && body[firstBody].trim() === '') firstBody += 1;
+    const indent = /^(\s+)/.exec(body[firstBody] || '');
     if (!indent) return { error: `job \`${key}\`'s \`run: |\` block is empty` };
 
     const script = [];
@@ -104,7 +119,14 @@ if (extracted.error) {
 report(true, `extracted the guard from ${JOB_KEY} (${extracted.script.split('\n').length} lines)`);
 // The extraction has to be of the REAL script, not of an empty match that then
 // "passes" every case below.
-report(/BREAKING\[ -\]CHANGE:/.test(extracted.script), 'the extracted script contains the footer-matching expression');
+report(
+     extracted.script.includes("grep -cE '^BREAKING CHANGE:'"),
+     'the extracted script counts the spaced spelling only at the start of a line',
+);
+report(
+     extracted.script.includes("grep -oF 'BREAKING-CHANGE:'"),
+     'the extracted script counts the hyphenated spelling anywhere in the body',
+);
 
 const scriptPath = path.join(workRoot, 'guard.sh');
 fs.writeFileSync(scriptPath, extracted.script);
@@ -191,6 +213,70 @@ function expectRejection(label, commits, mustSay, mustSummarise = []) {
     report(true, `${label}: exits ${status} naming ${wanted.map((w) => JSON.stringify(w)).join(' + ')}`);
 }
 
+// The verbatim body of azure-pipelines-terraform abacdb5 -- the commit that
+// ADDED this guard. One sentence in it NAMES the hyphenated spelling of the
+// token, mid-line, as prose describing what the guard detects. release-please
+// read that as a real declaration, took the remainder of the line as the
+// description, and proposed 2.0.0 over a 1.14.4 release whose honest successor
+// was 1.14.5 -- with a changelog entry reading "` spelling". The guard, counting
+// only line-anchored matches, said 0 and let it through.
+//
+// It is load bearing that this is the WHOLE body and not just that sentence: it
+// also names the SPACED spelling mid-line, which release-please does not read.
+// The only count that is right for it is 1.
+const ABACDB5_BODY = [
+    "ci: count breaking-change declarations across the commits being squashed (#974)",
+    "",
+    "This repo squash-merges with `squash_merge_commit_message=COMMIT_MESSAGES`",
+    "(re-verified on the live repo), so every commit body in a PR is concatenated",
+    "into ONE merge commit -- and release-please keeps only the FIRST",
+    "`BREAKING CHANGE:` footer of that commit, reading a `!` marker only from its",
+    "header. A second declaration anywhere in the PR is dropped in silence: no",
+    "changelog entry, no upgrade note, and nothing failing to say so.",
+    "terraform-registry-backend v4.0.0 shipped two undocumented breaking changes",
+    "exactly this way, and it reaches further from here: this extension publishes to",
+    "the VS Marketplace, where the release notes are a pipeline author's only signal",
+    "that a task changed incompatibly, and ADO agents cache tasks by Major.Minor.",
+    "",
+    "Five other suite repos carry this guard; the two ADO extensions did not. The",
+    "only `BREAKING` matches here were prose inside",
+    "`.github/commit-message-check/verify.mjs`, which parses the SINGLE message this",
+    "PR would squash and asks whether release-please can read it at all -- it never",
+    "counts declarations across the set being concatenated. The two are the halves of",
+    "one pair and neither subsumes the other: a perfectly parseable squash can still",
+    "swallow a second footer, and a single-footer PR can still be unparseable.",
+    "",
+    "Ported from `azure-pipelines-release-docs`, which took it from",
+    "`terraform-registry-backend` and added the self-test. The self-test EXTRACTS the",
+    "bash out of pr-checks.yml rather than copying it -- a copy drifts from the thing",
+    "it claims to prove, which is the same defect one level up -- and runs it against",
+    "fixture commit histories with `gh` stubbed. It runs in the already-required",
+    "`Lint GitHub Actions` job, so the proof blocks a merge from the day it lands.",
+    "",
+    "Mutation-proved against the committed workflow, each rejection asserted by name:",
+    "two footers, two `!` headers, three footers and the `BREAKING-CHANGE:` spelling",
+    "are rejected; the single-declaration, no-declaration, many-clean-commits,",
+    "prose-mention and footer-plus-`!`-in-one-commit shapes pass untouched. Five",
+    "mutations of the guard were each seen failing the test: dropping the hyphen",
+    "spelling, making the footer and `!` additive, raising the threshold to 2,",
+    "renaming the job (the vacuity contract), and dropping `set -euo pipefail`.",
+    "",
+    "That last one is a case the source implementation could not see, so this port",
+    "adds it: without `set -euo pipefail` a failed `gh api` leaves an empty commit",
+    "list behind and the job reports \"declarations in this PR: 0\" and goes green. The",
+    "new `gh-unavailable` case stubs a failing `gh` and requires the guard to fail",
+    "closed.",
+    "",
+    "No task.json touched, and no existing job renamed or split.",
+    "",
+    "BRANCH PROTECTION: this adds one NEW context, `Breaking-change footers survive",
+    "the squash`, which has to be added to main's required checks by hand. Until then",
+    "the job reports on every PR without blocking one -- the same state as",
+    "`release-please can read the merged commit`, the other half of the pair.",
+    "",
+    "Closes #966",
+].join('\n');
+
 const FOOTER = 'BREAKING CHANGE: the provider-mirror input is no longer optional';
 
 try {
@@ -202,9 +288,30 @@ try {
     // footer in the SAME commit describe ONE breaking change, because
     // release-please reads the footer and the header is the marker for it.
     expectPass('footer-plus-bang-one-commit', [`feat!: rework the mirror download path\n\n${FOOTER}`], ['declarations in this PR: 1']);
-    // A mention inside a paragraph is prose. Only a line that STARTS with the
-    // token is a footer, and a guard that fired on prose would be routed around.
-    expectPass('prose-mention', ['docs: explain that a BREAKING CHANGE: footer is kept only once'], ['declarations in this PR: 0']);
+    // CORRECTED. This case used to assert that ANY mid-line mention is prose,
+    // and it pinned a model release-please does not implement. Only the SPACED
+    // spelling is ignored mid-line; the hyphenated one is matched anywhere, and
+    // asserting otherwise is exactly what let abacdb5 through -- that body is
+    // rejected below. What survives here is the half that is true, and it has to
+    // survive: a guard that failed a sentence release-please reads as prose would
+    // be routed around and then deleted.
+    //
+    // The mention is in the BODY, not the subject. The old fixture was a
+    // single-line message, so it never exercised the body at all.
+    expectPass(
+        'prose-mention',
+        ['docs: explain the footer rule\n\nA line that merely says BREAKING CHANGE: in the middle of a\nsentence is prose, and release-please never reads it as a footer.'],
+        ['declarations in this PR: 0'],
+    );
+    // The hyphenated spelling written as a real footer IS a real declaration, and
+    // one of them is what the squash can carry. Rejecting it would be the
+    // over-count mirror of the bug this change fixes, and an over-counting guard
+    // gets bypassed and then deleted just as surely as a blind one.
+    expectPass(
+        'hyphenated-footer-alone',
+        ['feat: rework the mirror download path\n\nBREAKING-CHANGE: the input is no longer optional'],
+        ['declarations in this PR: 1'],
+    );
 
     console.log('\nmutations — the squash losing a declaration (#966):');
     // THE case: registry-backend v4.0.0 published two breaking changes and
@@ -235,6 +342,33 @@ try {
         ['declares 3 breaking changes'],
         ['The other 2 would ship with no changelog entry'],
     );
+    // THE regression, and the reason this file changed. abacdb5 is the commit
+    // that ADDED this guard; a sentence in its body naming the hyphenated
+    // spelling was read by release-please as a declaration, which proposed 2.0.0
+    // over 1.14.4 with a changelog entry reading "` spelling". The guard counted
+    // it 0 and passed it.
+    //
+    // The count asserted here is 1, and that number is load bearing in BOTH
+    // directions: 0 is the under-count that shipped, and 2 is what merely
+    // un-anchoring the old expression would give, because this body also names
+    // the spaced spelling mid-line and release-please does not read that.
+    expectRejection(
+        'abacdb5-accidental-declaration',
+        [ABACDB5_BODY],
+        ['declarations in this PR: 1', 'off the start of a line'],
+        ['A breaking change nobody declared'],
+    );
+    // Two of them in one PR: two notes, and the squash keeps one. This is the
+    // shape the old `prose-mention` assertion declared acceptable.
+    expectRejection(
+        'two-mid-line-mentions',
+        [
+            'docs: describe the footer rule\n\nprose naming BREAKING-CHANGE: once',
+            'docs: describe it again\n\nmore prose naming BREAKING-CHANGE: twice',
+        ],
+        ['declarations in this PR: 2', 'off the start of a line'],
+    );
+
     console.log('\nthe guard has to fail closed, not quiet:');
     // `set -euo pipefail` is the whole of this property. Without it the failed
     // `gh api` leaves an empty commits.ndjson behind, the loop counts nothing,
