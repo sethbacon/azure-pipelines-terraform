@@ -31,7 +31,7 @@ The service connection type this task uses (`PTTAWSServiceEndpoint`) is a placeh
    - Replace `<your-azure-devops-organization-id>` with your org's GUID (not the org name)
    - Example: `https://vstoken.dev.azure.com/a1b2c3d4-e5f6-7890-abcd-ef1234567890`
 5. Click **Get thumbprint** to automatically populate the certificate thumbprint
-6. Set **Audience** to: `api://AzureADTokenV2`
+6. Set **Audience** to: `api://AzureADTokenExchange`
 7. Click **Add provider**
 
 ## Step 2: Create an IAM Role for Terraform
@@ -39,7 +39,7 @@ The service connection type this task uses (`PTTAWSServiceEndpoint`) is a placeh
 1. Navigate to **IAM** → **Roles** → **Create role**
 2. Select **Web identity** as the trusted entity type
 3. Select the identity provider you just created
-4. Set audience to `api://AzureADTokenV2`
+4. Set audience to `api://AzureADTokenExchange`
 5. Click **Next** and attach a policy scoped to what your Terraform configuration actually manages. For example, a role that only provisions EC2 instances behind a naming convention:
 
    ```json
@@ -102,7 +102,7 @@ Update the trust policy condition:
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "vstoken.dev.azure.com/<ORG_ID>:aud": "api://AzureADTokenV2",
+          "vstoken.dev.azure.com/<ORG_ID>:aud": "api://AzureADTokenExchange",
           "vstoken.dev.azure.com/<ORG_ID>:sub": "sc://<ORG_NAME>/<PROJECT_NAME>/<SERVICE_CONNECTION_NAME>"
         }
       }
@@ -135,7 +135,7 @@ To keep an `sts:RoleSessionName` condition while still getting per-run attributi
 ```json
 "Condition": {
   "StringEquals": {
-    "vstoken.dev.azure.com/<ORG_ID>:aud": "api://AzureADTokenV2",
+    "vstoken.dev.azure.com/<ORG_ID>:aud": "api://AzureADTokenExchange",
     "vstoken.dev.azure.com/<ORG_ID>:sub": "sc://<ORG_NAME>/<PROJECT_NAME>/<SERVICE_CONNECTION_NAME>"
   },
   "StringLike": {
@@ -180,14 +180,14 @@ At runtime, the task:
 
 The temporary credentials have a maximum lifetime of 1 hour, which is sufficient for any Terraform operation.
 
-> **Audience scoping:** the task mints the same Azure DevOps OIDC token (ADO's default `api://AzureADTokenV2` audience) for every cloud — it does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. The IAM role's trust-policy `:aud` and `:sub` conditions (Step 2) are therefore the security boundary: they **must** pin the audience and the exact service-connection `sub` so that only this org/project/service connection can assume the role. This is an operator responsibility, not something the task enforces on your behalf.
+> **Audience scoping:** the task mints the same Azure DevOps OIDC token (ADO's default `api://AzureADTokenExchange` audience) for every cloud — it does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. The IAM role's trust-policy `:aud` and `:sub` conditions (Step 2) are therefore the security boundary: they **must** pin the audience and the exact service-connection `sub` so that only this org/project/service connection can assume the role. This is an operator responsibility, not something the task enforces on your behalf.
 
 ## Troubleshooting
 
 ### "WebIdentityErr: failed to retrieve credentials"
 
 - Verify the role ARN is correct
-- Verify the trust policy audience matches `api://AzureADTokenV2`
+- Verify the trust policy audience matches `api://AzureADTokenExchange`
 - Verify the `sub` condition (if set) matches the service connection path exactly
 
 ### "InvalidIdentityToken: No OpenIDConnect provider found"
