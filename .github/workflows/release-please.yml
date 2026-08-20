@@ -13,6 +13,13 @@
 # that drifts, and repos on different pins is HARDER to see than divergent
 # files -- every repo looks like it is using "the shared one".
 #
+# The trailing `# v1.0.0` NAMES the release that SHA is; it does not select it.
+# Do not "simplify" the ref to @v1.0.0 -- a tag is mutable, so the reviewed
+# workflow and the executed workflow would stop being the same thing. The label
+# exists because an unlabelled 40-hex SHA cannot be reviewed or updated
+# deliberately, which azure-pipelines-release-docs' workflow-hardening guard
+# rejects outright and the other twelve repos accepted without noticing.
+#
 # `vars` resolves against THIS repository, so RELEASE_DISPATCH_APP_ID is
 # unchanged and nothing about the App installation moves. The workflow keeps the
 # name "Release Please" so anything keyed on it still matches.
@@ -28,7 +35,7 @@ permissions:
 
 jobs:
   release-please:
-    uses: 4cloudguru/shared-workflows/.github/workflows/release-please.yml@2279e55c6318846f60f0c8ffcbadbeb9317e5fb5
+    uses: 4cloudguru/shared-workflows/.github/workflows/release-please.yml@2279e55c6318846f60f0c8ffcbadbeb9317e5fb5 # v1.0.0
     # Exactly one secret, named. NOT `secrets: inherit` -- that forwards EVERY
     # secret in this repository to a workflow in another owner's repository,
     # which zizmor flags (secrets-inherit) and which would be an over-grant
