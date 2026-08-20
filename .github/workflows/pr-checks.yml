@@ -97,6 +97,138 @@ jobs:
         if: ${{ startsWith(github.event.pull_request.head.ref, 'release-please--') }}
         run: node scripts/check-minor-bumps.js
 
+  # ── Breaking-change declarations survive the squash ────────────────────
+  # This repository squash-merges with
+  # `squash_merge_commit_message=COMMIT_MESSAGES` (verified on the live
+  # repository, not assumed), so every commit body in a pull request is
+  # concatenated into ONE merge commit. release-please then keeps only the
+  # FIRST `BREAKING CHANGE:` footer of that commit, and reads a `!` marker only
+  # from its header. A second declaration anywhere in the PR is dropped in
+  # silence: the change ships with no changelog entry, no upgrade note, and
+  # nothing failing to say so.
+  #
+  # This is not hypothetical. terraform-registry-backend v4.0.0 published with
+  # two undocumented breaking changes this way -- one of them 403s any CI job
+  # calling `/auth/refresh` with an API key -- and
+  # terraform-state-manager-backend lost three from a PR that declared four,
+  # caught only by reading the release notes line by line before the cut.
+  #
+  # It costs more here than in a service repository. This extension publishes to
+  # the VS Marketplace, where a pipeline author's only signal that a task
+  # changed incompatibly is the release notes release-please generates from
+  # these footers; and ADO agents cache tasks by Major.Minor, so the change
+  # reaches a running agent on its own schedule with nothing to read.
+  #
+  # Splitting the footers across separate commits does not help; the squash
+  # concatenates them back. One merged commit can announce exactly one breaking
+  # change. Either open one PR per breaking change, or combine them into a
+  # single footer and write each one up in the upgrade guide.
+  #
+  # This is the CROSS-COMMIT half of the release-parsing pair. Its sibling
+  # below, `release-please can read the merged commit`, builds the ONE message
+  # this PR would squash into main and asks whether release-please's parser can
+  # read it at all; this job counts declarations ACROSS the commits being
+  # concatenated. Neither subsumes the other: a perfectly parseable squash can
+  # still swallow a second footer, and a single-footer PR can still be
+  # unparseable.
+  #
+  # PROVENANCE. Ported (#966) from `azure-pipelines-release-docs`, which took it
+  # from `terraform-registry-backend` -- carried there together with
+  # terraform-registry-frontend, terraform-state-manager-{backend,frontend} and
+  # terraform-suite-identity -- and added the self-test named below.
+  #
+  # It is mutation-proved: scripts/test-breaking-change-footers.js EXTRACTS the
+  # script below out of this file, rather than copying it (a copy drifts from
+  # the thing it claims to prove, which is the same defect one level up), and
+  # runs it against fixture commit histories with `gh` stubbed. That runs in the
+  # already-required `Lint GitHub Actions` job, beside the other workflow-shaped
+  # gates.
+  #
+  # A NEW required context has to be added to main's branch protection by hand:
+  # "Breaking-change footers survive the squash". Until that is done this job
+  # reports on every pull request without blocking one -- which is also the
+  # state of `release-please can read the merged commit` below, the other half
+  # of the pair, and both should be promoted together.
+  breaking-change-footers:
+    name: Breaking-change footers survive the squash
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Count breaking-change declarations across this PR's commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | {sha: .sha[0:7], msg: .commit.message}' > commits.ndjson
+
+          total=0
+          report=""
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            sha=$(jq -r '.sha' <<<"$line")
+            msg=$(jq -r '.msg' <<<"$line")
+            subject=$(head -n1 <<<"$msg")
+
+            # Spec allows both spellings of the footer token.
+            footers=$(grep -cE '^BREAKING[ -]CHANGE:' <<<"$msg" || true)
+            if [ "$footers" -gt 0 ]; then
+              # A footer wins over the header's `!`, so they are not additive.
+              n="$footers"
+            elif printf '%s' "$subject" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then
+              n=1
+            else
+              n=0
+            fi
+
+            if [ "$n" -gt 0 ]; then
+              report="${report}  ${sha}  ${n} declaration(s)  ${subject}"$'\n'
+            fi
+            total=$((total + n))
+          done < commits.ndjson
+
+          echo "Breaking-change declarations in this PR: $total"
+          if [ -n "$report" ]; then
+            printf 'Where they are:\n%s' "$report"
+          fi
+
+          if [ "$total" -le 1 ]; then
+            echo "OK: at most one declaration, so the squash loses nothing."
+            exit 0
+          fi
+
+          {
+            echo "### Breaking-change declarations do not survive the squash"
+            echo
+            echo "This PR declares **$total** breaking changes. The squash-merge"
+            echo "concatenates every commit body into one commit, and release-please"
+            echo "keeps only the **first** \`BREAKING CHANGE:\` footer of a commit."
+            echo "The other $((total - 1)) would ship with no changelog entry and no notice."
+            echo
+            echo '```'
+            printf '%s' "$report"
+            echo '```'
+            echo
+            echo "Two ways out:"
+            echo
+            echo "1. **One PR per breaking change.** Preferred when they are independent."
+            echo "2. **One footer.** Combine the declarations into a single"
+            echo "   \`BREAKING CHANGE:\` footer and write each one up in the upgrade"
+            echo "   guide, which is where a pipeline author preparing an upgrade looks."
+            echo
+            echo "Moving the footers into separate commits within this PR does **not**"
+            echo "work -- the squash concatenates them back into one commit body."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::This PR declares $total breaking changes; the squash keeps only the first. See the job summary."
+          exit 1
+
   # ── The merged commit has to be readable by release-please ─────────────
   # release-please chooses what to release by parsing the commits on main
   # with a strict reading of the Conventional Commits grammar. A message it

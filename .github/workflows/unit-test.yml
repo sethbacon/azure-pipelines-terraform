@@ -805,6 +805,20 @@ jobs:
       - name: Run actionlint
         run: ./actionlint -color
 
+      # ── The one guard that is a shell script inside YAML ───────────────────
+      # pr-checks.yml's "Breaking-change footers survive the squash" job is a
+      # bash script embedded in a workflow: actionlint above checks its syntax,
+      # zizmor below checks the workflow around it, and nothing runs it. In the
+      # five estate repos it was ported from it has never had a test, so a regex
+      # edit, a lost `set -euo pipefail` or a silently renamed job would leave a
+      # green required context asserting nothing (#966). This EXTRACTS the
+      # script out of the workflow and runs it against fixture commit histories
+      # with `gh` stubbed — here, in the workflow-shaped job, because that is
+      # what it is a statement about, and because this context is already
+      # required so the proof blocks a merge from the day it lands.
+      - name: Self-test the breaking-change footer guard
+        run: node scripts/test-breaking-change-footers.js
+
   zizmor:
     name: Scan Workflows (zizmor)
     runs-on: ubuntu-latest
