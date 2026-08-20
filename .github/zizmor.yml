@@ -7,18 +7,29 @@
 # per-file ignore. Re-verify these line numbers with
 # `zizmor --no-config --format plain .github/workflows/release.yml` if
 # release.yml's setup-node/action-gh-release steps ever move.
+#
+# They moved on 2026-08-20: adding harden-runner and timeout-minutes to every
+# job shifted every line below the first insertion, and all five ignores went
+# stale at once -- the four cache-poisoning findings resurfaced and failed CI on
+# a change that touched none of the steps involved. The line numbers below were
+# re-derived with the command above, not adjusted by hand.
+#
+# This is the cost of line-scoped ignores, and it is the intended cost: the
+# alternative is a per-file ignore that would have silently swallowed a genuinely
+# new finding. A suppression that breaks loudly when the file moves is doing its
+# job.
 rules:
   cache-poisoning:
     ignore:
       # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml:160:9
-      - release.yml:184:9
-      - release.yml:217:9
-      - release.yml:446:9
+      - release.yml:177:9
+      - release.yml:210:9
+      - release.yml:252:9
+      - release.yml:498:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:422:15
+      - release.yml:465:15
