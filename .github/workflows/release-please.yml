@@ -1,4 +1,21 @@
 ---
+# Delegates to the shared definition in 4cloudguru/shared-workflows.
+#
+# This file used to be a local copy. THIRTEEN repos across two owners carry a
+# release-please workflow, in seven distinct versions -- all with the same
+# config-file, manifest-file, App id variable and App key secret. With this
+# batch all thirteen call the shared definition and none holds a local copy.
+#
+# This repo already ran a concurrency group and a 15-minute timeout, but no
+# harden-runner and no credential preflight. It gains both.
+#
+# PINNED BY SHA, not by a tag or @main. A shared workflow is itself something
+# that drifts, and repos on different pins is HARDER to see than divergent
+# files -- every repo looks like it is using "the shared one".
+#
+# `vars` resolves against THIS repository, so RELEASE_DISPATCH_APP_ID is
+# unchanged and nothing about the App installation moves. The workflow keeps the
+# name "Release Please" so anything keyed on it still matches.
 name: Release Please
 
 on:
@@ -9,42 +26,12 @@ on:
 permissions:
   contents: read
 
-# Serialize release-please runs (sibling hardening for issue #762): a rapid
-# sequence of pushes to main (e.g. merging several PRs back to back) could
-# otherwise trigger overlapping runs racing to update the same Release PR
-# branch or, when a Release PR has just merged, to cut the release tag/GitHub
-# Release itself. Non-cancelling, mirroring release.yml's concurrency guard —
-# a run that reaches the tag/release-cutting step is producing an external,
-# hard-to-undo artifact and must be allowed to finish rather than being killed
-# mid-publish.
-concurrency:
-  group: release-please
-  cancel-in-progress: false
-
 jobs:
   release-please:
-    name: Release Please
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Get GitHub App token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: token
-        with:
-          client-id: ${{ vars.RELEASE_DISPATCH_APP_ID }}
-          private-key: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
-          # Scope the installation token to exactly what release-please needs
-          # (open/update the release PR + push the version-bump commit/tag)
-          # instead of inheriting the app's blanket installation permissions.
-          # NOTE: the app installation is NOT granted the `issues` permission,
-          # so requesting permission-issues here 422s the token step (#261);
-          # release-please runs fine without it (labels already exist).
-          permission-contents: write
-          permission-pull-requests: write
-
-      - name: Run release-please
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          token: ${{ steps.token.outputs.token }}
-          config-file: .release-please-config.json
-          manifest-file: .release-please-manifest.json
+    uses: 4cloudguru/shared-workflows/.github/workflows/release-please.yml@2279e55c6318846f60f0c8ffcbadbeb9317e5fb5
+    # Exactly one secret, named. NOT `secrets: inherit` -- that forwards EVERY
+    # secret in this repository to a workflow in another owner's repository,
+    # which zizmor flags (secrets-inherit) and which would be an over-grant
+    # introduced by a change whose whole point is least privilege.
+    secrets:
+      RELEASE_DISPATCH_APP_KEY: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
