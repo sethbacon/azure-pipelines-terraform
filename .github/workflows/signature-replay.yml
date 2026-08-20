@@ -1,43 +1,41 @@
-# Signature replay — the PER-REPO, merge-blocking half of the gate.
+---
+# Delegates to the shared definition in 4cloudguru/shared-workflows.
 #
-# WHY THIS REPO HOSTS IT. Eight of the twelve recorded signatures
-# (premask-emission, egress-authorization, provider-auth-failclosed,
-# artifact-trust, output-boundary, enforced-disciplines, proxy-parity,
-# docs-claims) apply ONLY to `ado-extension` kind — this repo and
-# azure-pipelines-packer — and skip all six suite repos. Until this file existed
-# the blocking half ran in the six repos those signatures SKIP and in neither of
-# the two they analyse, so a change here merged green and surfaced as a red gate
-# in repos whose own code was untouched and which could not act on it. #920 did
-# exactly that: 38 checks, none of them the replay.
+# This was a 458-line local copy. SEVENTEEN repositories carried one, 263-716
+# lines each, fifteen textually distinct -- but only SIX had distinct step
+# sequences, and the set of repositories checked out is IDENTICAL in all sixteen
+# consumers. The variation was ordering, prose, and drift.
 #
-# COST, already accepted six times and now eight: the ledger and signatures live
-# in the PRIVATE security-orchestration repo, so this PUBLIC repo has to hold a
-# credential that can read it. What it buys is the ability to BLOCK a bad merge,
-# which the central scheduled copy cannot.
+# The drift was not harmless:
 #
-# That cost is smaller than it first looks. Every repo the replay reads is PUBLIC
-# except security-orchestration, so those checkouts run on this job's own
-# GITHUB_TOKEN and take no distributed secret at all — and so do the `gh` calls
-# behind --verify-linked-issues, whose linkages all point at public repos. The
-# stored secret is a GitHub App private KEY that mints an hour-long token for ONE
-# step, narrowed by `repositories:` to the one repo it reads and by
-# `permission-contents: read` to the one thing it does there. It replaced a
-# no-expiry PAT that could not have worked anyway: a fine-grained PAT's resource
-# owner is fixed at one account, so it could never read the one checkout that
-# lives in another org.
+#   - azure-pipelines-terraform sat on actions/checkout v6.0.3 in EIGHTEEN
+#     places inside its copy while every other repo was on v7.0.1.
+#   - 4cloudguru/cloud-suite-ui replayed origin/main instead of the pull
+#     request, because its self-overwrite path came from the repository NAME and
+#     stopped matching its scope.json directory when that repo was renamed. Its
+#     gate was green on code it had never read.
+#   - FIFTEEN of the seventeen ran repo-committed gate scripts from sixteen
+#     repositories while still holding a live read token for the private
+#     security-orchestration repo. Only release-docs revoked it first.
 #
-# Adding this file is NOT enforcement. The check must also be added to main's
-# required_status_checks, and that state asserted against the live API rather
-# than read off this YAML — but only AFTER a run proves the context reports,
-# because a required context that never posts blocks every merge instead.
+# The shared definition resolves the scope directory from scope.json rather than
+# guessing it, fails hard if the caller is not in scope, and revokes the token
+# before any checked-out code runs.
+#
+# TRIGGERS AND CONCURRENCY STAY HERE. They decide when THIS repository's replay
+# runs, and the scheduled central run cannot block a merge while this copy can --
+# which is the whole reason each repo hosts one. Concurrency must NOT also be
+# declared in the shared definition: a called workflow sharing its caller's
+# group queues behind the caller and the run never starts.
+#
+# PINNED BY SHA. `vars.SUITE_READ_APP_ID` resolves against THIS repository, so
+# nothing about the App installation moves.
 name: signature-replay
 
 on:
   pull_request:
   push:
     branches: [main]
-  # Check 2, and the "new instance written since the fix" case, depend on time
-  # passing rather than on anyone opening a PR.
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -51,408 +49,7 @@ concurrency:
 
 jobs:
   replay:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      # hardening-exception: egress-audit — this job installs from the npm registry,
-      #   downloads Go modules and tools from the module proxy, and transfers
-      #   artifacts through the Actions API; harden-runner has never run in this
-      #   repository, so no endpoint baseline exists and a block policy written
-      #   without one fails closed on its first run; audit is what produces that list
-      - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
-        with:
-          egress-policy: audit
-      # ── THE FIRST STEP, AND IT HAS TO STAY THE FIRST STEP ────────────────
-      #
-      # WHAT THIS CLOSES. SUITE_READ_APP_KEY is in this repository's DEPENDABOT
-      # secret store, mirrored there on 2026-08-18, because a run Dependabot
-      # authors reads that store and not the Actions one — and until it was
-      # mirrored `replay`, a REQUIRED merge-blocking context, could not pass on
-      # a single Dependabot PR. sethbacon/azure-pipelines-packer#263 named that
-      # mirror as the fix and made it conditional on a compensating check that
-      # refuses to run when this workflow differs from main's. The reason is
-      # that on `pull_request` the definition that runs comes from the PR head,
-      # and Dependabot edits THIS FILE every time it bumps one of the `uses:`
-      # pins below — so a Dependabot commit can both rewrite this job and hold
-      # the GitHub App private key that arms it. This step is that compensating
-      # check, ported from the implementation proven in
-      # sethbacon/azure-pipelines-packer#275. Without it the mirror is an
-      # unguarded key.
-      #
-      # WHY A STEP AND NOT A JOB. `replay` is a REQUIRED, merge-blocking
-      # context. A separate guard job with `needs:` would leave THIS job
-      # reporting `skipped` whenever the guard fired, and a skipped required
-      # context is either a permanent block on every PR or is read as a pass —
-      # an outage in one direction, a guard whose failure clears the merge in
-      # the other. Failing inside the job keeps `replay` reporting, as a
-      # failure, which is the only shape that both blocks and stays visible.
-      #
-      # WHY FIRST, AND WHY IT USES NO ACTION. Steps run in order and a failed
-      # step ends the job, so a guard in position one decides before anything
-      # untrusted has executed: not the eighteen checkouts below, not
-      # setup-python/go/node, and above all not the poisoned
-      # pin a malicious bump would have introduced. Behind a compromised action
-      # the job is already lost — it can idle on the runner and read the minted
-      # token out of the environment later — so "before any action runs" is the
-      # only position worth anything. That property dies if this step moves down
-      # or grows a `uses:` of its own, so it is plain shell over the
-      # pre-installed `gh` CLI and pins nothing. Which is also why porting it
-      # here could not desynchronise any of this file's own pins: the block
-      # carries none.
-      #
-      # This repository pins actions/checkout at v6.0.3 where the rest of the
-      # family is on v7.0.1. That divergence is untouched here, and could not
-      # have been disturbed: the block below has no `uses:` line to carry a
-      # stale version comment into, which is what zizmor's `ref-version-mismatch`
-      # would otherwise have caught.
-      #
-      # WHAT IT DOES NOT PROTECT AGAINST — read this before trusting it. A
-      # secret reaches only a job that names it, and signature-replay.yml is the
-      # only workflow in this repo that names SUITE_READ_APP_KEY, so this one
-      # file is the whole Dependabot-reachable surface of that key. But:
-      #   * An UNCHANGED file is not a safe file. This compares text, not
-      #     dependencies. A SHA pin is immutable content, yet a composite action
-      #     at an honest SHA can still resolve its own `uses:` by tag, and a pin
-      #     that was already malicious when it landed matches main happily.
-      #     Identical-to-main means "no unreviewed change here", never "safe".
-      #   * It establishes nothing against anyone who can push arbitrary YAML to
-      #     a branch of this repo. They delete this step — or ignore this file
-      #     and add an `on: push` workflow that reads the secret outright. That
-      #     is repo-write access, which no in-repo control answers. Fork PRs are
-      #     given no secrets at all, so the population this can actually protect
-      #     against is exactly one: commits Dependabot authors on branches here.
-      #   * It cannot vouch for main. main's copy IS the baseline, so anything
-      #     that merges to main becomes this step's definition of clean.
-      #   * IT CANNOT SURVIVE ITS OWN DELETION. On `pull_request` the definition
-      #     that runs is the head's, so a head that removes this step removes
-      #     the thing that would have noticed — the job then mints the key with
-      #     no guard at all, and there is no failing exit code because nothing
-      #     ran. Verified, not assumed. What this covers is edits that leave the
-      #     step standing, which is exactly the case it was written for:
-      #     Dependabot rewrites `uses:` pins and dependency manifests, it does
-      #     not delete steps. `pull_request_target` would see the deletion,
-      #     because it runs main's copy — but it runs beside this job rather
-      #     than before it, so the key is already minted by the time it reports.
-      #     It buys a privileged-context surface in exchange for blocking a
-      #     merge to an adversary who has already taken the key, and was
-      #     rejected on that trade rather than overlooked.
-      #
-      # IT IS NOT A LOCK ON THIS FILE, which would be worse than the exposure.
-      # It arms only when the run draws from the Dependabot store, so a human PR
-      # edits this workflow freely — including the PR that introduced the step.
-      # When Dependabot legitimately bumps a pin here, the escape is the one
-      # #263 already documented: push any commit to the branch as a human
-      # ("Update branch" is enough), after which the run is human-actored, its
-      # secrets come from the ACTIONS store, and this stands down. That is a
-      # person choosing to read a workflow diff before it runs with a key, which
-      # is the review this whole step exists to force.
-      - name: Refuse to run a Dependabot-edited copy of this workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Bound here rather than interpolated into `run:`, because `${{ }}`
-          # expanded inside a shell body is zizmor's template-injection audit,
-          # and this step of all steps should not model the class it contains.
-          EVENT_NAME: ${{ github.event_name }}
-          # `github.actor` is the actor of the ORIGINAL run, which is what
-          # decides the secret store; `github.triggering_actor` changes to the
-          # human who clicks "Re-run jobs" while the Dependabot store is still
-          # in play, so using it here would let a re-run disarm the guard.
-          RUN_ACTOR: ${{ github.actor }}
-          REPO: ${{ github.repository }}
-          RUNNING_SHA: ${{ github.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          WF_PATH: .github/workflows/signature-replay.yml
-        run: |
-          set -euo pipefail
-
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "Event is '$EVENT_NAME': there is no PR head to substitute and no"
-            echo "Dependabot secret store in play. Guard not applicable."
-            exit 0
-          fi
-
-          case "$RUN_ACTOR" in
-            'dependabot[bot]' | 'dependabot-preview[bot]') ;;
-            *)
-              echo "Actor '$RUN_ACTOR' is not Dependabot, so this run reads the ACTIONS"
-              echo "secret store, which no Dependabot-authored commit can reach. Edits to"
-              echo "this workflow on this PR are ordinary reviewed changes. Guard stands down."
-              exit 0
-              ;;
-          esac
-
-          # git blob SHA of WF_PATH at a ref, empty when it cannot be read there.
-          # The hex check is not defensive tidiness, it is the whole correctness
-          # of this function: on a 404 `gh api` prints its JSON error body to
-          # STDOUT, so without it two FAILED lookups both return the same "Not
-          # Found" text, compare equal, and clear the guard. That was observed,
-          # not imagined — rename this file and the pre-check version reported
-          # "identical to main" against a path that existed at neither end. A
-          # lookup that could not see anything must never read as a clean one.
-          blob() {
-            local out
-            out="$(gh api "repos/${REPO}/contents/${WF_PATH}?ref=$1" --jq '.sha' 2>/dev/null || true)"
-            if printf '%s' "$out" | grep -Eq '^[0-9a-f]{40}$'; then
-              printf '%s' "$out"
-            fi
-          }
-
-          # What GitHub is executing on a `pull_request` event is the copy in the
-          # merge commit, which is `github.sha`. head.sha is only a fallback for
-          # a merge ref that will not resolve (a conflicted PR has none).
-          running="$(blob "$RUNNING_SHA")"
-          [ -n "$running" ] || running="$(blob "$HEAD_SHA")"
-          if [ -z "$running" ]; then
-            echo "::error title=signature-replay integrity guard::Could not read ${WF_PATH} at the commit under test. Refusing to mint SUITE_READ_APP_KEY: this guard fails closed."
-            exit 1
-          fi
-
-          # Either baseline clears it. base.sha is the base tip this PR's merge
-          # ref was computed against; base.ref is main as of right now. The two
-          # diverge whenever main moves after the event fired, and a PR that
-          # never touched this file must not be failed for someone else's merge.
-          for baseline in "$BASE_SHA" "$BASE_REF"; do
-            [ -n "$baseline" ] || continue
-            candidate="$(blob "$baseline")"
-            if [ -n "$candidate" ] && [ "$candidate" = "$running" ]; then
-              echo "${WF_PATH} under test is blob ${running}, identical to ${baseline}."
-              echo "This Dependabot PR does not change the workflow that is about to hold"
-              echo "SUITE_READ_APP_KEY. Proceeding."
-              exit 0
-            fi
-          done
-
-          echo "This is a Dependabot-authored run, so SUITE_READ_APP_KEY comes from the"
-          echo "DEPENDABOT secret store — and ${WF_PATH} at the commit under test (blob"
-          echo "${running}) does not match ${BASE_REF}. The workflow about to receive a"
-          echo "GitHub App private key is therefore not the reviewed one."
-          echo
-          echo "To resolve, read the diff first:"
-          echo "  gh pr diff ${PR_NUMBER} --repo ${REPO} -- ${WF_PATH}"
-          echo "If the change is wanted, push any commit to the branch as a human — the"
-          echo "\"Update branch\" button is enough. The next run is human-actored, draws"
-          echo "from the ACTIONS store instead, and this guard stands down."
-          echo "::error title=signature-replay integrity guard::${WF_PATH} differs from ${BASE_REF} on a Dependabot-authored run. Refusing to mint SUITE_READ_APP_KEY into an unreviewed workflow. Review the diff, then push a human commit to the branch to re-run against the Actions secret store."
-          exit 1
-
-      # Every repo in SIGNATURE_SCOPE must be present. A signature that cannot
-      # run against a repo establishes nothing about it, and the job exits 2
-      # rather than pretending otherwise — so these checkouts are load-bearing,
-      # not convenience.
-      #
-      # All of them are PUBLIC, so none takes a `token:`: actions/checkout falls
-      # back to this job's own GITHUB_TOKEN, which reads public repositories
-      # anywhere.
-      #
-      # persist-credentials: false on EVERY checkout, the tokenless ones included.
-      # Without it, actions/checkout leaves whatever credential it used in that
-      # clone's .git/config, inside a job that also uploads an artifact. That is
-      # zizmor's `artipacked` audit, and it is not theoretical here: widen the
-      # upload path by one glob and the credential ships with the report. The
-      # replay only READS these trees; nothing after the checkouts needs git
-      # credentials.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-registry-backend
-          path: suite/terraform-registry-backend
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-state-manager-backend
-          path: suite/terraform-state-manager-backend
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-registry-frontend
-          path: suite/terraform-registry-frontend
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-state-manager-frontend
-          path: suite/terraform-state-manager-frontend
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-suite-identity
-          path: suite/terraform-suite-identity
-      # Moved out of the sethbacon org and renamed on 2026-08-11, which is what
-      # broke this checkout with "Not Found". `path` keeps the OLD name
-      # deliberately: scope.json's `dir` is what `--repos-root suite` resolves
-      # against, and the move did not rename the scope entry.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: 4cloudguru/cloud-suite-ui
-          path: suite/terraform-suite-ui
-      # The shared module both ADO extensions are migrating onto. It is a
-      # checkout rather than an inference: the extensions used to COPY these
-      # modules to each other, and a version pin is only an improvement if
-      # something reads it.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: 4cloudguru/pipeline-task-core
-          path: suite/pipeline-task-core
-      # The SECOND shared destination package, added to SIGNATURE_SCOPE in 2026-08.
-      # The two ADO extensions are splitting their duplicated modules across two
-      # packages rather than one: pipeline-task-core stays platform-agnostic (it
-      # imports neither azure-pipelines-task-lib nor undici) and pipeline-task-ado
-      # takes the code that must name Azure DevOps. Nothing consumes it yet, which
-      # is not a reason to leave it out -- in scope.json and absent here is exit 2
-      # for the whole job, not a quieter run.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: 4cloudguru/pipeline-task-ado
-          path: suite/pipeline-task-ado
-      # The two ADO extensions are siblings that COPY modules between each other
-      # rather than sharing a versioned one, so a class found in either is
-      # presumed in the other and every signature runs in both.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/azure-pipelines-packer
-          path: suite/azure-pipelines-packer
-
-      # The THIRD ADO extension, and today a scaffold: it has no Tasks/ tree, so
-      # scope.json gives it a signature-free kind and no `ado-extension`
-      # signature is pointed at an empty task surface (that would be exit 2, and
-      # exit 2 is could-not-run, never clean). It is in SIGNATURE_SCOPE all the
-      # same, and in scope.json but absent here is exit 2 for the whole job
-      # rather than a quieter run.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/azure-pipelines-release-docs
-          path: suite/azure-pipelines-release-docs
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/azure-pipelines-terraform
-          path: suite/azure-pipelines-terraform
-
-      # The GitHub-Actions family, added to SIGNATURE_SCOPE in 2026-08: two
-      # composite actions whose whole implementation is shell in action.yml, two
-      # node actions that ship TypeScript plus a committed dist/, and the drift
-      # payload contract this extension's TerraformDriftReport task shares with
-      # them — scope.json records it as a `consumes` of this repo. Same rule as
-      # every checkout above — in scope.json and absent here is exit 2 for the
-      # whole job, not a quieter run. Note the OWNER: drift-contract is in the
-      # 4cloudguru org, not sethbacon. Both orgs' repos are public, so this job's
-      # own GITHUB_TOKEN still reads them, but the slug is not interchangeable.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/setup-terraform-hardened
-          path: suite/setup-terraform-hardened
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-provider-mirror
-          path: suite/terraform-provider-mirror
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-drift-report
-          path: suite/terraform-drift-report
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/terraform-module-publish
-          path: suite/terraform-module-publish
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: 4cloudguru/terraform-drift-contract
-          path: suite/terraform-drift-contract
-
-      # Overwrite this repo's sibling copy with the commit under test, so the
-      # replay reads the PR's code and not origin/main's. Guarded because
-      # `github.event.repository` is absent on schedule events — the path would
-      # collapse to `suite/` and dump this repo into the suite root. A scheduled
-      # run wants origin/main anyway, which the explicit checkout above already
-      # fetched.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        if: github.event_name != 'schedule'
-        with:
-          persist-credentials: false
-          clean: false
-          path: suite/${{ github.event.repository.name }}
-
-      # The one private repo, and so the one credential. `owner:` is load-bearing
-      # rather than cosmetic: an app token is minted PER INSTALLATION and an
-      # installation is per account, so the owner has to be named explicitly.
-      # `repositories:` narrows the token to the single repo it is spent on, and
-      # `permission-contents: read` narrows what it may do there — without that
-      # it inherits every permission the installation holds, which is zizmor's
-      # `github-app-token` audit and is how a read-only intention silently
-      # becomes write-capable the day the app is widened.
-      - name: Mint a read token for security-orchestration
-        id: suite-read
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: "${{ vars.SUITE_READ_APP_ID }}"
-          private-key: "${{ secrets.SUITE_READ_APP_KEY }}"
-          owner: sethbacon
-          repositories: security-orchestration
-          permission-contents: read
-
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-          repository: sethbacon/security-orchestration
-          token: "${{ steps.suite-read.outputs.token }}"
-          path: security-orchestration
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      # The credential-lifecycle signature is a type-aware Go analyzer; the
-      # replay invokes it with `go run` from its own module directory.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: security-orchestration/remediation/signatures/credlifecycle/go.mod
-          cache-dependency-path: security-orchestration/remediation/signatures/credlifecycle/go.sum
-
-      # Every ado-extension signature is node: premask-emission.cjs and
-      # output-boundary.cjs are node analysers, and the other six shell out to
-      # each extension's OWN committed gate
-      # (scripts/check-egress-authorization.js, scripts/auth-parity-matrix.cjs,
-      # scripts/check-artifact-trust.js, scripts/check-enforced-disciplines.js,
-      # scripts/check-proxy-parity.js, scripts/check-docs-claims.js) so the
-      # replay and this repo's CI cannot answer differently about the same code.
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "20"
-
-      # --verify-linked-issues: a CLOSED linked issue stops absorbing residual.
-      # Every issue the ledger links to is in a PUBLIC repo, which GITHUB_TOKEN
-      # reads without help, so the app token is not needed here and is not given.
-      # Link an issue in a private repo and this fails loudly as a GATE ERROR
-      # rather than assuming open — at which point widen the credential, not the
-      # assumption.
-      - name: Replay recorded signatures
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python security-orchestration/remediation/replay/replay.py \
-            --ledger security-orchestration/remediation/signatures/ledger.json \
-            --repos-root suite \
-            --verify-linked-issues \
-            --json replay-report.json
-
-      # Exit 1 or 2 already failed the step above; this keeps the machine-readable
-      # report for the run someone will actually want to read.
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: signature-replay-report
-          path: replay-report.json
-          if-no-files-found: ignore
+    uses: 4cloudguru/shared-workflows/.github/workflows/signature-replay.yml@f5d5c746c3d8baa5b66674057ec1d6ebd34c30d2 # v1.8.0
+    # Exactly one secret, named. NOT `secrets: inherit`.
+    secrets:
+      SUITE_READ_APP_KEY: ${{ secrets.SUITE_READ_APP_KEY }}
