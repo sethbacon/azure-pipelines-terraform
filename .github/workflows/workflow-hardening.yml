@@ -1,0 +1,44 @@
+---
+# Workflow-hardening gate, delegated to 4cloudguru/shared-workflows.
+#
+# Asserts four properties are ENFORCED rather than conventionally held: every
+# `uses:` pinned to a full SHA and labelled with the version that SHA is, every
+# job bounded by a timeout, harden-runner running first, and npm installs
+# refusing dependency scripts.
+#
+# This repository is where the gate's own PORTABILITY defect was found. Pointed
+# here at v1.2.0 it reported two FALSE findings about scripts/for-each-task.js:
+# its matcher was fitted to azure-pipelines-release-docs' formatting
+# (`const ACTIONS = {` at two-space indent, a `function npm(` boundary), while
+# this repo declares `const COMMANDS = {` at four-space indent and builds a
+# shell string. The per-task `ci` here has always carried --ignore-scripts.
+#
+# The gate was fixed rather than this repository reshaped: a false FAIL gets
+# satisfied by rewriting working code to suit the matcher, which teaches
+# everyone the gate is about its own shape rather than about the property.
+# Pinned at v1.3.0, which carries that fix.
+#
+# script-ref MUST equal the pin on the `uses:` line: the checker is taken from
+# shared-workflows at that commit, so this repo cannot weaken its own gate by
+# editing a local copy -- there is no local copy.
+name: Workflow Hardening
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-hardening-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-hardening:
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-hardening.yml@27f846580ccd323f515a3e94120e54702a903c5a # v1.3.0
+    with:
+      script-ref: 27f846580ccd323f515a3e94120e54702a903c5a
