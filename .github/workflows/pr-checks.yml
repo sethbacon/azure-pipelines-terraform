@@ -182,12 +182,21 @@ jobs:
   # terraform-registry-frontend, terraform-state-manager-{backend,frontend} and
   # terraform-suite-identity -- and added the self-test named below.
   #
-  # It is mutation-proved: scripts/test-breaking-change-footers.js EXTRACTS the
-  # script below out of this file, rather than copying it (a copy drifts from
-  # the thing it claims to prove, which is the same defect one level up), and
-  # runs it against fixture commit histories with `gh` stubbed. That runs in the
-  # already-required `Lint GitHub Actions` job, beside the other workflow-shaped
-  # gates.
+  # MUTATION-PROVED, but no longer here. The guard was a 128-line shell body
+  # duplicated across NINE repositories -- which is why one regex mistake existed
+  # in nine places at once and took nine pull requests to correct -- so it now
+  # lives once as a composite action in 4cloudguru/shared-workflows, with its
+  # 16-case test beside it in that repository's self-check.
+  #
+  # The test still EXTRACTS the script from the action rather than copying it: a
+  # copy drifts from the thing it claims to prove, which is the same defect one
+  # level up.
+  #
+  # This stays a composite action called as a STEP rather than a reusable
+  # workflow, so the job keeps its name and this check keeps reporting as
+  # "Breaking-change footers survive the squash". A reusable workflow reports as
+  # <caller-job-id> / <called-job-name>, and this context is required in
+  # azure-pipelines-release-docs.
   #
   # A NEW required context has to be added to main's branch protection by hand:
   # "Breaking-change footers survive the squash". Until that is done this job
@@ -217,161 +226,22 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      # The guard is 128 lines of shell that was duplicated across NINE
+      # repositories, which is why one regex mistake existed in nine places at
+      # once and took nine pull requests to correct. It now lives once, in
+      # 4cloudguru/shared-workflows, with its test beside it.
+      #
+      # A composite ACTION, not a reusable workflow: a reusable workflow reports
+      # as <caller-job-id> / <called-job-name>, which would rename this check.
+      # Called as a step, the job keeps its name and the context keeps reporting
+      # as "Breaking-change footers survive the squash", so no branch protection
+      # moves.
       - name: Count breaking-change declarations across this PR's commits
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
-            --jq '.[] | {sha: .sha[0:7], msg: .commit.message}' > commits.ndjson
-
-          total=0
-          report=""
-          strays=0
-          stray_report=""
-          while IFS= read -r line; do
-            [ -n "$line" ] || continue
-            sha=$(jq -r '.sha' <<<"$line")
-            msg=$(jq -r '.msg' <<<"$line")
-            subject=$(head -n1 <<<"$msg")
-
-            # release-please recognises the two spellings of the token by
-            # DIFFERENT rules, and they are not interchangeable. Verified
-            # against release-please 17.11.1's own parser rather than its docs:
-            #
-            #   `BREAKING CHANGE:`, with a space, counts only where the
-            #   Conventional Commits grammar sees a footer -- at the START of a
-            #   line, with no leading whitespace. Mid-sentence or indented it is
-            #   prose, and release-please ignores it.
-            #
-            #   The hyphenated spelling counts EVERYWHERE. release-please's
-            #   postProcessCommits runs an UNANCHORED regex over the commit body
-            #   and takes the rest of the matching line as the description, so it
-            #   fires mid-sentence, indented, inside a fenced code block, and
-            #   even inside a longer word such as NON-BREAKING-CHANGE:.
-            #
-            # Both are read out of the BODY, so the same token in the subject
-            # line is not a declaration.
-            #
-            # Counting only line-anchored matches is what let abacdb5 through:
-            # a sentence NAMING the hyphenated spelling was read as a real
-            # declaration, and release-please proposed a MAJOR bump whose
-            # changelog entry was the remainder of that sentence.
-            body=$(tail -n +2 <<<"$msg")
-            spaced=$(grep -cE '^BREAKING CHANGE:' <<<"$body" || true)
-            # Occurrences, not lines. The squash concatenates every body into one
-            # and that regex is not global, so a second match on the same line is
-            # dropped exactly as surely as one in a later commit.
-            hyphenated=$(grep -oF 'BREAKING-CHANGE:' <<<"$body" | grep -c '' || true)
-            anchored=$(grep -cE '^BREAKING-CHANGE:' <<<"$body" || true)
-            # A hyphenated token anywhere but the start of a line is a
-            # declaration nobody WROTE and release-please acts on regardless.
-            stray=$((hyphenated - anchored))
-            footers=$((spaced + hyphenated))
-            if [ "$footers" -gt 0 ]; then
-              # A footer wins over the header's `!`, so they are not additive.
-              n="$footers"
-            elif printf '%s' "$subject" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then
-              n=1
-            else
-              n=0
-            fi
-
-            if [ "$n" -gt 0 ]; then
-              report="${report}  ${sha}  ${n} declaration(s)  ${subject}"$'\n'
-            fi
-            if [ "$stray" -gt 0 ]; then
-              strays=$((strays + stray))
-              stray_report="${stray_report}  ${sha}  ${stray} off the start of a line  ${subject}"$'\n'
-            fi
-            total=$((total + n))
-          done < commits.ndjson
-
-          echo "Breaking-change declarations in this PR: $total"
-          if [ -n "$report" ]; then
-            printf 'Where they are:\n%s' "$report"
-          fi
-
-          if [ "$strays" -gt 0 ]; then
-            printf 'Not written as a footer:\n%s' "$stray_report"
-            {
-              echo "### A breaking change nobody declared"
-              echo
-              echo "This pull request carries **$strays** hyphenated breaking-change"
-              echo "token(s) somewhere other than the start of a line. release-please"
-              echo "matches that spelling ANYWHERE in a commit body -- mid-sentence,"
-              echo "indented, inside a fenced code block -- and takes the rest of the"
-              echo "line as the description. Prose that merely NAMES the token therefore"
-              echo "forces a MAJOR version bump and writes a changelog entry out of the"
-              echo "remainder of the sentence."
-              echo
-              echo '```'
-              printf '%s' "$stray_report"
-              echo '```'
-              echo
-              echo "To write ABOUT the token, drop the colon, or use the spaced spelling,"
-              echo "which release-please reads only at the start of a line. To declare a"
-              echo "real breaking change, put the footer at the start of its own line."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::This PR has $strays breaking-change token(s) off the start of a line; release-please reads each one as a declaration. See the job summary."
-            exit 1
-          fi
-
-          if [ "$total" -le 1 ]; then
-            echo "OK: at most one declaration, so the squash loses nothing."
-            exit 0
-          fi
-
-          {
-            echo "### Breaking-change declarations do not survive the squash"
-            echo
-            echo "This PR declares **$total** breaking changes. The squash-merge"
-            echo "concatenates every commit body into one commit, and release-please"
-            echo "keeps only the **first** \`BREAKING CHANGE:\` footer of a commit."
-            echo "The other $((total - 1)) would ship with no changelog entry and no notice."
-            echo
-            echo '```'
-            printf '%s' "$report"
-            echo '```'
-            echo
-            echo "Two ways out:"
-            echo
-            echo "1. **One PR per breaking change.** Preferred when they are independent."
-            echo "2. **One footer.** Combine the declarations into a single"
-            echo "   \`BREAKING CHANGE:\` footer and write each one up in the upgrade"
-            echo "   guide, which is where a pipeline author preparing an upgrade looks."
-            echo
-            echo "Moving the footers into separate commits within this PR does **not**"
-            echo "work -- the squash concatenates them back into one commit body."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "::error::This PR declares $total breaking changes; the squash keeps only the first. See the job summary."
-          exit 1
-
-  # ── The merged commit has to be readable by release-please ─────────────
-  # release-please chooses what to release by parsing the commits on main
-  # with a strict reading of the Conventional Commits grammar. A message it
-  # cannot parse is not an error to it: it logs `commit could not be parsed`
-  # at debug level, reports success, and drops the commit. That change then
-  # gets no changelog entry and no version bump, and never will -- every
-  # later run re-reads the same commit and skips it again.
-  #
-  # This is not hypothetical. terraform-state-manager-backend#405, a
-  # dependency migration that cleared seven advisories, merged with a body
-  # line that happened to begin with `WithArgs(pq.Array(...))`. The grammar
-  # reads a line starting with `name(` as a structured token, so its
-  # brackets have to be flat and closed, and nested ones void the whole
-  # commit. The same text one word further along the line is ordinary prose
-  # and parses cleanly. Whether that release got cut came down to where the
-  # paragraph wrapped.
-  #
-  # Its sibling repository made the identical change and released normally,
-  # on the same config and the same action version. Nothing in CI could tell
-  # the two apart, because a PR title check reads only the title and both
-  # titles were correct.
+        uses: 4cloudguru/shared-workflows/.github/actions/breaking-change-footers@8a1e77427abbc21ac693c0b04b7a4b16a46f555f # v1.10.0
+        with:
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+          repo: ${{ github.repository }}
   release-please-can-read-the-commit:
     name: release-please can read the merged commit
     runs-on: ubuntu-latest

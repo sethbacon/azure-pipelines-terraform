@@ -51,7 +51,7 @@ Open one PR per breaking change, or combine them into a single footer and write
 each one up in the upgrade guide. A footer plus a `!` header in the *same*
 commit is one declaration, not two. The `Breaking-change footers survive the
 squash` job in `.github/workflows/pr-checks.yml` counts them across the PR;
-`scripts/test-breaking-change-footers.js` extracts that script from the workflow
+`4cloudguru/shared-workflows' tests/test-breaking-change-footers.js` extracts that script from the workflow
 and proves it still rejects, in the required `Lint GitHub Actions` job.
 
 ## Workflow Per Change
