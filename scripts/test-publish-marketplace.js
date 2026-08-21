@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 // Table-driven self-test for scripts/publish-marketplace.js.
 //
+// BYTE-IDENTICAL across sethbacon/azure-pipelines-terraform,
+// sethbacon/azure-pipelines-packer and sethbacon/azure-pipelines-release-docs,
+// alongside the script it tests.
+//
 // A retry wrapper nobody has watched fail is not a guard, so every row below
 // drives the REAL script against a fake `tfx` that records how it was invoked
 // and can be scripted to fail transiently, fail permanently, or succeed. The

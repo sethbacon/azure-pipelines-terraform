@@ -1,20 +1,34 @@
 #!/usr/bin/env node
-// Publishes the packaged .vsix to the VS Marketplace via tfx-cli, with the two
-// release-pipeline disciplines that were previously only comments in
-// release.yml enforced by construction:
+// Publishes the packaged .vsix to the VS Marketplace via tfx-cli.
+//
+// BYTE-IDENTICAL across sethbacon/azure-pipelines-terraform,
+// sethbacon/azure-pipelines-packer and sethbacon/azure-pipelines-release-docs.
+// All three publish the same kind of artefact the same way, with a token minted
+// from the same service principal, so a fix here belongs in all three: edit one
+// copy and propagate the same bytes rather than repairing only the one that
+// failed. This estate already acquired three hand-copies of one HTTP client and
+// an egress fix that reached only some of them, and both disciplines below were
+// each learned from a real failure in one extension. Issue references are fully
+// qualified for the same reason — a bare `#109` resolves to a different issue
+// in each repository.
+//
+// Two release-pipeline disciplines that were previously only comments in
+// release.yml, enforced here by construction:
 //
 //   1. THE TOKEN NEVER TOUCHES argv. tfx is spawned with --auth-type pat and NO
 //      --token, so it prompts for the token on stdin; the minted Entra access
 //      token is written to that stdin pipe. `::add-mask::` only redacts log
 //      output -- a token on argv is readable in /proc/<pid>/cmdline by anything
-//      else running in the job for the lifetime of the process (CWE-214, #109).
+//      else running in the job for the lifetime of the process (CWE-214,
+//      sethbacon/azure-pipelines-packer#109).
 //
-//   2. A TRANSIENT UPSTREAM FAILURE DOES NOT BURN THE RELEASE. v1.2.7's publish
-//      died on a single HTTP 503 from the Marketplace; with no retry the release
-//      job failed and left an orphaned draft GitHub Release behind. Retries are
-//      bounded and classify the failure: only transport/5xx/429 output is
-//      retried, never a deterministic rejection (bad manifest, auth failure,
-//      duplicate version), so a genuine error still fails fast.
+//   2. A TRANSIENT UPSTREAM FAILURE DOES NOT BURN THE RELEASE. The packer
+//      extension's v1.2.7 publish died on a single HTTP 503 from the
+//      Marketplace; with no retry the release job failed and left an orphaned
+//      draft GitHub Release behind. Retries are bounded and classify the
+//      failure: only transport/5xx/429 output is retried, never a deterministic
+//      rejection (bad manifest, auth failure, duplicate version), so a genuine
+//      error still fails fast.
 //
 //      Retrying a publish is only safe because of the "already published"
 //      handling below: if attempt N actually reached the Marketplace but the
@@ -22,6 +36,13 @@
 //      successfully rather than failing the release a second time. That check is
 //      deliberately gated on attempt >= 2, so publishing a version that really
 //      was already published still fails on a first attempt.
+//
+// The bounded retry is also why the token is minted in the SAME workflow step
+// that runs this script. The publishing service principal carries a Microsoft
+// Graph tokenLifetimePolicy pinning AccessTokenLifetime to 00:10:00, the
+// platform minimum, so the whole retry budget has to fit inside ten minutes:
+// PUBLISH_MAX_ATTEMPTS=4 with a 5s base and exponential backoff spends at most
+// 35s waiting.
 //
 // This runs INSIDE the `marketplace` environment job; it does not change, skip
 // or weaken that environment's required-reviewer approval or its deployment
