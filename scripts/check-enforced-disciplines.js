@@ -145,8 +145,23 @@ if (tasks.length === 0) {
     process.exit(1);
 }
 
-const unitTestYml = readIfExists('.github/workflows/unit-test.yml') || '';
-const ciJobs = parseJobs(unitTestYml);
+// The workflows that RUN the per-task tests: unit-test.yml in the sibling
+// extensions, ci.yml here. release.yml is deliberately not read -- it sets Node
+// up to BUILD, and a build is not an exercise of the test suite.
+const ciJobs = new Map();
+for (const wf of ['unit-test.yml', 'ci.yml']) {
+    const text = readIfExists(`.github/workflows/${wf}`);
+    if (!text) continue;
+    for (const [id, body] of parseJobs(text)) ciJobs.set(`${wf}:${id}`, body);
+}
+
+// A repo may name one job per task, or fan every task out through a single
+// runner. Under the second shape no job mentions any task directory, so matching
+// only on the path would report a fully-tested repo as untested.
+const fanOutScripts = Object.entries((readJsonIfExists('package.json') || {}).scripts || {})
+    .filter(([, cmd]) => /for-each-task(?:\.js)?\s+(?:test|smoke)\b/.test(cmd))
+    .map(([name]) => name);
+const runsEveryTask = (text) => fanOutScripts.some((s) => text.includes(`npm run ${s}`));
 
 for (const task of tasks) {
     const manifest = readJsonIfExists(`${task}/task.json`);
@@ -197,7 +212,7 @@ for (const task of tasks) {
     // Shipping a Node20_1 fallback that CI never runs means the agents least
     // able to recover (older/air-gapped, no Node 24 runner) are the ones that
     // discover a Node-20-incompatible dependency first.
-    const jobsForTask = [...ciJobs.entries()].filter(([, text]) => text.includes(task));
+    const jobsForTask = [...ciJobs.entries()].filter(([, text]) => text.includes(task) || runsEveryTask(text));
     const exercised = new Set();
     for (const [, text] of jobsForTask) {
         for (const major of nodeMajorsIn(text)) exercised.add(major);
@@ -215,8 +230,8 @@ for (const task of tasks) {
             `${task} -> ${handler}`,
             ok,
             ok
-                ? `unit-test.yml runs Node ${major} in ${jobsForTask.map(([id]) => id).join(', ')}`
-                : `task.json declares the ${handler} handler but no unit-test.yml job for ${task} sets up Node ${major} (jobs seen: ${jobsForTask.map(([id]) => id).join(', ') || 'none'})`,
+                ? `Node ${major} runs in ${jobsForTask.map(([id]) => id).join(', ')}`
+                : `task.json declares the ${handler} handler but no test-workflow job for ${task} sets up Node ${major} (jobs seen: ${jobsForTask.map(([id]) => id).join(', ') || 'none'})`,
         );
     }
 }
@@ -264,8 +279,12 @@ for (const task of tasks) {
 // off argv. Both are release-pipeline rules that were previously only comments.
 {
     const releaseYml = readIfExists('.github/workflows/release.yml') || '';
+    // Matched against the same path the wrapper check below looks for: a bare
+    // `publish-marketplace.js` substring also matches test-publish-marketplace.js,
+    // which made a job that merely runs the wrapper's own unit test look like an
+    // unguarded publish.
     const publishJobs = [...parseJobs(releaseYml).entries()].filter(
-        ([, text]) => /tfx\s+extension\s+publish|publish-marketplace\.js/.test(text),
+        ([, text]) => /tfx\s+extension\s+publish/.test(text) || text.includes('scripts/publish-marketplace.js'),
     );
     if (publishJobs.length === 0) {
         record('marketplace-publish-retry', 'release.yml -> publish job', false, 'no job in release.yml publishes the extension; the signature cannot verify the publish disciplines');

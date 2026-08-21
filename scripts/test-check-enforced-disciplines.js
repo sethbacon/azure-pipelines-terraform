@@ -158,7 +158,9 @@ const CASES = [
             const p = path.join(root, '.github/workflows/unit-test.yml');
             fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('          node-version: "20"\n      - run: node src/index.js\n', ''));
         },
-        expect: 'declares the Node20_1 handler but no unit-test.yml job',
+        // "test-workflow" rather than "unit-test.yml": the gate reads whichever
+        // of unit-test.yml / ci.yml a repo keeps its task tests in.
+        expect: 'declares the Node20_1 handler but no test-workflow job',
     },
     {
         name: 'minor-bump-enforced/script',
