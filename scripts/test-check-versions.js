@@ -16,22 +16,35 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
-const scriptPath = path.join(repoRoot, 'scripts', 'check-versions.js');
 const targetFile = path.join('Tasks', 'TerraformTask', 'TerraformTaskV5', 'task.json');
 
-function runCheck(cwd) {
-    return spawnSync(process.execPath, [scriptPath], { cwd, encoding: 'utf8' });
+// check-versions.js resolves the repository from its OWN location, not the
+// working directory, so a scratch tree has to carry a copy of the script for the
+// mutation below to be what the gate reads.
+function runCheck(dir) {
+    return spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-versions.js')], { cwd: dir, encoding: 'utf8' });
 }
+
+// Everything the gate reads: the manifests it compares, the declaration it
+// measures Tasks/ against, and the packaging overrides carrying the publish
+// identity.
+const SCRATCH_INPUTS = [
+    'azure-devops-extension.json',
+    'task-universe.json',
+    '.release-please-manifest.json',
+];
+const SCRATCH_TREES = ['Tasks', 'configs', 'scripts'];
 
 const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-versions-selftest-'));
 let failed = false;
 
 try {
-    fs.copyFileSync(
-        path.join(repoRoot, 'azure-devops-extension.json'),
-        path.join(scratchDir, 'azure-devops-extension.json'),
-    );
-    fs.cpSync(path.join(repoRoot, 'Tasks'), path.join(scratchDir, 'Tasks'), { recursive: true });
+    for (const file of SCRATCH_INPUTS) {
+        fs.copyFileSync(path.join(repoRoot, file), path.join(scratchDir, file));
+    }
+    for (const tree of SCRATCH_TREES) {
+        fs.cpSync(path.join(repoRoot, tree), path.join(scratchDir, tree), { recursive: true });
+    }
 
     const cleanResult = runCheck(scratchDir);
     if (cleanResult.status !== 0) {

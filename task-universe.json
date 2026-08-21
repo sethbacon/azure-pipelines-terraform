@@ -2,5 +2,10 @@
   "$comment": "The DECLARED task universe. Read scripts/lib/task-dirs.js (checkTaskUniverse) before editing.",
   "expect": "present",
   "minTasks": 11,
-  "why": "Eleven tasks ship from this extension. The floor is the count that must exist rather than 0, so a run that enumerates fewer has lost task code rather than found a clean repository — the case a gate cannot otherwise distinguish. Raise it when a task lands; lower it only alongside a task being deliberately removed."
+  "why": "Eleven tasks ship from this extension. The floor is the count that must exist rather than 0, so a run that enumerates fewer has lost task code rather than found a clean repository — the case a gate cannot otherwise distinguish. Raise it when a task lands; lower it only alongside a task being deliberately removed.",
+  "namePrefix": "Pipeline",
+  "namePrefixExceptions": {
+    "Markdown2Html": "predates the Pipeline* convention; the name is what pipelines reference, so renaming it breaks every consumer that already calls it",
+    "PublishKbArticle": "predates the Pipeline* convention; the name is what pipelines reference, so renaming it breaks every consumer that already calls it"
+  }
 }
