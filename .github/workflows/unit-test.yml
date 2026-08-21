@@ -57,6 +57,13 @@ jobs:
         run: node scripts/test-check-per-file-coverage.js
       - name: Self-test publish-marketplace.js
         run: node scripts/test-publish-marketplace.js
+      - name: Self-test for-each-task.js
+        # Through `npm run`, deliberately, unlike its neighbours: npmCli()
+        # resolves the child npm from npm_execpath, which only an `npm run`
+        # parent sets. A bare `node scripts/test-for-each-task.js` would
+        # exercise the fallback branch rather than the path every real
+        # invocation of the runner takes.
+        run: npm run test:task-runner
       - name: Check for mojibake encoding corruption
         shell: bash
         # Catches recurrence of the UTF-8-decoded-as-Windows-1252 corruption
