@@ -39,7 +39,19 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+          # Task versions are compared against the SAME task at the base
+          # revision, which needs the base commit to be in the object store. A
+          # shallow checkout has only the merge commit, so `git show
+          # <base>:Tasks/.../task.json` would fail and check-versions.js fails
+          # closed rather than skipping the comparison.
+          fetch-depth: 0
       - name: Validate version fields
+        env:
+          # On a pull_request the checkout is the merge ref and origin/main is
+          # not fetched, so name the base explicitly; on a push it is the commit
+          # main was at before. check-versions.js falls back to origin/main then
+          # HEAD^ and FAILS if none resolves while tasks exist.
+          BASE_REV: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node scripts/check-versions.js
       - name: Validate task list consistency
         run: node scripts/check-task-list.js
