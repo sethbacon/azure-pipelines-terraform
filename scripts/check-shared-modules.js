@@ -50,14 +50,15 @@ function writeFamilyCopy(canonicalFull, targetFull) {
     fs.copyFileSync(canonicalFull, targetFull)
 }
 
-// The provenance header every cross-repository copy must carry. `upstream` is
-// per-entry rather than baked in: which repository a copy came from is data, and
-// hardcoding one name is how a copy from anywhere else becomes unregisterable.
+// The provenance header every cross-repository copy must carry, exactly once.
+// `upstream` is per-entry rather than baked in: which repository a copy came from
+// is data, and hardcoding one name is how a copy from anywhere else becomes
+// unregisterable.
 function markersFor(upstream) {
     return [
-        { name: 'upstream', re: new RegExp(`@shared-module:\\s*copied from ${upstream}\\s*\\(.+\\)`) },
-        { name: 'policy', re: /@shared-module-policy:\s*\S/ },
-        { name: 'status', re: /@shared-module-status:\s*(IN-SYNC|DIVERGED)\b/ },
+        { name: 'upstream', re: new RegExp(`@shared-module:\\s*copied from ${upstream}\\s*\\(.+\\)`, 'g') },
+        { name: 'policy', re: /@shared-module-policy:\s*\S/g },
+        { name: 'status', re: /@shared-module-status:\s*(IN-SYNC|DIVERGED)\b/g },
     ]
 }
 
@@ -193,11 +194,21 @@ function main(argv = process.argv.slice(2)) {
             continue
         }
         // Only the header comment block matters; scan the first 40 lines.
-        const head = fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n').split('\n').slice(0, 40).join('\n')
-        const missing = markersFor(upstream).filter((m) => !m.re.test(head)).map((m) => m.name)
-        if (missing.length) {
-            console.error(`FAIL: ${file} is missing provenance marker(s): ${missing.join(', ')}`)
-            console.error(`      add the @shared-module / @shared-module-policy / @shared-module-status header (see a sibling module).`)
+        const text = fs.readFileSync(full, 'utf8').replace(/\r\n/g, '\n')
+        // Only the header block declares provenance, so presence is scanned in the
+        // first 40 lines -- but the COUNT is taken over the whole file. Two copies of
+        // a marker are two answers to the same question, and nothing tells a reader,
+        // or the next edit, which of them is the current one.
+        const head = text.split('\n').slice(0, 40).join('\n')
+        const problems = []
+        for (const { name, re } of markersFor(upstream)) {
+            const total = (text.match(re) || []).length
+            if (!new RegExp(re.source).test(head)) problems.push(`${name} missing from the header`)
+            else if (total > 1) problems.push(`${name} declared ${total} times`)
+        }
+        if (problems.length) {
+            console.error(`FAIL: ${file} provenance header: ${problems.join('; ')}`)
+            console.error(`      exactly one @shared-module / @shared-module-policy / @shared-module-status line each (see a sibling module).`)
             hasError = true
         } else {
             console.log(`OK: ${file} carries a valid shared-module provenance header`)
