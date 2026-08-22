@@ -39,6 +39,6 @@ concurrency:
 
 jobs:
   workflow-hardening:
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-hardening.yml@8b7215beac6420881d20d52f9b096edff4238ec9 # v1.6.1
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-hardening.yml@9276df8e0bdb3152e2529ab98c8b99cfb9e22d4b # v1.13.0
     with:
-      script-ref: 8b7215beac6420881d20d52f9b096edff4238ec9
+      script-ref: 9276df8e0bdb3152e2529ab98c8b99cfb9e22d4b
