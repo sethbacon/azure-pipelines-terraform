@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     groups:
@@ -23,6 +28,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -47,6 +57,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -65,6 +80,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -83,6 +103,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -101,6 +126,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -119,6 +149,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -137,6 +172,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -155,6 +195,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -173,6 +218,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -191,6 +241,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -209,6 +264,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -227,6 +287,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 5
@@ -254,11 +319,16 @@ updates:
     directory: /.github/commit-message-check
     schedule:
       interval: weekly
-    cooldown:
-      default-days: 7
       day: monday
       time: "09:00"
       timezone: UTC
+    cooldown:
+      default-days: 7
+    allow:
+      - dependency-type: "direct"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     labels:
       - dependencies
       - github-actions
