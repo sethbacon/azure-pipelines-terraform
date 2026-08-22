@@ -75,7 +75,7 @@ directories and their per-task test commands.
    you are surprised by one. The per-task `Build and Test *` jobs run on both
    Ubuntu and Windows × Node 24:
 
-   <!-- ci-jobs:begin -->
+   <!-- ci-jobs:begin .github/workflows/unit-test.yml -->
    - `Check Version Consistency` — validates the version fields in each `task.json`.
    - `Check Shared Module Parity` — modules with byte-identical copies across tasks
      must stay identical, every outbound HTTP call must honour the agent proxy
