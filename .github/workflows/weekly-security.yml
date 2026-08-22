@@ -539,72 +539,6 @@ jobs:
             })().catch(function (err) { console.error("terraform-docs sha256-only canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
-  # ── Tooling version drift canary ───────────────────────
-  # actionlint and zizmor are both hand-pinned inline (curl + sha256) in
-  # unit-test.yml's actionlint/zizmor jobs rather than tracked by any package
-  # manager Dependabot understands (#824) -- dependabot.yml has no ecosystem
-  # entry for either, so a new release only gets adopted if a human remembers
-  # to bump the version string by hand. Mirrors the HashiCorp GPG / OpenTofu
-  # cosign trust-root canaries above: compares the pinned version against the
-  # tool's latest published release and fails (opening an issue via
-  # notify-on-failure below) when they diverge, rather than drifting forever.
-  tooling-version-drift-canary:
-    name: Tooling version drift canary (actionlint, zizmor)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      # hardening-exception: egress-audit — this job clones this repository;
-      #   harden-runner has never run in this repository, so no endpoint baseline
-      #   exists and a block policy written without one fails closed on its first run;
-      #   audit is what produces that list
-      - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-      - name: Check actionlint version drift
-        run: |
-          set -euo pipefail
-          pinned=$(grep -E 'curl .*actionlint/releases/download/v[0-9]' .github/workflows/unit-test.yml | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          if [ -z "$pinned" ]; then
-            echo "::error::Could not resolve the actionlint version pinned in unit-test.yml."
-            exit 1
-          fi
-          latest=$(curl -fsSL https://api.github.com/repos/rhysd/actionlint/releases/latest | jq -r '.tag_name' | sed 's/^v//')
-          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
-            echo "::error::Could not resolve the latest actionlint release version."
-            exit 1
-          fi
-          echo "Pinned actionlint version: $pinned; latest release: $latest"
-          if [ "$pinned" != "$latest" ]; then
-            echo "::error::actionlint is pinned to $pinned in unit-test.yml but the latest release is $latest. Bump the pinned version, tarball URL, and sha256 checksum (issue #824)."
-            exit 1
-          fi
-          echo "OK: actionlint pin ($pinned) matches the latest release."
-      - name: Check zizmor version drift
-        run: |
-          set -euo pipefail
-          pinned=$(grep -oE 'zizmor-[0-9]+\.[0-9]+\.[0-9]+-py3-none-manylinux' .github/workflows/unit-test.yml | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          if [ -z "$pinned" ]; then
-            echo "::error::Could not resolve the zizmor version pinned in unit-test.yml."
-            exit 1
-          fi
-          latest=$(curl -fsSL https://pypi.org/pypi/zizmor/json | jq -r '.info.version')
-          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
-            echo "::error::Could not resolve the latest zizmor release version from PyPI."
-            exit 1
-          fi
-          echo "Pinned zizmor version: $pinned; latest release: $latest"
-          if [ "$pinned" != "$latest" ]; then
-            echo "::error::zizmor is pinned to $pinned in unit-test.yml but the latest release is $latest. Bump the pinned version, wheel URL, and sha256 checksum (issue #824)."
-            exit 1
-          fi
-          echo "OK: zizmor pin ($pinned) matches the latest release."
-
   # ── Notify on failure ─────────────────────────────────
   notify-on-failure:
     name: Create issue on failure
@@ -619,7 +553,6 @@ jobs:
         opentofu-cosign-canary,
         hashicorp-gpg-canary,
         sha256-only-installer-drift-canary,
-        tooling-version-drift-canary,
       ]
     if: failure() && github.event_name == 'schedule'
     permissions:

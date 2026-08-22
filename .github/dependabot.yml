@@ -5,6 +5,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     groups:
@@ -19,6 +21,8 @@ updates:
     directory: "/Tasks/TerraformTask/TerraformTaskV5"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -41,6 +45,8 @@ updates:
     directory: "/Tasks/TerraformInstaller/TerraformInstallerV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -57,6 +63,8 @@ updates:
     directory: "/Tasks/TerraformProviderMirror/TerraformProviderMirrorV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -73,6 +81,8 @@ updates:
     directory: "/Tasks/TerraformModulePublish/TerraformModulePublishV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -89,6 +99,8 @@ updates:
     directory: "/Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -105,6 +117,8 @@ updates:
     directory: "/Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -121,6 +135,8 @@ updates:
     directory: "/Tasks/TerraformDriftReport/TerraformDriftReportV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -137,6 +153,8 @@ updates:
     directory: "/Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -153,6 +171,8 @@ updates:
     directory: "/Tasks/TerraformDocs/TerraformDocsV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -169,6 +189,8 @@ updates:
     directory: "/Tasks/Markdown2Html/Markdown2HtmlV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -185,6 +207,8 @@ updates:
     directory: "/Tasks/PublishKbArticle/PublishKbArticleV1"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 10
@@ -201,6 +225,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
     open-pull-requests-limit: 5
@@ -228,6 +254,8 @@ updates:
     directory: /.github/commit-message-check
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
       day: monday
       time: "09:00"
       timezone: UTC
