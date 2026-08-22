@@ -95,10 +95,9 @@ directories and their per-task test commands.
    - `Build and Test Markdown2Html V1`
    - `Build and Test Publish KB Article V1`
    - `Build and Test Tab` — type-checks and builds the Terraform results tab.
-   - `Lint GitHub Actions` — actionlint, plus the self-test that proves the
-     breaking-change footer guard in `.github/workflows/pr-checks.yml` still
-     rejects what it claims to (`4cloudguru/shared-workflows' tests/test-breaking-change-footers.js`).
-   - `Scan Workflows (zizmor)` — workflow-security scan.
+   - `Workflow Security` — actionlint checks the workflow schema and zizmor scans
+     for workflow-security anti-patterns, both from `4cloudguru/shared-workflows`'
+     `workflow-security.yml` rather than maintained here.
    <!-- ci-jobs:end -->
 
    This list is checked against `.github/workflows/unit-test.yml` by

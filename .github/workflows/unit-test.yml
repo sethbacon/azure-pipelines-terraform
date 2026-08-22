@@ -948,6 +948,7 @@ jobs:
   # dependabot-cooldown audit never saw dependabot.yml and reported nothing --
   # not because there was nothing to report. The shared job scans the repository.
   workflow-security:
+    name: Workflow Security
     uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@d370b2c876b1c9653bce4424b1b6b9a06898d7ae # v1.12.0
     with:
       # release.yml calls this workflow at the commit it is about to publish;
