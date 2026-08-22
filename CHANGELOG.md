@@ -4,6 +4,51 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.4...v1.14.5) (2026-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* ` spelling
+
+### chore
+
+* direct the next release to 1.14.5 ([#977](https://github.com/sethbacon/azure-pipelines-terraform/issues/977)) ([b8ef23d](https://github.com/sethbacon/azure-pipelines-terraform/commit/b8ef23dbe06538509748ba50253abb486eeedcef))
+
+
+### ci
+
+* count breaking-change declarations across the commits being squashed ([#974](https://github.com/sethbacon/azure-pipelines-terraform/issues/974)) ([abacdb5](https://github.com/sethbacon/azure-pipelines-terraform/commit/abacdb5b2193e93bb3a285f29b56bc81e96ab00d)), closes [#966](https://github.com/sethbacon/azure-pipelines-terraform/issues/966)
+
+
+### Features
+
+* **ci:** one documented-claims gate, with each section conditional on its inputs ([#993](https://github.com/sethbacon/azure-pipelines-terraform/issues/993)) ([8eb10ac](https://github.com/sethbacon/azure-pipelines-terraform/commit/8eb10ac8120e05a9315943528c438e2f234a5c8e))
+* **ci:** one version gate for all three extensions, with the checks each was missing ([#986](https://github.com/sethbacon/azure-pipelines-terraform/issues/986)) ([0a86546](https://github.com/sethbacon/azure-pipelines-terraform/commit/0a865462b500ef042e8984f9151e0b269593bb4f))
+* **ci:** take release-docs' task runner, the one that cannot pass over nothing ([#985](https://github.com/sethbacon/azure-pipelines-terraform/issues/985)) ([9359b46](https://github.com/sethbacon/azure-pipelines-terraform/commit/9359b4637c39623dfe58d2983c8c5a0b18bc5c9f))
+* **ci:** take the shared workflow-security definition, and scan the whole repository ([#990](https://github.com/sethbacon/azure-pipelines-terraform/issues/990)) ([793d66f](https://github.com/sethbacon/azure-pipelines-terraform/commit/793d66faf81eb73235995ec50a419ceff0e1406e))
+
+
+### Bug Fixes
+
+* **ci:** refuse to run signature-replay when Dependabot edited the workflow ([#967](https://github.com/sethbacon/azure-pipelines-terraform/issues/967)) ([c8e5b70](https://github.com/sethbacon/azure-pipelines-terraform/commit/c8e5b700c1e1d0f303cd75f681474ce5c26c666e))
+* **ci:** reject a provenance marker declared twice ([#989](https://github.com/sethbacon/azure-pipelines-terraform/issues/989)) ([0d3bad8](https://github.com/sethbacon/azure-pipelines-terraform/commit/0d3bad82d356add15fbbc03ab4c83b379bffeef0))
+* **ci:** stop a self-test filename counting as an unguarded publish ([#983](https://github.com/sethbacon/azure-pipelines-terraform/issues/983)) ([8829c42](https://github.com/sethbacon/azure-pipelines-terraform/commit/8829c42715302670ccedc8bdc36d9a7a9624bfd8))
+* **release:** a slow validation is not a failed publish ([#968](https://github.com/sethbacon/azure-pipelines-terraform/issues/968)) ([aaa36bd](https://github.com/sethbacon/azure-pipelines-terraform/commit/aaa36bdcbc48b84cb446db3e5e39b80ddf2e53b4))
+
+
+### Documentation
+
+* **security:** record the shared-workflow trust relationship, and fix what it invalidated ([#980](https://github.com/sethbacon/azure-pipelines-terraform/issues/980)) ([7aa261f](https://github.com/sethbacon/azure-pipelines-terraform/commit/7aa261f6c183694fec0e99aebbbe7adc24d6fe1e))
+* **wif:** correct the audience the AWS/GCP/OCI guides tell operators to trust ([#970](https://github.com/sethbacon/azure-pipelines-terraform/issues/970)) ([3863e4b](https://github.com/sethbacon/azure-pipelines-terraform/commit/3863e4b4152ef2a4d2c3f2ad19e66a093dd4977e)), closes [#965](https://github.com/sethbacon/azure-pipelines-terraform/issues/965)
+
+
+### Refactor
+
+* **ci:** make the publish script one file again, not three headers ([#988](https://github.com/sethbacon/azure-pipelines-terraform/issues/988)) ([4870858](https://github.com/sethbacon/azure-pipelines-terraform/commit/48708581482090557dc4676555e0ee19dcf75920))
+* **ci:** share the shared-module gate's logic, keep its lists local ([#987](https://github.com/sethbacon/azure-pipelines-terraform/issues/987)) ([a92fffa](https://github.com/sethbacon/azure-pipelines-terraform/commit/a92fffa7a362755f8c9a83293c0388913564384b))
+* **ci:** take release-docs' task-dirs, the one every other gate sits on ([#984](https://github.com/sethbacon/azure-pipelines-terraform/issues/984)) ([1a97bd1](https://github.com/sethbacon/azure-pipelines-terraform/commit/1a97bd1b79eb4162ec54d2d67e53b5fd44201dd0))
+
 ## [1.14.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.3...v1.14.4) (2026-08-19)
 
 
