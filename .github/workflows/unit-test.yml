@@ -943,81 +943,15 @@ jobs:
         if: needs.build-and-test-tab.result != 'success'
         run: exit 1
 
-  actionlint:
-    name: Lint GitHub Actions
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      # hardening-exception: egress-audit — this job clones this repository;
-      #   harden-runner has never run in this repository, so no endpoint baseline
-      #   exists and a block policy written without one fails closed on its first run;
-      #   audit is what produces that list
-      - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Install actionlint
-        shell: bash
-        # Downloads the release asset directly and verifies it against
-        # actionlint's own published SHA256 checksum before extracting,
-        # rather than the convenience install script (pinned to a commit SHA
-        # below only for its own historical reference) — that script pipes
-        # curl straight into tar with no integrity check at all. Matches this
-        # repo's verify-before-extract convention used everywhere else
-        # (TerraformInstaller/PolicyAgentInstaller GPG+SHA256SUMS, OpenTofu
-        # cosign). Checksum from
-        # https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt
-        # (linux_amd64, matching this job's ubuntu-latest runner).
-        run: |
-          set -euo pipefail
-          curl -sSfLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
-          tar xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
-      - name: Run actionlint
-        run: ./actionlint -color
-  zizmor:
-    name: Scan Workflows (zizmor)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      # hardening-exception: egress-audit — this job calls the GitHub API and clones
-      #   this repository; harden-runner has never run in this repository, so no
-      #   endpoint baseline exists and a block policy written without one fails closed
-      #   on its first run; audit is what produces that list
-      - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Download and verify zizmor
-        shell: bash
-        # Downloads the zizmor wheel directly from PyPI and verifies it
-        # against PyPI's own published SHA256 digest before use, rather than
-        # `pipx run --spec zizmor==1.26.1` (a version-string pin only, with no
-        # integrity check). Matches this repo's verify-before-use convention
-        # used everywhere else (see the actionlint step above). zizmor ships
-        # no runtime Python dependencies (requires_dist is empty per the PyPI
-        # JSON API), so verifying the single wheel it resolves to is
-        # sufficient. Checksum from
-        # https://pypi.org/pypi/zizmor/1.29.0/json (manylinux_2_28_x86_64
-        # wheel, matching this job's ubuntu-latest x86_64 runner).
-        run: |
-          set -euo pipefail
-          curl -sSfLO https://files.pythonhosted.org/packages/b4/f0/dfa67018b76bc4f2f50e265e8cbd1293833d1b1de5f3f02fbbb7487ae9c6/zizmor-1.29.0-py3-none-manylinux_2_28_x86_64.whl
-          echo "587b99c2e1b34575c6c8565c2bfde415ca8bc0310f5589f19bc948c8dea10a20  zizmor-1.29.0-py3-none-manylinux_2_28_x86_64.whl" | sha256sum -c -
-      # Online audits (ref-version-mismatch, impostor-commit, known-vulnerable
-      # actions) use GITHUB_TOKEN; the rest (unpinned-uses, template-injection,
-      # excessive-permissions) run regardless. Pinned for a deterministic gate.
-      - name: Run zizmor
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pipx run --spec ./zizmor-1.29.0-py3-none-manylinux_2_28_x86_64.whl zizmor .github/workflows/
+  # Both linters come from the shared definition rather than being maintained
+  # here. The local pair scanned `.github/workflows/` only, so zizmor's
+  # dependabot-cooldown audit never saw dependabot.yml and reported nothing --
+  # not because there was nothing to report. The shared job scans the repository.
+  workflow-security:
+    name: Workflow Security
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@d370b2c876b1c9653bce4424b1b6b9a06898d7ae # v1.12.0
+    with:
+      # release.yml calls this workflow at the commit it is about to publish;
+      # the linters have to read that commit, not the run's default.
+      ref: ${{ inputs.ref || github.sha }}
+
