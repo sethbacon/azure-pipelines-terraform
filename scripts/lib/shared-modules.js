@@ -141,6 +141,23 @@ const FAMILIES = [
         ],
     },
     {
+        // The migration notice both KB-publishing tasks emit on every run while
+        // they move to azure-pipelines-release-docs. Shared for the same reason
+        // the sanitizers above are: it states WHERE these tasks are going and
+        // WHAT they will be called, and two tasks migrating to one destination
+        // must not answer that in two ways. A corrected URL, a changed
+        // replacement name or a revised cutover story applied to one task and
+        // missed in the other is precisely how a consumer ends up following a
+        // stale instruction (#55).
+        dirs: [
+            'Tasks/Markdown2Html/Markdown2HtmlV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'deprecation-notice.ts',
+        ],
+    },
+    {
         // Frozen plan/apply digest CONTRACT shared between the task that PRODUCES
         // the redacted digest (src/results/) and the build-results tab that
         // CONSUMES it (src/tab/). digest-schema.ts is the versioned TypeScript

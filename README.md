@@ -399,6 +399,8 @@ Generates documentation for a Terraform module using terraform-docs. Requires te
 
 ### `Markdown2Html@1` — Markdown to HTML Converter
 
+> **Moving to another extension.** This task is being republished as `PipelineMarkdown2Html` in [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs). A task GUID cannot be reused across two separately-published extensions, so the replacement arrives under a new name and a new id: `Markdown2Html@1` keeps resolving here until you edit your YAML, and both extensions can be installed side by side while you move. Every run of this task now logs a non-fatal warning saying so. No cutover date has been set — see the link for status.
+
 Converts Markdown files to a single styled HTML document (via markdown-it with highlight.js syntax highlighting) — typically the module docs produced by `PipelineTerraformDocs@1` — ready to publish as a ServiceNow knowledge base article. Pure local processing; no network access.
 
 | Input         | Default                   | Description                                                                                                                 |
@@ -419,6 +421,8 @@ Converts Markdown files to a single styled HTML document (via markdown-it with h
 | `htmlFilePath` | Absolute path to the generated HTML file. |
 
 ### `PublishKbArticle@1` — Publish KB Article to ServiceNow
+
+> **Moving to another extension.** This task is being republished as `PipelinePublishKbArticle` in [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs), for the same reasons and on the same terms as `Markdown2Html@1` above: new name, new id, `PublishKbArticle@1` keeps resolving here until you edit your YAML, and every run now logs a non-fatal warning. No cutover date has been set.
 
 Creates or updates a ServiceNow knowledge base article from an HTML file. Idempotent: a stable `sourceKey` (or a `kb-key:` front-matter field) correlates re-runs to the same article. Optionally auto-creates categories/subcategories and uploads relative `<img>` images as attachments. Authenticates via a `ServiceNowKb` service connection (OAuth client credentials or basic) or inline credentials. See the [ServiceNow Setup Guide](docs/setup/servicenow-setup.md) for the minimal ServiceNow roles/ACLs this integration needs.
 

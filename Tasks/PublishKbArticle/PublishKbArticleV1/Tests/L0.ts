@@ -22,6 +22,7 @@ import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
 import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment, MAX_ATTACHMENT_BYTES } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
+import { migrationNotice, MIGRATION_URL } from '../src/deprecation-notice';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
 // Direct unit tests for the shared html-sanitizer.ts allowlist policy and
@@ -40,6 +41,31 @@ const HEADERS = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
 };
+
+// ---------------------------------------------------------------------------
+// migrationNotice (deprecation-notice.ts)
+// ---------------------------------------------------------------------------
+
+describe('migrationNotice', () => {
+    const notice = migrationNotice('PublishKbArticle', 'PipelinePublishKbArticle');
+
+    it('names this task and its replacement', () => {
+        assert.ok(notice.includes('PublishKbArticle'));
+        assert.ok(notice.includes('PipelinePublishKbArticle'));
+    });
+
+    it('points at the documented migration URL', () => {
+        assert.ok(notice.includes(MIGRATION_URL));
+    });
+
+    it('stays on one line so the ##vso logissue command is not split', () => {
+        assert.ok(!/[\r\n]/.test(notice));
+    });
+
+    it('says the current build is unaffected, since the warning must not read as a failure', () => {
+        assert.ok(/unaffected/i.test(notice));
+    });
+});
 
 // ---------------------------------------------------------------------------
 // Spy helpers for tasks.setSecret / tasks.warning
