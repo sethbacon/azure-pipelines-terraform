@@ -342,6 +342,7 @@ Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to H
 | `highlight-theme.ts`  | Syntax-highlighting theme wiring for `highlight.js`                                                                                                                  |
 | `document.ts`         | Document model / metadata                                                                                                                                            |
 | `render.ts`           | HTML rendering + sanitization (uses `uri-scheme-guard.ts`)                                                                                                           |
+| `deprecation-notice.ts` | The migration notice this task warns with on every run (#55) — byte-identical copy also in PublishKbArticleV1 |
 | `html-sanitizer.ts`   | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in PublishKbArticleV1, gated by `scripts/check-shared-modules.js`                       |
 | `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1                                                                          |
 | `html-sanitizer.ts`   | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in PublishKbArticleV1 (#820) |
@@ -365,6 +366,7 @@ Source: `Tasks/PublishKbArticle/PublishKbArticleV1/src/`. Publishes or updates a
 | `uri-scheme-guard.ts`  | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in Markdown2HtmlV1                                                                          |
 | `manifest.ts`          | Legacy `KB<number>.json` manifest read/write                                                                                                                      |
 | `dry-run.ts`           | `dryRun` mode — validates without calling ServiceNow                                                                                                              |
+| `deprecation-notice.ts` | The migration notice this task warns with on every run (#55) — byte-identical copy also in Markdown2HtmlV1 |
 | `html-sanitizer.ts`    | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in Markdown2HtmlV1 (#820) |
 
 Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.

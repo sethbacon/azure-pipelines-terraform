@@ -23,6 +23,7 @@ import {
 } from '../src/render';
 import { generateHtmlDocument } from '../src/document';
 import { parseFileList, processFileList, processFrontMatterDriven } from '../src/converter';
+import { migrationNotice, MIGRATION_URL } from '../src/deprecation-notice';
 
 // Per-scenario security suites, split into self-titled files (#565) matching
 // the sibling tasks' Tests/ convention so the abuse-case inventory is visible
@@ -56,6 +57,31 @@ function writeTmpDir(files: Record<string, string>): string {
     }
     return dir;
 }
+
+// ---------------------------------------------------------------------------
+// migrationNotice (deprecation-notice.ts)
+// ---------------------------------------------------------------------------
+
+describe('migrationNotice', () => {
+    const notice = migrationNotice('Markdown2Html', 'PipelineMarkdown2Html');
+
+    it('names this task and its replacement', () => {
+        assert.ok(notice.includes('Markdown2Html'));
+        assert.ok(notice.includes('PipelineMarkdown2Html'));
+    });
+
+    it('points at the documented migration URL', () => {
+        assert.ok(notice.includes(MIGRATION_URL));
+    });
+
+    it('stays on one line so the ##vso logissue command is not split', () => {
+        assert.ok(!/[\r\n]/.test(notice));
+    });
+
+    it('says the current build is unaffected, since the warning must not read as a failure', () => {
+        assert.ok(/unaffected/i.test(notice));
+    });
+});
 
 // ---------------------------------------------------------------------------
 // parseFrontMatter

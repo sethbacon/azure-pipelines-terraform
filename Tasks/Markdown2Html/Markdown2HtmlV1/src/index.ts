@@ -1,9 +1,13 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { processFrontMatterDriven, processFileList, parseFileList } from './converter';
+import { migrationNotice } from './deprecation-notice';
 
 async function run(): Promise<void> {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
+    // Outside the try: a notice the catch could swallow would go quiet on
+    // exactly the runs most likely to be someone's last with this task.
+    tasks.warning(migrationNotice('Markdown2Html', 'PipelineMarkdown2Html'));
     try {
         const mode = tasks.getInput('mode', true)!;
         const outputFile = tasks.getInput('outputFile', true)!;

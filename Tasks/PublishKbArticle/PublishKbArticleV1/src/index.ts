@@ -15,6 +15,7 @@ import { DryRunPlan, PlannedAction, formatDryRunReport } from './dry-run';
 import { processArticleImages } from './attachments';
 import { updateArticleBody } from './servicenow-client';
 import { ServiceNowHttpError } from './servicenow-http';
+import { migrationNotice } from './deprecation-notice';
 
 interface ResolvedAuth {
     instance: string;
@@ -250,6 +251,9 @@ async function executeCreateOrUpdate(
 
 async function run() {
     tasks.setResourcePath(path.join(__dirname, '..', 'task.json'));
+    // Outside the try: a notice the catch could swallow would go quiet on
+    // exactly the runs most likely to be someone's last with this task.
+    tasks.warning(migrationNotice('PublishKbArticle', 'PipelinePublishKbArticle'));
     try {
         const { instance, headers } = await resolveAuth();
 
