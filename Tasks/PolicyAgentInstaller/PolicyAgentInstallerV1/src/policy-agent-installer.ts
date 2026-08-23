@@ -3,8 +3,6 @@ import tools = require('azure-pipelines-tool-lib/tool');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
-import crypto = require('crypto');
-import { pipeline } from 'stream/promises';
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
@@ -12,6 +10,10 @@ import { getBoolInputDefaultTrue } from './bool-input';
 import { verifyGpgSignature } from './gpg-verifier';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
+import { getPlatformString, hashFile, verifySha256 } from './tool-integrity';
+// Re-exported so this module's public surface is unchanged by the move to the
+// shared copy: existing importers and tests keep resolving them here (#996).
+export { getPlatformString, verifySha256 } from './tool-integrity';
 
 // The package does not import the ADO task lib, so the discard's log line is wired here.
 const discardLog = { debug: (message: string) => tasks.debug(message) };
@@ -545,31 +547,6 @@ export function parseFirstSha256(content: string, fileName: string): string {
     return parseSha256(content, fileName);
 }
 
-export async function verifySha256(filePath: string, expectedHash: string): Promise<void> {
-    const actualHash = await computeSha256Streaming(filePath);
-    if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
-        throw new VerificationFailure(tasks.loc("Sha256VerificationFailed", expectedHash, actualHash));
-    }
-    tasks.debug(`SHA256 verification passed: ${actualHash}`);
-}
-
-/**
- * Computes a file's SHA256 via a streaming read (fs.createReadStream piped into
- * the hash) instead of buffering the whole file into memory at once (#728).
- * A compromised/malicious registry or mirror serving an oversized artifact
- * would otherwise drive the agent toward memory exhaustion at this step; the
- * streaming approach keeps memory usage constant regardless of file size.
- */
-async function computeSha256Streaming(filePath: string): Promise<string> {
-    const hash = crypto.createHash('sha256');
-    await pipeline(fs.createReadStream(filePath), hash);
-    return hash.digest('hex');
-}
-
-async function hashFile(filePath: string): Promise<string> {
-    return computeSha256Streaming(filePath);
-}
-
 /**
  * Writes a local integrity marker recording the SHA256 of the just-verified,
  * just-cached executable, so a later job's cache hit for the same tool/version can
@@ -717,15 +694,6 @@ async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string,
     }
     await writeCacheIntegrityMarker(toolDir, cachedExePath);
     console.log(tasks.loc("CachedToolReverified", toolLabel));
-}
-
-export function getPlatformString(): string {
-    switch (os.type()) {
-        case "Darwin": return "darwin";
-        case "Linux": return "linux";
-        case "Windows_NT": return "windows";
-        default: throw new Error(tasks.loc("OperatingSystemNotSupported", os.type()));
-    }
 }
 
 export function getArchString(): string {
