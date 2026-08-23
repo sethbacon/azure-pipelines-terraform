@@ -93,6 +93,33 @@ const FAMILIES = [
         ],
     },
     {
+        // Artifact hashing and platform detection shared by the same three
+        // installer tasks: computing a downloaded artifact's SHA256 and comparing
+        // it to a published checksum. Previously hand-duplicated inline in each
+        // installer with identical bodies (#996).
+        //
+        // This duplication was invisible to BOTH gates while it lived inline:
+        // this script only compares files named in FAMILIES, and
+        // check-near-duplicate-modules.js groups by basename, so bodies sitting in
+        // terraform-installer.ts, policy-agent-installer.ts and
+        // terraform-docs-installer.ts were never compared to each other.
+        // Extracting them into one same-named module is what puts them in reach.
+        //
+        // writeCacheIntegrityMarker/verifyCachedTool are byte-identical across the
+        // three too, and are NOT here: check-artifact-trust.js resolves a
+        // CACHE-ADMIT verdict within a single file, so moving them out reports the
+        // cache-admission sites as TRUSTS-CACHE-BLINDLY. See the note in
+        // tool-integrity.ts.
+        dirs: [
+            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
+        ],
+        modules: [
+            'tool-integrity.ts',
+        ],
+    },
+    {
         // Fail-closed boolean-input helper: requireGpgSignature / requireChecksum /
         // requireCosignVerification default to TRUE even on agents that do not
         // materialize task.json defaultValues. A drift here could silently flip a
