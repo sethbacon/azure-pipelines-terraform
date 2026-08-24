@@ -62,11 +62,17 @@ const ROOT = path.resolve(argv.find((a) => !a.startsWith('--')) || process.cwd()
 
 // --- discovery -------------------------------------------------------------
 
-/** Every `*-command-handler.ts` under any Tasks/<task>/<version>/src directory. */
+/**
+ * Every `*-command-handler.ts` under any Tasks/<task>/<version>/src directory,
+ * and the count of `.ts` files that population was filtered out of. That count
+ * is the denominator: without it, "this repo has no auth handlers" and "this
+ * walk started at the wrong directory" are the same answer.
+ */
 function discoverHandlers(root) {
     const found = [];
+    let scanned = 0;
     const tasksDir = path.join(root, 'Tasks');
-    if (!fs.existsSync(tasksDir)) return found;
+    if (!fs.existsSync(tasksDir)) return { found, scanned };
     const walk = (dir, depth) => {
         if (depth > 6) return;
         let entries;
@@ -75,13 +81,14 @@ function discoverHandlers(root) {
             if (e.name === 'node_modules' || e.name === '.git') continue;
             const full = path.join(dir, e.name);
             if (e.isDirectory()) walk(full, depth + 1);
-            else if (e.isFile() && /-command-handler\.ts$/.test(e.name) && path.basename(dir) === 'src') {
-                found.push(full);
+            else if (e.isFile() && path.basename(dir) === 'src' && e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) {
+                scanned += 1;
+                if (/-command-handler\.ts$/.test(e.name)) found.push(full);
             }
         }
     };
     walk(tasksDir, 0);
-    return found.sort();
+    return { found: found.sort(), scanned };
 }
 
 // --- lexing helpers --------------------------------------------------------
@@ -514,7 +521,7 @@ function analyzeHandler(file, root) {
 
 // --- run -------------------------------------------------------------------
 
-const handlers = discoverHandlers(ROOT);
+const { found: handlers, scanned } = discoverHandlers(ROOT);
 let cells = [];
 for (const f of handlers) cells = cells.concat(analyzeHandler(f, ROOT));
 
@@ -530,9 +537,9 @@ cells = [...bySite.values()].sort((a, b) => (a.file + a.site).localeCompare(b.fi
 const unguarded = cells.filter((c) => c.verdict === 'UNGUARDED');
 
 if (AS_JSON) {
-    console.log(JSON.stringify({ root: ROOT, handlerFiles: handlers.length, cells, unguarded: unguarded.length }, null, 2));
+    console.log(JSON.stringify({ root: ROOT, handlerFiles: handlers.length, scanned, cells, unguarded: unguarded.length }, null, 2));
 } else if (!QUIET) {
-    console.log(`auth-parity-matrix: ${handlers.length} handler file(s) under ${ROOT}`);
+    console.log(`auth-parity-matrix: ${handlers.length} handler file(s) under ${ROOT}, out of ${scanned} source file(s) read`);
     console.log('');
     const w = (s, n) => String(s).padEnd(n).slice(0, n);
     console.log(`${w('HANDLER', 9)} ${w('BRANCH', 30)} ${w('FIELD/CELL', 26)} ${w('VERDICT', 9)} ${w('LINE', 5)} DETAIL`);
