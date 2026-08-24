@@ -949,7 +949,7 @@ jobs:
   # not because there was nothing to report. The shared job scans the repository.
   workflow-security:
     name: Workflow Security
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@9276df8e0bdb3152e2529ab98c8b99cfb9e22d4b # v1.13.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@9ed6d3c988fb075f1023680d92eb4cf5a8e55056 # v1.14.0
     with:
       # release.yml calls this workflow at the commit it is about to publish;
       # the linters have to read that commit, not the run's default.
