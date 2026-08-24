@@ -955,3 +955,25 @@ jobs:
       # the linters have to read that commit, not the run's default.
       ref: ${{ inputs.ref || github.sha }}
 
+  # Recorded ALONGSIDE the gate above, never instead of it. workflow-security.yml
+  # runs zizmor with advanced-security: false, where its exit code stands and a
+  # finding fails the job; this one runs the same scanner with sarif, where zizmor
+  # EXITS 0 WHATEVER IT FINDS and the job's purpose is to upload. Together:
+  # findings block the pull request AND persist in the security tab, where one can
+  # be dismissed with a reason that outlives the run. Before this, findings here
+  # blocked and left no record (4cloudguru/shared-workflows#25).
+  #
+  # The permission is granted at this `uses:` site because that is the only place
+  # it can be: a called workflow cannot raise its own ceiling. Every caller of THIS
+  # file must grant it too -- see release.yml and weekly-security.yml -- because a
+  # job requesting more than its caller allows is a startup failure that produces
+  # NO JOBS, so it cannot fail a required check either. The context simply never
+  # appears, which is indistinguishable from one still running
+  # (4cloudguru/shared-workflows#19).
+  workflow-security-record:
+    name: Workflow Security Record
+    permissions:
+      contents: read
+      security-events: write
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@9ed6d3c988fb075f1023680d92eb4cf5a8e55056 # v1.14.0
+

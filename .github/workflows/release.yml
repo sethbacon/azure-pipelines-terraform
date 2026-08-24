@@ -149,6 +149,14 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   ci:
+    # Raised for the workflow-security-record job inside unit-test.yml. A
+    # called workflow's token is capped by its CALLER's, so a permission the
+    # caller does not hold is a startup failure with zero jobs rather than a
+    # red check (4cloudguru/shared-workflows#19).
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     name: CI (build + test)
     needs: guard
     uses: ./.github/workflows/unit-test.yml
