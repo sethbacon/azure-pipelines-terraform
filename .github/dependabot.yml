@@ -5,6 +5,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -13,7 +16,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
+      prefix: "chore(deps)"
     groups:
       # Minor/patch Action bumps are low-risk and numerous; batch them into one
       # PR so a solo maintainer isn't triaging dozens of near-identical bumps
@@ -26,6 +29,9 @@ updates:
     directory: "/Tasks/TerraformTask/TerraformTaskV5"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -34,8 +40,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       # Batch low-risk devDependency minor/patch bumps into one PR per task so
       # the moderate/low-severity triage path SECURITY.md describes stays
@@ -55,6 +60,9 @@ updates:
     directory: "/Tasks/TerraformInstaller/TerraformInstallerV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -63,8 +71,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -78,6 +85,9 @@ updates:
     directory: "/Tasks/TerraformProviderMirror/TerraformProviderMirrorV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -86,8 +96,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -101,6 +110,9 @@ updates:
     directory: "/Tasks/TerraformModulePublish/TerraformModulePublishV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -109,8 +121,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -124,6 +135,9 @@ updates:
     directory: "/Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -132,8 +146,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -147,6 +160,9 @@ updates:
     directory: "/Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -155,8 +171,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -170,6 +185,9 @@ updates:
     directory: "/Tasks/TerraformDriftReport/TerraformDriftReportV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -178,8 +196,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -193,6 +210,9 @@ updates:
     directory: "/Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -201,8 +221,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -216,6 +235,9 @@ updates:
     directory: "/Tasks/TerraformDocs/TerraformDocsV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -224,8 +246,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -239,6 +260,9 @@ updates:
     directory: "/Tasks/Markdown2Html/Markdown2HtmlV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -247,8 +271,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -262,6 +285,9 @@ updates:
     directory: "/Tasks/PublishKbArticle/PublishKbArticleV1"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -270,8 +296,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 10
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -285,6 +310,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: monday
+      time: "09:00"
+      timezone: UTC
     cooldown:
       default-days: 7
     allow:
@@ -293,8 +321,7 @@ updates:
           - "version-update:semver-minor"
           - "version-update:semver-patch"
     commit-message:
-      prefix: "chore"
-    open-pull-requests-limit: 5
+      prefix: "chore(deps)"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -333,7 +360,7 @@ updates:
       - dependencies
       - github-actions
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "chore(deps)"
     groups:
       commit-message-check:
         patterns:
