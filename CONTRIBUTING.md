@@ -412,6 +412,8 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 The Marketplace publish uses **GitHub OIDC federated to Microsoft Entra** — there is no stored Marketplace PAT. The `release.yml` publish job runs under the `marketplace` environment with `id-token: write`, signs in via `azure/login` using `AZDO_PUBLISH_CLIENT_ID`/`AZDO_PUBLISH_TENANT_ID`, exchanges the OIDC token for a short-lived Entra access token, and passes it to `tfx extension publish`. The Entra app must have a federated credential whose subject is `repo:sethbacon/azure-pipelines-terraform:environment:marketplace`.
 
+> **That subject shape is this repository's, not a template.** GitHub gives repositories created after **2026-07-15** an immutable default OIDC subject embedding the owner and repository IDs — `repo:OWNER@<ownerId>/REPO@<repoId>:environment:marketplace`. This repository was created 2026-03-06 and keeps the plain form; the sibling azure-pipelines-release-docs was created 2026-08-11 and does not, so a credential copied from the line above would never have matched there. A **rename or transfer** after the cutoff moves a legacy repository onto the immutable form too, which would invalidate the credential above. Read the authoritative value rather than assuming: `gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix`. A mismatch surfaces as `AADSTS700213: No matching federated identity record found`, which reads like a missing credential rather than a malformed one.
+
 The `marketplace` environment (Settings → Environments) must have at least one required reviewer so every VS Marketplace publish gets human approval.
 
 ## Personal Dev Publishing
