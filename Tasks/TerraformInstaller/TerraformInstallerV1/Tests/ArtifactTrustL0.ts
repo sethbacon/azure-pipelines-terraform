@@ -37,6 +37,12 @@ const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const TF = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts';
 const PA = 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts';
 const TD = 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/terraform-docs-installer.ts';
+// writeCacheIntegrityMarker/verifyCachedTool live in the shared tool-integrity.ts
+// beside the hashing primitives they are built on (#998), one per task's own
+// src/ directory (kept byte-identical, guarded by check-shared-modules.js).
+const TF_TI = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/tool-integrity.ts';
+const PA_TI = 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/tool-integrity.ts';
+const TD_TI = 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/tool-integrity.ts';
 
 type SiteRow = { file: string; fn: string; kind: string; verdict: string };
 
@@ -78,8 +84,8 @@ const SITE_ROWS: SiteRow[] = [
     { file: TF, fn: 'downloadZipFromMirror', kind: 'SUMS-ABSENT', verdict: 'HONORS-SIGNATURE-TOGGLE' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
-    { file: TF, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
-    { file: TF, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
+    { file: TF_TI, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
+    { file: TF_TI, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
     { file: TF, fn: 'downloadTofu', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
     { file: TF, fn: 'resolveVersionFromOpenTofu', kind: 'LATEST', verdict: 'FAILS-CLOSED' },
     { file: TF, fn: 'downloadZipFromOpenTofu', kind: 'ACQUIRE', verdict: 'VERIFIED' },
@@ -109,8 +115,8 @@ const SITE_ROWS: SiteRow[] = [
     { file: PA, fn: 'verifyMirrorChecksum', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: PA, fn: 'downloadTo', kind: 'ACQUIRE', verdict: 'EXEMPT-DELEGATES-TO-CALLER' },
     { file: PA, fn: 'downloadFromMirrorUrl', kind: 'ACQUIRE', verdict: 'EXEMPT-DELEGATES-TO-CALLER' },
-    { file: PA, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
-    { file: PA, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
+    { file: PA_TI, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
+    { file: PA_TI, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
 
     // ---------------- TerraformDocsInstallerV1: sha256 only, no signature ----------
     { file: TD, fn: 'downloadTerraformDocs', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
@@ -124,8 +130,8 @@ const SITE_ROWS: SiteRow[] = [
     { file: TD, fn: 'verifyChecksumOrSkip', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TD, fn: 'downloadTo', kind: 'ACQUIRE', verdict: 'EXEMPT-DELEGATES-TO-CALLER' },
     { file: TD, fn: 'downloadFromMirrorUrl', kind: 'ACQUIRE', verdict: 'EXEMPT-DELEGATES-TO-CALLER' },
-    { file: TD, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
-    { file: TD, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
+    { file: TD_TI, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
+    { file: TD_TI, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
 ];
 
 // --- Table B: the cache-integrity marker's edge states ----------------------
@@ -403,5 +409,98 @@ describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
                 }
             });
         }
+    });
+
+    describe('D. cross-file CACHE-ADMIT resolution is not over-widened (#998)', () => {
+        // Proves scripts/check-artifact-trust.js resolving names imported from a
+        // sibling module (so writeCacheIntegrityMarker/verifyCachedTool could move
+        // into tool-integrity.ts without blinding the gate) did not also make it
+        // stop catching a GENUINELY blind cache admission. Two synthetic files a
+        // real installer's shape, minus everything not needed for the classification:
+        // one whose CACHE-ADMIT function calls a reader imported from a sibling (the
+        // capability this issue added) and re-verifies, one whose CACHE-ADMIT
+        // function calls nothing at all (still blind, must still fail). A third
+        // sibling carries the 64-hex validator pattern the reader imports rather than
+        // declares itself, proving hexConsts resolves across the same import too.
+        let dir: string;
+
+        beforeEach(() => {
+            dir = fs.mkdtempSync(path.join(os.tmpdir(), 'artifact-trust-crossfile-'));
+            fs.mkdirSync(path.join(dir, 'src'));
+            fs.writeFileSync(path.join(dir, 'src', 'hex-pattern.ts'),
+                `export const MARKER_HEX_PATTERN = /^[a-fA-F0-9]{64}$/;\n`);
+            fs.writeFileSync(path.join(dir, 'src', 'reader.ts'), [
+                `import * as fs from 'fs';`,
+                `import { MARKER_HEX_PATTERN } from './hex-pattern';`,
+                ``,
+                `export function verifyMarker(markerPath: string, expected: string): boolean {`,
+                `    const stored = fs.readFileSync(markerPath, 'utf8');`,
+                `    if (!MARKER_HEX_PATTERN.test(stored)) return false;`,
+                `    return stored === expected;`,
+                `}`,
+                ``,
+                `export function writeMarker(markerPath: string, digestValue: string): void {`,
+                `    const tmp = markerPath + '.tmp';`,
+                `    fs.writeFileSync(tmp, digestValue);`,
+                `    fs.renameSync(tmp, markerPath);`,
+                `}`,
+                ``,
+            ].join('\n'));
+            fs.writeFileSync(path.join(dir, 'src', 'admit-crossfile.ts'), [
+                `import { verifyMarker, writeMarker } from './reader';`,
+                ``,
+                `export async function downloadWithCrossFileReverify(markerPath: string, expected: string): Promise<void> {`,
+                `    const cached = findLocalTool('thing', '1.0.0');`,
+                `    if (cached) {`,
+                `        const verified = verifyMarker(markerPath, expected);`,
+                `        if (verified) {`,
+                `            writeMarker(markerPath, expected);`,
+                `        }`,
+                `    }`,
+                `}`,
+                ``,
+            ].join('\n'));
+            fs.writeFileSync(path.join(dir, 'src', 'admit-blind.ts'), [
+                `export async function downloadBlindly(): Promise<void> {`,
+                `    const cached = findLocalTool('other-thing', '2.0.0');`,
+                `    if (cached) {`,
+                `        // no re-verification of any kind`,
+                `    }`,
+                `}`,
+                ``,
+            ].join('\n'));
+        });
+        afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+        function siteFor(fnName: string) {
+            let stdout: string;
+            try {
+                stdout = execFileSync(
+                    process.execPath,
+                    [path.join(REPO_ROOT, 'scripts/check-artifact-trust.js'), dir, '--json'],
+                    { encoding: 'utf8' },
+                );
+            } catch (err) {
+                // The blind fixture is EXPECTED to fail the gate (exit 1) — that is
+                // what this test is proving still happens. Only the JSON on stdout
+                // matters here, same as Table A above.
+                stdout = String((err as { stdout?: string }).stdout ?? '');
+                assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
+            }
+            const report = JSON.parse(stdout) as { sites: Array<{ fn: string; kind: string; verdict: string }> };
+            return report.sites.find((s) => s.fn === fnName && s.kind === 'CACHE-ADMIT');
+        }
+
+        it('still reports TRUSTS-CACHE-BLINDLY for a cache-admit site with no reverification at all', () => {
+            const site = siteFor('downloadBlindly');
+            assert.strictEqual(site?.verdict, 'TRUSTS-CACHE-BLINDLY',
+                'cross-file resolution must not exonerate a site that calls no reader, local or imported');
+        });
+
+        it('reports REVERIFIES-AND-GATES when the reader/writer are imported from a sibling file', () => {
+            const site = siteFor('downloadWithCrossFileReverify');
+            assert.strictEqual(site?.verdict, 'REVERIFIES-AND-GATES',
+                'a cache-admit site that calls an imported reader and gates an imported writer on its result must not read as blind merely because the pair live in another file');
+        });
     });
 });

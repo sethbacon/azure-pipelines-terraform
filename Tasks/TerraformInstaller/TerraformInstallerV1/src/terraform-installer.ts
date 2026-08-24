@@ -11,10 +11,10 @@ import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
-import { getPlatformString, hashFile, verifySha256 } from './tool-integrity';
+import { getPlatformString, hashFile, verifySha256, writeCacheIntegrityMarker, verifyCachedTool } from './tool-integrity';
 // Re-exported so this module's public surface is unchanged by the move to the
 // shared copy: existing importers and tests keep resolving them here (#996).
-export { getPlatformString, verifySha256 } from './tool-integrity';
+export { getPlatformString, verifySha256, writeCacheIntegrityMarker, verifyCachedTool } from './tool-integrity';
 
 // The package does not import the ADO task lib, so the discard's log line is wired here.
 const discardLog = { debug: (message: string) => tasks.debug(message) };
@@ -40,15 +40,6 @@ const MIRROR_EGRESS_MESSAGES: EgressHostMessages = {
 const terraformToolName = "terraform";
 const tofuToolName = "tofu";
 const isWindows = os.type().match(/^Win/);
-
-// File name of the local, per-cached-tool-directory integrity marker written after
-// a verified download (see writeCacheIntegrityMarker / verifyCachedTool below).
-const CACHE_INTEGRITY_MARKER = ".installer-verified.sha256";
-
-// A marker's content must be exactly one 64-character SHA256 digest. Anything else --
-// empty, truncated, or non-hex -- means the marker is UNVERIFIABLE, not that the tool
-// was tampered with; see verifyCachedTool (#198).
-const CACHE_INTEGRITY_MARKER_PATTERN = /^[a-fA-F0-9]{64}$/;
 
 /**
  * Bounded retry for the binary download itself (#78): tools.downloadTool performs a
@@ -444,80 +435,6 @@ export function parseSha256(sha256SumsContent: string, zipFileName: string): str
     // typed as a verification failure so the cache-hit re-verification path
     // fails closed instead of degrading to "material unavailable".
     throw new VerificationFailure(`SHA256 checksum not found for ${zipFileName}`);
-}
-
-/**
- * Writes a local integrity marker recording the SHA256 of the just-verified,
- * just-cached executable, so a later job's cache hit for the same tool/version can
- * re-verify it (see verifyCachedTool) without re-downloading anything. Best-effort:
- * a write failure must never fail an install that has already been verified — it
- * only means a future cache hit for this tool degrades to the pre-existing
- * trust-the-cache behavior.
- */
-export async function writeCacheIntegrityMarker(toolDir: string, exePath: string): Promise<void> {
-    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
-    // ATOMIC: write to a temp name in the SAME directory, then rename into place. A
-    // plain writeFileSync interrupted mid-write -- agent disk full, job cancellation,
-    // a container kill -- leaves a marker that exists and is readable but is empty or
-    // truncated, and every later install of that version then compares the real digest
-    // against that fragment and fails with a tampering-shaped CachedToolVerificationFailed,
-    // permanently bricking the version on that agent (#198). Renaming into place means
-    // a reader only ever sees a complete digest or no marker at all.
-    const tempPath = `${markerPath}.${uuidV4()}.tmp`;
-    try {
-        fs.writeFileSync(tempPath, await hashFile(exePath), 'utf8');
-        fs.renameSync(tempPath, markerPath);
-    } catch (err) {
-        tasks.debug(`Could not write cache integrity marker for ${toolDir}: ${err instanceof Error ? err.message : err}`);
-        try { fs.unlinkSync(tempPath); } catch { /* best effort */ }
-    }
-}
-
-/**
- * On a tool-cache hit, re-verifies the cached executable against the local
- * integrity marker written when it was originally downloaded and verified. This is
- * a purely local, offline comparison (no network call), so it can never break
- * offline/air-gapped cache usage.
- *
- * - No marker (cached before this check existed, or cached by a run where checksum
- *   verification was disabled): returns false — the caller escalates to a remote
- *   re-verification against a freshly downloaded release (see
- *   reverifyUnmarkedCacheEntry), closing the cross-job trust-on-first-use gap.
- * - Marker present but MALFORMED — empty, truncated, or not 64 hex characters, i.e.
- *   an interrupted write (#198): returns false, exactly like a missing marker. An
- *   unverifiable record is not evidence of tampering; feeding the fragment to the
- *   comparison would fail every subsequent install of that version with a
- *   tampering-shaped error and send an operator down a security-incident path for
- *   what is a torn file. The marker is NOT healed here — healing happens only after
- *   the escalated re-verification actually proves the cached executable.
- * - Marker present and it matches the cached executable's current hash: passes
- *   silently, returns true.
- * - Marker present, well-formed, and it does not match: the cached executable changed
- *   since it was verified (tampering or corruption on a shared agent) — fail closed.
- *
- * Trust-boundary note: the marker lives next to the executable it protects, so an
- * attacker who can rewrite the cached binary under the agent account can rewrite
- * the marker to match. This check is defense-in-depth against corruption and
- * cross-job verification-policy mixing, not against an attacker who already has
- * write access to the agent's tool cache (who effectively owns the agent).
- */
-export async function verifyCachedTool(toolDir: string, exePath: string, toolLabel: string): Promise<boolean> {
-    const markerPath = path.join(toolDir, CACHE_INTEGRITY_MARKER);
-    if (!fs.existsSync(markerPath)) {
-        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker found (cached before this check existed, or without checksum verification).`);
-        return false;
-    }
-    const storedHash = fs.readFileSync(markerPath, 'utf8').trim().toLowerCase();
-    if (!CACHE_INTEGRITY_MARKER_PATTERN.test(storedHash)) {
-        tasks.debug(`Cache hit for ${toolLabel}: the stored integrity marker is not a 64-character SHA256 digest (${storedHash.length} character(s) recorded); treating the entry as unverifiable rather than tampered.`);
-        return false;
-    }
-    const actualHash = (await hashFile(exePath)).toLowerCase();
-    if (actualHash !== storedHash) {
-        throw new Error(tasks.loc("CachedToolVerificationFailed", toolLabel, storedHash, actualHash));
-    }
-    tasks.debug(`Cache hit for ${toolLabel}: integrity marker verified (${actualHash}).`);
-    return true;
 }
 
 /**

@@ -241,6 +241,33 @@ function blockAfter(fnText, index) {
     return fnText.slice(open);
 }
 
+/**
+ * `import { a, b as c } from './x'` and the `export { a, b } from './x'` re-export
+ * form — same-directory-tree relative specifiers only, since those are the only
+ * ones a sibling top-level function can resolve to. Read off the UNMASKED source
+ * (the specifier is a string literal, blanked out in the masked text). Returns
+ * Map<localName, {importedName, specifier}>.
+ */
+function parseRelativeImports(source) {
+    const out = new Map();
+    const re = /(?:import|export)\s*\{([^}]*)\}\s*from\s*['"](\.[^'"]*)['"]/g;
+    let m;
+    while ((m = re.exec(source)) !== null) {
+        for (const raw of m[1].split(',').map((s) => s.trim()).filter(Boolean)) {
+            const [importedName, aliasName] = raw.split(/\s+as\s+/).map((s) => s.trim());
+            out.set(aliasName || importedName, { importedName, specifier: m[2] });
+        }
+    }
+    return out;
+}
+
+/** Resolves a relative import specifier from `fromFile` to one of `files`, or null. */
+function resolveImportFile(fromFile, specifier, files) {
+    let resolved = path.resolve(path.dirname(fromFile), specifier);
+    if (!files.includes(resolved)) resolved += '.ts';
+    return files.includes(resolved) ? resolved : null;
+}
+
 const files = walk(ROOT);
 if (files.length === 0) {
     console.error(`FAIL: no **/src/**/*.ts files found under ${ROOT} — the signature would pass vacuously.`);
@@ -248,6 +275,19 @@ if (files.length === 0) {
 }
 
 const sites = [];
+// Per-file state kept around after the phase 1/2 pass so the phase 3 (CACHE-ADMIT)
+// pass below can resolve names across a same-directory `import`, once every
+// file's RECORD-READ/RECORD-WRITE sites are known — see #998.
+const fileStates = [];
+// Module-scope 64-hex validator names, keyed by resolved absolute file path — read
+// once per file even when several siblings import from the same one.
+const hexConstsByFile = new Map();
+function hexConstsOf(absPath, maskedText) {
+    if (!hexConstsByFile.has(absPath)) {
+        hexConstsByFile.set(absPath, [...maskedText.matchAll(/(?:const|let)\s+(\w+)\s*(?::[^=]+)?=\s*(\/[^/\n]*\{64\}[^/\n]*\/[a-z]*)/g)].map((m) => m[1]));
+    }
+    return hexConstsByFile.get(absPath);
+}
 
 for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
@@ -260,10 +300,27 @@ for (const file of files) {
 
     const byName = new Map(fns.filter((f) => f.name !== '<anonymous>').map((f) => [f.name, f]));
     const definedNames = [...byName.keys()];
-    const graph = new Map(fns.map((f) => [f.name, calleesOf(f.text, definedNames)]));
+
+    // Names imported from a same-directory-tree sibling resolve to that sibling's
+    // OWN top-level functions (#998) — a call to one is a real graph edge, and its
+    // RECORD-READ/RECORD-WRITE classification (established when ITS file is walked)
+    // must count here too, not just when the call happens to stay in one file.
+    const imports = parseRelativeImports(source);
+    const importedNames = [...imports.keys()];
+    const graph = new Map(fns.map((f) => [f.name, calleesOf(f.text, [...definedNames, ...importedNames])]));
 
     // 64-hex validators declared at module scope, e.g. `const SHA256_HEX_PATTERN = /^[a-fA-F0-9]{64}$/;`
-    const hexConsts = [...masked.matchAll(/(?:const|let)\s+(\w+)\s*(?::[^=]+)?=\s*(\/[^/\n]*\{64\}[^/\n]*\/[a-z]*)/g)].map((m) => m[1]);
+    // — plus the same, declared beside a validator this file imports instead of
+    // defining locally, so a validator living next to its (now-shared) reader still
+    // counts (#998).
+    const hexConsts = [
+        ...hexConstsOf(file, masked),
+        ...[...imports.values()].flatMap(({ specifier }) => {
+            const resolved = resolveImportFile(file, specifier, files);
+            if (!resolved) return [];
+            return hexConstsOf(resolved, maskCommentsAndStrings(fs.readFileSync(resolved, 'utf8')));
+        }),
+    ];
     const validatesHex = (fnText) =>
         /\/\^?\[[^\]]*a-f[^\]]*\]\{64\}\$?\/[a-z]*\s*\.test\s*\(/i.test(fnText)
         || hexConsts.some((name) => new RegExp(`\\b${name}\\s*\\.test\\s*\\(`).test(fnText));
@@ -284,8 +341,12 @@ for (const file of files) {
 
     // Phases: sites discovered later depend on classifications made earlier
     // (a cache-admit verdict needs to know which functions read/write the
-    // integrity record), so the same function set is walked three times.
-    for (const phase of [1, 2, 3]) for (const fn of fns) {
+    // integrity record), so the same function set is walked twice here. Phase 3
+    // (CACHE-ADMIT) runs in its own pass below, once every file's RECORD-READ/
+    // RECORD-WRITE sites are known — it is the one phase that can reach across a
+    // same-directory `import` (#998), so it cannot run until the classifications
+    // it depends on exist for every file, not just the one being walked right now.
+    for (const phase of [1, 2]) for (const fn of fns) {
         if (fn.name === '<anonymous>') continue;
         const reach = closure(fn.name, graph);
         const reaches = (names) => names.some((n) =>
@@ -417,34 +478,6 @@ for (const file of files) {
             }
         } // end phase 2
 
-        // ---------------- CACHE-ADMIT ----------------
-        if (phase === 3) for (const call of callIndices(fn.text, CACHE_LOOKUP)) {
-            const recordReaders = [...byName.keys()].filter((n) =>
-                sites.some((s) => s.rel === rel && s.fn === n && s.kind === 'RECORD-READ'));
-            const reverifies = recordReaders.some((n) => reach.has(n));
-            const writerNames = [...byName.keys()].filter((n) =>
-                sites.some((s) => s.rel === rel && s.fn === n && s.kind === 'RECORD-WRITE'));
-            const writerCalls = writerNames.flatMap((n) => callIndices(fn.text, n));
-            const gated = writerCalls.every((w) => VERIFIED_STATUS.test(enclosingConditionText(fn.text, w.index)));
-            // "There is no record for this cache entry" is a THIRD outcome,
-            // distinct from verified and from mismatched. The reader must hand it
-            // back and the admit site must act on it; a call whose result is
-            // thrown away silently admits an entry nothing ever verified (#136).
-            const consumesVerdict = recordReaders.some((n) =>
-                new RegExp(`(?:const|let|var)\\s+\\w+\\s*(?::[^=]+)?=\\s*(?:await\\s+)?${n}\\s*\\(`).test(fn.text));
-            const verdict = !reverifies ? 'TRUSTS-CACHE-BLINDLY'
-                : !consumesVerdict ? 'TRUSTS-UNMARKED-CACHE'
-                    : !gated ? 'RECORDS-UNVERIFIED'
-                        : 'REVERIFIES-AND-GATES';
-            const WHY = {
-                'REVERIFIES-AND-GATES': 'a cache hit is re-verified against the recorded marker, an unmarked entry is escalated, and a marker is only recorded for an artifact that was actually verified',
-                'TRUSTS-CACHE-BLINDLY': 'a cache hit is used with no re-verification of any kind (#136)',
-                'TRUSTS-UNMARKED-CACHE': 'the re-verification result is discarded, so a cache entry with NO integrity record is admitted with no verification at all (#136)',
-                'RECORDS-UNVERIFIED': 'an integrity marker is recorded even when the fresh download was never verified, so a later cache hit "verifies" an unverified binary (#136)',
-            };
-            add('CACHE-ADMIT', fn, verdict, WHY[verdict], fn.start + call.index);
-        }
-
         // ---------------- LATEST resolution ----------------
         const resolvesLatest = /['"]latest['"]/i.test(fn.raw)
             && /toLowerCase\s*\(\s*\)\s*(?:!==|===)/.test(fn.text)
@@ -461,6 +494,61 @@ for (const file of files) {
                     ? 'an unreachable version endpoint silently installs a pinned, potentially stale version instead of failing (#78)'
                     : 'an unresolvable "latest" fails the task instead of silently installing a pinned stale version',
                 fn.start + fn.text.indexOf('catch'));
+        }
+    }
+
+    fileStates.push({ file, rel, fns, byName, graph, imports, lineOf });
+}
+
+// ---------------- CACHE-ADMIT (own pass — see #998) ----------------
+// Runs only after every file above has contributed its RECORD-READ/RECORD-WRITE
+// sites, and resolves recordReaders/writerNames across a same-directory `import`
+// exactly as it would within one file: a name is a candidate either because this
+// file defines it, or because this file imports it from a sibling that does —
+// either way, what matters is whether THAT name's own site (wherever it lives)
+// was classified as a marker reader/writer.
+for (const { file, rel, fns, byName, graph, imports, lineOf } of fileStates) {
+    // Every name this file can call and have it resolve to a real definition:
+    // its own top-level functions (defined here), plus whatever it imports from a
+    // sibling — each tagged with the file its RECORD-READ/RECORD-WRITE site (if
+    // any) would actually be recorded under.
+    const resolvable = [
+        ...[...byName.keys()].map((name) => ({ callName: name, defRel: rel, defName: name })),
+        ...[...imports.entries()].map(([callName, { importedName, specifier }]) => {
+            const resolved = resolveImportFile(file, specifier, files);
+            if (!resolved) return null;
+            return { callName, defRel: path.relative(ROOT, resolved).split(path.sep).join('/'), defName: importedName };
+        }).filter(Boolean),
+    ];
+    const sitesOf = (kind) => resolvable.filter(({ defRel, defName }) =>
+        sites.some((s) => s.rel === defRel && s.fn === defName && s.kind === kind));
+
+    for (const fn of fns) {
+        if (fn.name === '<anonymous>') continue;
+        const reach = closure(fn.name, graph);
+        for (const call of callIndices(fn.text, CACHE_LOOKUP)) {
+            const recordReaders = sitesOf('RECORD-READ');
+            const reverifies = recordReaders.some((r) => reach.has(r.callName));
+            const writerNames = sitesOf('RECORD-WRITE');
+            const writerCalls = writerNames.flatMap((r) => callIndices(fn.text, r.callName));
+            const gated = writerCalls.every((w) => VERIFIED_STATUS.test(enclosingConditionText(fn.text, w.index)));
+            // "There is no record for this cache entry" is a THIRD outcome,
+            // distinct from verified and from mismatched. The reader must hand it
+            // back and the admit site must act on it; a call whose result is
+            // thrown away silently admits an entry nothing ever verified (#136).
+            const consumesVerdict = recordReaders.some((r) =>
+                new RegExp(`(?:const|let|var)\\s+\\w+\\s*(?::[^=]+)?=\\s*(?:await\\s+)?${r.callName}\\s*\\(`).test(fn.text));
+            const verdict = !reverifies ? 'TRUSTS-CACHE-BLINDLY'
+                : !consumesVerdict ? 'TRUSTS-UNMARKED-CACHE'
+                    : !gated ? 'RECORDS-UNVERIFIED'
+                        : 'REVERIFIES-AND-GATES';
+            const WHY = {
+                'REVERIFIES-AND-GATES': 'a cache hit is re-verified against the recorded marker, an unmarked entry is escalated, and a marker is only recorded for an artifact that was actually verified',
+                'TRUSTS-CACHE-BLINDLY': 'a cache hit is used with no re-verification of any kind (#136)',
+                'TRUSTS-UNMARKED-CACHE': 'the re-verification result is discarded, so a cache entry with NO integrity record is admitted with no verification at all (#136)',
+                'RECORDS-UNVERIFIED': 'an integrity marker is recorded even when the fresh download was never verified, so a later cache hit "verifies" an unverified binary (#136)',
+            };
+            sites.push({ kind: 'CACHE-ADMIT', rel, fn: fn.name, verdict, why: WHY[verdict], line: lineOf(fn.start + call.index) });
         }
     }
 }
