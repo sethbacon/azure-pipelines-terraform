@@ -577,7 +577,7 @@ const unique = sites.filter((s) => {
 const failures = unique.filter((s) => FAIL_VERDICTS.has(s.verdict));
 
 if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ root: ROOT, sites: unique, failures: failures.length }, null, 2));
+    console.log(JSON.stringify({ root: ROOT, sites: unique, failures: failures.length, scanned: files.length }, null, 2));
     process.exit(failures.length > 0 ? 1 : 0);
 }
 
