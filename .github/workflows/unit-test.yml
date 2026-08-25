@@ -119,6 +119,12 @@ jobs:
         run: node scripts/check-enforced-disciplines.js
       - name: Self-test check-enforced-disciplines.js
         run: node scripts/test-check-enforced-disciplines.js
+      # check-proxy-parity has been wrong twice -- once reporting no call sites
+      # for a task that makes them, once attributing a locally defined function
+      # to a package by name alone. Both changed the inventory silently, which
+      # is the one failure a coverage gate must not have.
+      - name: Self-test check-proxy-parity.js
+        run: node scripts/test-check-proxy-parity.js
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
         run: node scripts/check-proxy-parity.js
       - name: Validate documented claims against the code
