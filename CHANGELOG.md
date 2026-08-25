@@ -4,6 +4,20 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.5...v1.14.6) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** adopt packer's check-minor-bumps, which detects runtime dependency changes ([#1012](https://github.com/sethbacon/azure-pipelines-terraform/issues/1012)) ([89e2baf](https://github.com/sethbacon/azure-pipelines-terraform/commit/89e2baf892530057cedc32fda539de50c8ed770c))
+* **ci:** record zizmor findings as well as blocking on them ([#1010](https://github.com/sethbacon/azure-pipelines-terraform/issues/1010)) ([4c2c070](https://github.com/sethbacon/azure-pipelines-terraform/commit/4c2c070e93741eec51a73e3e36d8718055364f57))
+* **ci:** resolve a delegated sink's origin before attributing it to a package ([#1013](https://github.com/sethbacon/azure-pipelines-terraform/issues/1013)) ([2766c35](https://github.com/sethbacon/azure-pipelines-terraform/commit/2766c357ac66d88dfa296dd51a6f7fcb77838c5d))
+
+
+### Refactor
+
+* **v5:** take pem-normalizer from the shared package ([#1016](https://github.com/sethbacon/azure-pipelines-terraform/issues/1016)) ([d2e53f9](https://github.com/sethbacon/azure-pipelines-terraform/commit/d2e53f9834c8772ac60db5aecc4e91d3545cac08))
+
 ## [1.14.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.4...v1.14.5) (2026-08-24)
 
 
