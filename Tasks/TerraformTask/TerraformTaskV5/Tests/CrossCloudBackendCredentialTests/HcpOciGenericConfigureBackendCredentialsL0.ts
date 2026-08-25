@@ -3,7 +3,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerHCP } from '../../src/hcp-terraform-command-handler';
 import { TerraformCommandHandlerOCI } from '../../src/oci-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from '../../src/generic-terraform-command-handler';
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for the HCP handler's cross-cloud

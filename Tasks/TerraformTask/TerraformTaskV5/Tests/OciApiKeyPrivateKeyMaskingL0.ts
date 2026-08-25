@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
-import { EnvironmentVariableHelper } from '../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import {
     TEST_OCI_PRIVATE_KEY_SPACES,
     TEST_OCI_PRIVATE_KEY_PEM,

@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerGCP } from '../../src/gcp-terraform-command-handler';
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import * as idTokenGenerator from '../../src/id-token-generator';
 import { TEST_GCP_PRIVATE_KEY_PEM } from '../test-gcp-fixtures';
 

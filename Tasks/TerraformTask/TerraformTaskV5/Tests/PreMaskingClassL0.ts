@@ -5,7 +5,7 @@ import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
-import { EnvironmentVariableHelper } from '../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import { getSecureVarFileArgs, ISecureFileLoader } from '../src/secure-file-loader';
 import { TEST_OCI_PRIVATE_KEY_PEM } from './test-oci-fixtures';
 

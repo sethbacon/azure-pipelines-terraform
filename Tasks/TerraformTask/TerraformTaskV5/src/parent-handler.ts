@@ -6,7 +6,7 @@ import { TerraformCommandHandlerGCP } from './gcp-terraform-command-handler';
 import { TerraformCommandHandlerOCI } from './oci-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from './generic-terraform-command-handler';
 import { TerraformCommandHandlerHCP } from './hcp-terraform-command-handler';
-import { EnvironmentVariableHelper } from './environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import { detectBackendCloud, BackendCloud } from './backend-detection';
 
 export interface IParentCommandHandler {

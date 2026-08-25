@@ -1,6 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { ProxyAgent } from 'undici';
-import { EnvironmentVariableHelper } from './environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Builds fetch() RequestInit options that route the request through the

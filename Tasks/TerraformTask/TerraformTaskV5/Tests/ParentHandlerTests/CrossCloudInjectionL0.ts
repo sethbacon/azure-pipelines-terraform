@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
 import { ParentCommandHandler, STATE_COMMANDS } from '../../src/parent-handler';
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for ParentCommandHandler's cross-cloud backend credential

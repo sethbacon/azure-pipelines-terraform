@@ -1,4 +1,4 @@
-import { EnvironmentVariableHelper } from './environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Registers every non-empty line of a (possibly multi-line) credential with the

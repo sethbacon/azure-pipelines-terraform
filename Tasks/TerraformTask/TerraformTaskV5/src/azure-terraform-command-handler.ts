@@ -2,7 +2,7 @@ import tasks = require("azure-pipelines-task-lib/task");
 import { ToolRunner, IExecOptions } from "azure-pipelines-task-lib/toolrunner";
 import { TerraformAuthorizationCommandInitializer } from "./terraform-commands";
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
-import { EnvironmentVariableHelper } from "./environment-variables";
+import { EnvironmentVariableHelper } from "@4cloudguru/pipeline-task-ado";
 import { generateIdToken } from './id-token-generator';
 import {
     assertIdentityValue,
