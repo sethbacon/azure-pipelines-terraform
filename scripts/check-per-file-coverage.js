@@ -55,7 +55,7 @@ const SECURITY_FLOOR = 80;
 // SECURITY_TIER file is therefore ALSO held to a functions- and a branches-
 // coverage floor. Chosen from the real per-file numbers on main (2026-07-23):
 // the lowest tiered functions% is 60 (hcp-terraform-command-handler.js) and
-// the lowest tiered branches% is 57.14 (secure-temp.js in three tasks), so 50
+// the lowest tiered branches% is 57.14, so 50
 // is a real, non-aspirational floor below the current worst tiered file for
 // each metric — it catches a genuine functions/branches collapse without
 // churning on files that are merely thin. DEFAULT_FLOOR (non-tiered) files keep
@@ -82,15 +82,6 @@ const SECURITY_TIER = new Set([
     // layer before diagnostic text becomes a build-visible (not secret-masked)
     // attachment; belongs in the same tier as redact.js it sits beside.
     'Tasks/TerraformTask/TerraformTaskV5/src/results/secret-scrub.js',
-    // Owner-only 0600 + O_EXCL (Unix) / restrictive icacls DACL (Windows)
-    // secure-temp-file primitive guarding WIF/OCI credential material.
-    // Byte-identical parity family across all four listed tasks (Batch E
-    // round 1: ProviderMirror's copy was missing from this tier despite
-    // check-shared-modules.js already tracking it as the same parity family).
-    'Tasks/TerraformTask/TerraformTaskV5/src/secure-temp.js',
-    'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/secure-temp.js',
-    'Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/secure-temp.js',
-    'Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/secure-temp.js',
     // SSRF/token-exfiltration guard for the host the ADO OIDC bearer JWT is
     // exchanged with for an OCI UPST.
     'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.js',
@@ -248,7 +239,8 @@ const EXCEPTIONS = {
     // (The DriftReport/PolicyCheck secure-temp.js exceptions added with the
     // tiered floors were removed once the #634 direct suites lifted both
     // copies above the 80% SECURITY_FLOOR — the gate itself fails on a stale
-    // exception, by design.)
+    // exception, by design. The module itself now lives in
+    // @4cloudguru/pipeline-task-ado and is no longer instrumented here.)
 };
 
 // Pure classifier. Inputs:

@@ -3,7 +3,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { Result, SummaryEntry } from '@4cloudguru/terraform-drift-contract';
-import { replaceSecretFile } from './secure-temp';
+import { replaceSecretFile } from '@4cloudguru/pipeline-task-ado';
 
 interface SarifMessage { text: string; }
 interface SarifRule { id: string; name: string; shortDescription: SarifMessage; }

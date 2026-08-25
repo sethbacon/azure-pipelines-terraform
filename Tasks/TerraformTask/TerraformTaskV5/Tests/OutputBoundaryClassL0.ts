@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
-import { replaceSecretFile, writeSecretFile } from '../src/secure-temp';
+import { replaceSecretFile, writeSecretFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * CLASS TEST — "a value that originates in template-, tool- or remote-service-

@@ -4,7 +4,7 @@ import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyCase, PolicyResult } from './types';
-import { writeSecretFile, replaceSecretFile } from './secure-temp';
+import { writeSecretFile, replaceSecretFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * The agent's private temp directory, purged automatically at job end. Raw engine

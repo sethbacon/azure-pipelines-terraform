@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { scrubFile, tightenFilePermissions } from './secure-temp';
+import { scrubFile, tightenFilePermissions } from '@4cloudguru/pipeline-task-ado';
 import { maskSecureVarFileValues } from './secure-var-file-masking';
 
 export interface ISecureFileLoader {

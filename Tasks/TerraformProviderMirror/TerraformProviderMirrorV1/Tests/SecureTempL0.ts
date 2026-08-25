@@ -3,19 +3,18 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import cp = require('child_process');
-import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
+import { writeSecretFile, replaceSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
- * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile
- * (#628). The module is a byte-identical copy of TerraformTaskV5's
- * secure-temp.ts (gated by scripts/check-shared-modules.js); these tests
- * exercise it from TerraformProviderMirror's own compiled output, in this
+ * Direct unit tests for writeSecretFile/replaceSecretFile (#628).
+ * The module ships in @4cloudguru/pipeline-task-ado; these tests
+ * exercise it as TerraformProviderMirror resolves it, in this
  * task's own package context, since index.ts now writes the credential-bearing
  * .terraformrc via replaceSecretFile for the same Windows-DACL + O_EXCL
  * guarantee TerraformTaskV5 already has (mirrorUrl may embed basic-auth
  * userinfo).
  */
-describe('secure-temp (TerraformProviderMirror copy) — exclusive create + cross-platform permission hardening', function () {
+describe('secure-temp (via TerraformProviderMirror) — exclusive create + cross-platform permission hardening', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared child_process module
     const c = cp as any;
     const origExecFileSync = c.execFileSync;
@@ -213,8 +212,8 @@ describe('replaceSecretFile (TerraformProviderMirror copy) — .terraformrc conf
  * Direct unit tests for this task's copy of scrubFile (#595): overwrites a
  * secret temp file's content with zeros. ProviderMirror's own runtime reaches
  * scrubFile only through writeSecretFile's #634 hardening-failure cleanup path,
- * but the module is a byte-identical copy of TerraformTaskV5's secure-temp.ts
- * (gated by scripts/check-shared-modules.js), so it is exercised here from this
+ * but the module ships in @4cloudguru/pipeline-task-ado
+ * (shipped in @4cloudguru/pipeline-task-ado), so it is exercised here from this
  * task's own compiled output to give the parity copy real coverage.
  */
 describe('scrubFile (TerraformProviderMirror copy) — overwrite-before-unlink content scrub (#595)', function () {

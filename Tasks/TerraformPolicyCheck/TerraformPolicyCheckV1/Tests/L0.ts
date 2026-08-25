@@ -13,7 +13,7 @@ import './SentinelEnforcementLevelL0';
 import './HclEscapeL0';
 // Direct unit test for the #560 config-dir cleanup-registration reorder.
 import './SentinelConfigDirRegistrationL0';
-// Direct unit tests for the secure-temp writeSecretFile/replaceSecretFile copy (#607).
+// Direct unit tests for the shared secure-temp writers (#607).
 import './SecureTempL0';
 // Direct unit tests for the bounded engine-output capture guard (#632).
 import './OutputCapL0';

@@ -89,7 +89,7 @@ describe('TempFileManager (#878)', function () {
     // Stub the module export rather than an fs primitive: the compiled require()
     // is resolved at call time, so this reliably intercepts scrubFile itself
     // regardless of which fs calls it happens to make.
-    const secureTemp = require('../src/secure-temp');
+    const secureTemp = require('@4cloudguru/pipeline-task-ado');
     const origScrub = secureTemp.scrubFile;
     secureTemp.scrubFile = () => { throw new Error('scrub boom'); };
     try {
