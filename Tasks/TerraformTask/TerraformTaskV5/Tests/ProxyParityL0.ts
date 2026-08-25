@@ -18,8 +18,8 @@ import { exchangeOidcForUpst } from '../src/oci-token-exchange';
  *
  * #196 was filed against the packer extension only. Per the run's signature
  * scope, the same signature is run here: this repo is the one that already had
- * proxy-config.ts, so it is the parity reference, and these tables pin that
- * status so it cannot silently regress on a task that is added later.
+ * a task-local proxy builder, so it is the parity reference, and these tables
+ * pin that status so it cannot silently regress on a task that is added later.
  *
  * Two tables:
  *   A. WIF_CALL_ROWS — every outbound WIF/token-exchange call this task makes,
@@ -30,10 +30,10 @@ import { exchangeOidcForUpst } from '../src/oci-token-exchange';
  *                     (scripts/check-proxy-parity.js) enumerates across ALL
  *                     tasks in this repo, with its verdict.
  *
- * Mutation-provability: dropping `...buildProxyFetchOptions()` from either
+ * Mutation-provability: dropping `...buildAdoFetchOptions()` from either
  * fetch reddens that call's own table-A rows plus its own table-B site row and
  * the class-wide "no unproxied site" row — and no sibling row. Direct unit
- * coverage of buildProxyFetchOptions itself lives in ProxyConfigL0.ts.
+ * coverage of buildAdoFetchOptions itself lives in ProxyConfigL0.ts.
  */
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
@@ -82,7 +82,7 @@ const WIF_CALL_ROWS: WifCallRow[] = [
 /** Table B. Every outbound call site the signature enumerates in THIS repo. */
 type SiteRow = { file: string; fn: string; sink: string; verdict: string; why: string };
 const SITE_ROWS: SiteRow[] = [
-    // --- fetch-based, proxied via buildProxyFetchOptions / buildFetchOptions ---
+    // --- fetch-based, proxied via buildAdoFetchOptions / buildFetchOptions ---
     //
     // The ADO OIDC token request (the terraform twin of the site reported as
     // #196 in packer) used to sit here as src/id-token-generator.ts, with the

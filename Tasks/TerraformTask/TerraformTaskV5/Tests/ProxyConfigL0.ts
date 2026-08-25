@@ -1,10 +1,10 @@
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import assert = require('assert');
 import tasks = require('azure-pipelines-task-lib/task');
-import { buildProxyFetchOptions } from '../src/proxy-config';
+import { buildAdoFetchOptions } from '@4cloudguru/pipeline-task-ado';
 
 /**
- * Direct unit tests for buildProxyFetchOptions(), mirroring the equivalent
+ * Direct unit tests for buildAdoFetchOptions(), mirroring the equivalent
  * buildFetchOptions() tests in the installer tasks' shared http-client.ts
  * (Tasks/TerraformInstaller/TerraformInstallerV1/Tests/HttpClientL0.ts).
  * Self-hosted agents that require an HTTP proxy for outbound internet access
@@ -12,7 +12,7 @@ import { buildProxyFetchOptions } from '../src/proxy-config';
  * exchange and OCI Identity Domains calls need the same proxy awareness the
  * installer tasks already have.
  */
-describe('buildProxyFetchOptions', () => {
+describe('buildAdoFetchOptions (from @4cloudguru/pipeline-task-ado)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
   const t = tasks as any;
   const origProxy = t.getHttpProxyConfiguration;
@@ -29,7 +29,7 @@ describe('buildProxyFetchOptions', () => {
 
   it('returns an empty object when no proxy is configured', () => {
     t.getHttpProxyConfiguration = () => undefined;
-    assert.deepStrictEqual(buildProxyFetchOptions(), {});
+    assert.deepStrictEqual(buildAdoFetchOptions(), {});
   });
 
   it('attaches an undici ProxyAgent dispatcher when a proxy is configured', () => {
@@ -38,7 +38,7 @@ describe('buildProxyFetchOptions', () => {
       proxyUsername: '',
       proxyPassword: '',
     });
-    const options = buildProxyFetchOptions();
+    const options = buildAdoFetchOptions();
     assert.ok('dispatcher' in options, 'proxy dispatcher should be set');
   });
 
@@ -50,7 +50,7 @@ describe('buildProxyFetchOptions', () => {
       proxyUsername: 'user',
       proxyPassword: 'p@ss',
     });
-    const options = buildProxyFetchOptions();
+    const options = buildAdoFetchOptions();
     assert.ok('dispatcher' in options, 'proxy dispatcher should be set');
     assert.ok(setSecretCalls.includes('p@ss'), 'proxy password should be registered as a secret');
   });
@@ -63,7 +63,7 @@ describe('buildProxyFetchOptions', () => {
       proxyUsername: 'user',
       proxyPassword: 'p@ss',
     });
-    buildProxyFetchOptions();
+    buildAdoFetchOptions();
     // 'p@ss' -> 'p%40ss': the WHATWG URL password setter percent-encodes '@',
     // and that encoded string (not the raw password) is what proxyUrl.toString()
     // actually embeds -- ADO only masks literal registered strings, so the
@@ -77,6 +77,6 @@ describe('buildProxyFetchOptions', () => {
       proxyUsername: 'user',
       proxyPassword: 'p@ss',
     });
-    assert.throws(() => buildProxyFetchOptions(), /Invalid proxy URL/);
+    assert.throws(() => buildAdoFetchOptions(), /Invalid proxy URL/);
   });
 });
