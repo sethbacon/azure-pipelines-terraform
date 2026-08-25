@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
+import { replaceSecretFile, writeSecretFile } from '../src/secure-temp';
 
 /**
  * CLASS TEST — "a value that originates in template-, tool- or remote-service-
@@ -164,12 +166,58 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
             /writeCommandOutputFile\([\s\S]{0,300}?replaceSecretFile\(filePath, content\);/.test(publisher),
             'writeCommandOutputFile must delegate to replaceSecretFile'
         );
-        const secureTemp = fs.readFileSync(path.join(SRC, 'secure-temp.ts'), 'utf8');
-        assert.ok(/flag: 'wx'/.test(secureTemp), "writeSecretFile must create with O_EXCL ('wx')");
-        assert.ok(
-            /export function replaceSecretFile\([\s\S]{0,900}?writeSecretFile\(filePath, content\);/.test(secureTemp),
-            'replaceSecretFile must re-create exclusively rather than write through an existing entry'
-        );
+        // The primitive is exercised rather than read: asserting on its source
+        // text would stop meaning anything the moment it moves into
+        // @4cloudguru/pipeline-task-ado, and would pass for an implementation
+        // that merely mentioned the right words.
+        const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'secure-temp-boundary-'));
+        try {
+            // O_EXCL: an entry already at the path must abort the create rather
+            // than be written through.
+            const occupied = path.join(probe, 'occupied');
+            fs.writeFileSync(occupied, 'planted');
+            assert.throws(
+                () => writeSecretFile(occupied, 'secret'),
+                /EEXIST/,
+                "writeSecretFile must create with O_EXCL ('wx')"
+            );
+            assert.strictEqual(fs.readFileSync(occupied, 'utf8'), 'planted',
+                'the pre-existing entry must be left untouched');
+
+            // replaceSecretFile must unlink and re-create rather than write
+            // through the existing inode. A hard link is the portable witness:
+            // it survives the unlink holding the OLD bytes, so if the twin ever
+            // shows the new content the write went through the old entry.
+            const target = path.join(probe, 'target');
+            const twin = path.join(probe, 'twin');
+            fs.writeFileSync(target, 'stale');
+            fs.linkSync(target, twin);
+            replaceSecretFile(target, 'fresh');
+            assert.strictEqual(fs.readFileSync(target, 'utf8'), 'fresh',
+                'replaceSecretFile must leave the new content at the path');
+            assert.strictEqual(fs.readFileSync(twin, 'utf8'), 'stale',
+                'replaceSecretFile must re-create exclusively rather than write through an existing entry');
+
+            // A planted symlink is refused outright, never followed (CWE-59).
+            // Creating one needs privileges Windows agents may not have, so the
+            // assertion is scoped rather than skipped -- this suite forbids
+            // pending tests.
+            if (process.platform !== 'win32') {
+                const decoy = path.join(probe, 'decoy');
+                const planted = path.join(probe, 'planted-link');
+                fs.writeFileSync(decoy, 'victim');
+                fs.symlinkSync(decoy, planted);
+                assert.throws(
+                    () => replaceSecretFile(planted, 'secret'),
+                    /symbolic link/,
+                    'replaceSecretFile must refuse a pre-existing symlink'
+                );
+                assert.strictEqual(fs.readFileSync(decoy, 'utf8'), 'victim',
+                    'the symlink target must never be written through');
+            }
+        } finally {
+            fs.rmSync(probe, { recursive: true, force: true });
+        }
         // Every command-output write in the handler uses that wrapper, never a
         // bare fs.writeFileSync into an operator-supplied path. The digest
         // attachment write (writeAndAttachDigest) was the one grandfathered
