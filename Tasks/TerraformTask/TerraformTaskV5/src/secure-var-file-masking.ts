@@ -1,6 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import fs = require('fs');
-import { EnvironmentVariableHelper } from './environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * The task manifest documents `secureVarsFile` as THE place to put sensitive

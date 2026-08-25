@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerAzureRM } from '../../src/azure-terraform-command-handler';
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for the azurerm handler's cross-cloud

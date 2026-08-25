@@ -1,5 +1,5 @@
 import tl = require('azure-pipelines-task-lib');
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 // Simulate tracked env vars being set during command execution
 EnvironmentVariableHelper.setEnvironmentVariable('AWS_ACCESS_KEY_ID', 'test-key');

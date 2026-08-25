@@ -1,5 +1,5 @@
 import tl = require('azure-pipelines-task-lib');
-import { EnvironmentVariableHelper } from '../../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 function getEnv(name: string): string | undefined {
     return process.env[name];

@@ -14,7 +14,7 @@ import { TerraformCommandHandlerGeneric } from '../src/generic-terraform-command
 import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
 import { TempFileManager } from '../src/temp-file-manager';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
-import { EnvironmentVariableHelper } from '../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * THE CLASS TEST for the provider-auth fail-open defect class

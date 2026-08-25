@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { ParentCommandHandler } from '../src/parent-handler';
-import { EnvironmentVariableHelper } from '../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit test for ParentCommandHandler.emergencyCleanup() before a handler is

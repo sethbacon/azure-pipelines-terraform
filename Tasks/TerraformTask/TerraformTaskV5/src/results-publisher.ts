@@ -5,7 +5,7 @@ import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
 import { buildApplyDigest, ApplyDigestOptions, parseNdjsonLines } from './results/apply-digest';
 import { scrubSecrets } from './results/secret-scrub';
-import { EnvironmentVariableHelper } from './environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';

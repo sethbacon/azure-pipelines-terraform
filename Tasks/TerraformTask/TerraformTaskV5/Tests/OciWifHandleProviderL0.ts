@@ -8,7 +8,7 @@ import ociTokenExchangeModule = require('../src/oci-token-exchange');
 import secureTempModule = require('../src/secure-temp');
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
-import { EnvironmentVariableHelper } from '../src/environment-variables';
+import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for handleProviderWIF (#680) -- the OCI Workload Identity
