@@ -14,6 +14,14 @@
 # a change that touched none of the steps involved. The line numbers below were
 # re-derived with the command above, not adjusted by hand.
 #
+#
+# They moved again on 2026-08-24, for the same reason and by the same mechanism:
+# adding a `permissions:` block to release.yml's `ci` job -- required so the
+# workflow-security-record job inside unit-test.yml does not exceed its caller's
+# ceiling -- inserted 8 lines and shifted every ignore below it by exactly 8.
+# All five went stale together and the four cache-poisoning findings resurfaced,
+# on a change that touched none of the setup-node steps. Re-derived with the
+# command above rather than adjusted by hand.
 # This is the cost of line-scoped ignores, and it is the intended cost: the
 # alternative is a per-file ignore that would have silently swallowed a genuinely
 # new finding. A suppression that breaks loudly when the file moves is doing its
@@ -24,12 +32,12 @@ rules:
       # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml:177:9
-      - release.yml:210:9
-      - release.yml:252:9
-      - release.yml:498:9
+      - release.yml:185:9
+      - release.yml:218:9
+      - release.yml:260:9
+      - release.yml:506:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:465:15
+      - release.yml:473:15

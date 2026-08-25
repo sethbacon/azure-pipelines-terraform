@@ -98,6 +98,10 @@ directories and their per-task test commands.
    - `Workflow Security` — actionlint checks the workflow schema and zizmor scans
      for workflow-security anti-patterns, both from `4cloudguru/shared-workflows`'
      `workflow-security.yml` rather than maintained here.
+   - `Workflow Security Record` — the same zizmor scan again, in SARIF mode, so
+     findings land in the Security tab where one can be dismissed with a reason
+     that outlives the run. It is a reporter, not a gate: in that mode zizmor
+     exits 0 whatever it finds, so `Workflow Security` above is what blocks.
    <!-- ci-jobs:end -->
 
    This list is checked against `.github/workflows/unit-test.yml` by
