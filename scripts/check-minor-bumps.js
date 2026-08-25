@@ -11,8 +11,12 @@
 // Changes under <task>/src OR to <task>/task.json itself count (#676 -- a
 // defaultValue-only edit in task.json, e.g. flipping a security-relevant input
 // like requireGpgSignature, carries the same cached-agent staleness risk as a
-// src/ change and must not be able to ship without a Minor bump). Changes
-// under <task>/Tests or docs elsewhere still do not require a bump.
+// src/ change and must not be able to ship without a Minor bump). A change to
+// <task>/package.json's `dependencies` (not devDependencies), or to a
+// non-dev-only entry in <task>/package-lock.json, counts too (#264) -- a
+// runtime library bump changes the bytes bundled into the .vsix just as much
+// as a src/ edit, and agents caching by Major.Minor would otherwise never see
+// it. Changes under <task>/Tests or docs elsewhere still do not require a bump.
 //
 // The analysis is also reused by scripts/bump-minor-versions.js, so the pieces
 // below are exported via module.exports and the CLI runs only under the
@@ -44,6 +48,46 @@ function git(args) {
 function minorAt(ref, taskDir) {
   const raw = git(['show', `${ref}:${taskDir}/task.json`]);
   return parseInt(JSON.parse(raw).version.Minor, 10);
+}
+
+// Reads and parses a JSON file at a given ref, or null when the path does not
+// exist there (e.g. a task added within the compared range).
+function readJsonAt(ref, filePath) {
+  let raw;
+  try {
+    raw = git(['show', `${ref}:${filePath}`]);
+  } catch {
+    return null;
+  }
+  return JSON.parse(raw);
+}
+
+// True when a task's PRODUCTION dependency surface changed between two refs
+// (#264): package.json's `dependencies` object, or any package-lock.json entry
+// not exclusively reachable from devDependencies. npm's lockfile v2/v3 format
+// marks a `packages` entry `dev: true` only when nothing outside
+// devDependencies depends on it, which is exactly the set `npm ci --omit=dev`
+// drops before it is bundled into the .vsix — so a version change confined to
+// those entries (or to devDependencies in package.json) never alters what
+// ships and must not by itself require a Minor bump.
+function productionDependenciesChanged(prevRef, currRef, task) {
+  const prevPkg = readJsonAt(prevRef, `${task}/package.json`);
+  const currPkg = readJsonAt(currRef, `${task}/package.json`);
+  if (JSON.stringify(prevPkg?.dependencies ?? {}) !== JSON.stringify(currPkg?.dependencies ?? {})) {
+    return true;
+  }
+
+  const prevPackages = readJsonAt(prevRef, `${task}/package-lock.json`)?.packages ?? {};
+  const currPackages = readJsonAt(currRef, `${task}/package-lock.json`)?.packages ?? {};
+  for (const key of new Set([...Object.keys(prevPackages), ...Object.keys(currPackages)])) {
+    if (key === '') continue; // the lockfile's own root project entry, not a dependency
+    const prevEntry = prevPackages[key];
+    const currEntry = currPackages[key];
+    const prevVersion = prevEntry && !prevEntry.dev ? prevEntry.version : undefined;
+    const currVersion = currEntry && !currEntry.dev ? currEntry.version : undefined;
+    if (prevVersion !== currVersion) return true;
+  }
+  return false;
 }
 
 // Resolve the previous release ref for a given currRef: the newest v*.*.* tag
@@ -82,14 +126,27 @@ function analyze({ prevRef, currRef, readCurrMinor }) {
   const results = [];
   for (const task of getTaskDirs()) {
     let changed;
+    let dependencyFilesChanged;
     try {
       changed = git(['diff', '--name-only', prevRef, currRef, '--', `${task}/src`, `${task}/task.json`]);
+      dependencyFilesChanged = git(['diff', '--name-only', prevRef, currRef, '--', `${task}/package.json`, `${task}/package-lock.json`]);
     } catch (e) {
       results.push({ task, kind: 'diff-error', message: e.message });
       continue;
     }
+    if (!changed && dependencyFilesChanged) {
+      // package.json/package-lock.json changed, but only a change to the
+      // PRODUCTION dependency surface counts (#264) -- a devDependencies-only
+      // edit never reaches the shipped .vsix.
+      try {
+        changed = productionDependenciesChanged(prevRef, currRef, task) ? dependencyFilesChanged : '';
+      } catch (e) {
+        results.push({ task, kind: 'diff-error', message: e.message });
+        continue;
+      }
+    }
     if (!changed) {
-      results.push({ task, kind: 'unchanged' }); // src unchanged since the last release; no bump required
+      results.push({ task, kind: 'unchanged' }); // nothing that ships changed since the last release; no bump required
       continue;
     }
     let prevMinor;
@@ -156,7 +213,7 @@ function main() {
   console.log('check-minor-bumps: all changed tasks have a Minor bump.');
 }
 
-module.exports = { getTaskDirs, git, minorAt, resolvePrevRef, analyze };
+module.exports = { getTaskDirs, git, minorAt, resolvePrevRef, analyze, productionDependenciesChanged };
 
 if (require.main === module) {
   main();
