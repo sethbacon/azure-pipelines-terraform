@@ -1,6 +1,7 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { adoPackageMock } from '../../adoPackageMock';
 
 let tp = path.join(__dirname, './GCPInitWIFSuccessL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
@@ -23,7 +24,7 @@ var mock = {
     "generateIdToken": function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 };
 
-tr.registerMock('./id-token-generator', mock);
+tr.registerMock('@4cloudguru/pipeline-task-ado', adoPackageMock(mock));
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {

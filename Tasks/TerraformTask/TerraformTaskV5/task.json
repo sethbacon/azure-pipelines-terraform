@@ -15,7 +15,7 @@
     "demands": [],
     "version": {
         "Major": "5",
-        "Minor": "294",
+        "Minor": "295",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -1210,7 +1210,6 @@
         "TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
         "TerraformDestroyPlanForSummaryFailed": "Could not build the destroy plan summary: 'terraform plan -destroy' failed with exit code %s. The real destroy was not attempted.",
         "PlanJsonFlagNotSupportedWithPublishPlanResults": "'commandOptions' contains a -json flag, which is not supported together with 'publishPlanResults': terraform plan -json output carries real sensitive values in cleartext (masked only by a parallel after_sensitive flag meant for a redacting consumer to apply), unlike the human-readable format's own '(sensitive value)' redaction that 'publishPlanResults' relies on being safe to echo to the console. Remove -json from 'commandOptions', or use 'publishPlanSummary' instead for a redacted, structured JSON summary.",
-        "OidcRequestUriHostNotAllowed": "SYSTEM_OIDCREQUESTURI host '%s' is not a recognized Azure DevOps host (expected dev.azure.com, *.dev.azure.com, *.visualstudio.com, or the host of System.CollectionUri); refusing to send the job access token to it.",
         "GcpTokenUriNotAllowed": "GCP service connection field 'Audience' (used as the credential token_uri) must be an https:// URL on oauth2.googleapis.com or *.googleapis.com, got '%s'.",
         "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
@@ -1219,7 +1218,6 @@
         "TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
         "TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",
         "TerraformFmtFailed": "Terraform fmt failed with exit code %s",
-        "TerraformTestFailed": "Terraform test failed with exit code %s",
-        "Error_FederatedTokenAquisitionFailed": "Failed to acquire a federated (OIDC) ID token for the service connection. Verify the service connection is configured for Workload Identity Federation and that the pipeline is authorized to use it."
+        "TerraformTestFailed": "Terraform test failed with exit code %s"
     }
 }

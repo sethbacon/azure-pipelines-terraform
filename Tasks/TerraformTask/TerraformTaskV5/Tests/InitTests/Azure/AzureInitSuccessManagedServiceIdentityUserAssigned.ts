@@ -1,6 +1,7 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { adoPackageMock } from '../../adoPackageMock';
 
 // MSI connection that also carries a user-assigned identity's client ID (the
 // connection's "Service Principal Id" field) - ARM_CLIENT_ID must be set
@@ -44,6 +45,6 @@ var mock = {
     "generateIdToken": function (_command: string) { return Promise.resolve('12345'); }
 }
 
-tr.registerMock('./id-token-generator', mock);
+tr.registerMock('@4cloudguru/pipeline-task-ado', adoPackageMock(mock));
 tr.setAnswers(a);
 tr.run();

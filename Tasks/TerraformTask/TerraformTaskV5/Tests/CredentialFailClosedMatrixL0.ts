@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import tasks = require('azure-pipelines-task-lib/task');
-import idTokenGeneratorModule = require('../src/id-token-generator');
+import idTokenGeneratorModule = require('@4cloudguru/pipeline-task-ado');
 import ociTokenExchangeModule = require('../src/oci-token-exchange');
 import { TerraformCommandHandlerAzureRM } from '../src/azure-terraform-command-handler';
 import { TerraformCommandHandlerAWS } from '../src/aws-terraform-command-handler';

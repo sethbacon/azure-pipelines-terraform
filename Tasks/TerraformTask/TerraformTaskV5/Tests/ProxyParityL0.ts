@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import tasks = require('azure-pipelines-task-lib/task');
-import { generateIdToken } from '../src/id-token-generator';
+import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst } from '../src/oci-token-exchange';
 
 /**
@@ -83,10 +83,39 @@ const WIF_CALL_ROWS: WifCallRow[] = [
 type SiteRow = { file: string; fn: string; sink: string; verdict: string; why: string };
 const SITE_ROWS: SiteRow[] = [
     // --- fetch-based, proxied via buildProxyFetchOptions / buildFetchOptions ---
+    //
+    // The ADO OIDC token request (the terraform twin of the site reported as
+    // #196 in packer) used to sit here as src/id-token-generator.ts, with the
+    // fetch as its own sink. It now lives in @4cloudguru/pipeline-task-ado, so
+    // the signature enumerates the five call sites below instead — each one a
+    // handler reaching generateIdToken() — and the fetch itself is no longer in
+    // this repo. Its proxy behaviour is still asserted from here by the
+    // WIF_CALL_ROWS entry above, which drives generateIdToken() through a
+    // stubbed transport and inspects the RequestInit the package actually built.
     {
-        file: 'Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.ts',
-        fn: 'fetchToken', sink: 'fetch', verdict: 'PROXIED',
-        why: 'the terraform twin of the site reported as #196 in packer',
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/aws-terraform-command-handler.ts',
+        fn: 'applyWifEnvironment', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'AWS WIF entry point; the proxy decision now lives in pipeline-task-ado, so the site is held to a version floor instead',
+    },
+    {
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/azure-terraform-command-handler.ts',
+        fn: 'getWorkloadIdentityFederationCredentials', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'Azure WIF credential path; proxying is the package\'s responsibility once the call crosses the module boundary',
+    },
+    {
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/azure-terraform-command-handler.ts',
+        fn: 'runAzLogin', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'az login federated-token path; same package-owned transport as the credential path above',
+    },
+    {
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/gcp-terraform-command-handler.ts',
+        fn: 'writeWifCredentials', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'GCP WIF credential file generation; token fetch is package-owned',
+    },
+    {
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
+        fn: 'handleProviderWIF', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'first hop of the OCI WIF flow; the second hop (oci-token-exchange) is still local and keeps its own row below',
     },
     {
         file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts',

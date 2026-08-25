@@ -3,7 +3,7 @@ import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
-import { generateIdToken } from './id-token-generator';
+import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst } from './oci-token-exchange';
 import { writeSecretFile, tightenFilePermissions } from './secure-temp';
 import { normalizePem } from '@4cloudguru/pipeline-task-core';

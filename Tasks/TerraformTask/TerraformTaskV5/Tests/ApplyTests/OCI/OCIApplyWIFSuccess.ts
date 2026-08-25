@@ -1,6 +1,7 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { adoPackageMock } from '../../adoPackageMock';
 
 let tp = path.join(__dirname, './OCIApplyWIFSuccessL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
@@ -16,9 +17,9 @@ tr.setInput('ociWifIdentityDomainUrl', 'https://idcs-dummy.identity.oraclecloud.
 tr.setInput('ociWifClientId', 'dummy-client-id');
 tr.setInput('commandOptions', '');
 
-tr.registerMock('./id-token-generator', {
+tr.registerMock('@4cloudguru/pipeline-task-ado', adoPackageMock({
     generateIdToken: function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
-});
+}));
 
 tr.registerMock('./oci-token-exchange', {
     exchangeOidcForUpst: function (_oidcToken: string, _identityDomainUrl: string, _clientId: string, _publicKeyPem: string) {
