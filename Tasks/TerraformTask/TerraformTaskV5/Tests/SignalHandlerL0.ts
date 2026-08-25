@@ -6,7 +6,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ParentCommandHandler } from '../src/parent-handler';
 import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
-import { writeSecretFile } from '../src/secure-temp';
+import { writeSecretFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * End-to-end coverage for src/index.ts's SIGTERM/SIGINT registration (#758).

@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan, Result } from '@4cloudguru/terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
-import { writeSecretFile, scrubFile } from './secure-temp';
+import { writeSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Upper bound on the JSON files this task reads into memory (the required plan

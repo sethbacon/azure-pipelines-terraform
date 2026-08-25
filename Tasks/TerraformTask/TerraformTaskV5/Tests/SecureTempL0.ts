@@ -3,7 +3,7 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import cp = require('child_process');
-import { tightenFilePermissions, writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
+import { tightenFilePermissions, writeSecretFile, replaceSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for tightenFilePermissions (#355): chmods a file already

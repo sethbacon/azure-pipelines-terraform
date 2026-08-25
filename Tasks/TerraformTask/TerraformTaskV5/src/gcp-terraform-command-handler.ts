@@ -5,7 +5,7 @@ import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { normalizePem } from '@4cloudguru/pipeline-task-core';
-import { writeSecretFile } from './secure-temp';
+import { writeSecretFile } from '@4cloudguru/pipeline-task-ado';
 import { resolveWifTempDir } from './temp-dir';
 import {
     assertIdentityValue,

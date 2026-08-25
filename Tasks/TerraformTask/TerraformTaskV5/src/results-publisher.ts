@@ -1,5 +1,5 @@
 import { TempFileManager } from './temp-file-manager';
-import { replaceSecretFile, writeSecretFile } from './secure-temp';
+import { replaceSecretFile, writeSecretFile } from '@4cloudguru/pipeline-task-ado';
 import { DigestBuildMeta } from './results/digest-common';
 import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';

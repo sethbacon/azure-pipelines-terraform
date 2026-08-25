@@ -3,18 +3,17 @@ import fs = require('fs');
 import os = require('os');
 import path = require('path');
 import cp = require('child_process');
-import { writeSecretFile, replaceSecretFile, scrubFile } from '../src/secure-temp';
+import { writeSecretFile, replaceSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
- * Direct unit tests for this task's copy of writeSecretFile/replaceSecretFile
- * (#607). The module is a byte-identical copy of TerraformTaskV5's
- * secure-temp.ts (gated by scripts/check-shared-modules.js); these tests
- * exercise it from TerraformPolicyCheck's own compiled output, in this task's
+ * Direct unit tests for writeSecretFile/replaceSecretFile (#607).
+ * The module ships in @4cloudguru/pipeline-task-ado; these tests exercise it
+ * as TerraformPolicyCheck resolves it, in this task's
  * own package context, since results.ts (raw engine output, JUnit XML, and
  * SARIF report writes) now depends on it for the same Windows-DACL guarantee
  * TerraformTaskV5 and TerraformDriftReport already have.
  */
-describe('secure-temp (TerraformPolicyCheck copy) — exclusive create + cross-platform permission hardening', function () {
+describe('secure-temp (via TerraformPolicyCheck) — exclusive create + cross-platform permission hardening', function () {
     // monkeypatch the shared child_process module
     const c = cp as any;
     const origExecFileSync = c.execFileSync;
@@ -212,10 +211,9 @@ describe('replaceSecretFile (TerraformPolicyCheck copy) — user-named SARIF out
 /**
  * Direct unit tests for this task's copy of scrubFile (#595): overwrites a
  * secret temp file's content with zeros before cleanupTempFiles() unlinks it.
- * PolicyCheck's own runtime never calls scrubFile today, but the module is a
- * byte-identical copy of TerraformTaskV5's secure-temp.ts (gated by
- * scripts/check-shared-modules.js), so it is exercised here from this task's
- * own compiled output to give the parity copy real coverage.
+ * PolicyCheck's own runtime never calls scrubFile today, but the module ships in
+ * @4cloudguru/pipeline-task-ado, so it is exercised here against the
+ * version this task resolves.
  */
 describe('scrubFile (TerraformPolicyCheck copy) — overwrite-before-unlink content scrub (#595)', function () {
     let scratchDir: string;

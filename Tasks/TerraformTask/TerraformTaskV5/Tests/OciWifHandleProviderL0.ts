@@ -5,7 +5,7 @@ import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
 import idTokenGeneratorModule = require('@4cloudguru/pipeline-task-ado');
 import ociTokenExchangeModule = require('../src/oci-token-exchange');
-import secureTempModule = require('../src/secure-temp');
+import secureTempModule = require('@4cloudguru/pipeline-task-ado');
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
 import { TerraformAuthorizationCommandInitializer } from '../src/terraform-commands';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';

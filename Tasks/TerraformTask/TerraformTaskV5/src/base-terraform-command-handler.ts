@@ -1,7 +1,7 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { writeSecretFile } from './secure-temp';
+import { writeSecretFile } from '@4cloudguru/pipeline-task-ado';
 import { TempFileManager } from './temp-file-manager';
 import {
     ArgumentBuilder,

@@ -1,7 +1,7 @@
 import fs = require('fs');
 import tasks = require('azure-pipelines-task-lib/task');
 import { SecureFileLoader } from './secure-file-loader';
-import { scrubFile } from './secure-temp';
+import { scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Owns the temp-file lifecycle for a command handler: what is tracked, what is
