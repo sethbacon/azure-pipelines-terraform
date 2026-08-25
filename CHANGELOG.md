@@ -4,6 +4,16 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.7](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.6...v1.14.7) (2026-08-25)
+
+
+### Refactor
+
+* take secure-temp from the shared package ([#1022](https://github.com/sethbacon/azure-pipelines-terraform/issues/1022)) ([db02fed](https://github.com/sethbacon/azure-pipelines-terraform/commit/db02fedb316435d75761f9ccf8887cdd2ba99fa2))
+* **v5:** take environment-variables from the shared package ([#1017](https://github.com/sethbacon/azure-pipelines-terraform/issues/1017)) ([fdb1d4d](https://github.com/sethbacon/azure-pipelines-terraform/commit/fdb1d4dfbe752724309ef574a76b1f5ba26bd4d2))
+* **v5:** take id-token-generator from the shared package ([#1019](https://github.com/sethbacon/azure-pipelines-terraform/issues/1019)) ([8b1edb2](https://github.com/sethbacon/azure-pipelines-terraform/commit/8b1edb233606ab790d6815f3a4f1a33ce66cdf6d))
+* **v5:** take the proxy fetch options from the shared package ([#1023](https://github.com/sethbacon/azure-pipelines-terraform/issues/1023)) ([2cad3ce](https://github.com/sethbacon/azure-pipelines-terraform/commit/2cad3ce80b529e52404c4c11673a24916ca66318))
+
 ## [1.14.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.5...v1.14.6) (2026-08-25)
 
 
