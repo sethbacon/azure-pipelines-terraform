@@ -6,7 +6,7 @@ import { EnvironmentVariableHelper } from './environment-variables';
 import { generateIdToken } from './id-token-generator';
 import { exchangeOidcForUpst } from './oci-token-exchange';
 import { writeSecretFile, tightenFilePermissions } from './secure-temp';
-import { normalizePem } from './pem-normalizer';
+import { normalizePem } from '@4cloudguru/pipeline-task-core';
 import { resolveWifTempDir } from './temp-dir';
 import {
     FINGERPRINT_PATTERN,

@@ -1,5 +1,5 @@
 import tl = require('azure-pipelines-task-lib');
-import { normalizePem } from '../../src/pem-normalizer';
+import { normalizePem } from '@4cloudguru/pipeline-task-core';
 import {
     TEST_OCI_PRIVATE_KEY_SPACES,
     TEST_OCI_PRIVATE_KEY_PEM,
