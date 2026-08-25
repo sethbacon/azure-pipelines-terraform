@@ -1,6 +1,7 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { adoPackageMock } from '../../adoPackageMock';
 
 let tp = path.join(__dirname, './OCIPlanWIFFailInvalidDomainUrlL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
@@ -20,9 +21,9 @@ tr.setInput('commandOptions', '');
 
 // Mock only the OIDC token source so the flow reaches the REAL token exchange,
 // where the identity-domain URL validation lives.
-tr.registerMock('./id-token-generator', {
+tr.registerMock('@4cloudguru/pipeline-task-ado', adoPackageMock({
     generateIdToken: function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
-});
+}));
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
     "which": {

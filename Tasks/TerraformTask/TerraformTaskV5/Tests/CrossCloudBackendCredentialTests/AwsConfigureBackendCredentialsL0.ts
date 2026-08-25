@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import tasks = require('azure-pipelines-task-lib/task');
 import { TerraformCommandHandlerAWS } from '../../src/aws-terraform-command-handler';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
-import * as idTokenGenerator from '../../src/id-token-generator';
+import * as idTokenGenerator from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for the AWS handler's cross-cloud

@@ -288,7 +288,7 @@ runCommand(new TerraformCommandHandlerAWS(), 'init', 'AWSInitFailL0', false);
 
 `retryAsync()` comes from `@4cloudguru/pipeline-task-core`, a dependency of every task that needs bounded retry. It used to be eight byte-identical `src/retry.ts` copies gated by `scripts/check-shared-modules.js`; the package replaces the copies, so there is nothing left to keep in sync. These consume it:
 
-- `Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.ts` and `src/oci-token-exchange.ts`
+- `Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts`
 - `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/http.ts` (`retryHttp()`)
 - `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/callback.ts` (`postJsonWithRetry()`)
 - `Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-http.ts` (`withRetry()`)

@@ -3,6 +3,7 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import fs = require('fs');
 import os = require('os');
+import { adoPackageMock } from '../../adoPackageMock';
 
 // This scenario mocks crypto.randomUUID to a fixed value, which makes the
 // credential temp-file paths deterministic across runs. writeSecretFile now
@@ -34,7 +35,7 @@ var mock = {
     "generateIdToken": function (_serviceConnectionId: string) { return Promise.resolve('mock-oidc-token-12345'); }
 };
 
-tr.registerMock('./id-token-generator', mock);
+tr.registerMock('@4cloudguru/pipeline-task-ado', adoPackageMock(mock));
 tr.registerMock('crypto', { randomUUID: () => 'test-uuid-1234' });
 
 let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{

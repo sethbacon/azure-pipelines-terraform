@@ -165,7 +165,10 @@ describe('network retry coverage (class test #879/#891)', function () {
             { file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts', fn: 'verifyCosignSignature', sink: 'fetchBufferAllow404', verdict: 'RETRIED', why: 'delegates to the retried http-client' },
             { file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/registry-version-resolver.ts', fn: 'resolveVersionFromRegistry', sink: 'fetchJson', verdict: 'RETRIED', why: 'shared byte-identically across the 3 installers, delegates to the retried http-client' },
             { file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts', fn: 'downloadZipFromRegistry / downloadZipFromMirror', sink: 'downloadToFile / fetchJson / fetchTextAllow404', verdict: 'RETRIED', why: 'already routed through the now-retried downloadToFile and the retried fetch* functions' },
-            { file: 'Tasks/TerraformTask/TerraformTaskV5/src/id-token-generator.ts', fn: 'fetchToken', sink: 'fetch', verdict: 'RETRIED', why: 'wrapped in retryAsync with its own FederatedTokenError retryable classification' },
+            // TerraformTaskV5's ADO OIDC token request (fetchToken -> fetch) used to sit
+            // here as src/id-token-generator.ts. It moved to @4cloudguru/pipeline-task-ado,
+            // so it is no longer a site in this repo and carries no row; the retry
+            // behaviour travelled with it and is the package's to test.
             { file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts', fn: 'attemptExchange', sink: 'fetch', verdict: 'RETRIED', why: 'wrapped in retryAsync with its own OciTokenExchangeError retryable classification' },
             { file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/hcp-publisher.ts', fn: 'publish (module check / VCS create / version create)', sink: 'this.http via retryHttp', verdict: 'RETRIED', why: 'each is a get-or-create/idempotent call wrapped in retryHttp' },
             { file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/private-publisher.ts', fn: 'publish (module lookup) / createAndLinkModule', sink: 'this.http via retryHttp', verdict: 'RETRIED', why: 'get-or-create module + tolerant-of-409 link, both wrapped in retryHttp' },

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import tasks = require('azure-pipelines-task-lib/task');
-import { TokenGenerator, generateIdToken } from '../src/id-token-generator';
+import { TokenGenerator, generateIdToken } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for the OIDC ID-token generator used by the Workload
@@ -117,7 +117,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://myorg.visualstudio.com/_apis/distributedtask/hubs/build/plans/1/jobs/2/oidctoken';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not send the Bearer access token to a *.visualstudio.com host no collection URI vouches for');
     });
 
@@ -144,7 +144,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_COLLECTIONURI'] = 'https://myorg.visualstudio.com/';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not send the Bearer access token to another tenant\'s org host');
     });
 
@@ -180,7 +180,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_COLLECTIONURI'] = 'https://dev.azure.com/myorg/';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not send the Bearer access token to a *.visualstudio.com host when the collection URI is the dev.azure.com form');
     });
 
@@ -188,7 +188,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://evil.example.com/oidc';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not call fetch with a non-ADO request URI host');
     });
 
@@ -197,7 +197,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_COLLECTIONURI'] = 'https://tfs.corp.example/tfs/DefaultCollection/';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not call fetch with a non-ADO request URI host');
     });
 
@@ -205,7 +205,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
         process.env['SYSTEM_OIDCREQUESTURI'] = 'https://dev.azure.com.evil.example/oidc';
         let called = false;
         globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /OidcRequestUriHostNotAllowed|not a recognized Azure DevOps OIDC endpoint/);
         assert.strictEqual(called, false, 'must not call fetch with a lookalike host');
     });
 
@@ -305,7 +305,7 @@ describe('OIDC ID token generator — retry, timeout & secret handling', functio
     it('throws the localized error when the response omits oidcToken', async () => {
         globalThis.fetch = (async () =>
             new Response(JSON.stringify({ somethingElse: true }), { status: 200 })) as unknown as typeof globalThis.fetch;
-        await assert.rejects(new TokenGenerator().generate('sc-123'), /Error_FederatedTokenAquisitionFailed/);
+        await assert.rejects(new TokenGenerator().generate('sc-123'), /Error_FederatedTokenAquisitionFailed|Failed to acquire the federated identity token/);
     });
 
     it('maps an abort/timeout to a clear timeout error', async () => {
