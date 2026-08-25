@@ -71,6 +71,22 @@ function makeBaseRepo(name) {
     return repo;
 }
 
+// Writes (or overwrites) a task's package.json and package-lock.json for the
+// #264 dependency-change cases. `lockPackages` entries are merged into the
+// lockfile's `packages` map alongside the mandatory root ('') entry every
+// real npm v2/v3 lockfile carries.
+function writePackageFiles(repo, taskDir, { dependencies = {}, devDependencies = {}, lockPackages = {} } = {}) {
+    const abs = path.join(repo, taskDir);
+    fs.writeFileSync(
+        path.join(abs, 'package.json'),
+        JSON.stringify({ name: taskDir, version: '1.0.0', dependencies, devDependencies }, null, 2),
+    );
+    fs.writeFileSync(
+        path.join(abs, 'package-lock.json'),
+        JSON.stringify({ name: taskDir, lockfileVersion: 3, packages: { '': { name: taskDir }, ...lockPackages } }, null, 2),
+    );
+}
+
 function runCheck(cwd, args = []) {
     return spawnSync(process.execPath, [scriptPath, ...args], { cwd, encoding: 'utf8' });
 }
@@ -160,6 +176,120 @@ try {
             failed = true;
         } else {
             console.log('OK: catches a task.json-only change (no src/ touch) without a Minor bump (#676).');
+        }
+    }
+
+    // --- Case 5 (#264): package.json's PRODUCTION `dependencies` changed, with
+    // no src/task.json touch and no Minor bump -> must still fail. ---
+    {
+        const repo = initRepo(path.join(scratchDir, 'pkgjson-prod-dep-nobump'));
+        writeTask(repo, CHANGED_TASK, 0, 'export const v = 1;\n');
+        writePackageFiles(repo, CHANGED_TASK, { dependencies: { 'some-lib': '1.0.0' } });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m base');
+        git(repo, 'tag v1.0.0');
+        writePackageFiles(repo, CHANGED_TASK, { dependencies: { 'some-lib': '1.1.0' } }); // prod dep bumped
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m "bump some-lib"');
+        const res = runCheck(repo);
+        const out = `${res.stdout}${res.stderr}`;
+        const ok = res.status !== 0
+            && out.includes(CHANGED_TASK)
+            && out.includes('Minor did not increase');
+        if (!ok) {
+            console.error('FAIL: check-minor-bumps.js did not catch a package.json `dependencies` change without a Minor bump (#264).');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: catches a package.json `dependencies` change (no src/task.json touch) without a Minor bump (#264).');
+        }
+    }
+
+    // --- Case 6 (#264): a devDependencies-ONLY package.json change must NOT
+    // require a bump. ---
+    {
+        const repo = initRepo(path.join(scratchDir, 'pkgjson-devdep-exempt'));
+        writeTask(repo, CHANGED_TASK, 0, 'export const v = 1;\n');
+        writePackageFiles(repo, CHANGED_TASK, { dependencies: { 'some-lib': '1.0.0' }, devDependencies: { 'ts-node': '1.0.0' } });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m base');
+        git(repo, 'tag v1.0.0');
+        writePackageFiles(repo, CHANGED_TASK, { dependencies: { 'some-lib': '1.0.0' }, devDependencies: { 'ts-node': '2.0.0' } }); // dev-only bump
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m "bump ts-node (dev only)"');
+        const res = runCheck(repo);
+        const out = `${res.stdout}${res.stderr}`;
+        const ok = res.status === 0 && out.includes('comparing v1.0.0 -> HEAD');
+        if (!ok) {
+            console.error('FAIL: check-minor-bumps.js incorrectly required a bump for a devDependencies-only change (#264).');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: a devDependencies-only package.json change does not require a Minor bump (#264).');
+        }
+    }
+
+    // --- Case 7 (#264): package-lock.json's PRODUCTION entry resolved version
+    // moves (package.json's own declared range unchanged, e.g. `npm update`
+    // resolving a caret range forward) -> must still require a bump, proving
+    // the check does not stop at package.json alone. ---
+    {
+        const repo = initRepo(path.join(scratchDir, 'lockfile-prod-entry-nobump'));
+        writeTask(repo, CHANGED_TASK, 0, 'export const v = 1;\n');
+        writePackageFiles(repo, CHANGED_TASK, {
+            dependencies: { 'some-lib': '^1.0.0' },
+            lockPackages: { 'node_modules/some-lib': { version: '1.0.0' } },
+        });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m base');
+        git(repo, 'tag v1.0.0');
+        writePackageFiles(repo, CHANGED_TASK, {
+            dependencies: { 'some-lib': '^1.0.0' }, // declared range unchanged
+            lockPackages: { 'node_modules/some-lib': { version: '1.0.5' } }, // resolved version moved
+        });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m "npm update resolves some-lib forward"');
+        const res = runCheck(repo);
+        const out = `${res.stdout}${res.stderr}`;
+        const ok = res.status !== 0
+            && out.includes(CHANGED_TASK)
+            && out.includes('Minor did not increase');
+        if (!ok) {
+            console.error('FAIL: check-minor-bumps.js did not catch a lockfile-only production version bump without a Minor bump (#264).');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: catches a package-lock.json production-entry version bump (package.json range unchanged) without a Minor bump (#264).');
+        }
+    }
+
+    // --- Case 8 (#264): a dev-only package-lock.json entry's version change
+    // must NOT require a bump. ---
+    {
+        const repo = initRepo(path.join(scratchDir, 'lockfile-dev-entry-exempt'));
+        writeTask(repo, CHANGED_TASK, 0, 'export const v = 1;\n');
+        writePackageFiles(repo, CHANGED_TASK, {
+            devDependencies: { 'ts-node': '^1.0.0' },
+            lockPackages: { 'node_modules/ts-node': { version: '1.0.0', dev: true } },
+        });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m base');
+        git(repo, 'tag v1.0.0');
+        writePackageFiles(repo, CHANGED_TASK, {
+            devDependencies: { 'ts-node': '^1.0.0' },
+            lockPackages: { 'node_modules/ts-node': { version: '1.0.5', dev: true } }, // dev-only bump
+        });
+        git(repo, 'add -A');
+        git(repo, 'commit -q -m "npm update resolves ts-node forward (dev only)"');
+        const res = runCheck(repo);
+        const out = `${res.stdout}${res.stderr}`;
+        const ok = res.status === 0 && out.includes('comparing v1.0.0 -> HEAD');
+        if (!ok) {
+            console.error('FAIL: check-minor-bumps.js incorrectly required a bump for a dev-only lockfile entry change (#264).');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: a package-lock.json dev-only entry version change does not require a Minor bump (#264).');
         }
     }
 } finally {
