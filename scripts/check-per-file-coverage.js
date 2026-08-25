@@ -202,7 +202,6 @@ const SECURITY_TIER = new Set([
     //   secure-file-loader.js      tightens permissions and scrub-deletes a secret-bearing download
     //   secure-var-file-masking.js registers secure-var-file contents with the masker
     //   endpoint-data-secret.js    reads ENDPOINT_DATA_* secrets without the debug-log leak
-    //   proxy-config.js            registers proxy credentials before the dispatcher is built
     //   backend-detection.js       maps an untrusted backend type onto a credential-injection path
     //   image-rewrite.js           path-containment guard for local <img src> in published KB HTML
     //   private-publisher.js       validates an untrusted registry moduleId before URL interpolation
@@ -210,7 +209,6 @@ const SECURITY_TIER = new Set([
     'Tasks/TerraformTask/TerraformTaskV5/src/secure-file-loader.js',
     'Tasks/TerraformTask/TerraformTaskV5/src/secure-var-file-masking.js',
     'Tasks/TerraformTask/TerraformTaskV5/src/endpoint-data-secret.js',
-    'Tasks/TerraformTask/TerraformTaskV5/src/proxy-config.js',
     'Tasks/TerraformTask/TerraformTaskV5/src/backend-detection.js',
     'Tasks/PublishKbArticle/PublishKbArticleV1/src/image-rewrite.js',
     'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/private-publisher.js',

@@ -25,7 +25,8 @@
 // -------------------------
 //   1. Every `fetch()` call in a task's src/ tree must supply proxy options --
 //      either an explicit `dispatcher`, or a spread of one of the repo's proxy
-//      option builders (buildFetchOptions / buildProxyFetchOptions).
+//      option builders (buildFetchOptions / buildProxyFetchOptions), or the
+//      shared package's builder (buildAdoFetchOptions).
 //   2. Every `https.request` / `https.get` / `http.request` / `http.get` call
 //      must supply an `agent`, which is how this codebase injects its
 //      CONNECT-tunnelling ProxyTunnelAgent. When that call has been delegated to
@@ -62,7 +63,7 @@ const JSON_OUTPUT = process.argv.includes('--json');
 const ROOT = path.resolve(process.argv.filter((a) => a !== '--json')[2] || process.cwd());
 
 /** Builders that return a RequestInit carrying a proxy dispatcher. */
-const PROXY_OPTION_BUILDERS = ['buildFetchOptions', 'buildProxyFetchOptions'];
+const PROXY_OPTION_BUILDERS = ['buildFetchOptions', 'buildProxyFetchOptions', 'buildAdoFetchOptions'];
 
 /** Transport primitives that bypass the proxy unless explicitly told not to. */
 const FETCH_SINKS = ['fetch'];

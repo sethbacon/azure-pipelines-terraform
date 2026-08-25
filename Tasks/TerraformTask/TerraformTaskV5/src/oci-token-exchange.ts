@@ -1,6 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import crypto = require('crypto');
-import { buildProxyFetchOptions } from './proxy-config';
+import { buildAdoFetchOptions } from '@4cloudguru/pipeline-task-ado';
 import { retryAsync, parseRetryAfterMs, truncateBody as coreTruncateBody } from '@4cloudguru/pipeline-task-core';
 
 /**
@@ -199,7 +199,7 @@ async function attemptExchange(tokenEndpoint: string, bodyString: string, secret
                 // Never follow a redirect: a 3xx could forward the OIDC bearer JWT
                 // (preserved with the POST body) to a different, unvalidated origin.
                 redirect: 'manual',
-                ...buildProxyFetchOptions(),
+                ...buildAdoFetchOptions(tokenEndpoint),
             });
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
