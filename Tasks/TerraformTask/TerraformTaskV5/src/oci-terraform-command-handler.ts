@@ -340,16 +340,18 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             await this.handleProviderWIF(command);
         } else {
             if (command.serviceProviderName) {
-                // Fails closed on an absent/empty key, AND is read through
-                // readSecretEndpointDataParameter rather than
-                // tasks.getEndpointDataParameter: the latter debug-logs the value it
-                // returns, so the raw OCI API signing key would already be in the
-                // build log before getPrivateKeyFilePath's first setSecret, and it
-                // leaves ENDPOINT_DATA_* in process.env for the terraform child to
-                // inherit. Both guards compose inside requireSecretField(source:
-                // 'data') -- see credential-guards.ts readSecretEndpointField and
-                // endpoint-data-secret.ts.
-                const rawPrivateKey = requireSecretField(command.serviceProviderName, "privateKey", { source: 'data' });
+                // The privatekey descriptor now lives under the endpoint's auth
+                // scheme, so ADO delivers it as ENDPOINT_AUTH_PARAMETER_*: vaulted
+                // by task-lib, removed from process.env, and seeded into the agent's
+                // masker at job start. None of that is true of ENDPOINT_DATA_*,
+                // which tasks.getEndpointDataParameter also debug-logs at read time
+                // (azure-pipelines-packer#185).
+                //
+                // Connections created before that change still carry the value as
+                // endpoint data, so the read falls back to the hardened
+                // readSecretEndpointDataParameter rather than failing. Fails closed
+                // on an absent/empty key either way.
+                const rawPrivateKey = requireSecretField(command.serviceProviderName, "privateKey", { source: 'auth-migrating-from-data' });
                 const privateKeyFilePath = this.getPrivateKeyFilePath(rawPrivateKey);
                 // Each of these used an `optional=false` accessor inside an `|| ''`
                 // chain: the tail was unreachable (#194) and, more importantly, the

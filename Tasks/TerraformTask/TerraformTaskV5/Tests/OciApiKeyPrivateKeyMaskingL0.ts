@@ -36,6 +36,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
 
     const orig = {
         getEndpointDataParameter: t.getEndpointDataParameter,
+        getEndpointAuthorizationParameter: t.getEndpointAuthorizationParameter,
         getInput: t.getInput,
         getBoolInput: t.getBoolInput,
         setSecret: t.setSecret,
@@ -66,6 +67,9 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         };
         deliverPrivateKey(TEST_OCI_PRIVATE_KEY_SPACES);
         t.getEndpointDataParameter = (_service: string, key: string) => endpointData[key];
+        // Legacy connections carry the key as endpoint DATA; the auth parameter is
+        // absent unless a test opts into the post-migration shape.
+        t.getEndpointAuthorizationParameter = () => undefined;
         // No environmentAuthSchemeOCI input configured -> resolveAuthScheme defaults
         // to "ServiceConnection", taking the classic (non-WIF) branch under test.
         t.getInput = () => undefined;
@@ -77,6 +81,7 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
     afterEach(() => {
         deliverPrivateKey(undefined);
         t.getEndpointDataParameter = orig.getEndpointDataParameter;
+        t.getEndpointAuthorizationParameter = orig.getEndpointAuthorizationParameter;
         t.getInput = orig.getInput;
         t.getBoolInput = orig.getBoolInput;
         t.setSecret = orig.setSecret;
@@ -183,5 +188,54 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         assert.strictEqual((handler as any).tempFileManager.tracked.length, 0, 'no temp file is tracked when the key is missing');
         assert.strictEqual(setSecretCalls.length, 0, 'nothing is masked when there is no key to mask');
+    });
+
+    // azure-pipelines-packer#185: the privatekey descriptor moved under the
+    // endpoint's auth scheme, so ADO now vaults it, keeps it out of process.env
+    // and seeds the agent's masker at job start. Connections created before that
+    // change still deliver it as endpoint DATA, so both shapes must work.
+    describe('privatekey delivery migration (data -> auth scheme)', () => {
+        it('reads the vaulted auth parameter when the connection supplies one', async () => {
+            deliverPrivateKey(undefined); // nothing in ENDPOINT_DATA_*_PRIVATEKEY
+            t.getEndpointAuthorizationParameter = (_service: string, key: string) =>
+                (key === 'privateKey' ? TEST_OCI_PRIVATE_KEY_SPACES : undefined);
+
+            const handler = new TerraformCommandHandlerOCI();
+            await handler.handleProvider(makeCommand());
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
+            assert.strictEqual(tempFiles.length, 1, 'the auth-delivered key still produces exactly one key file');
+            assert.strictEqual(fs.readFileSync(tempFiles[0], 'utf-8'), TEST_OCI_PRIVATE_KEY_PEM);
+            assert.ok(setSecretCalls.includes(TEST_OCI_PRIVATE_KEY_SPACES),
+                'the auth-delivered key must be masked exactly as the data-delivered one is');
+        });
+
+        it('prefers the auth parameter over a legacy data parameter when both are present', async () => {
+            // The data path carries the CRLF fixture; the auth path the spaces one.
+            // Only the auth value may reach disk.
+            deliverPrivateKey(TEST_OCI_PRIVATE_KEY_CRLF);
+            t.getEndpointAuthorizationParameter = (_service: string, key: string) =>
+                (key === 'privateKey' ? TEST_OCI_PRIVATE_KEY_SPACES : undefined);
+
+            const handler = new TerraformCommandHandlerOCI();
+            await handler.handleProvider(makeCommand());
+
+            assert.ok(setSecretCalls.includes(TEST_OCI_PRIVATE_KEY_SPACES),
+                'the auth-delivered key is the one that must be used');
+            assert.ok(!setSecretCalls.includes(TEST_OCI_PRIVATE_KEY_CRLF),
+                'the legacy data value must not be read when the auth parameter is present');
+        });
+
+        it('still fails closed when neither delivery carries the key', async () => {
+            deliverPrivateKey(undefined);
+            t.getEndpointAuthorizationParameter = () => undefined;
+
+            const handler = new TerraformCommandHandlerOCI();
+            await assert.rejects(
+                handler.handleProvider(makeCommand()),
+                /field 'privateKey' is missing or empty/,
+            );
+        });
     });
 });
