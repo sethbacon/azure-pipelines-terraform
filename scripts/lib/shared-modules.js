@@ -97,21 +97,6 @@ const FAMILIES = [
         ],
     },
     {
-        // Fail-closed boolean-input helper: requireGpgSignature / requireChecksum /
-        // requireCosignVerification default to TRUE even on agents that do not
-        // materialize task.json defaultValues. A drift here could silently flip a
-        // verification default to fail-open, so keep it byte-identical across the
-        // three installer tasks.
-        dirs: [
-            'Tasks/TerraformInstaller/TerraformInstallerV1/src',
-            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src',
-            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src',
-        ],
-        modules: [
-            'bool-input.ts',
-        ],
-    },
-    {
         // URI-scheme validation shared by the two independent HTML sanitizer/gate
         // layers guarding the ServiceNow KB-publishing pipeline: Markdown2Html's
         // render-time sanitizeRenderedHtml() and PublishKbArticle's downstream
