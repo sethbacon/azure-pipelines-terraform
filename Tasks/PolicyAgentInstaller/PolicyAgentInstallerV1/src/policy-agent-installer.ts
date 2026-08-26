@@ -125,7 +125,8 @@ async function resolveVersion(agent: string, downloadSource: string, inputVersio
     if (downloadSource === "registry") {
         const registryUrl = tasks.getInput("registryUrl", true)!;
         const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || agent);
-        return resolveVersionFromRegistry(registryUrl, mirrorName);
+        return resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
+            assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
     }
 
     if (agent === "sentinel") {
@@ -365,6 +366,14 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", redactUrlUserInfo(mirrorBaseUrl)));
     }
+    // The sidecar SHA256SUMS/.sha256 fetches below were reaching the network
+    // authorized only by the fact that downloadFromMirrorUrl() happens to run first
+    // on the same host. Authorizing here makes it a property of the URL rather than
+    // of call ordering.
+    await assertEgressHostAllowed(
+        new URL(mirrorBaseUrl).hostname,
+        parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false)),
+        MIRROR_EGRESS_MESSAGES);
     const osPlatform = getPlatformString();
     const arch = getArchString();
 
