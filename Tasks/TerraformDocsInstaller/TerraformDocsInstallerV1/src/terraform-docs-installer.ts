@@ -6,7 +6,7 @@ import fs = require('fs');
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { getBoolInputDefaultTrue } from './bool-input';
+import { getBoolInputDefaultTrue } from '@4cloudguru/pipeline-task-ado';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 import { getPlatformString, hashFile, verifySha256, writeCacheIntegrityMarker, verifyCachedTool } from './tool-integrity';
