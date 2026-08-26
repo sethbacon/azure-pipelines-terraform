@@ -453,6 +453,23 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('registryUrl on a private address: should reject during version resolution, before any download_url exists (packer#330 sibling)', async () => {
+        // The existing guard covers only the download_url the registry returns.
+        // Resolving 'latest' hits the network first, so nothing checked registryUrl's
+        // own host -- and it carries the operator's basic-auth credential.
+        const tp = path.join(__dirname, 'RegistryLatestUrlPrivateHostReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check, not by a mock throwing. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     it('registry host resolves to a private address: should reject on the DEFAULT (no allowlist) path (#769)', async () => {
         // download_url's host is not a literal private IP -- isPrivateOrLinkLocalHost
         // alone would miss it -- but the mocked dns module resolves it to the cloud

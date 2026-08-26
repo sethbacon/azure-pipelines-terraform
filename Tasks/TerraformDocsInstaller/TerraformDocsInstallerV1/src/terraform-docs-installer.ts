@@ -122,7 +122,8 @@ async function resolveVersion(downloadSource: string, inputVersion: string): Pro
     if (downloadSource === "registry") {
         const registryUrl = tasks.getInput("registryUrl", true)!;
         const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || toolName);
-        return resolveVersionFromRegistry(registryUrl, mirrorName);
+        return resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
+            assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
     }
 
     return resolveLatestFromGitHub();
@@ -299,6 +300,13 @@ async function downloadFromMirror(version: string, mirrorBaseUrl: string): Promi
     if (!mirrorBaseUrl.startsWith('https://')) {
         throw new Error(tasks.loc("InsecureUrlRejected", redactUrlUserInfo(mirrorBaseUrl)));
     }
+    // The sidecar sha256sum fetch below was reaching the network authorized only by
+    // the fact that downloadFromMirrorUrl() happens to run first on the same host.
+    // Authorizing here makes it a property of the URL rather than of call ordering.
+    await assertEgressHostAllowed(
+        new URL(mirrorBaseUrl).hostname,
+        parseAllowedHosts(tasks.getInput("mirrorAllowedHosts", false)),
+        MIRROR_EGRESS_MESSAGES);
     const assetName = getAssetName(version);
     const downloadUrl = `${mirrorBaseUrl}/${version}/${assetName}`;
     const archivePath = await downloadFromMirrorUrl(downloadUrl, `terraform-docs-${version}-${uuidV4()}.${getArchiveExtension()}`);

@@ -166,8 +166,8 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
-        fn: "downloadFromMirror", sink: "verifyMirrorChecksum", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        fn: "downloadFromMirror", sink: "verifyMirrorChecksum", verdict: "AUTHORIZED",
+        why: "mirror sidecar checksum fetch: mirrorBaseUrl is authorized in downloadFromMirror's validation preamble, so this no longer depends on downloadFromMirrorUrl happening to run first on the same host (packer#330 sibling)",
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
@@ -176,18 +176,18 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
-        fn: "downloadFromMirror", sink: "fetchTextAllow404", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        fn: "downloadFromMirror", sink: "fetchTextAllow404", verdict: "AUTHORIZED",
+        why: "mirror sidecar checksum fetch: mirrorBaseUrl is authorized in downloadFromMirror's validation preamble, so this no longer depends on downloadFromMirrorUrl happening to run first on the same host (packer#330 sibling)",
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/registry-version-resolver.ts",
         fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
     },
     {
         file: "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/registry-version-resolver.ts",
         fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
     },
     {
         file: "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/terraform-docs-installer.ts",
@@ -221,13 +221,13 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/terraform-docs-installer.ts",
-        fn: "downloadFromMirror", sink: "verifyChecksumOrSkip", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        fn: "downloadFromMirror", sink: "verifyChecksumOrSkip", verdict: "AUTHORIZED",
+        why: "mirror sidecar checksum fetch: mirrorBaseUrl is authorized in downloadFromMirror's validation preamble, so this no longer depends on downloadFromMirrorUrl happening to run first on the same host (packer#330 sibling)",
     },
     {
         file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/registry-version-resolver.ts",
         fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "destination is the registryUrl/mirrorBaseUrl the pipeline author typed; HTTPS-pinned, and fetchWithTimeout refuses any off-host redirect, so no third party chooses this host",
+        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
     },
     {
         file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts",

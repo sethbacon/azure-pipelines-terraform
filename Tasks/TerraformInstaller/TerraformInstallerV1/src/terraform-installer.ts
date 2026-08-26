@@ -68,7 +68,8 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
             const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
             resolvedVersion = inputVersion.toLowerCase() !== 'latest'
                 ? inputVersion
-                : await resolveVersionFromRegistry(registryUrl, mirrorName);
+                : await resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
+                    assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
             break;
         }
         default: // "hashicorp" and "mirror" both use HashiCorp checkpoint for 'latest'

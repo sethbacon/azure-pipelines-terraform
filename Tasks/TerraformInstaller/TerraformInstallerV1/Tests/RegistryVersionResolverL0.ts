@@ -45,6 +45,9 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
   });
 
   describe('resolveVersionFromRegistry', () => {
+    // Allow-all stub for the cases that are not about authorization.
+    const allowAll = async () => { };
+
     it('resolves the version from the registry latest endpoint and masks any embedded credential', async () => {
       const requestedUrls: string[] = [];
       globalThis.fetch = (async (url: string) => {
@@ -52,7 +55,7 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
         return new Response(JSON.stringify({ version: '1.9.2' }), { status: 200 });
       }) as unknown as typeof globalThis.fetch;
 
-      const version = await resolveVersionFromRegistry('https://user:s3cr3t@registry.example.com', 'terraform');
+      const version = await resolveVersionFromRegistry('https://user:s3cr3t@registry.example.com', 'terraform', allowAll);
 
       assert.strictEqual(version, '1.9.2');
       assert.strictEqual(requestedUrls.length, 1);
@@ -64,7 +67,7 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
       globalThis.fetch = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof globalThis.fetch;
 
       await assert.rejects(
-        resolveVersionFromRegistry('https://registry.example.com', 'terraform'),
+        resolveVersionFromRegistry('https://registry.example.com', 'terraform', allowAll),
         /missing version field/,
       );
     });
@@ -77,7 +80,7 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
       globalThis.fetch = (async () => new Response('null', { status: 200 })) as unknown as typeof globalThis.fetch;
 
       await assert.rejects(
-        resolveVersionFromRegistry('https://registry.example.com', 'terraform'),
+        resolveVersionFromRegistry('https://registry.example.com', 'terraform', allowAll),
         /non-object/,
       );
     });
@@ -85,7 +88,45 @@ describe('registry-version-resolver: maskOperatorUrlCredentials + resolveVersion
     it('propagates a fetch failure (network error / non-2xx) rather than silently resolving', async () => {
       globalThis.fetch = (async () => new Response('server error', { status: 500 })) as unknown as typeof globalThis.fetch;
 
-      await assert.rejects(resolveVersionFromRegistry('https://registry.example.com', 'terraform'));
+      await assert.rejects(resolveVersionFromRegistry('https://registry.example.com', 'terraform', allowAll));
+    });
+
+    // azure-pipelines-packer#330 sibling. Resolving 'latest' is the first request
+    // the registry source makes -- it runs before any registry-chosen download_url
+    // exists, so the download-side egress guard cannot cover it. registryUrl's own
+    // host was therefore never authorized, and the basic-auth userinfo it may carry
+    // went to whatever address the pipeline author named.
+    it('authorizes registryUrl\'s own host BEFORE issuing the request (packer#330)', async () => {
+      const order: string[] = [];
+      globalThis.fetch = (async () => {
+        order.push('fetch');
+        return new Response(JSON.stringify({ version: '1.9.2' }), { status: 200 });
+      }) as unknown as typeof globalThis.fetch;
+
+      const seen: string[] = [];
+      await resolveVersionFromRegistry('https://registry.example.com', 'terraform', async (hostname) => {
+        order.push('authorize');
+        seen.push(hostname);
+      });
+
+      assert.deepStrictEqual(seen, ['registry.example.com'], 'the authorizer must receive registryUrl\'s host');
+      assert.deepStrictEqual(order, ['authorize', 'fetch'], 'authorization must precede the request, not follow it');
+    });
+
+    it('makes no request at all when the host is refused', async () => {
+      let fetched = false;
+      globalThis.fetch = (async () => {
+        fetched = true;
+        return new Response(JSON.stringify({ version: '1.9.2' }), { status: 200 });
+      }) as unknown as typeof globalThis.fetch;
+
+      await assert.rejects(
+        resolveVersionFromRegistry('https://169.254.169.254', 'terraform', async () => {
+          throw new Error('RegistryDownloadHostIsPrivate 169.254.169.254');
+        }),
+        /RegistryDownloadHostIsPrivate/,
+      );
+      assert.strictEqual(fetched, false, 'a refused host must not be contacted');
     });
   });
 });

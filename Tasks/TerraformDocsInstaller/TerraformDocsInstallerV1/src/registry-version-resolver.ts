@@ -33,8 +33,20 @@ export function maskOperatorUrlCredentials(url: string): void {
  * body in each, so a fix to the registry-latest error message or masking order
  * could land in one copy and be silently missed in the others (#681).
  */
-export async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string): Promise<string> {
+export async function resolveVersionFromRegistry(registryUrl: string, mirrorName: string, authorizeHost: (hostname: string) => Promise<void>): Promise<string> {
   maskOperatorUrlCredentials(registryUrl);
+  // Resolving 'latest' is the FIRST request the registry source makes, before any
+  // registry-chosen download_url exists for the download-side guard to cover. Until
+  // this check existed, registryUrl's own host was never authorized at all, and the
+  // basic-auth userinfo it may carry was sent to whatever address it named
+  // (azure-pipelines-packer#330).
+  let parsed: URL;
+  try {
+    parsed = new URL(registryUrl);
+  } catch {
+    throw new Error(`registryUrl '${redactUrlUserInfo(registryUrl)}' is not a valid URL.`);
+  }
+  await authorizeHost(parsed.hostname);
   console.log(tasks.loc("ResolvingLatestFromRegistry", redactUrlUserInfo(registryUrl)));
   const latestUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/latest`;
   const data = await fetchJson<{ version: string }>(latestUrl);
