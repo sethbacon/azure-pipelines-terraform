@@ -61,13 +61,50 @@ const SINKS = [
     'fetchTextAllow404', 'fetchBuffer', 'fetchBufferAllow404',
 ];
 
-// An operator-DECLARED endpoint: the pipeline author typed this base URL into a
-// task input, so the destination host is their own choice, and fetchWithTimeout's
-// default redirect policy keeps every hop on that same host. Reported, not failed
-// — blocking it would break the air-gapped/private registry the allowlist inputs
-// exist to support. A destination chosen by anyone else (a response field, a
-// redirect Location, an opaque parameter) is NOT covered by this and does fail.
-const OPERATOR_DECLARED = /^\$\{(registryUrl|mirrorBaseUrl|mirrorUrl|baseUrl)\}/;
+// A function may authorize by INVOKING an authorizer its caller injects, rather
+// than by calling assertEgressHostAllowed itself. Recognized structurally -- a
+// parameter declared to take a hostname and return a promise -- not by name.
+// Callers of such a function are separately required to pass the real authorizer
+// (see AUTHORIZER_ARG below); recognizing the parameter alone would let a caller
+// hand over a no-op and still read as authorized.
+const AUTHORIZER_PARAM = /(\w+)\s*:\s*\(\s*(?:hostname|host)\s*:\s*string\s*\)\s*=>\s*Promise\s*<\s*void\s*>/g;
+
+function authorizerParams(header) {
+    return [...header.matchAll(AUTHORIZER_PARAM)].map(m => m[1]);
+}
+
+function invokesInjectedAuthorizer(fn) {
+    return authorizerParams(fn.header).some(p => new RegExp(`await\\s+${p}\\s*\\(`).test(fn.text));
+}
+
+/**
+ * Finds where a function's header begins, so a sink can be attributed to the name
+ * responsible for authorizing it.
+ *
+ * Anchors on the declaration keyword rather than counting lines back from the
+ * opening brace. Reading a fixed two lines back meant a signature wrapped over
+ * more lines parsed as <anonymous> and every sink inside it was skipped --
+ * wrapping a signature silently removed its egress sites from this gate. Walking
+ * back to the previous statement boundary instead is wrong too: a return type
+ * like Promise<{ path: string }> puts a brace between the name and the body.
+ */
+const DECLARATION = /(?:export\s+)?(?:async\s+)?function\s+\w+\s*\(|(?:export\s+)?(?:const|let|var)\s+\w+\s*[:=]/g;
+
+function headerStart(source, openIndex) {
+    const windowStart = Math.max(0, openIndex - 2000);
+    const slice = source.slice(windowStart, openIndex);
+    let last = -1;
+    DECLARATION.lastIndex = 0;
+    let m;
+    while ((m = DECLARATION.exec(slice)) !== null) last = m.index;
+    if (last >= 0) return windowStart + last;
+    let start = 0;
+    for (const token of [';', '}', '{', '*/']) {
+        const idx = source.lastIndexOf(token, openIndex - 1);
+        if (idx >= 0) start = Math.max(start, idx + token.length);
+    }
+    return start;
+}
 
 function walk(dir, out = []) {
     let entries;
@@ -113,7 +150,7 @@ function topLevelFunctions(source) {
         } else if (c === '}') {
             depth--;
             if (depth === 0 && openIndex >= 0) {
-                const header = source.slice(source.lastIndexOf('\n', source.lastIndexOf('\n', openIndex) - 1) + 1, openIndex);
+                const header = source.slice(headerStart(source, openIndex), openIndex);
                 const named = header.match(/(?:function\s+(\w+)|const\s+(\w+)\s*[:=])/);
                 ranges.push({
                     name: named ? (named[1] || named[2]) : '<anonymous>',
@@ -311,14 +348,13 @@ for (const file of files) {
                     && !callbackArgs.every(a => a.includes(`${AUTHORIZER}(`));
                 // A call to a wrapper that authorizes internally is authorized:
                 // the decision belongs wherever the destination host is known.
-                const authorized = !callbackUnauthorized && (viaWrapper || fn.text.includes(`${AUTHORIZER}(`));
+                const authorized = !callbackUnauthorized
+                    && (viaWrapper || fn.text.includes(`${AUTHORIZER}(`) || invokesInjectedAuthorizer(fn));
                 const rawOnly = !authorized
                     && (callbackUnauthorized || RAW_PRIMITIVES.some(p => fn.text.includes(`${p}(`)));
-                const declared = OPERATOR_DECLARED.test(expr.replace(/^`/, ''));
                 let verdict;
                 if (authorized) verdict = 'AUTHORIZED';
                 else if (rawOnly) verdict = 'TEXTUAL-ONLY';
-                else if (declared) verdict = 'EXEMPT-OPERATOR-DECLARED';
                 else verdict = 'UNAUTHORIZED';
                 findings.push({ verdict, rel, line: lineOf(m.index), fn: fn.name, sink: name, expr: expr.slice(0, 70) });
             }
@@ -326,7 +362,7 @@ for (const file of files) {
     }
 }
 
-const order = ['UNAUTHORIZED', 'TEXTUAL-ONLY', 'AUTHORIZED', 'EXEMPT-OPERATOR-DECLARED', 'EXEMPT-CONSTANT-HOST'];
+const order = ['UNAUTHORIZED', 'TEXTUAL-ONLY', 'AUTHORIZED', 'EXEMPT-CONSTANT-HOST'];
 const seen = new Set();
 const unique = findings.filter(f => {
     const key = `${f.rel}:${f.line}:${f.sink}`;
@@ -335,10 +371,49 @@ const unique = findings.filter(f => {
     return true;
 });
 
-const failures = unique.filter(f => f.verdict === 'UNAUTHORIZED' || f.verdict === 'TEXTUAL-ONLY').length + suspects.length;
+// A function that authorizes through an injected authorizer only actually
+// authorizes if its CALLERS hand it the real one. Without this, satisfying the
+// gate would be as easy as declaring the parameter and passing () => {}.
+const injectedCallSiteFailures = [];
+const injectedSeen = new Set();
+for (const file of files) {
+    const source = fs.readFileSync(file, 'utf8');
+    const rel = path.relative(ROOT, file).split(path.sep).join('/');
+    for (const fn of topLevelFunctions(source)) {
+        const params = authorizerParams(fn.header);
+        if (params.length === 0) continue;
+        const name = (fn.header.match(/function\s+(\w+)/) || [])[1];
+        if (!name) continue;
+        const argIndex = (fn.header.match(/\(([\s\S]*)\)/) || [, ''])[1]
+            .split(',').map(p => p.trim().split(':')[0].trim()).indexOf(params[0]);
+        if (argIndex < 0) continue;
+        for (const callFile of files) {
+            const callSource = fs.readFileSync(callFile, 'utf8');
+            const callRel = path.relative(ROOT, callFile).split(path.sep).join('/');
+            const callRe = new RegExp(`(?<![.\\w])${name}\\s*\\(`, 'g');
+            let cm;
+            while ((cm = callRe.exec(maskCommentsAndStrings(callSource))) !== null) {
+                if (/(?:function|import)\s+$/.test(callSource.slice(Math.max(0, cm.index - 30), cm.index))) continue;
+                const arg = argumentAt(callSource, cm.index + cm[0].length - 1, argIndex);
+                if (arg === null || arg === undefined) continue;
+                if (!String(arg).includes(`${AUTHORIZER}(`)) {
+                    const key = `${callRel}:${callSource.slice(0, cm.index).split('\n').length}`;
+                    if (!injectedSeen.has(key)) {
+                        injectedSeen.add(key);
+                        injectedCallSiteFailures.push(
+                            `${key}: ${name}() requires an egress authorizer but this call passes ${JSON.stringify(String(arg).slice(0, 60))}`);
+                    }
+                }
+            }
+        }
+    }
+}
+
+const failures = unique.filter(f => f.verdict === 'UNAUTHORIZED' || f.verdict === 'TEXTUAL-ONLY').length
+    + suspects.length + injectedCallSiteFailures.length;
 
 if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ root: ROOT, sites: unique, suspects, failures }, null, 2));
+    console.log(JSON.stringify({ root: ROOT, sites: unique, suspects: [...suspects, ...injectedCallSiteFailures], failures }, null, 2));
     process.exit(failures > 0 ? 1 : 0);
 }
 
@@ -353,6 +428,11 @@ for (const verdict of order) {
 if (suspects.length) {
     console.log(`SUSPECT-TEXTUAL-BLOCKLIST (${suspects.length}):`);
     for (const s of suspects) console.log(`  ${s}`);
+    console.log('');
+}
+if (injectedCallSiteFailures.length) {
+    console.log(`INJECTED-AUTHORIZER-NOT-SUPPLIED (${injectedCallSiteFailures.length}):`);
+    for (const s of injectedCallSiteFailures) console.log(`  ${s}`);
     console.log('');
 }
 
