@@ -74,8 +74,51 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Create issue on new vulnerabilities
+      # DISTINGUISH A BROKEN SCANNER FROM A CLEAN ONE (#894).
+      #
+      # continue-on-error above collapses osv-scanner's exit 1 ("vulnerabilities
+      # found") and its error exits -- 127 (general error) and 128 (no packages
+      # found) -- into one `outcome == 'failure'`, and GitHub exposes the raw
+      # exit code nowhere. So the step below used to file an issue TITLED
+      # "vulnerabilities found" for a scanner that had simply stopped working.
+      #
+      # That is not hypothetical: terraform-state-manager-backend#334 filed
+      # exactly that issue, asserting vulnerabilities that did not exist, while
+      # seven genuinely reachable advisories stayed invisible. The scanner image
+      # ships its own Go toolchain and runs it with GOTOOLCHAIN=local, so it
+      # aborts on any module whose `go` directive is newer -- and a broken
+      # scanner produced the same green as a clean one for weeks.
+      #
+      # CHECKED ON THE ARTIFACT, NOT THE EXIT CODE, because the exit code is
+      # exactly what is unavailable. A findings table always names at least one
+      # advisory; a scanner that aborted names none. That test is independent of
+      # the output format and of however "no vulnerabilities found" is worded.
+      #
+      # This FAILS THE RUN rather than warning. A permanently-red Monday for a
+      # broken scanner is the notification; a silently green one is the defect,
+      # and the whole point of #894 is that the two were indistinguishable.
+      - name: Distinguish a broken scanner from real findings
+        id: osv_verdict
         if: steps.osv.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          if [ -s osv-results.txt ] && grep -qE '(GHSA|OSV|CVE|GO|PYSEC|RUSTSEC)-[0-9A-Za-z-]+' osv-results.txt; then
+            echo "findings=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "findings=false" >> "$GITHUB_OUTPUT"
+          echo "::error title=OSV-Scanner did not scan::osv-scanner exited non-zero but its output names no advisory. Exit 1 always carries at least one, so this was a scanner error (127 general error, or 128 no packages found), NOT a clean scan and NOT a finding. Do not file a vulnerabilities-found issue for it -- fix the scanner. See #894."
+          {
+            echo '## ⚠️ OSV-Scanner did not complete'
+            echo ''
+            echo 'The scan step exited non-zero but produced no advisory identifiers.'
+            echo 'This run tells you **nothing** about whether this repository has'
+            echo 'known vulnerabilities.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Create issue on new vulnerabilities
+        if: steps.osv.outcome == 'failure' && steps.osv_verdict.outputs.findings == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
