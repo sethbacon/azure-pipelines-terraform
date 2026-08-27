@@ -61,7 +61,7 @@ export const FINGERPRINT_PATTERN = /^([0-9a-fA-F]{2}:){15}[0-9a-fA-F]{2}$/;
 export const ROLE_SESSION_NAME_PATTERN = /^[\w+=,.@-]{2,64}$/;
 
 /** Which task-lib accessor family a service-connection field lives in. */
-export type EndpointSource = 'auth' | 'data';
+export type EndpointSource = 'auth' | 'data' | 'auth-migrating-from-data';
 
 function readEndpointField(serviceName: string, key: string, source: EndpointSource): string | undefined {
     // optional = true everywhere: absence is diagnosed HERE, naming the field and
@@ -129,9 +129,17 @@ export function assertIdentityValue(value: string | undefined, subject: string, 
  * read instead of having to remember it.
  */
 function readSecretEndpointField(serviceName: string, key: string, source: EndpointSource): string | undefined {
-    return source === 'data'
-        ? readSecretEndpointDataParameter(serviceName, key)
-        : tasks.getEndpointAuthorizationParameter(serviceName, key, true);
+    if (source === 'data') {
+        return readSecretEndpointDataParameter(serviceName, key);
+    }
+    const fromAuth = tasks.getEndpointAuthorizationParameter(serviceName, key, true);
+    if (fromAuth || source === 'auth') {
+        return fromAuth;
+    }
+    // Connection predates the descriptor moving under the auth scheme, so the
+    // value is still delivered as ENDPOINT_DATA_*. Read it through the hardened
+    // path rather than failing (azure-pipelines-packer#185).
+    return readSecretEndpointDataParameter(serviceName, key);
 }
 
 /**
