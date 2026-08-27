@@ -389,6 +389,27 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // #1024: the registry path verifies a checksum the REGISTRY asserts, with no
+    // signature verifier anywhere -- unlike the hashicorp and mirror paths, which
+    // check SHA256SUMS against the pinned HashiCorp GPG key. A successful install
+    // here previously read identically to a GPG-anchored one. requireGpgSignature
+    // is hidden on this path by a task.json visibleRule, which is UI-only: a YAML
+    // pipeline can set it to true and silently get nothing.
+    it('registry specific version: should warn that the trust anchor is checksum-only even when the checksum verifies (#1024)', async () => {
+        const tp = path.join(__dirname, 'RegistrySpecificVersionSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'a checksum-verified registry install must still disclose that no signature was verified. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     // --- Registry pre-signed download-URL token masking (#352) ---
     // The registry download_url carries a live storage credential in its query
     // string and tool-lib logs the URL at INFO. Assert every token component is
