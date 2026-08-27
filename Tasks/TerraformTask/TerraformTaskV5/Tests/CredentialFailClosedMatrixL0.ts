@@ -462,7 +462,7 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         {
             // ARM_USE_MSI only reaches the agent identity while these are absent.
             site: 'azurerm.ManagedServiceIdentity.competing-credential-env', handler: 'azurerm', base: 'azurerm.ManagedServiceIdentity',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_CLI'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
         },
         {
             // The cell no per-branch list can close: MSI legitimately MAY set
@@ -474,11 +474,19 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         },
         {
             site: 'azurerm.WorkloadIdentityFederation.competing-credential-env', handler: 'azurerm', base: 'azurerm.WorkloadIdentityFederation',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_CLI'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
         },
         {
             site: 'azurerm.ServicePrincipal.competing-credential-env', handler: 'azurerm', base: 'azurerm.ServicePrincipal',
-            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_CLI'],
+            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+        },
+        {
+            // #1026: azurerm's enableOidc = use_oidc || use_aks_workload_identity,
+            // so this flag re-enables OIDC on ITS OWN even with ARM_USE_OIDC absent
+            // -- it needs the same wholesale clear ARM_USE_OIDC gets, not just a
+            // per-branch mention.
+            site: 'azurerm.ManagedServiceIdentity.competing-credential-env[ARM_USE_AKS_WORKLOAD_IDENTITY]', handler: 'azurerm', base: 'azurerm.ManagedServiceIdentity',
+            competing: ['ARM_USE_AKS_WORKLOAD_IDENTITY'],
         },
         {
             site: 'gcp.static.competing-credential-env', handler: 'gcp', base: 'gcp.static',
@@ -503,6 +511,23 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
                 assert.strictEqual(process.env[name], undefined,
                     `${row.site}: '${name}' was inherited from the agent and can out-rank the credentials this branch injects; it must be cleared`);
             }
+        });
+    }
+
+    // #1026: azurerm's OIDC config also has MultiEnvDefaultFunc fallbacks onto
+    // ACTIONS_ID_TOKEN_REQUEST_TOKEN/URL, which chain onto SYSTEM_ACCESSTOKEN/
+    // SYSTEM_OIDCREQUESTURI -- the agent sets SYSTEM_OIDCREQUESTURI on EVERY job
+    // regardless of authorization scheme, so it must not survive into the
+    // terraform child's environment for a scheme that never asked for OIDC.
+    for (const base of ['azurerm.ManagedServiceIdentity', 'azurerm.ServicePrincipal', 'azurerm.WorkloadIdentityFederation']) {
+        it(`clears SYSTEM_ACCESSTOKEN/SYSTEM_OIDCREQUESTURI: ${base}`, async () => {
+            const fixture = clone(base);
+            fixture.env = { SYSTEM_ACCESSTOKEN: 'agent-oauth-token', SYSTEM_OIDCREQUESTURI: 'https://vstoken.dev.azure.com/oidc' };
+            await run('azurerm', fixture);
+            assert.strictEqual(process.env['SYSTEM_ACCESSTOKEN'], undefined,
+                `${base}: SYSTEM_ACCESSTOKEN is an alternate name azurerm's OIDC config also honors and must not reach the terraform child`);
+            assert.strictEqual(process.env['SYSTEM_OIDCREQUESTURI'], undefined,
+                `${base}: SYSTEM_OIDCREQUESTURI is set by the agent on every job and must not reach the terraform child`);
         });
     }
 
