@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "253",
+        "Minor": "254",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -189,6 +189,7 @@
         "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
         "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
+        "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). Integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature is verified on this path. The hashicorp and mirror sources verify SHA256SUMS against the pinned HashiCorp GPG key; requireGpgSignature does not apply to downloadSource=registry. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Use downloadSource hashicorp, or a mirror that publishes a signed SHA256SUMS, if you need signature-anchored trust.",
         "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",
