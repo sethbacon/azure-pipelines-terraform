@@ -49,6 +49,9 @@ const ARM_CREDENTIAL_SELECTOR_ENV = [
     'ARM_OIDC_AZURE_SERVICE_CONNECTION_ID',
     'ARM_USE_MSI',
     'ARM_USE_OIDC',
+    // azurerm's enableOidc = use_oidc || use_aks_workload_identity (#1026): this
+    // flag re-enables OIDC on its own even with ARM_USE_OIDC absent.
+    'ARM_USE_AKS_WORKLOAD_IDENTITY',
     'ARM_USE_CLI',
     'ARM_TENANT_ID',
 ] as const;
@@ -124,6 +127,16 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
         const fallbackToIdTokenGeneration = tasks.getBoolInput("backendAzureRmUseIdTokenGeneration", false);
         await this.setCommonVariables(authorizationScheme, serviceConnectionID, fallbackToIdTokenGeneration, useCliFlagsForBackend);
+
+        // #1026: azurerm's OIDC config also has MultiEnvDefaultFunc fallbacks onto
+        // ACTIONS_ID_TOKEN_REQUEST_TOKEN/URL, which in turn chain onto
+        // SYSTEM_ACCESSTOKEN/SYSTEM_OIDCREQUESTURI -- names this task never sets
+        // and so never appeared in ARM_CREDENTIAL_SELECTOR_ENV. The agent sets
+        // SYSTEM_OIDCREQUESTURI on EVERY job regardless of authorization scheme.
+        // Cleared here, AFTER setCommonVariables's own generateIdToken call (the
+        // only one on this path -- unlike handleProvider, nothing after this call
+        // needs either name again).
+        neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
 
         return authorizationScheme;
     }
@@ -217,6 +230,12 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         if (tasks.getBoolInput("runAzLogin", false)) {
             await this.runAzLogin(authorizationScheme, serviceConnectionID, subscriptionId || '');
         }
+
+        // #1026: cleared here, AFTER runAzLogin's OWN WorkloadIdentityFederation
+        // branch (a SECOND, independent generateIdToken call for `az login
+        // --federated-token`) -- clearing inside setCommonVariables would break
+        // that second call, which runs after setCommonVariables has returned.
+        neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
 
         tasks.debug("Finished up provider for authorization scheme: " + authorizationScheme + ".");
     }
