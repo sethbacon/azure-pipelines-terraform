@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.8](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.7...v1.14.8) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ci:** retire the operator-declared egress exemption and fix two scanner blind spots ([#1039](https://github.com/sethbacon/azure-pipelines-terraform/issues/1039)) ([d0b70ce](https://github.com/sethbacon/azure-pipelines-terraform/commit/d0b70cedecfbc28d31a7b86b5c08efc9df6df70f))
+* **ci:** tell a broken OSV scanner from a clean one ([#1043](https://github.com/sethbacon/azure-pipelines-terraform/issues/1043)) ([1097617](https://github.com/sethbacon/azure-pipelines-terraform/commit/1097617f36ae2728fab27901e65406f276615c7b))
+* **security:** deliver the OCI private key as a vaulted auth parameter ([#1040](https://github.com/sethbacon/azure-pipelines-terraform/issues/1040)) ([7f4c6f8](https://github.com/sethbacon/azure-pipelines-terraform/commit/7f4c6f8a1d8c7f0581cc942d967c84f44ce01698))
+* **security:** disclose that Sentinel's registry download source has no signature anchor ([#1044](https://github.com/sethbacon/azure-pipelines-terraform/issues/1044)) ([09186be](https://github.com/sethbacon/azure-pipelines-terraform/commit/09186be816ed4a270f35a6b8c1fa0606e4f24c55))
+* **security:** disclose that the registry download source has no signature anchor ([#1041](https://github.com/sethbacon/azure-pipelines-terraform/issues/1041)) ([ec281a4](https://github.com/sethbacon/azure-pipelines-terraform/commit/ec281a419f1a85ef15cb6dc6486973d4e405c201))
+* **security:** egress-authorize operator-supplied registry and mirror URLs ([#1037](https://github.com/sethbacon/azure-pipelines-terraform/issues/1037)) ([f1ff034](https://github.com/sethbacon/azure-pipelines-terraform/commit/f1ff034a9ad1a492e9831a6bef8c200fa2473df1))
+* **security:** neutralize ARM_USE_AKS_WORKLOAD_IDENTITY and ambient OIDC env ([#1026](https://github.com/sethbacon/azure-pipelines-terraform/issues/1026)) ([#1045](https://github.com/sethbacon/azure-pipelines-terraform/issues/1045)) ([f129b5e](https://github.com/sethbacon/azure-pipelines-terraform/commit/f129b5e016cabb8b1f99ab55e7d0f855565d2b37))
+
 ## [1.14.7](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.6...v1.14.7) (2026-08-25)
 
 
