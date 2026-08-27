@@ -109,6 +109,44 @@ describe('PolicyAgentInstaller Test Suite', function () {
     // accepted (the air-gapped escape hatch), not refused by the default baseline.
     expectSuccess('MirrorAllowedHostAccept');
 
+    // #1024: Sentinel's official and mirror sources verify SHA256SUMS against the
+    // pinned HashiCorp GPG key; the registry source has no signature verifier at all,
+    // and requireGpgSignature is hidden on this path by a UI-only visibleRule. A
+    // checksum-verified registry install must still disclose that no signature was
+    // verified, not read identically to a GPG-anchored one.
+    it('registry sentinel: should warn that the trust anchor is checksum-only even when the checksum verifies (#1024)', async () => {
+        const tp = path.join(__dirname, 'RegistrySentinelSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'a checksum-verified Sentinel registry install must disclose that no signature was verified. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // OPA has no upstream GPG/cosign signature on ANY source -- official, mirror, or
+    // registry -- so it must NOT get the disclosure: there is no stronger anchor for
+    // this path to have fallen away from, and warning otherwise would be misleading.
+    it('registry opa: should NOT emit the trust-anchor disclosure (OPA has no signature anchor on any path)', async () => {
+        const tp = path.join(__dirname, 'OpaRegistrySuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                !tr.warningIssues.some(w => w.includes('RegistryTrustAnchorIsChecksumOnly')),
+                'OPA has no signature anchor to lose; this disclosure must be Sentinel-only. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     // #786: end-to-end Sentinel GPG-signature scenarios mirroring TerraformInstallerV1's
     // terraform GPG scenario set (the underlying gpg-verifier.ts is byte-identical, but
     // only the terraform path previously had task-flow-level bad/missing-signature proof).

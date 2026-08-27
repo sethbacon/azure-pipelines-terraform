@@ -336,6 +336,15 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
 
     if (data.sha256) {
         await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
+        if (agent === "sentinel") {
+            // Sentinel's official and mirror sources verify SHA256SUMS against the
+            // pinned HashiCorp GPG key; this path has no signature verifier at all, and
+            // requireGpgSignature does not apply to it (task.json hides the input via
+            // a UI-only visibleRule). OPA has no GPG anchor on ANY source, so this
+            // disclosure is scoped to Sentinel -- warning OPA users about a signature
+            // they never had would be misleading (#1024).
+            tasks.warning(tasks.loc("RegistryTrustAnchorIsChecksumOnly", infoUrl));
+        }
         return { path: filePath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
