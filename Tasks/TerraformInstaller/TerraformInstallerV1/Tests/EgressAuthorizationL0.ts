@@ -181,13 +181,13 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/registry-version-resolver.ts",
-        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
+        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "AUTHORIZED",
+        why: "registryUrl is authorized before the request through the authorizeHost callback its caller injects, and the scanner requires every call site to supply the real assertEgressHostAllowed (#330). Resolving a version is the first request the registry source makes, so the download-side guard could never have covered it.",
     },
     {
         file: "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/registry-version-resolver.ts",
-        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
+        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "AUTHORIZED",
+        why: "registryUrl is authorized before the request through the authorizeHost callback its caller injects, and the scanner requires every call site to supply the real assertEgressHostAllowed (#330). Resolving a version is the first request the registry source makes, so the download-side guard could never have covered it.",
     },
     {
         file: "Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/terraform-docs-installer.ts",
@@ -226,8 +226,8 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/registry-version-resolver.ts",
-        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "EXEMPT-OPERATOR-DECLARED",
-        why: "registryUrl is authorized via the authorizeHost callback the caller injects, BEFORE the request (packer#330 sibling). The scanner still reports EXEMPT because it looks for a literal assertEgressHostAllowed( in the function text and cannot see an injected authorizer. NOTE: EXEMPT-OPERATOR-DECLARED is not a security argument -- \"the pipeline author typed it\" is not an authorization decision, which is exactly how this class hid. The rule is being narrowed separately; this row must become AUTHORIZED then.",
+        fn: "resolveVersionFromRegistry", sink: "fetchJson", verdict: "AUTHORIZED",
+        why: "registryUrl is authorized before the request through the authorizeHost callback its caller injects, and the scanner requires every call site to supply the real assertEgressHostAllowed (#330). Resolving a version is the first request the registry source makes, so the download-side guard could never have covered it.",
     },
     {
         file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts",
