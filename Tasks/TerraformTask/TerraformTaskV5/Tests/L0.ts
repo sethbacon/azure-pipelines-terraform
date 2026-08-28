@@ -65,6 +65,8 @@ import './BinaryNameAllowlistL0';
 import './GcpTokenUriValidationL0';
 // Direct unit tests for the hoisted auth-scheme validator shared by AWS/GCP/OCI.
 import './AuthSchemeValidatorL0';
+// Direct unit tests for the OIDC request-endpoint allowlist (#1026 follow-up).
+import './OidcRequestUrlGuardL0';
 
 // The credential fail-closed class test (#97 and its siblings).
 import './CredentialFailClosedMatrixL0';
