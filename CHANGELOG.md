@@ -4,6 +4,15 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.9](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.8...v1.14.9) (2026-08-28)
+
+
+### Bug Fixes
+
+* **gates:** bound the proxy-parity walk by ROOT, not by the script's own location ([#1048](https://github.com/sethbacon/azure-pipelines-terraform/issues/1048)) ([8d62bdb](https://github.com/sethbacon/azure-pipelines-terraform/commit/8d62bdb58830fe96534222d6a93fefbf8fc03229))
+* **security:** restore the OIDC request endpoint [#1026](https://github.com/sethbacon/azure-pipelines-terraform/issues/1026) cleared out from under azurerm ([#1050](https://github.com/sethbacon/azure-pipelines-terraform/issues/1050)) ([b836767](https://github.com/sethbacon/azure-pipelines-terraform/commit/b836767c8aa71117344ed0a0f13fd166a1b9c3e6))
+* symlink-aware path containment for moduleManifest ([#1047](https://github.com/sethbacon/azure-pipelines-terraform/issues/1047)) ([cbcf301](https://github.com/sethbacon/azure-pipelines-terraform/commit/cbcf301aa5cc742b4389f016465fcf50d68e7276))
+
 ## [1.14.8](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.7...v1.14.8) (2026-08-27)
 
 
