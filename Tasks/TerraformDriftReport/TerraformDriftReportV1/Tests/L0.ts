@@ -732,6 +732,41 @@ describe('TerraformDriftReport Test Suite', function () {
         }, tr);
     });
 
+    it('DriftReportModuleManifestTraversalSkipped — a moduleManifest resolving outside the working directory omits module_locks (#1031)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportModuleManifestTraversalSkipped.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the drift report itself should still succeed');
+            assert(
+                tr.warningIssues.some((w) => w.includes('resolves outside the working directory')),
+                `should warn that moduleManifest escapes the working directory. warnings: ${tr.warningIssues}`,
+            );
+            const line = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=summaryFilePath;'));
+            assert(line, `summaryFilePath output variable line not found in stdout: ${tr.stdout}`);
+            const summaryPath = line!.slice(line!.indexOf(']') + 1).trim();
+            const body = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+            assert.strictEqual(body.module_locks, null, 'module_locks must be omitted, not read from outside the working directory');
+        }, tr);
+    });
+
+    it('DriftReportModuleManifestSymlinkSkipped — a moduleManifest that only stays inside the working directory lexically, via a symlink, omits module_locks (#1031)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportModuleManifestSymlinkSkipped.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the drift report itself should still succeed');
+            assert(
+                tr.warningIssues.some((w) => w.includes('resolves outside the working directory')),
+                `should warn that moduleManifest escapes the working directory. warnings: ${tr.warningIssues}`,
+            );
+            const line = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=summaryFilePath;'));
+            assert(line, `summaryFilePath output variable line not found in stdout: ${tr.stdout}`);
+            const summaryPath = line!.slice(line!.indexOf(']') + 1).trim();
+            const body = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+            assert.strictEqual(body.module_locks, null, 'module_locks must be omitted, not read through a symlink escaping the working directory');
+            assert(!tr.stdout.includes('leaked'), 'the out-of-bounds manifest content must never reach the log');
+        }, tr);
+    });
+
     it('DriftReportCallbackSuccess — 2xx callback succeeds and masks the callback token', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackSuccess.js'));
         await tr.runAsync();
