@@ -180,7 +180,14 @@ const TOOL_LIB_SINKS = ['downloadTool'];
 /** The package.json of the task that owns `file`, or null above the task roots. */
 function declaredDependency(file, pkg) {
     let dir = path.dirname(path.resolve(file));
-    const stop = path.resolve(__dirname, '..');
+    // The walk stops at the tree being ANALYSED, which is ROOT (argv), not at
+    // this file's own parent. Those are the same path while the gate lives in
+    // scripts/ of the repo it analyses, so this changes nothing today -- and it
+    // is what lets the gate be resolved from one canonical copy elsewhere. With
+    // __dirname the boundary followed the SCRIPT, so a moved gate stopped
+    // resolving declared dependencies and reported correctly-proxied call sites
+    // as findings (measured: 4 in packer, 14 in terraform, 1 in release-docs).
+    const stop = ROOT;
     while (dir.startsWith(stop)) {
         const manifest = path.join(dir, 'package.json');
         if (fs.existsSync(manifest)) {
@@ -219,7 +226,14 @@ function satisfiesFloor(range, min) {
 /** The lockfile of the task that owns `file` — what `npm ci` actually installs. */
 function lockfileFor(file) {
     let dir = path.dirname(path.resolve(file));
-    const stop = path.resolve(__dirname, '..');
+    // The walk stops at the tree being ANALYSED, which is ROOT (argv), not at
+    // this file's own parent. Those are the same path while the gate lives in
+    // scripts/ of the repo it analyses, so this changes nothing today -- and it
+    // is what lets the gate be resolved from one canonical copy elsewhere. With
+    // __dirname the boundary followed the SCRIPT, so a moved gate stopped
+    // resolving declared dependencies and reported correctly-proxied call sites
+    // as findings (measured: 4 in packer, 14 in terraform, 1 in release-docs).
+    const stop = ROOT;
     while (dir.startsWith(stop)) {
         const lock = path.join(dir, 'package-lock.json');
         if (fs.existsSync(lock)) return lock;
