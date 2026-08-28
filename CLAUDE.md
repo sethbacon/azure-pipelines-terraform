@@ -305,6 +305,7 @@ Source: `Tasks/TerraformDriftReport/TerraformDriftReportV1/src/`. Parses a Terra
 | `callback.ts`     | POSTs the drift summary to TSM; retries transport failures/5xx only, never after a received response (`callbackToken` is one-shot)                                       |
 | `sarif.ts`        | Generates a SARIF 2.1.0 report of drift findings (opt-in)                                                                                                                |
 | `https-client.ts` | Task-side wiring over `@4cloudguru/pipeline-task-core`'s raw-https transport: the agent proxy tunnel and the log-masker registration the package cannot read for itself; byte-identical copy in TerraformModulePublishV1 |
+| `path-containment.ts` | Realpath-based `isWithinWorkingDirectory` guard on `moduleManifest`, symlink-aware; byte-identical copy of ChangelogV1's implementation (azure-pipelines-release-docs) |
 
 Output variables: `driftDetected`, `addedCount`/`changedCount`/`destroyedCount`, `summaryFilePath` (opt-in `cleanupSummaryFile` removes it after use), `sarifFilePath`.
 
