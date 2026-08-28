@@ -98,6 +98,41 @@ describe('TerraformCommandHandlerAzureRM.configureBackendCredentials (cross-clou
     assert.strictEqual(process.env['ARM_OIDC_AZURE_SERVICE_CONNECTION_ID'], 'AzureRM-Backend');
   });
 
+  // #1026 REGRESSION GUARD (cross-cloud half). neutralizeEnvironmentVariables
+  // deletes from process.env, which is both the child's inherited environment
+  // AND this task's own read surface. ParentCommandHandler runs THIS method
+  // before the provider handler, and an aws/gcp/oci provider on WIF then calls
+  // generateIdToken(), which reads SYSTEM_OIDCREQUESTURI and fails closed
+  // without it -- so this pass must leave the ambient names intact. The
+  // terminal passes (handleBackend on init, handleProvider on everything else)
+  // still clear them; that is covered in CredentialFailClosedMatrixL0.
+  it('leaves SYSTEM_OIDCREQUESTURI readable for the provider pass that follows it (#1026)', async () => {
+    mockCommonInputs();
+    (tasks as any).getEndpointAuthorizationScheme = () => 'WorkloadIdentityFederation';
+    (tasks as any).getEndpointAuthorizationParameter = (id: string, name: string) => {
+      if (id === 'SystemVssConnection' && name === 'AccessToken') return 'fake-ado-access-token';
+      if (name === 'tenantid') return 'tenant-wif';
+      if (name === 'serviceprincipalid') return 'wif-client-id';
+      return undefined;
+    };
+    const savedUri = process.env['SYSTEM_OIDCREQUESTURI'];
+    process.env['SYSTEM_OIDCREQUESTURI'] = 'https://vstoken.dev.azure.com/oidc';
+    try {
+      await new TerraformCommandHandlerAzureRM().configureBackendCredentials();
+      assert.strictEqual(
+        process.env['SYSTEM_OIDCREQUESTURI'], 'https://vstoken.dev.azure.com/oidc',
+        'the cross-cloud backend pass must not strip the endpoint the provider pass still needs',
+      );
+      assert.strictEqual(
+        process.env['ARM_OIDC_REQUEST_URL'], 'https://vstoken.dev.azure.com/oidc',
+        'the backend still gets its own explicitly-owned endpoint',
+      );
+    } finally {
+      if (savedUri === undefined) delete process.env['SYSTEM_OIDCREQUESTURI'];
+      else process.env['SYSTEM_OIDCREQUESTURI'] = savedUri;
+    }
+  });
+
   it('throws when backendServiceArm is not provided on this step', async () => {
     (tasks as any).getInput = (name: string, required?: boolean) => {
       if (name === 'backendServiceArm' && required) {

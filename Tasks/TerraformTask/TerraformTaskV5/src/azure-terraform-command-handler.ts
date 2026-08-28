@@ -109,7 +109,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
      * command, which always passes `false` — cross-cloud injection is env-only,
      * per HashiCorp's guidance against caching backend credentials on disk).
      */
-    private async applyBackendCredentialEnv(serviceConnectionID: string, useCliFlagsForBackend: boolean): Promise<AuthorizationScheme> {
+    private async applyBackendCredentialEnv(serviceConnectionID: string, useCliFlagsForBackend: boolean, isTerminalCredentialPass: boolean): Promise<AuthorizationScheme> {
         const authorizationScheme = this.mapAuthorizationScheme(tasks.getEndpointAuthorizationScheme(serviceConnectionID, true), serviceConnectionID);
 
         let subscriptionId = tasks.getInput("backendAzureRmOverrideSubscriptionID", false);
@@ -134,10 +134,18 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // SYSTEM_ACCESSTOKEN/SYSTEM_OIDCREQUESTURI -- names this task never sets
         // and so never appeared in ARM_CREDENTIAL_SELECTOR_ENV. The agent sets
         // SYSTEM_OIDCREQUESTURI on EVERY job regardless of authorization scheme.
-        // Cleared here, AFTER setCommonVariables's own generateIdToken call (the
-        // only one on this path -- unlike handleProvider, nothing after this call
-        // needs either name again).
-        neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
+        //
+        // Only on the TERMINAL pass. `neutralizeEnvironmentVariables` deletes from
+        // process.env, which is both the child's inherited environment AND this
+        // task's own read surface -- so clearing here on the CROSS-CLOUD path
+        // (configureBackendCredentials, which parent-handler runs BEFORE the
+        // provider handler) would strip the endpoint out from under the provider's
+        // own generateIdToken, which reads SYSTEM_OIDCREQUESTURI and fails closed
+        // without it. That is the aws/gcp/oci-provider + azurerm-backend
+        // combination, which no test covered.
+        if (isTerminalCredentialPass) {
+            neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
+        }
 
         return authorizationScheme;
     }
@@ -177,7 +185,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         const backendAzureRmUseCliFlagsForAuthentication = tasks.getBoolInput("backendAzureRmUseCliFlagsForAuthentication", false);
 
         tasks.debug("Setting up backend for authorization scheme.");
-        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, backendAzureRmUseCliFlagsForAuthentication);
+        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, backendAzureRmUseCliFlagsForAuthentication, /* isTerminalCredentialPass */ true);
 
         this.applyBackendConfig(terraformToolRunner);
 
@@ -198,7 +206,10 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
     public async configureBackendCredentials(): Promise<void> {
         const serviceConnectionID = tasks.getInput("backendServiceArm", true)!;
         tasks.debug("Configuring cross-cloud azurerm backend credentials (environment variables only).");
-        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, /* useCliFlagsForBackend */ false);
+        // Cross-cloud: parent-handler runs this BEFORE the provider handler, whose
+        // own generateIdToken still needs the ambient OIDC names, so this pass is
+        // not the terminal one.
+        const authorizationScheme = await this.applyBackendCredentialEnv(serviceConnectionID, /* useCliFlagsForBackend */ false, /* isTerminalCredentialPass */ false);
         tasks.debug("Finished configuring cross-cloud azurerm backend credentials for authorization scheme: " + authorizationScheme + ".");
     }
 
