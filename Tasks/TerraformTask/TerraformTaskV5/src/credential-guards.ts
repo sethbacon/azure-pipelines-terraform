@@ -155,6 +155,101 @@ export function requireSecretField(serviceName: string, key: string, options: Re
     return value;
 }
 
+/** Exact hosts that identify a genuine Azure DevOps (cloud) OIDC token endpoint. */
+const ADO_OIDC_HOSTS = ['dev.azure.com', 'vstoken.dev.azure.com'];
+
+/** Host suffixes that identify a genuine Azure DevOps (cloud) OIDC token endpoint. */
+const ADO_OIDC_HOST_SUFFIXES = ['.dev.azure.com', '.visualstudio.com'];
+
+/**
+ * The org label of the job's own collection URI when it is a legacy
+ * *.visualstudio.com URL (e.g. 'myorg' for https://myorg.visualstudio.com/), or
+ * undefined -- the dev.azure.com form carries its org in the path, not the host,
+ * so no host-label comparison is possible for it.
+ */
+function collectionVisualStudioOrgLabel(): string | undefined {
+    for (const envName of ['SYSTEM_COLLECTIONURI', 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI']) {
+        const collectionUri = process.env[envName];
+        if (!collectionUri) continue;
+        try {
+            const host = new URL(collectionUri).hostname.toLowerCase();
+            if (host.endsWith('.visualstudio.com') && host.length > '.visualstudio.com'.length) {
+                return host.split('.')[0];
+            }
+        } catch {
+            // Unparseable collection URI -- it cannot vouch for any org.
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Parallel implementation of the same allowlist `pipeline-task-ado`'s
+ * id-token-generator applies to its own request, kept local for the same reason
+ * the rest of this module is (see the header): the shared package does not
+ * export it, and this guard must not wait on a package release.
+ */
+function isAllowedOidcRequestHost(hostname: string): boolean {
+    const host = hostname.toLowerCase();
+    if (ADO_OIDC_HOSTS.includes(host)) {
+        return true;
+    }
+    for (const suffix of ADO_OIDC_HOST_SUFFIXES) {
+        if (!host.endsWith(suffix) || host.length <= suffix.length) continue;
+        // A *.visualstudio.com host carries a tenant org as its first label, so a
+        // bare suffix match would admit ANY tenant's org: trust it only for the
+        // job's own org.
+        if (suffix === '.visualstudio.com') {
+            const collectionOrg = collectionVisualStudioOrgLabel();
+            if (collectionOrg === undefined || host.split('.')[0] !== collectionOrg) continue;
+        }
+        return true;
+    }
+    // On-prem Azure DevOps Server hosts the OIDC endpoint on the collection host.
+    for (const envName of ['SYSTEM_COLLECTIONURI', 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI']) {
+        const collectionUri = process.env[envName];
+        if (!collectionUri) continue;
+        try {
+            if (new URL(collectionUri).hostname.toLowerCase() === host) return true;
+        } catch {
+            // Unparseable collection URI -- it cannot vouch for any host.
+        }
+    }
+    return false;
+}
+
+/**
+ * The Azure DevOps OIDC endpoint the azurerm provider may refresh its federated
+ * token from, read from `SYSTEM_OIDCREQUESTURI` and validated before it is
+ * handed on as `ARM_OIDC_REQUEST_URL`.
+ *
+ * azurerm POSTs the job's access token to this URL, so a value that IS present
+ * is pinned to an Azure DevOps host for the same reason id-token-generator pins
+ * its own request -- an untrusted host fails closed rather than receiving the
+ * token. An ABSENT value returns undefined rather than throwing: the provider
+ * then behaves exactly as it did before this guard existed, so a pipeline whose
+ * agent does not publish the variable is not newly broken by it.
+ */
+export function resolveOidcRequestUrl(): string | undefined {
+    const value = process.env['SYSTEM_OIDCREQUESTURI'];
+    if (!value) {
+        return undefined;
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        throw new Error(`SYSTEM_OIDCREQUESTURI is not a valid URL: ${value}`);
+    }
+    if (parsed.protocol !== 'https:') {
+        throw new Error(`SYSTEM_OIDCREQUESTURI must be an https:// URL, got '${value}'.`);
+    }
+    if (!isAllowedOidcRequestHost(parsed.hostname)) {
+        throw new Error(`SYSTEM_OIDCREQUESTURI's host '${parsed.hostname}' is not a recognized Azure DevOps OIDC endpoint. Refusing to hand it to the azurerm provider as ARM_OIDC_REQUEST_URL, which would send the job access token to it.`);
+    }
+    return value;
+}
+
 /**
  * Removes environment variables that select a DIFFERENT identity than the one
  * this branch is about to inject (#187).

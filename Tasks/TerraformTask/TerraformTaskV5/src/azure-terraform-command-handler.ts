@@ -9,6 +9,7 @@ import {
     neutralizeEnvironmentVariables,
     requireIdentityField,
     requireSecretField,
+    resolveOidcRequestUrl,
 } from './credential-guards';
 
 /**
@@ -435,6 +436,18 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     }
                     EnvironmentVariableHelper.registerSecret(accessToken);
                     EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true);
+                    // #1026 follow-up: that fix clears SYSTEM_OIDCREQUESTURI at the end of
+                    // both Azure entry points, which was the ONLY name carrying this URL --
+                    // azurerm resolves oidc_request_url from ARM_OIDC_REQUEST_URL ->
+                    // ACTIONS_ID_TOKEN_REQUEST_URL -> SYSTEM_OIDCREQUESTURI and the task sets
+                    // neither of the first two, so refresh mode lost its endpoint and fell
+                    // through to the Azure CLI authorizer. Pin the validated value here, which
+                    // also upgrades the pre-#1026 behaviour: the provider used to consume the
+                    // ambient value unvalidated.
+                    const oidcRequestUrl = resolveOidcRequestUrl();
+                    if (oidcRequestUrl) {
+                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_URL", oidcRequestUrl);
+                    }
                 }
 
                 break;

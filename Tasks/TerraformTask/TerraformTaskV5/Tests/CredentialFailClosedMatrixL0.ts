@@ -531,6 +531,41 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         });
     }
 
+    // #1026 REGRESSION GUARD: clearing SYSTEM_OIDCREQUESTURI removed the only
+    // name carrying the OIDC request URL, so WIF refresh mode (the DEFAULT --
+    // environmentAzureRmUseIdTokenGeneration unset) lost its endpoint and the
+    // provider fell through to the Azure CLI authorizer. The rows above can only
+    // ever prove the variable is GONE; this one proves the capability that
+    // depended on it survives, under a name the task itself owns.
+    it('pins ARM_OIDC_REQUEST_URL before clearing SYSTEM_OIDCREQUESTURI: azurerm.WorkloadIdentityFederation', async () => {
+        const fixture = clone('azurerm.WorkloadIdentityFederation');
+        fixture.env = { SYSTEM_OIDCREQUESTURI: 'https://vstoken.dev.azure.com/oidc' };
+        await run('azurerm', fixture);
+        assert.strictEqual(process.env['SYSTEM_OIDCREQUESTURI'], undefined,
+            'the ambient name must still be cleared (#1026)');
+        assert.strictEqual(process.env['ARM_OIDC_REQUEST_URL'], 'https://vstoken.dev.azure.com/oidc',
+            'refresh mode must keep an OIDC request endpoint: without it azurerm falls through to the Azure CLI authorizer');
+        assert.ok(process.env['ARM_OIDC_REQUEST_TOKEN'],
+            'the request token is the other half of the same refresh call and must still be present');
+    });
+
+    it('refuses an untrusted SYSTEM_OIDCREQUESTURI host rather than forwarding the job token to it', async () => {
+        const fixture = clone('azurerm.WorkloadIdentityFederation');
+        fixture.env = { SYSTEM_OIDCREQUESTURI: 'https://evil.example.com/oidc' };
+        await assert.rejects(
+            () => run('azurerm', fixture),
+            /not a recognized Azure DevOps OIDC endpoint/,
+            'a non-ADO host must fail closed, not become ARM_OIDC_REQUEST_URL',
+        );
+    });
+
+    it('leaves ARM_OIDC_REQUEST_URL unset when the agent published no SYSTEM_OIDCREQUESTURI', async () => {
+        const fixture = clone('azurerm.WorkloadIdentityFederation');
+        await run('azurerm', fixture);
+        assert.strictEqual(process.env['ARM_OIDC_REQUEST_URL'], undefined,
+            'an absent ambient value must not become an empty or fabricated endpoint');
+    });
+
     // --- SESSION-NAME ROWS (#197) --------------------------------------------
 
     for (const [site, handler, entry, prefix] of [
