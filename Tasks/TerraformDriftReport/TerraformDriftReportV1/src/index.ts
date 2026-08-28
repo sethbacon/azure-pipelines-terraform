@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan, Result } from '@4cloudguru/terraform-drift-contract';
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
 import { writeSarif } from './sarif';
+import { isWithinWorkingDirectory } from './path-containment';
 import { writeSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
 
 /**
@@ -59,9 +60,20 @@ export interface CallbackBody extends Result {
 }
 
 // Reads `.terraform/modules/modules.json` verbatim for the callback's
-// module_locks field; null when absent/unreadable/oversized (the backend then
-// records provenance without locked versions).
+// module_locks field; null when absent/unreadable/oversized/out-of-bounds (the
+// backend then records provenance without locked versions).
 function readModuleLocks(manifestPath: string): unknown {
+    // moduleManifest is an operator-supplied task input with no built-in
+    // path-resolution/containment guarantee. Constrain it to the working
+    // directory (symlinks resolved) before touching the filesystem -- otherwise
+    // a value like '../../secrets/x.json' (or an in-tree symlink pointing
+    // outside) could read an arbitrary file's contents into the callback body
+    // and the on-agent summary artifact (#1031).
+    const resolved = path.resolve(manifestPath);
+    if (!isWithinWorkingDirectory(resolved, process.cwd())) {
+        tasks.warning(`Module manifest '${manifestPath}' resolves outside the working directory (${resolved}); skipping module_locks.`);
+        return null;
+    }
     // Opened once and stat/read via that same descriptor (not an existsSync +
     // statSync + readFileSync sequence on the path) so there is no window
     // between the size check and the read where the path could be repointed
