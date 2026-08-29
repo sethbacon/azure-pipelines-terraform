@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.14.10](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.9...v1.14.10) (2026-08-29)
+
+
+### Bug Fixes
+
+* **security:** close the residual symlink-containment sites, and clarify the installer egress message ([#1051](https://github.com/sethbacon/azure-pipelines-terraform/issues/1051)) ([1b3fd74](https://github.com/sethbacon/azure-pipelines-terraform/commit/1b3fd749a3ea67144372587650e9147799611e6d))
+
 ## [1.14.9](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.8...v1.14.9) (2026-08-28)
 
 
