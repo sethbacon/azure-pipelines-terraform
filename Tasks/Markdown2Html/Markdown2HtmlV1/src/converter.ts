@@ -8,6 +8,7 @@ import path = require('path');
 import tasks = require('azure-pipelines-task-lib/task');
 import { parseFrontMatter } from './frontmatter';
 import { resolveIncludes } from './includes';
+import { isWithinWorkingDirectory } from './path-containment';
 import {
     convertMarkdownToHtml,
     shiftHeadingLevels,
@@ -21,6 +22,8 @@ import { generateHtmlDocument } from './document';
 export interface FrontMatterOptions {
     titleOverride?: string;
     debug?: boolean;
+    /** Base directory outputPath must stay within (symlinks resolved). Defaults to process.cwd(). */
+    workingDirectory?: string;
 }
 
 export interface FileListOptions {
@@ -28,6 +31,8 @@ export interface FileListOptions {
     addSections?: boolean;
     addDividers?: boolean;
     debug?: boolean;
+    /** Base directory outputPath must stay within (symlinks resolved). Defaults to process.cwd(). */
+    workingDirectory?: string;
 }
 
 /**
@@ -145,8 +150,13 @@ export async function processFrontMatterDriven(
     }
 
     const htmlDocument = generateHtmlDocument([combinedHtml], title);
-    fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
-    fs.writeFileSync(path.resolve(outputPath), htmlDocument, 'utf8');
+    const resolvedOutputPath = path.resolve(outputPath);
+    const workingDirectory = options.workingDirectory ?? process.cwd();
+    if (!isWithinWorkingDirectory(resolvedOutputPath, workingDirectory)) {
+        throw new Error(tasks.loc('PathEscapesWorkingDirectory', outputPath));
+    }
+    fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
+    fs.writeFileSync(resolvedOutputPath, htmlDocument, 'utf8');
 
     if (options.debug) {
         console.log(tasks.loc('FrontMatterConversionComplete', outputPath));
@@ -217,6 +227,11 @@ export async function processFileList(
     }
 
     const htmlDocument = generateHtmlDocument(contentBlocks, title);
-    fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
-    fs.writeFileSync(path.resolve(outputPath), htmlDocument, 'utf8');
+    const resolvedOutputPath = path.resolve(outputPath);
+    const workingDirectory = options.workingDirectory ?? process.cwd();
+    if (!isWithinWorkingDirectory(resolvedOutputPath, workingDirectory)) {
+        throw new Error(tasks.loc('PathEscapesWorkingDirectory', outputPath));
+    }
+    fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
+    fs.writeFileSync(resolvedOutputPath, htmlDocument, 'utf8');
 }

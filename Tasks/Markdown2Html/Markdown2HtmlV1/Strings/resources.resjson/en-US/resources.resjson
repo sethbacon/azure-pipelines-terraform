@@ -15,5 +15,6 @@
   "loc.messages.IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
   "loc.messages.NoInputFilesProvided": "No input files provided.",
   "loc.messages.HtmlWrittenTo": "HTML written to '%s'",
+  "loc.messages.PathEscapesWorkingDirectory": "Output path '%s' resolves outside the working directory.",
   "loc.messages.FrontMatterParseFailed": "Front-matter in '%s' could not be parsed as a YAML mapping and was ignored (defaults used): %s"
 }

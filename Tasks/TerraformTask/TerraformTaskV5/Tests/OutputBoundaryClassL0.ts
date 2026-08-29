@@ -230,6 +230,30 @@ describe('Output-boundary defect class (S1 output variables / S2 path writes / S
         assert.strictEqual(bareWrites.length, 0, 'no bare fs.writeFileSync may remain in the handler or results publisher (#881: the digest write must also go through writeSecretFile)');
     });
 
+    it('S2 show(outputTo=file) — a filename resolving outside the working directory is refused', async () => {
+        const tr = await runScenario('./OutputBoundaryTests/ShowFilePathTraversalReject.js');
+        assert.ok(tr.failed, report(tr, 'a traversing filename must fail the task'));
+        // Assert the GUARD's own message: `tr.failed` alone also holds when the
+        // scenario dies for an unrelated reason, which would make this row pass
+        // with the guard removed entirely (#1026 class).
+        assert.ok(tr.stdout.includes('resolves outside the working directory'),
+            report(tr, 'must fail on the containment guard, not incidentally'));
+    });
+
+    it('S2 show(outputTo=file) — a filename that only stays inside workingDirectory lexically, via a symlink, is refused', async () => {
+        const tr = await runScenario('./OutputBoundaryTests/ShowFilePathSymlinkReject.js');
+        assert.ok(tr.failed, report(tr, 'a symlink-escaping filename must fail the task'));
+        assert.ok(tr.stdout.includes('resolves outside the working directory'),
+            report(tr, 'must fail on the containment guard, not incidentally'));
+    });
+
+    it('S2 custom(outputTo=file) — a filename resolving outside the working directory is refused', async () => {
+        const tr = await runScenario('./OutputBoundaryTests/CustomFilePathTraversalReject.js');
+        assert.ok(tr.failed, report(tr, 'a traversing filename must fail the task'));
+        assert.ok(tr.stdout.includes('resolves outside the working directory'),
+            report(tr, 'must fail on the containment guard, not incidentally'));
+    });
+
     it('S2 outputArticleInfoToJson — SIBLING PACKAGE: the ServiceNow-supplied article number is constrained to a separator-free basename before it becomes a write path', () => {
         const manifestSrc = fs.readFileSync(path.join(KB_SRC, 'manifest.ts'), 'utf8');
         // `number` comes straight from the ServiceNow response and is used as a

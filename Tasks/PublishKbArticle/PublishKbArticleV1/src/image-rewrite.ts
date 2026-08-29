@@ -8,6 +8,7 @@
 
 import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
+import { isWithinWorkingDirectory } from './path-containment';
 
 export interface LocalImageRef {
     /** The original src string as it appears in the HTML. */
@@ -60,8 +61,9 @@ export function extractLocalImageRefs(
         // Containment guard: reject any src (e.g. `../secret.png` or its
         // URL-encoded form) that resolves outside imageBaseDir. Without this, a
         // path-traversal src could read and upload an arbitrary file on the
-        // agent as a KB attachment.
-        if (absPath !== base && !absPath.startsWith(base + path.sep)) {
+        // agent as a KB attachment. Symlink-aware (#123): a lexical prefix check
+        // alone is blind to an in-tree symlink that points outside imageBaseDir.
+        if (!isWithinWorkingDirectory(absPath, base)) {
             log(tasks.loc('ImageSrcOutsideBaseDir', src, absPath, base));
             continue;
         }
