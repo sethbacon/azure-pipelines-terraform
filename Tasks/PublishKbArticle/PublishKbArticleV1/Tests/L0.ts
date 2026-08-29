@@ -1659,6 +1659,21 @@ describe('image-rewrite', () => {
         assert.strictEqual(refs[0].absPath, nodePath.resolve(baseDir, 'sub/img.png'));
     });
 
+    it('rejects a src that only stays inside imageBaseDir lexically, via a symlink (#123)', () => {
+        const root = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'pkb-image-symlink-'));
+        const realBaseDir = nodePath.join(root, 'work');
+        const outside = nodePath.join(root, 'outside');
+        fs.mkdirSync(realBaseDir);
+        fs.mkdirSync(outside);
+        fs.writeFileSync(nodePath.join(outside, 'secret.png'), 'not-a-real-png');
+        fs.symlinkSync(outside, nodePath.join(realBaseDir, 'link'), 'junction');
+        const warnings: string[] = [];
+        const html = '<img src="link/secret.png">';
+        const refs = extractLocalImageRefs(html, realBaseDir, (m) => warnings.push(m));
+        assert.deepStrictEqual(refs, [], 'the symlink-escaping src must be rejected');
+        assert.ok(warnings.some((w) => w.includes('outside the image base directory') || w.includes('ImageSrcOutsideBaseDir')), `expected a warning; got: ${warnings}`);
+    });
+
     // -----------------------------------------------------------------------
     // #605: malformed percent-encoding must not abort the whole publish
     // -----------------------------------------------------------------------

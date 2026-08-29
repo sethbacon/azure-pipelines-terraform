@@ -198,6 +198,23 @@ const FAMILIES = [
             'exec-timeout.ts',
         ],
     },
+    {
+        // Realpath-based containment guard (`isWithinWorkingDirectory`): resolves
+        // symlinks on both sides before comparing, so an in-tree symlink pointing
+        // outside the base directory cannot pass a purely lexical prefix check.
+        // Every task that resolves a user-supplied path before reading or writing
+        // it carries a copy; a drift would silently reopen the traversal on one
+        // task while the others stay closed, so keep byte-identical.
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/src',
+            'Tasks/TerraformDriftReport/TerraformDriftReportV1/src',
+            'Tasks/Markdown2Html/Markdown2HtmlV1/src',
+            'Tasks/PublishKbArticle/PublishKbArticleV1/src',
+        ],
+        modules: [
+            'path-containment.ts',
+        ],
+    },
 ];
 
 // Nothing in this repository is a copy of a module owned by another extension:

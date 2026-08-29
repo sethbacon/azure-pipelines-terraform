@@ -7,6 +7,7 @@ import fs = require('fs');
 import path = require('path');
 import tasks = require('azure-pipelines-task-lib/task');
 import { parseFrontMatter } from './frontmatter';
+import { isWithinWorkingDirectory } from './path-containment';
 
 export const MAX_INCLUDE_DEPTH = 5;
 
@@ -40,11 +41,13 @@ export function resolveIncludes(
         const absInclude = path.resolve(path.join(primaryDir, includeRel));
 
         // Containment guard: an include must resolve within primaryDir (or a
-        // subdirectory of it). Without this, an `includes:` entry such as
-        // '../../secret.md' would pull an arbitrary readable file on the build
-        // agent into the rendered/published KB article.
-        const relToPrimaryDir = path.relative(primaryDir, absInclude);
-        if (relToPrimaryDir === '..' || relToPrimaryDir.startsWith(`..${path.sep}`) || path.isAbsolute(relToPrimaryDir)) {
+        // subdirectory of it), with symlinks resolved on both sides -- a purely
+        // lexical check is blind to an in-tree symlink pointing outside primaryDir.
+        // Without this, an `includes:` entry such as '../../secret.md' (or one
+        // reached via a symlink that lexically stays inside primaryDir) would pull
+        // an arbitrary readable file on the build agent into the rendered/
+        // published KB article.
+        if (!isWithinWorkingDirectory(absInclude, primaryDir)) {
             throw new Error(tasks.loc('IncludeOutsidePrimaryDir', includeRel, primaryDir, absInclude));
         }
 

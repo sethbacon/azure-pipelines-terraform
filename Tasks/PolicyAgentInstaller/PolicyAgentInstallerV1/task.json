@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "30",
+        "Minor": "31",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -170,8 +170,8 @@
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
         "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
         "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). Integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature is verified on this path. Sentinel's official and mirror sources verify SHA256SUMS against the pinned HashiCorp GPG key; requireGpgSignature does not apply to downloadSource=registry. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Use downloadSource official, or a mirror that publishes a signed SHA256SUMS, if you need signature-anchored trust.",
-        "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
-        "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
+        "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is, or resolves to, a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
+        "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is, or resolves to, a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",
         "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
         "ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",

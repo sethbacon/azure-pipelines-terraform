@@ -14,7 +14,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "12",
+        "Minor": "13",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -124,6 +124,7 @@
         "IncludeHasKbKey": "Include file '%s' has a 'kb-key' front-matter field. Include files must not be primaries.",
         "NoInputFilesProvided": "No input files provided.",
         "HtmlWrittenTo": "HTML written to '%s'",
+        "PathEscapesWorkingDirectory": "Output path '%s' resolves outside the working directory.",
         "FrontMatterParseFailed": "Front-matter in '%s' could not be parsed as a YAML mapping and was ignored (defaults used): %s"
     }
 }

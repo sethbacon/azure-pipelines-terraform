@@ -312,6 +312,25 @@ describe('resolveIncludes', () => {
             /outside/i
         );
     });
+
+    it('rejects an include that only stays inside primaryDir lexically, via a symlink (#123)', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'md2html-symlink-'));
+        const primaryDir = path.join(root, 'work');
+        const outside = path.join(root, 'outside');
+        fs.mkdirSync(primaryDir);
+        fs.mkdirSync(outside);
+        fs.writeFileSync(path.join(outside, 'secret.md'), '# Secret\n');
+        // Deliberately unguarded: 'junction' needs no privilege on Windows and
+        // symlinkSync always works elsewhere, so a throw here is a real finding.
+        fs.symlinkSync(outside, path.join(primaryDir, 'link'), 'junction');
+        fs.writeFileSync(path.join(primaryDir, 'primary.md'), '---\nincludes:\n  - link/secret.md\n---\nbody\n');
+        const { data } = parseFrontMatter(path.join(primaryDir, 'primary.md'));
+        // path.relative/startsWith says this is under primaryDir; realpath says it is not.
+        assert.throws(
+            () => resolveIncludes(path.join(primaryDir, 'primary.md'), data),
+            /outside/i
+        );
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -624,7 +643,7 @@ describe('Golden file', () => {
         const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md2html-golden-'));
         const outPath = path.join(outDir, 'sample.html');
 
-        const { title } = await processFrontMatterDriven(samplePath, outPath);
+        const { title } = await processFrontMatterDriven(samplePath, outPath, { workingDirectory: outDir });
         const html = fs.readFileSync(outPath, 'utf8');
         const $ = cheerio.load(html);
 
@@ -674,7 +693,7 @@ describe('processFileList', () => {
     it('writes a single-file HTML document', async () => {
         const dir = writeTmpDir({ 'a.md': '# Alpha\n\nHello world.\n' });
         const out = path.join(dir, 'out.html');
-        await processFileList([path.join(dir, 'a.md')], out);
+        await processFileList([path.join(dir, 'a.md')], out, { workingDirectory: dir });
         const html = fs.readFileSync(out, 'utf8');
         assert.ok(html.includes('<h1'), 'expected a heading');
         assert.ok(/Alpha/.test(html), 'expected the heading text');
@@ -687,7 +706,7 @@ describe('processFileList', () => {
         await processFileList(
             [path.join(dir, 'a.md'), path.join(dir, 'b.md')],
             out,
-            { addSections: true, addDividers: true, title: 'Combined Doc', debug: true }
+            { addSections: true, addDividers: true, title: 'Combined Doc', debug: true, workingDirectory: dir }
         );
         const html = fs.readFileSync(out, 'utf8');
         assert.ok(html.includes('table-of-contents'), 'expected a table of contents');
@@ -699,7 +718,7 @@ describe('processFileList', () => {
     it('creates the output directory when it does not exist', async () => {
         const dir = writeTmpDir({ 'a.md': '# Alpha\n\nHi.\n' });
         const out = path.join(dir, 'nested', 'deep', 'out.html');
-        await processFileList([path.join(dir, 'a.md')], out);
+        await processFileList([path.join(dir, 'a.md')], out, { workingDirectory: dir });
         assert.ok(fs.existsSync(out), 'expected the nested output file to be written');
     });
 
@@ -712,7 +731,7 @@ describe('processFileList', () => {
         await processFileList(
             [path.join(dir, 'Q&A.md'), path.join(dir, 'b.md')],
             out,
-            { addSections: true },
+            { addSections: true, workingDirectory: dir },
         );
         const html = fs.readFileSync(out, 'utf8');
         assert.ok(!html.includes('>Q&A<'), `raw ampersand must be escaped (got: ${html})`);
@@ -722,8 +741,23 @@ describe('processFileList', () => {
     it('throws when an input file cannot be converted', async () => {
         const dir = writeTmpDir({ 'empty.md': '   \n' });
         await assert.rejects(
-            processFileList([path.join(dir, 'empty.md')], path.join(dir, 'out.html')),
+            processFileList([path.join(dir, 'empty.md')], path.join(dir, 'out.html'), { workingDirectory: dir }),
             /Failed to convert|FileConversionFailed/,
+        );
+    });
+
+    it('rejects an output path that only stays inside workingDirectory lexically, via a symlink (#123)', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'md2html-out-symlink-'));
+        const workingDirectory = path.join(root, 'work');
+        const outside = path.join(root, 'outside');
+        fs.mkdirSync(workingDirectory);
+        fs.mkdirSync(outside);
+        fs.symlinkSync(outside, path.join(workingDirectory, 'link'), 'junction');
+        const dir = writeTmpDir({ 'a.md': '# Alpha\n\nHi.\n' });
+        const out = path.join(workingDirectory, 'link', 'out.html');
+        await assert.rejects(
+            processFileList([path.join(dir, 'a.md')], out, { workingDirectory }),
+            /PathEscapesWorkingDirectory|outside the working directory/i,
         );
     });
 });
@@ -756,7 +790,7 @@ describe('processFrontMatterDriven', () => {
             'part2.md': '# Part Two\n\nContent two.\n',
         });
         const out = path.join(dir, 'out.html');
-        const result = await processFrontMatterDriven(path.join(dir, 'main.md'), out, { debug: true });
+        const result = await processFrontMatterDriven(path.join(dir, 'main.md'), out, { debug: true, workingDirectory: dir });
         assert.strictEqual(result.title, 'My Doc');
         assert.deepStrictEqual(result.relativeIncludes, ['part1.md', 'part2.md']);
         const html = fs.readFileSync(out, 'utf8');
@@ -785,7 +819,7 @@ describe('processFrontMatterDriven', () => {
             'Q&A.md': '# Part\n\nContent.\n',
         });
         const out = path.join(dir, 'out.html');
-        await processFrontMatterDriven(path.join(dir, 'main.md'), out);
+        await processFrontMatterDriven(path.join(dir, 'main.md'), out, { workingDirectory: dir });
         const html = fs.readFileSync(out, 'utf8');
         assert.ok(!html.includes('id="q&a-md"'), `raw ampersand in the section id must be escaped (got: ${html})`);
         assert.ok(html.includes('id="q&amp;a-md"'), `expected the escaped section id to appear (got: ${html})`);
@@ -794,7 +828,7 @@ describe('processFrontMatterDriven', () => {
     it('derives the title from the first h1 when front matter has none', async () => {
         const dir = writeTmpDir({ 'doc.md': '# Derived Title\n\nBody.\n' });
         const out = path.join(dir, 'out.html');
-        const result = await processFrontMatterDriven(path.join(dir, 'doc.md'), out);
+        const result = await processFrontMatterDriven(path.join(dir, 'doc.md'), out, { workingDirectory: dir });
         assert.strictEqual(result.title, 'Derived Title');
         assert.deepStrictEqual(result.relativeIncludes, []);
     });
@@ -802,15 +836,30 @@ describe('processFrontMatterDriven', () => {
     it('honours a title override', async () => {
         const dir = writeTmpDir({ 'noheading.md': 'Just text, no heading.\n' });
         const out = path.join(dir, 'out.html');
-        const result = await processFrontMatterDriven(path.join(dir, 'noheading.md'), out, { titleOverride: 'Forced Title' });
+        const result = await processFrontMatterDriven(path.join(dir, 'noheading.md'), out, { titleOverride: 'Forced Title', workingDirectory: dir });
         assert.strictEqual(result.title, 'Forced Title');
     });
 
     it('falls back to the file basename when there is no title or h1', async () => {
         const dir = writeTmpDir({ 'basenamedoc.md': 'No heading here.\n' });
         const out = path.join(dir, 'out.html');
-        const result = await processFrontMatterDriven(path.join(dir, 'basenamedoc.md'), out);
+        const result = await processFrontMatterDriven(path.join(dir, 'basenamedoc.md'), out, { workingDirectory: dir });
         assert.strictEqual(result.title, 'basenamedoc');
+    });
+
+    it('rejects an output path that only stays inside workingDirectory lexically, via a symlink (#123)', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'md2html-fm-out-symlink-'));
+        const workingDirectory = path.join(root, 'work');
+        const outside = path.join(root, 'outside');
+        fs.mkdirSync(workingDirectory);
+        fs.mkdirSync(outside);
+        fs.symlinkSync(outside, path.join(workingDirectory, 'link'), 'junction');
+        const dir = writeTmpDir({ 'doc.md': '# Derived Title\n\nBody.\n' });
+        const out = path.join(workingDirectory, 'link', 'out.html');
+        await assert.rejects(
+            processFrontMatterDriven(path.join(dir, 'doc.md'), out, { workingDirectory }),
+            /PathEscapesWorkingDirectory|outside the working directory/i,
+        );
     });
 });
 

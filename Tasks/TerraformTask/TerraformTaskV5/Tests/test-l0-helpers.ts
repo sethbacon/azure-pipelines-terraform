@@ -28,7 +28,12 @@ export async function runCommand(
         }
     } catch (error) {
         if (!expectSuccess) {
-            tl.setResult(tl.TaskResult.Failed, `${testName} should have failed.`);
+            // Trailing-period prefix kept verbatim (existing stdOutContained
+            // assertions match on it); the error is appended so a caller can also
+            // assert on *which* error was thrown rather than only that the task
+            // failed -- a bare tr.failed check passes for any failure reason and
+            // cannot tell a fired guard from an unrelated crash (#1026 class).
+            tl.setResult(tl.TaskResult.Failed, `${testName} should have failed. ${error}`);
         } else {
             tl.setResult(tl.TaskResult.Failed, `${testName} should have succeeded but failed: ${error}`);
         }
