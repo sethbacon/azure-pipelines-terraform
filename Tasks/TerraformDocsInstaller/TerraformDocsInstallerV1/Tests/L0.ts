@@ -129,6 +129,28 @@ describe('TerraformDocsInstaller Test Suite', function () {
     }, tr);
   });
 
+  it('cache hit verify pass, forceOnlineReverification=true: a valid marker is NOT trusted, escalates online anyway', async () => {
+    const tp = path.join(__dirname, 'CacheHitVerifyPassForced.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+    runValidations(() => {
+      assert(tr.succeeded, 'task should have succeeded');
+      assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+      assert(
+        tr.stdout.includes('REVERIFY_DOWNLOAD_CALLED:'),
+        'a valid marker must not skip the online check when forced. stdout: ' + tr.stdout
+      );
+      assert(
+        tr.stdout.includes('ForcingOnlineReverification'),
+        'must announce this as a FORCED escalation, not the no-marker one. stdout: ' + tr.stdout
+      );
+      assert(
+        !tr.stdout.includes('ReverifyingCachedTool'),
+        'must not claim no marker was found when one existed and passed. stdout: ' + tr.stdout
+      );
+    }, tr);
+  });
+
   it('cache hit verify fail: stored integrity marker mismatches, rejects the cached copy', async () => {
     const tp = path.join(__dirname, 'CacheHitVerifyFail.js');
     const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

@@ -208,6 +208,12 @@ const FLOW_ROWS: FlowRow[] = [
         what: 'a cache hit whose marker matches installs offline (#136 must not over-block)',
         outcome: 'success',
     },
+    {
+        fixture: 'CacheHitVerifyPassForced',
+        what: 'forceOnlineReverification=true escalates online even though the local marker is valid, and still succeeds on a genuine match — the residual #136 reopen names: the marker lives beside the executable it protects, so a valid match alone cannot be trusted as an adversarial control',
+        outcome: 'success',
+        forbidText: 'ReverifyingCachedTool',
+    },
 ];
 
 describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {

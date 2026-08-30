@@ -140,14 +140,21 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         // was originally downloaded and verified — see verifyCachedTool — and, when
         // no marker exists (cached before markers, or cached with verification
         // disabled), re-verify against a freshly downloaded, verified release.
+        //
+        // forceOnlineReverification (default false) escalates even on a marker PASS:
+        // the marker lives beside the executable it protects (see verifyCachedTool's
+        // trust-boundary note), so an operator who does not trust that boundary on a
+        // given agent can require the online check unconditionally instead.
+        const forceReverify = tasks.getBoolInput("forceOnlineReverification", false);
         const markerVerified = await verifyCachedTool(cachedToolPath, terraformPath, `terraform ${version}`);
-        if (!markerVerified) {
+        if (!markerVerified || forceReverify) {
             await reverifyUnmarkedCacheEntry(
                 `terraform ${version}`,
                 cachedToolPath,
                 terraformPath,
                 () => downloadVerifiedZipForReverify(downloadSource, version),
                 findTerraformExecutable,
+                markerVerified ? 'forced' : 'unmarked',
             );
         }
     } else if (verified) {
@@ -477,12 +484,19 @@ async function reverifyUnmarkedCacheEntry(
     cachedExePath: string,
     downloadVerifiedZip: () => Promise<string>,
     findExe: (rootFolder: string) => string,
+    reason: 'unmarked' | 'forced' = 'unmarked',
 ): Promise<void> {
     if (!getBoolInputDefaultTrue("requireChecksum")) {
-        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker and requireChecksum is false; skipping remote re-verification.`);
+        tasks.debug(reason === 'forced'
+            ? `Cache hit for ${toolLabel}: forceOnlineReverification is enabled but requireChecksum is false; skipping remote re-verification.`
+            : `Cache hit for ${toolLabel}: no stored integrity marker and requireChecksum is false; skipping remote re-verification.`);
         return;
     }
-    console.log(tasks.loc("ReverifyingCachedTool", toolLabel));
+    if (reason === 'forced') {
+        console.log(tasks.loc("ForcingOnlineReverification", toolLabel));
+    } else {
+        console.log(tasks.loc("ReverifyingCachedTool", toolLabel));
+    }
     let zipPath: string;
     try {
         zipPath = await downloadVerifiedZip();
@@ -609,14 +623,16 @@ async function downloadTofu(inputVersion: string): Promise<string> {
 
     if (cacheHit) {
         // See the matching comment in downloadTerraform.
+        const forceReverify = tasks.getBoolInput("forceOnlineReverification", false);
         const markerVerified = await verifyCachedTool(cachedToolPath, tofuPath, `tofu ${version}`);
-        if (!markerVerified) {
+        if (!markerVerified || forceReverify) {
             await reverifyUnmarkedCacheEntry(
                 `tofu ${version}`,
                 cachedToolPath,
                 tofuPath,
                 () => downloadZipFromOpenTofu(version),
                 (rootFolder) => findExecutable(rootFolder, tofuToolName),
+                markerVerified ? 'forced' : 'unmarked',
             );
         }
     } else if (verified) {
