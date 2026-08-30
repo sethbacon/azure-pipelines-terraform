@@ -101,6 +101,14 @@
       "defaultValue": "false",
       "required": false,
       "helpMarkDown": "When enabled, a tool-cache hit that has no local integrity marker and requires online re-verification (requireChecksum=true) FAILS the task if the configured source cannot be reached to re-verify, instead of degrading to a warning and using the unverified cached binary. Default (false) preserves the availability-first behavior that keeps offline/air-gapped cache reuse working. Enable on shared persistent self-hosted agents where you prefer an availability loss over trusting a cache entry an earlier job may have populated without verification. Has no effect when requireChecksum is false (re-verification is skipped) or on a cache entry that already carries an integrity marker (verified locally, offline)."
+    },
+    {
+      "name": "forceOnlineReverification",
+      "type": "boolean",
+      "label": "Always re-verify a cache hit online, even when its local integrity marker is valid",
+      "defaultValue": "false",
+      "required": false,
+      "helpMarkDown": "requireOnlineReverification (above) only governs a cache entry that has NO local integrity marker. This input covers the entry it does not: the local marker lives in the same tool-cache directory as the executable it protects, so it cannot distinguish a genuinely untampered cache from one where both the binary and its marker were rewritten together by the same agent-account write access. When enabled, every cache hit is re-downloaded and re-verified against the configured source and compared byte-for-byte to the cached copy, regardless of whether the local marker passes. Default (false) trusts a valid marker without a network round-trip, which is the intended performance benefit of caching at all. Enable on agents where that co-located marker is not an acceptable trust boundary on its own. Has no effect when requireChecksum is false (re-verification is skipped entirely)."
     }
   ],
   "restrictions": {
@@ -153,6 +161,7 @@
     "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",
     "CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
     "ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",
+    "ForcingOnlineReverification": "Cache hit for %s has a valid local integrity marker, but forceOnlineReverification is enabled. Re-downloading the release to re-verify online rather than trusting the marker; set requireChecksum to false to skip this.",
     "CachedToolReverificationUnavailable": "Could not re-verify cached %s: %s. Proceeding with the cached executable — expected for offline/air-gapped agents; set requireChecksum to false to skip the attempt and silence this warning.",
     "CachedToolReverificationSourceUnreachable": "Could not re-verify cached %s: %s. requireOnlineReverification is enabled, so the task fails closed rather than trusting an unverified cache entry. Ensure the configured source is reachable, or disable requireOnlineReverification to fall back to using the cached executable with a warning.",
     "CachedToolReverificationMismatch": "Cached %s does not match the freshly downloaded, verified release (verified: %s, cached: %s). The cached copy was either never verified or has been altered since caching; clear the agent's tool cache for this version and re-run.",

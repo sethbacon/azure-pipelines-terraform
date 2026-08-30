@@ -103,9 +103,15 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
         // was originally downloaded and verified — see verifyCachedTool — and, when
         // no marker exists (cached before markers, or cached with verification
         // disabled), re-verify against a freshly downloaded, verified release.
+        //
+        // forceOnlineReverification (default false) escalates even on a marker PASS:
+        // the marker lives beside the executable it protects (see verifyCachedTool's
+        // trust-boundary note), so an operator who does not trust that boundary on a
+        // given agent can require the online check unconditionally instead.
+        const forceReverify = tasks.getBoolInput("forceOnlineReverification", false);
         const markerVerified = await verifyCachedTool(cachedToolPath, exePath, `${agent} ${version}`);
-        if (!markerVerified) {
-            await reverifyUnmarkedCacheEntry(agent, downloadSource, version, cachedToolPath, exePath);
+        if (!markerVerified || forceReverify) {
+            await reverifyUnmarkedCacheEntry(agent, downloadSource, version, cachedToolPath, exePath, markerVerified ? 'forced' : 'unmarked');
         }
     } else if (verified) {
         await writeCacheIntegrityMarker(cachedToolPath, exePath);
@@ -579,13 +585,19 @@ export function parseFirstSha256(content: string, fileName: string): string {
  * - Match: write the integrity marker so future cache hits verify locally
  *   (offline, one-time healing of pre-existing cache entries).
  */
-async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string, version: string, toolDir: string, cachedExePath: string): Promise<void> {
+async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string, version: string, toolDir: string, cachedExePath: string, reason: 'unmarked' | 'forced' = 'unmarked'): Promise<void> {
     const toolLabel = `${agent} ${version}`;
     if (!getBoolInputDefaultTrue("requireChecksum")) {
-        tasks.debug(`Cache hit for ${toolLabel}: no stored integrity marker and requireChecksum is false; skipping remote re-verification.`);
+        tasks.debug(reason === 'forced'
+            ? `Cache hit for ${toolLabel}: forceOnlineReverification is enabled but requireChecksum is false; skipping remote re-verification.`
+            : `Cache hit for ${toolLabel}: no stored integrity marker and requireChecksum is false; skipping remote re-verification.`);
         return;
     }
-    console.log(tasks.loc("ReverifyingCachedTool", toolLabel));
+    if (reason === 'forced') {
+        console.log(tasks.loc("ForcingOnlineReverification", toolLabel));
+    } else {
+        console.log(tasks.loc("ReverifyingCachedTool", toolLabel));
+    }
     let artifact: { path: string; verified: boolean };
     try {
         // Reuses the full fresh-install strategy (same inputs, same toggles, same
