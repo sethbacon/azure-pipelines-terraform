@@ -8,7 +8,6 @@ import path = require('path');
 import tasks = require('azure-pipelines-task-lib/task');
 import { parseFrontMatter } from './frontmatter';
 import { resolveIncludes } from './includes';
-import { isWithinWorkingDirectory } from './path-containment';
 import {
     convertMarkdownToHtml,
     shiftHeadingLevels,
@@ -19,11 +18,20 @@ import {
 } from './render';
 import { generateHtmlDocument } from './document';
 
+// `outputPath` below is written WITHOUT a working-directory containment guard,
+// deliberately (rd#123 finding 3, whose recommendation offers "or document why
+// containment is deliberately omitted there"). Unlike the `includes:` front
+// matter and the `<img src>` values -- both read out of repository CONTENT, and
+// both realpath-guarded -- outputFile is a plain operator-supplied task input,
+// and this repo's documented examples deliberately point it OUTSIDE the sources
+// directory (`outputFile: '$(Build.ArtifactStagingDirectory)/module.html'`,
+// which is a sibling of the checkout, not a descendant). Containing it against
+// process.cwd() would reject the documented usage while adding no protection an
+// operator who already controls the pipeline YAML does not trivially have.
+
 export interface FrontMatterOptions {
     titleOverride?: string;
     debug?: boolean;
-    /** Base directory outputPath must stay within (symlinks resolved). Defaults to process.cwd(). */
-    workingDirectory?: string;
 }
 
 export interface FileListOptions {
@@ -31,8 +39,6 @@ export interface FileListOptions {
     addSections?: boolean;
     addDividers?: boolean;
     debug?: boolean;
-    /** Base directory outputPath must stay within (symlinks resolved). Defaults to process.cwd(). */
-    workingDirectory?: string;
 }
 
 /**
@@ -150,13 +156,8 @@ export async function processFrontMatterDriven(
     }
 
     const htmlDocument = generateHtmlDocument([combinedHtml], title);
-    const resolvedOutputPath = path.resolve(outputPath);
-    const workingDirectory = options.workingDirectory ?? process.cwd();
-    if (!isWithinWorkingDirectory(resolvedOutputPath, workingDirectory)) {
-        throw new Error(tasks.loc('PathEscapesWorkingDirectory', outputPath));
-    }
-    fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
-    fs.writeFileSync(resolvedOutputPath, htmlDocument, 'utf8');
+    fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
+    fs.writeFileSync(path.resolve(outputPath), htmlDocument, 'utf8');
 
     if (options.debug) {
         console.log(tasks.loc('FrontMatterConversionComplete', outputPath));
@@ -227,11 +228,6 @@ export async function processFileList(
     }
 
     const htmlDocument = generateHtmlDocument(contentBlocks, title);
-    const resolvedOutputPath = path.resolve(outputPath);
-    const workingDirectory = options.workingDirectory ?? process.cwd();
-    if (!isWithinWorkingDirectory(resolvedOutputPath, workingDirectory)) {
-        throw new Error(tasks.loc('PathEscapesWorkingDirectory', outputPath));
-    }
-    fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
-    fs.writeFileSync(resolvedOutputPath, htmlDocument, 'utf8');
+    fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });
+    fs.writeFileSync(path.resolve(outputPath), htmlDocument, 'utf8');
 }

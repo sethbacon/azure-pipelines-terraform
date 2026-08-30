@@ -179,7 +179,6 @@ azure-pipelines-terraform/
 | `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant                                                                                                                                            |
 | `endpoint-data-secret.ts`              | Reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value (`ENDPOINT_DATA_*` is not vaulted, unlike `AUTH`/`SECRET`/`INPUT`)                                                                                                                                                                                   |
 | `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them                                                                                                                                                                                                                                                |
-| `path-containment.ts`                  | Realpath-based `isWithinWorkingDirectory` guard on the `show`/`custom` output `filename`, symlink-aware; byte-identical copy in every task carrying one, gated by `scripts/check-shared-modules.js`                                                                                                                                                            |
 
 ### Manifest (`task.json`) size & organization convention
 
@@ -340,7 +339,7 @@ Source: `Tasks/Markdown2Html/Markdown2HtmlV1/src/`. Converts Markdown files to H
 | `html-sanitizer.ts`   | Shared HTML allowlist sanitizer (`sanitize-html`) — byte-identical copy also in PublishKbArticleV1, gated by `scripts/check-shared-modules.js`                       |
 | `uri-scheme-guard.ts` | Shared XSS-prevention URI/scheme allowlist — byte-identical copy also in PublishKbArticleV1                                                                          |
 | `html-sanitizer.ts`   | Shared `sanitize-html` allowlist — the final stored-XSS defense before HTML reaches ServiceNow's `text` field; byte-identical copy also in PublishKbArticleV1 (#820) |
-| `path-containment.ts` | Realpath-based `isWithinWorkingDirectory` guard on include and output paths, symlink-aware; byte-identical copy in every task carrying one, gated by `scripts/check-shared-modules.js` |
+| `path-containment.ts` | Realpath-based `isWithinWorkingDirectory` guard on front-matter `includes:` paths, symlink-aware; byte-identical copy in every task carrying one, gated by `scripts/check-shared-modules.js` |
 
 Output variable: `htmlFilePath`.
 

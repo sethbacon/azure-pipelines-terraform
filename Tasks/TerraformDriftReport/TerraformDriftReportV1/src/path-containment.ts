@@ -26,5 +26,8 @@ function realpathOfExistingPrefix(p: string): string {
 export function isWithinWorkingDirectory(resolvedPath: string, workingDirectory: string): boolean {
     const base = realpathOfExistingPrefix(path.resolve(workingDirectory || '.'));
     const target = realpathOfExistingPrefix(path.resolve(resolvedPath));
-    return target === base || target.startsWith(base + path.sep);
+    // A base that is already a filesystem root (`C:\`, `/`) ends with the separator,
+    // so appending another would make every descendant fail the prefix test.
+    const prefix = base.endsWith(path.sep) ? base : base + path.sep;
+    return target === base || target.startsWith(prefix);
 }
