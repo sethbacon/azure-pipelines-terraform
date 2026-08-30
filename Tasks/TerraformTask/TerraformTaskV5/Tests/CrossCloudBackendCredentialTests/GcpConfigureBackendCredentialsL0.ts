@@ -107,4 +107,82 @@ describe('TerraformCommandHandlerGCP.configureBackendCredentials (cross-cloud)',
     const handler = new TerraformCommandHandlerGCP();
     await assert.rejects(() => handler.configureBackendCredentials(), /Unrecognized authorization scheme/);
   });
+
+  // #1025 finding 1+3. The gcs backend resolves `access_token` AHEAD of
+  // `credentials` ("If both are specified, access_token will be used over the
+  // credentials field"), and the impersonation names redirect the effective
+  // identity outright -- so an inherited value out-ranks the credentials file
+  // this handler just wrote. The provider path already cleared its own
+  // competing names; the backend path cleared nothing.
+  it('clears the inherited credential sources that out-rank GOOGLE_BACKEND_CREDENTIALS (#1025)', async () => {
+    const outranking = {
+      GOOGLE_BACKEND_OAUTH_ACCESS_TOKEN: 'inherited-backend-token',
+      GOOGLE_OAUTH_ACCESS_TOKEN: 'inherited-token',
+      GOOGLE_BACKEND_IMPERSONATE_SERVICE_ACCOUNT: 'attacker@evil.iam.gserviceaccount.com',
+      GOOGLE_IMPERSONATE_SERVICE_ACCOUNT: 'attacker@evil.iam.gserviceaccount.com',
+    };
+    const saved: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(outranking)) { saved[k] = process.env[k]; process.env[k] = v; }
+    // The provider's own credential, which the backend pass must NOT strip:
+    // handleProvider sets it, and in a cross-cloud run it is still needed.
+    const savedProviderCreds = process.env['GOOGLE_CREDENTIALS'];
+    process.env['GOOGLE_CREDENTIALS'] = '/tmp/provider-creds.json';
+
+    (tasks as any).getInput = (name: string) => {
+      if (name === 'backendServiceGCP') return 'GCP-Backend';
+      if (name === 'backendAuthSchemeGCP') return 'WorkloadIdentityFederation';
+      if (name === 'backendGCPProjectNumber') return '123456789012';
+      if (name === 'backendGCPWorkloadIdentityPoolId') return 'pool-1';
+      if (name === 'backendGCPWorkloadIdentityProviderId') return 'provider-1';
+      if (name === 'backendGCPServiceAccountEmail') return 'sa@project.iam.gserviceaccount.com';
+      return undefined;
+    };
+    (tasks as any).setSecret = () => { /* no-op */ };
+    (idTokenGenerator as any).generateIdToken = async () => 'fake-oidc-jwt';
+
+    try {
+      const handler = new TerraformCommandHandlerGCP();
+      await handler.configureBackendCredentials();
+
+      for (const k of Object.keys(outranking)) {
+        assert.strictEqual(process.env[k], undefined, `${k} out-ranks GOOGLE_BACKEND_CREDENTIALS and must be cleared`);
+      }
+      assert.ok(process.env['GOOGLE_BACKEND_CREDENTIALS'], 'the backend credential must still be set');
+      assert.strictEqual(
+        process.env['GOOGLE_CREDENTIALS'], '/tmp/provider-creds.json',
+        'the PROVIDER credential must survive the backend pass (cross-cloud ordering)',
+      );
+      (handler as any).cleanupTempFiles();
+    } finally {
+      for (const k of Object.keys(outranking)) {
+        if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      }
+      if (savedProviderCreds === undefined) delete process.env['GOOGLE_CREDENTIALS'];
+      else process.env['GOOGLE_CREDENTIALS'] = savedProviderCreds;
+    }
+  });
+
+  // #1025 finding 2. Each of these is interpolated into the audience /
+  // impersonation URLs written into the credentials file; the provider WIF path
+  // charset-validated them (#199), the backend WIF path did not.
+  it('charset-validates the backend WIF identity inputs before interpolating them (#1025)', async () => {
+    (tasks as any).getInput = (name: string) => {
+      if (name === 'backendServiceGCP') return 'GCP-Backend';
+      if (name === 'backendAuthSchemeGCP') return 'WorkloadIdentityFederation';
+      if (name === 'backendGCPProjectNumber') return '123456789012';
+      // A newline would otherwise be interpolated straight into the audience URL.
+      if (name === 'backendGCPWorkloadIdentityPoolId') return 'pool-1\nevil: true';
+      if (name === 'backendGCPWorkloadIdentityProviderId') return 'provider-1';
+      if (name === 'backendGCPServiceAccountEmail') return 'sa@project.iam.gserviceaccount.com';
+      return undefined;
+    };
+    (tasks as any).setSecret = () => { /* no-op */ };
+    (idTokenGenerator as any).generateIdToken = async () => 'fake-oidc-jwt';
+
+    const handler = new TerraformCommandHandlerGCP();
+    await assert.rejects(
+      () => handler.configureBackendCredentials(),
+      /backendGCPWorkloadIdentityPoolId/,
+    );
+  });
 });

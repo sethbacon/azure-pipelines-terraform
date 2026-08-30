@@ -27,6 +27,32 @@ const GOOGLE_COMPETING_CREDENTIAL_ENV = [
     'GOOGLE_GHA_CREDS_PATH',
     'CLOUDSDK_AUTH_ACCESS_TOKEN',
     'CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE',
+    // Does not supply a credential but REDIRECTS the effective identity: the
+    // google provider impersonates this account using whatever credential it
+    // resolved, so an inherited value authenticates as an account the service
+    // connection never named -- the same defect #187 closed for the credential
+    // names above (#1025).
+    'GOOGLE_IMPERSONATE_SERVICE_ACCOUNT',
+] as const;
+
+/**
+ * Google credential sources that out-rank `GOOGLE_BACKEND_CREDENTIALS` in the
+ * *gcs backend's* own resolution order, and which this task never sets itself.
+ *
+ * Deliberately NOT the provider list above. Per HashiCorp's gcs backend docs,
+ * `access_token` "is an alternative to `credentials`. If both are specified,
+ * access_token will be used over the credentials field" -- so an inherited
+ * access token silently out-ranks the credentials file this handler writes,
+ * while `GOOGLE_APPLICATION_CREDENTIALS` (plain ADC) ranks BELOW it and needs
+ * no clearing here. `GOOGLE_CREDENTIALS` is excluded for a different reason:
+ * `handleProvider` sets it for the PROVIDER, and clearing it on the backend
+ * path would strip the provider's own credential in a cross-cloud run.
+ */
+const GOOGLE_BACKEND_COMPETING_CREDENTIAL_ENV = [
+    'GOOGLE_BACKEND_OAUTH_ACCESS_TOKEN',
+    'GOOGLE_OAUTH_ACCESS_TOKEN',
+    'GOOGLE_BACKEND_IMPERSONATE_SERVICE_ACCOUNT',
+    'GOOGLE_IMPERSONATE_SERVICE_ACCOUNT',
 ] as const;
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -119,12 +145,11 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
      * See https://developer.hashicorp.com/terraform/language/backend#credentials-and-sensitive-data
      */
     private applyBackendCredentialFile(credentialsFilePath: string): void {
-        // @credential-exempt: GOOGLE_BACKEND_CREDENTIALS takes precedence over
-        // GOOGLE_CREDENTIALS / GOOGLE_APPLICATION_CREDENTIALS / ADC in the gcs
-        // backend's own resolution order, so an inherited value cannot out-rank
-        // it. Clearing the lower-precedence names here would be actively WRONG in
-        // a cross-cloud run: `handleProvider` sets GOOGLE_CREDENTIALS for the
-        // PROVIDER, and the backend path can run after it in the same process.
+        // Only the names that actually out-rank GOOGLE_BACKEND_CREDENTIALS for the
+        // gcs backend, and that this task never sets itself -- see the list's own
+        // comment. Clearing the provider list here instead would break the
+        // cross-cloud run this method also serves (#1025).
+        neutralizeEnvironmentVariables(GOOGLE_BACKEND_COMPETING_CREDENTIAL_ENV, "GCP backend");
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_BACKEND_CREDENTIALS", credentialsFilePath);
     }
 
@@ -180,12 +205,15 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
     /** Shared by `setupBackendWIF` (init) and `configureBackendCredentials` (cross-cloud). */
     private async writeBackendWifCredentials(backendServiceName: string): Promise<string> {
+        // Charset-validated for the same reason as the provider path: each value is
+        // interpolated into the audience / impersonation URLs written to the
+        // credentials file (#199, extended to the backend path by #1025).
         return this.writeWifCredentials({
             serviceConnection: backendServiceName,
-            projectNumber: tasks.getInput("backendGCPProjectNumber", true)!,
-            poolId: tasks.getInput("backendGCPWorkloadIdentityPoolId", true)!,
-            providerId: tasks.getInput("backendGCPWorkloadIdentityProviderId", true)!,
-            serviceAccountEmail: tasks.getInput("backendGCPServiceAccountEmail", true)!,
+            projectNumber: assertIdentityValue(tasks.getInput("backendGCPProjectNumber", true), "Input 'backendGCPProjectNumber'"),
+            poolId: assertIdentityValue(tasks.getInput("backendGCPWorkloadIdentityPoolId", true), "Input 'backendGCPWorkloadIdentityPoolId'"),
+            providerId: assertIdentityValue(tasks.getInput("backendGCPWorkloadIdentityProviderId", true), "Input 'backendGCPWorkloadIdentityProviderId'"),
+            serviceAccountEmail: assertIdentityValue(tasks.getInput("backendGCPServiceAccountEmail", true), "Input 'backendGCPServiceAccountEmail'"),
             tokenFilePrefix: "gcp-backend-oidc-token",
             credentialsFilePrefix: "gcp-backend-wif-credentials",
         });
