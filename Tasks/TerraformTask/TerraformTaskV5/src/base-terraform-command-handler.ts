@@ -15,7 +15,6 @@ import { ResultsPublisher } from './results-publisher';
 import { buildPlanDigest } from './results/plan-digest';
 import { buildStateDigest } from './results/state-digest';
 import { maskHasSensitiveLeaf } from './results/redact';
-import { isWithinWorkingDirectory } from './path-containment';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -408,10 +407,15 @@ export abstract class BaseTerraformCommandHandler {
             }
             result = commandOutput.code;
         } else if (outputTo === "file") {
+            // NO working-directory containment here, deliberately (rd#123 finding 3,
+            // whose recommendation offers "or document why containment is omitted").
+            // `filename` is an operator-supplied input, not content-derived, and
+            // task.json's own help text tells operators to point it OUTSIDE any
+            // published directory ("an absolute path under $(Agent.TempDirectory)")
+            // precisely so a sensitive `show -json` is not swept into an artifact.
+            // Containing it here would force that output back inside the working
+            // directory and defeat the documented guidance.
             const showFilePath = path.resolve(showCommand.workingDirectory, tasks.getInput("filename") || '');
-            if (!isWithinWorkingDirectory(showFilePath, showCommand.workingDirectory)) {
-                throw new Error(`filename '${tasks.getInput("filename")}' resolves outside the working directory (${showFilePath}). Use a path within workingDirectory.`);
-            }
             // ignoreReturnCode mirrors packer's build()/fix() fix (#202/#203, same
             // class): without it a non-zero `terraform show` REJECTS here and the
             // already-captured stdout is discarded, so the file the operator asked
@@ -839,9 +843,6 @@ export abstract class BaseTerraformCommandHandler {
                 });
             } else if (outputTo === "file") {
                 const customFilePath = path.resolve(customCommand.workingDirectory, tasks.getInput("filename") || '');
-                if (!isWithinWorkingDirectory(customFilePath, customCommand.workingDirectory)) {
-                    throw new Error(`filename '${tasks.getInput("filename")}' resolves outside the working directory (${customFilePath}). Use a path within workingDirectory.`);
-                }
                 // #202/#203 class: the try/finally above only guarantees the
                 // afterPlanFileWritten hook on a rejecting exec -- the write and
                 // the customFilePath export sit AFTER the await inside the try, so

@@ -36,7 +36,7 @@ async function renderWithSeparator(separator: string): Promise<string> {
     'part1.md': '# Part One\n\nContent one.\n',
   });
   const out = path.join(dir, 'out.html');
-  await processFrontMatterDriven(path.join(dir, 'main.md'), out, { workingDirectory: dir });
+  await processFrontMatterDriven(path.join(dir, 'main.md'), out);
   return fs.readFileSync(out, 'utf8');
 }
 
