@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@4cloudguru/pipeline-task-ado": "^0.5.3",
-    "@4cloudguru/pipeline-task-core": "^0.7.1",
+    "@4cloudguru/pipeline-task-core": "^0.7.2",
     "azure-pipelines-task-lib": "^5.2.10",
     "azure-pipelines-tool-lib": "^2.0.12",
     "undici": "^6.28.0"
