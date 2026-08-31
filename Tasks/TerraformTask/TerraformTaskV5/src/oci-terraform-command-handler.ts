@@ -185,7 +185,12 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             // on Windows, fail closed) like every other secret file in this task,
             // instead of a plain symlink-following write plus a separate chmod
             // (#545); the uuid filename keeps the exclusive create collision-free.
-            const tfConfigFilePath = path.resolve(`${workingDirectory}/config-${uuidV4()}.tf`);
+            // Two-argument path.resolve (matching show()/custom()'s pattern in the
+            // base handler): the single-argument form below treats a leading '/'
+            // -- which `${workingDirectory}/...` produces when workingDirectory is
+            // an explicit empty string in YAML -- as already absolute, escaping to
+            // the filesystem root rather than resolving against cwd (#1031).
+            const tfConfigFilePath = path.resolve(workingDirectory, `config-${uuidV4()}.tf`);
             writeSecretFile(tfConfigFilePath, config);
             this.trackTempFile(tfConfigFilePath);
             tasks.debug('Generating backend tf statefile config done.');
@@ -208,7 +213,9 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
      */
     private registerOciBackendCacheForCleanup(workingDirectory: string): void {
         if (!tasks.getBoolInput("cleanupOCIBackendCache", false)) return;
-        this.trackTempFile(path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`));
+        // Two-argument form -- see the #1031 comment on the config-file resolve
+        // above.
+        this.trackTempFile(path.resolve(workingDirectory, '.terraform/terraform.tfstate'));
     }
 
     /**
@@ -241,7 +248,9 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     protected async afterInit(initFailed: boolean): Promise<void> {
         if (!this.parBackendGeneratedThisInit) return;
         const workingDirectory = tasks.getInput("workingDirectory") || '';
-        const cacheFilePath = path.resolve(`${workingDirectory}/.terraform/terraform.tfstate`);
+        // Two-argument form -- see the #1031 comment on the config-file resolve
+        // above.
+        const cacheFilePath = path.resolve(workingDirectory, '.terraform/terraform.tfstate');
         if (!fs.existsSync(cacheFilePath)) return;
         if (initFailed) {
             try {

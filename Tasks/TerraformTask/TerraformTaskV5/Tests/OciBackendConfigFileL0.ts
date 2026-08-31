@@ -840,3 +840,110 @@ describe('OCI custom() integration -- a bare commandOptions -out= is tightened (
 });
 
 
+
+/**
+ * Direct unit tests for the two-argument path.resolve fix (#1031): the config
+ * file, the opt-in cache-cleanup registration, and afterInit()'s default-secure
+ * permission tightening all built their target path as
+ * `path.resolve(\`${workingDirectory}/...\`)` -- single-argument. When
+ * workingDirectory is an explicit empty string in YAML (a value the classic
+ * designer allows), `${''}/...` starts with a literal '/', which
+ * single-argument path.resolve treats as ALREADY ABSOLUTE and returns
+ * unchanged, ignoring cwd entirely -- escaping to the real filesystem root
+ * instead of resolving relative to the agent's working directory. All three
+ * sites now use the two-argument form (matching show()/custom()'s existing
+ * pattern), which folds an empty first argument into cwd like every other
+ * relative path in this task.
+ */
+describe('OCI backend config/cache paths — two-argument path.resolve when workingDirectory is empty (#1031)', function () {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
+    const t = tasks as any;
+    const taskOrig = {
+        getInput: t.getInput,
+        getBoolInput: t.getBoolInput,
+        setSecret: t.setSecret,
+        debug: t.debug,
+        warning: t.warning,
+        getEndpointDataParameter: t.getEndpointDataParameter,
+    };
+    let scratchDir: string;
+    let originalCwd: string;
+    let cachePath: string;
+    const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
+
+    function installInputs(cleanupOCIBackendCache: boolean): void {
+        t.getInput = (name: string) => {
+            if (name === 'backendServiceOCI') return 'OCI';
+            if (name === 'backendOCIConfigGenerate') return 'yes';
+            if (name === 'backendOCIPar') return parUrl;
+            // The bug under test: workingDirectory explicitly resolves to ''.
+            if (name === 'workingDirectory') return '';
+            return undefined;
+        };
+        t.getBoolInput = (name: string) => (name === 'cleanupOCIBackendCache' ? cleanupOCIBackendCache : false);
+    }
+
+    beforeEach(() => {
+        scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oci-empty-workdir-test-'));
+        fs.mkdirSync(path.join(scratchDir, '.terraform'));
+        cachePath = path.join(scratchDir, '.terraform', 'terraform.tfstate');
+        fs.writeFileSync(cachePath, JSON.stringify({ backend: { config: { address: parUrl } } }));
+        if (process.platform !== 'win32') {
+            fs.chmodSync(cachePath, 0o644);
+        }
+        // The task's own workingDirectory input is '' -- cwd is the actual
+        // stand-in for "the agent's working directory" in that case, so it has
+        // to genuinely BE scratchDir for this test to prove anything.
+        originalCwd = process.cwd();
+        process.chdir(scratchDir);
+        t.setSecret = () => { /* no-op */ };
+        t.debug = () => { /* silence */ };
+        t.warning = () => { /* silence */ };
+        t.getEndpointDataParameter = (_id: string, key: string) => OCI_ENDPOINT_DATA[key];
+    });
+
+    afterEach(() => {
+        process.chdir(originalCwd);
+        t.getInput = taskOrig.getInput;
+        t.getBoolInput = taskOrig.getBoolInput;
+        t.setSecret = taskOrig.setSecret;
+        t.debug = taskOrig.debug;
+        t.warning = taskOrig.warning;
+        t.getEndpointDataParameter = taskOrig.getEndpointDataParameter;
+        fs.rmSync(scratchDir, { recursive: true, force: true });
+    });
+
+    function stubToolRunner(): ToolRunner {
+        return { arg: () => { /* backendConfig is empty for OCI */ } } as unknown as ToolRunner;
+    }
+
+    it('writes config-<uuid>.tf under cwd, not the filesystem root, when workingDirectory is an explicit empty string', async () => {
+        installInputs(false);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+
+        const configFiles = fs.readdirSync(scratchDir).filter((f) => /^config-[0-9a-f-]+\.tf$/.test(f));
+        assert.strictEqual(configFiles.length, 1, 'config-<uuid>.tf must land under cwd -- the single-argument path.resolve bug sent it to the real filesystem root instead (#1031)');
+    });
+
+    it('registers the cwd-relative cache for cleanup, not a real-root path, when cleanupOCIBackendCache is enabled', async () => {
+        installInputs(true);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+        handler.cleanupTempFiles();
+
+        assert.ok(!fs.existsSync(cachePath), 'the opt-in scrub must remove the cache under cwd -- under the root-escape bug it targets a path outside scratchDir, leaving this file untouched (#1031)');
+    });
+
+    it('afterInit() tightens the cwd-relative cache to 0600, not a real-root path', async () => {
+        installInputs(false);
+        const handler = new TerraformCommandHandlerOCI();
+        await handler.handleBackend(stubToolRunner());
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- protected method
+        await (handler as any).afterInit(false);
+
+        if (process.platform !== 'win32') {
+            assert.strictEqual(fs.statSync(cachePath).mode & 0o777, 0o600, 'afterInit must tighten the cache under cwd -- under the root-escape bug it looks for a nonexistent file at real root and no-ops, leaving this file at 0644 (#1031)');
+        }
+    });
+});

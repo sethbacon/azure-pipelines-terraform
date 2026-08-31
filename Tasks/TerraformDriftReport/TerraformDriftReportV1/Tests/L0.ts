@@ -767,6 +767,24 @@ describe('TerraformDriftReport Test Suite', function () {
         }, tr);
     });
 
+    it('DriftReportModuleManifestNonObjectShapeSkipped — a moduleManifest that parses but is not a JSON object omits module_locks (#1031)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportModuleManifestNonObjectShapeSkipped.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the drift report itself should still succeed');
+            assert(
+                !tr.warningIssues.some((w) => w.includes('resolves outside the working directory')),
+                `containment must pass -- this manifest is genuinely in-bounds, only wrongly shaped. warnings: ${tr.warningIssues}`,
+            );
+            const line = tr.stdout.split('\n').find(l => l.includes('##vso[task.setvariable variable=summaryFilePath;'));
+            assert(line, `summaryFilePath output variable line not found in stdout: ${tr.stdout}`);
+            const summaryPath = line!.slice(line!.indexOf(']') + 1).trim();
+            const body = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+            assert.strictEqual(body.module_locks, null, 'an array-shaped manifest must be rejected, not forwarded verbatim as module_locks');
+            assert(!tr.stdout.includes('unexpected-array-shape'), 'the wrongly-shaped manifest content must never reach the log');
+        }, tr);
+    });
+
     it('DriftReportCallbackSuccess — 2xx callback succeeds and masks the callback token', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackSuccess.js'));
         await tr.runAsync();

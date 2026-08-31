@@ -144,4 +144,27 @@ describe('results: JUnit generation', () => {
             fs.rmSync(xmlPath, { force: true });
         }
     });
+
+    it('strips XML 1.0-illegal control characters instead of embedding them raw (#1031)', () => {
+        // \x01/\x02/\x0B/\x1F are C0 controls XML 1.0's Char production forbids
+        // outright -- unlike &/</>, they cannot be represented via a markup
+        // escape, so a parser fed them raw either rejects the whole document or
+        // silently corrupts it. \t/\n (tab/LF) ARE legal XML characters and must
+        // survive unstripped -- proving the guard is scoped to illegal code
+        // points, not "any control character".
+        const xmlPath = writeJUnit([
+            { name: 'p\x01olicy', passed: false, message: 'bad \x02value \x0Bhere \x1Fend' },
+            { name: 'tab\tand\nnewline survive', passed: true },
+        ], 'opa');
+        try {
+            const xml = fs.readFileSync(xmlPath, 'utf-8');
+            // eslint-disable-next-line no-control-regex
+            assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(xml), 'no XML-illegal control character survives anywhere in the document');
+            assert(/name="policy"/.test(xml), 'the illegal byte is removed from the name, not replaced with a visible placeholder');
+            assert(/message="bad value here end"/.test(xml), 'the illegal bytes are removed from the message, leaving the surrounding text intact');
+            assert(/tab\tand\nnewline survive/.test(xml), 'tab and newline -- legal XML characters -- are left untouched');
+        } finally {
+            fs.rmSync(xmlPath, { force: true });
+        }
+    });
 });
