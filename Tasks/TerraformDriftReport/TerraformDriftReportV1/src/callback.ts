@@ -1,5 +1,5 @@
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
-import { createHttpsClient, HttpResponse, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
+import { createHttpsClient, HttpResponse, HttpPreflightError, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
 import { retryAsync, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from '@4cloudguru/pipeline-task-core';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
@@ -116,8 +116,13 @@ export async function postJsonWithRetry(
         // response ambiguous with a token-replay rejection. retryResult defaults to
         // "never", but it is set explicitly here to lock that design decision.
         retryResult: () => false,
-        // Only a pure transport failure (no response received) is retried.
-        retryError: () => true,
+        // A pure transport failure (no response received) is retried -- EXCEPT
+        // HttpPreflightError: a malformed url or proxy config throws
+        // synchronously, before any request is dispatched, from inputs fixed for
+        // the whole task run -- so it fails identically on every attempt.
+        // Retrying it wastes the entire budget delaying a guaranteed failure
+        // rather than surfacing it immediately.
+        retryError: (err) => !(err instanceof HttpPreflightError),
         onRetry: (attempt, _delayMs, outcome) => {
             if (outcome.kind === 'error') {
                 const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);

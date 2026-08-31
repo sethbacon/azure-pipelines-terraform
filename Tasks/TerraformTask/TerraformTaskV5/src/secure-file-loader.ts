@@ -37,18 +37,45 @@ export class SecureFileLoader implements ISecureFileLoader {
     public async downloadSecureFile(secureFileId: string): Promise<string> {
         tasks.debug(`Downloading secure file: ${secureFileId}`);
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let timedOut = false;
         const timeout = new Promise<never>((_resolve, reject) => {
             timer = setTimeout(
-                () => reject(new Error(`Secure file download timed out after ${this.timeoutMs}ms.`)),
+                () => {
+                    timedOut = true;
+                    reject(new Error(`Secure file download timed out after ${this.timeoutMs}ms.`));
+                },
                 this.timeoutMs,
             );
         });
         const download = this.helpers.downloadSecureFile(secureFileId);
-        // If the timeout wins the race, `download` keeps running unobserved. Attach a
-        // no-op catch (on a normalized promise) so a late rejection cannot surface as a
-        // process-level unhandledRejection and clobber an already-reported task result
-        // -- mirroring the guard in TerraformPolicyCheck's policy-source.ts execGit().
-        Promise.resolve(download).catch(() => { /* superseded by the timeout below */ });
+        // If the timeout wins the race, `download` keeps running unobserved. What
+        // happens to it next falls into two cases, both handled on this SAME
+        // promise (registered before the Promise.race below, so this callback
+        // always runs first and observes `timedOut` as of just before this
+        // resolution/rejection -- not mutated by it):
+        //   - it eventually REJECTS: harmless, nothing was ever written to disk.
+        //     A bare .catch() here just keeps this from surfacing as a process-
+        //     level unhandledRejection and clobbering an already-reported task
+        //     result -- mirroring the guard in TerraformPolicyCheck's
+        //     policy-source.ts execGit().
+        //   - it eventually RESOLVES: the vendored library finished writing a
+        //     secret-bearing file (.pkrvars/.tfvars) to disk, at a path this
+        //     function has already stopped tracking -- Promise.race only ever
+        //     surfaces whichever settled FIRST (the timeout), so that path was
+        //     never returned to any caller and would otherwise sit on disk,
+        //     never scrubbed or deleted, until the agent's own temp-purge (if
+        //     any). Only handled when `timedOut` is true: on the normal
+        //     success path (download wins the race outright) this same .then()
+        //     also fires, and must NOT delete the file the caller is about to
+        //     receive and use.
+        Promise.resolve(download).then(
+            (latePath) => {
+                if (!timedOut) return;
+                tasks.warning(`Secure file ${secureFileId} finished downloading after its ${this.timeoutMs}ms timeout had already failed this step; deleting the orphaned file.`);
+                this.deleteSecureFile(secureFileId, latePath);
+            },
+            () => { /* superseded by the timeout below -- nothing was written */ },
+        );
         try {
             const filePath = await Promise.race([download, timeout]);
             // The secure file (which may carry secrets in a .pkrvars/.tfvars

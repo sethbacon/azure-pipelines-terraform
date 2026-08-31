@@ -17,7 +17,6 @@
   "engines": {
     "node": ">=24"
   },
-  "minimumAgentVersion": "3.232.1",
   "dependencies": {
     "@4cloudguru/pipeline-task-core": "^0.7.1",
     "azure-pipelines-task-lib": "^5.2.10",

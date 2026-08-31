@@ -1,4 +1,4 @@
-import { HttpResponse, truncateBody } from './https-client';
+import { HttpResponse, HttpPreflightError, truncateBody } from './https-client';
 import { retryAsync, parseRetryAfterMs } from '@4cloudguru/pipeline-task-core';
 import tasks = require('azure-pipelines-task-lib/task');
 
@@ -62,9 +62,13 @@ export async function retryHttp(
         retries,
         baseDelayMs,
         retryResult: (response) => isRetryableStatus(response.status),
-        // A thrown transport error (no response received) is always safe to repeat
-        // within the budget; only a RESPONSE is classified by status above.
-        retryError: () => true,
+        // A thrown transport error (no response received) is generally safe to
+        // repeat within the budget -- EXCEPT HttpPreflightError: a malformed URL
+        // or proxy config throws synchronously, before any request is dispatched,
+        // from inputs fixed for the whole task run -- so it fails identically on
+        // every attempt. Retrying it wastes the entire budget delaying a
+        // guaranteed failure rather than surfacing it immediately.
+        retryError: (err) => !(err instanceof HttpPreflightError),
         // Honor a capped 429 Retry-After when the server sent one (#633); any other
         // retryable response (a 5xx, or a 429 with no usable Retry-After) falls back
         // to the default exponential backoff.

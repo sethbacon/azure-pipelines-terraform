@@ -95,6 +95,26 @@ function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
 }
 
 /**
+ * Thrown when createHttpsClient's PRE-FLIGHT setup -- parsing `url`, or reading
+ * and building the agent's proxy configuration -- fails before any request is
+ * ever dispatched. Deterministic: both inputs are fixed for the life of the
+ * task run, so retrying re-executes the exact same synchronous code against
+ * the exact same inputs and fails identically every time. A caller's
+ * retryError classifier should treat this as non-retryable -- unlike a genuine
+ * transport failure thrown by the request itself (no response received, but
+ * the request may or may not have reached the server), which IS worth
+ * retrying. Carries the original error as `cause` for logging; never
+ * interpolates `url` itself (the caller-supplied value may embed a credential
+ * in a query string).
+ */
+export class HttpPreflightError extends Error {
+    constructor(message: string, readonly cause: unknown) {
+        super(message);
+        this.name = 'HttpPreflightError';
+    }
+}
+
+/**
  * Creates an HTTPS client backed by the package's raw-https transport. Both the
  * module publish (registry API key) and the drift callback (TSM token) send a
  * credential, so this wrapper is shared byte-for-byte across those tasks and
@@ -106,21 +126,45 @@ function buildProxyAgent(tunnelTimeoutMs: number): https.Agent | undefined {
  * @param timeoutMs per-request socket timeout; a stalled connection is destroyed
  *        and rejected rather than hanging until the agent job timeout.
  */
+/**
+ * Runs a synchronous, potentially-throwing pre-flight step (parsing `url`,
+ * building the proxy agent) and reclassifies any throw as HttpPreflightError.
+ * Applied around each risky expression individually, INLINE within the
+ * httpsRequest() options object below, rather than hoisting them into
+ * intermediate variables first -- scripts/check-proxy-parity.js statically
+ * verifies every raw-https call site's options object visibly builds its
+ * agent via buildProxyAgent/createProxyTunnelAgent by scanning the call's own
+ * source text; a variable indirection here would (and during development,
+ * did) make that check blind to this site.
+ */
+function preflight<T>(fn: () => T): T {
+    try {
+        return fn();
+    } catch (err) {
+        throw new HttpPreflightError(
+            `Failed to prepare the HTTPS request before dispatch (a malformed URL or proxy configuration): ${err instanceof Error ? err.message : String(err)}`,
+            err,
+        );
+    }
+}
+
 export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): HttpClient {
     // `async` so an unparseable URL, or a malformed agent proxy configuration,
     // REJECTS the returned promise instead of throwing synchronously at the call
     // site — which is what the previous new Promise(...) body did, and what every
-    // caller and test is written against.
+    // caller and test is written against. Each throws as HttpPreflightError (via
+    // preflight() above) rather than plain Error, so a caller's retry wrapper can
+    // tell this apart from a genuine transport failure -- see that class's comment.
     return async (method, url, headers, body) =>
         httpsRequest({
             method,
-            url: new URL(url),
+            url: preflight(() => new URL(url)),
             headers,
             // Only a truthy body is sent, preserving the previous behaviour
             // exactly: an empty string sets no Content-Length and writes nothing.
             body: body ? Buffer.from(body, 'utf8') : undefined,
             timeoutMs,
             rejectUnauthorized,
-            agent: buildProxyAgent(timeoutMs),
+            agent: preflight(() => buildProxyAgent(timeoutMs)),
         });
 }
