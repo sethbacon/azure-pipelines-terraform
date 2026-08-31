@@ -528,6 +528,8 @@ upgraded their runner, not as a second fully-verified execution path.
 - Force pushes: blocked
 - Branch deletion: blocked
 
+These settings are documented here in prose, so they are re-verified automatically, not just written down: the `verify-branch-protection` job in `weekly-security.yml` reads `main`'s live branch protection via the GitHub API (needs a token scoped with `administration:read`, minted from the `RELEASE_DISPATCH_APP` installation) and fails the scheduled run (filing an issue) if the required-status-checks strictness, review count/dismiss-stale/code-owner settings, enforce-admins, linear-history, conversation-resolution, or force-push/deletion rules drift from what is written above. It deliberately does not diff the exact list of 29 required-status-check contexts — that list changes with ordinary task additions — only the structural settings.
+
 ### Merge Strategy
 
 - **Squash merge only** — merge commits and rebase merges are disabled

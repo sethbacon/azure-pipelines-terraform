@@ -299,6 +299,138 @@ jobs:
 
             core.info(`OK: '${ENVIRONMENT}' environment has ${requiredReviewersRule.reviewers.length} required reviewer(s) and a deployment branch/ref policy configured.`);
 
+  # ── Branch protection verification ─────────────────────
+  # Verifies main's live branch protection still matches CLAUDE.md's "Branch
+  # Protection" section (#1032 finding 1): unlike the marketplace environment
+  # above, nothing previously confirmed the documented required-status-checks/
+  # review/linear-history/conversation-resolution rules still match the live
+  # repository, so a manual or accidental change to Settings -> Branches would
+  # go undetected indefinitely.
+  #
+  # Reading branch protection needs the `administration:read` permission,
+  # which GITHUB_TOKEN can never be granted (it is not one of the workflow
+  # `permissions:` keys at all) -- so this mints a scoped token from the same
+  # App already installed on this repo for release mechanics (RELEASE_DISPATCH_APP)
+  # instead of adding a new App. If that App's installation has not been
+  # extended with administration:read yet, the token-mint step below fails
+  # closed with GitHub's own 422 rather than this job silently passing or
+  # reading stale/wrong data -- extending the installation (Settings -> GitHub
+  # Apps, on whichever account manages it) is an out-of-band, human step this
+  # workflow cannot perform or verify for itself.
+  verify-branch-protection:
+    name: Verify main branch protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # hardening-exception: egress-audit — this job calls the GitHub API;
+      #   harden-runner has never run in this repository, so no endpoint baseline
+      #   exists and a block policy written without one fails closed on its first run;
+      #   audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Verify the release App credentials are configured
+        env:
+          APP_ID: ${{ vars.RELEASE_DISPATCH_APP_ID }}
+          APP_KEY: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
+        run: |
+          if [ -z "${APP_ID}" ] || [ -z "${APP_KEY}" ]; then
+            echo "::error::Missing release App credentials. Set the repository variable RELEASE_DISPATCH_APP_ID and the repository secret RELEASE_DISPATCH_APP_KEY."
+            exit 1
+          fi
+      - name: Get GitHub App token (needs administration:read on the RELEASE_DISPATCH_APP installation)
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.RELEASE_DISPATCH_APP_KEY }}
+          # Requesting a permission the App's installation does not have fails
+          # this step with a 422 rather than minting a token that then 403s on
+          # the actual API call -- see #1032: this permission may not be
+          # granted yet, and that failure mode is the expected first signal.
+          permission-administration: read
+      - name: Check main branch protection against CLAUDE.md
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const BRANCH = 'main';
+            let protection;
+            try {
+              const response = await github.request('GET /repos/{owner}/{repo}/branches/{branch}/protection', {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: BRANCH,
+              });
+              protection = response.data;
+            } catch (err) {
+              if (err.status === 404) {
+                core.setFailed(`The '${BRANCH}' branch has no protection configured at all -- CLAUDE.md documents required status checks, required reviews, linear history, and more.`);
+                return;
+              }
+              core.setFailed(`Could not read '${BRANCH}' branch protection (HTTP ${err.status ?? 'unknown'}): ${err.message}. This most likely means the RELEASE_DISPATCH_APP installation does not yet have administration:read -- see #1032.`);
+              return;
+            }
+
+            const problems = [];
+
+            // The exact ~29-context required-status-checks list (CLAUDE.md) is
+            // deliberately NOT diffed context-by-context here -- it changes every
+            // time a task's job matrix changes, which is ordinary maintenance, not
+            // protection drift. Structural settings (strict mode, at least one
+            // configured check) are what silently regresses unnoticed; an
+            // individual context name is not.
+            const statusChecks = protection.required_status_checks;
+            if (!statusChecks || statusChecks.strict !== true) {
+              problems.push('required_status_checks.strict is not true (CLAUDE.md: "strict — branch must be up-to-date")');
+            }
+            if (!statusChecks || !Array.isArray(statusChecks.checks) || statusChecks.checks.length === 0) {
+              problems.push('required_status_checks has no configured contexts');
+            }
+
+            const reviews = protection.required_pull_request_reviews;
+            if (!reviews || reviews.required_approving_review_count !== 1) {
+              problems.push('required_pull_request_reviews.required_approving_review_count is not 1');
+            }
+            if (!reviews || reviews.dismiss_stale_reviews !== true) {
+              problems.push('required_pull_request_reviews.dismiss_stale_reviews is not true');
+            }
+            if (!reviews || reviews.require_code_owner_reviews !== true) {
+              problems.push('required_pull_request_reviews.require_code_owner_reviews is not true');
+            }
+
+            // enforce_admins is documented as intentionally false (accepted risk,
+            // audit #499, solo maintainer) -- this checks it still matches that
+            // documented choice, not that it is enabled. If it now reads true,
+            // CLAUDE.md is stale, not the other way around.
+            if (protection.enforce_admins?.enabled !== false) {
+              problems.push('enforce_admins.enabled is not false (CLAUDE.md documents this as an accepted risk for a solo maintainer -- audit #499; if this changed deliberately, update CLAUDE.md rather than this check)');
+            }
+            if (protection.required_linear_history?.enabled !== true) {
+              problems.push('required_linear_history.enabled is not true');
+            }
+            if (protection.required_conversation_resolution?.enabled !== true) {
+              problems.push('required_conversation_resolution.enabled is not true');
+            }
+            if (protection.allow_force_pushes?.enabled !== false) {
+              problems.push('allow_force_pushes.enabled is not false');
+            }
+            if (protection.allow_deletions?.enabled !== false) {
+              problems.push('allow_deletions.enabled is not false');
+            }
+
+            if (problems.length > 0) {
+              core.setFailed(
+                `The '${BRANCH}' branch protection no longer matches CLAUDE.md's "Branch Protection" section (#1032):\n- ${problems.join('\n- ')}\n\nUpdate either the live branch protection settings or CLAUDE.md, whichever is now the intended source of truth.`
+              );
+              return;
+            }
+
+            core.info(`OK: '${BRANCH}' branch protection matches CLAUDE.md's documented settings (${statusChecks.checks.length} required status checks, ${reviews.required_approving_review_count} required review(s), code-owner review required, linear history required, conversation resolution required, force-pushes and deletions blocked).`);
+
   # ── OpenTofu cosign trust-root canary ──────────────────
   # Exercises the installer's REAL verifyCosignSignature() (cosign-verifier.ts) --
   # the exact argv it builds, including the version-bound certificate-identity regexp
@@ -601,6 +733,7 @@ jobs:
         osv-scan,
         stale-dependabot,
         verify-marketplace-environment-protection,
+        verify-branch-protection,
         opentofu-cosign-canary,
         hashicorp-gpg-canary,
         sha256-only-installer-drift-canary,
