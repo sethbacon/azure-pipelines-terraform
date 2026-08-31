@@ -18,9 +18,9 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@4cloudguru/pipeline-task-ado": "^0.5.3",
+    "@4cloudguru/pipeline-task-ado": "^0.7.0",
     "@4cloudguru/pipeline-task-core": "^0.7.1",
-    "@4cloudguru/terraform-drift-contract": "^1.2.0",
+    "@4cloudguru/terraform-drift-contract": "^1.3.0",
     "azure-pipelines-task-lib": "^5.2.10",
     "undici": "^6.28.0"
   },

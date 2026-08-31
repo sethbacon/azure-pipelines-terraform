@@ -18,7 +18,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@4cloudguru/pipeline-task-core": "^0.7.1",
+    "@4cloudguru/pipeline-task-core": "^0.8.0",
     "azure-pipelines-task-lib": "^5.2.10",
     "cheerio": "^1.2.0",
     "sanitize-html": "^2.17.6"
