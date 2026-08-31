@@ -59,6 +59,19 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
     const agent = tasks.getInput("policyAgent") || "opa";
     const downloadSource = tasks.getInput("downloadSource") || "official";
 
+    // requireGpgSignature's task.json visibleRule hides it in the UI unless
+    // policyAgent=sentinel, but that rule is UI-only -- a YAML pipeline (or a
+    // template) can still set it for policyAgent=opa, where it is never read
+    // on any code path (OPA has no GPG anchor on any source). Silent, not
+    // wrong: nothing breaks, but an operator who set it believing it does
+    // something gets no signal that it doesn't (#1030). Checked against the
+    // RAW input (present at all), not its boolean value or default -- either
+    // true or false is equally inert for OPA, so what matters is that the
+    // key was set, not what it was set to.
+    if (agent === "opa" && tasks.getInput("requireGpgSignature", false) !== undefined) {
+        tasks.warning(tasks.loc("SignatureToggleInertForAgent", "requireGpgSignature", agent));
+    }
+
     const resolvedVersion = await resolveVersion(agent, downloadSource, inputVersion);
     const version = tools.cleanVersion(resolvedVersion);
     if (!version) {

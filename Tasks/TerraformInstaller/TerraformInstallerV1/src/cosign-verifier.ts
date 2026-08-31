@@ -101,13 +101,19 @@ export function buildOpenTofuCertIdentityRegexp(version: string): string {
  *   path fails closed (a reachable release withholding required signing material is
  *   a policy failure, not a transient outage).
  * - If signature verification fails, throws (hard fail).
+ *
+ * `required` is a MANDATORY parameter, deliberately with no default (#1030):
+ * every current call site already passes an explicit value, so this changes
+ * nothing live -- it exists so a FUTURE call site that forgets the argument
+ * fails to compile instead of compiling clean and silently downgrading a
+ * missing signature to a warning.
  */
 export async function verifyCosignSignature(
     sha256SumsContent: string,
     signatureUrl: string,
     certificateUrl: string,
     version: string,
-    required: boolean = false,
+    required: boolean,
     expectedCosignSha256?: string
 ): Promise<void> {
     let cosignPath: string;
