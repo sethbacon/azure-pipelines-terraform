@@ -30,7 +30,7 @@ const OCI_ENDPOINT_DATA: Record<string, string> = {
  * it returns and leaves `ENDPOINT_DATA_*` in `process.env` for the terraform
  * child, so `requireSecretField(..., { source: 'data' })` routes through
  * `readSecretEndpointDataParameter`, which reads this variable directly
- * (src/endpoint-data-secret.ts). The fixture therefore has to deliver it the way
+ * (@4cloudguru/pipeline-task-ado). The fixture therefore has to deliver it the way
  * the agent does, exactly as the OCI mock-runner test setups do.
  */
 const OCI_PRIVATE_KEY_ENV = 'ENDPOINT_DATA_OCI_PRIVATEKEY';

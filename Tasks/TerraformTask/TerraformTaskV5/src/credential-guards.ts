@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { readSecretEndpointDataParameter } from './endpoint-data-secret';
+import { readSecretEndpointDataParameter } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Fail-closed credential primitives shared by EVERY provider handler.
@@ -121,7 +121,7 @@ export function assertIdentityValue(value: string | undefined, subject: string, 
  * in task-lib's vaulting list, so it also stays in `process.env` for the
  * terraform child to inherit. `readSecretEndpointDataParameter` reads the same
  * variable directly, registers it line-wise with the masker, and deletes it
- * (endpoint-data-secret.ts). `ENDPOINT_AUTH_*` IS vaulted and its accessor does
+ * (@4cloudguru/pipeline-task-ado). `ENDPOINT_AUTH_*` IS vaulted and its accessor does
  * not log the value, so the auth family is read as before.
  *
  * Routing this through the shared helper rather than the OCI call site keeps the
