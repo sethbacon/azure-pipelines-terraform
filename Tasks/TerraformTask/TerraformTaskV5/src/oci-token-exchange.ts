@@ -85,6 +85,17 @@ const OCI_IDENTITY_DOMAIN_SUFFIXES = [
  * Domains realms. Returns the parsed URL so the caller can build the endpoint
  * from a value that has actually been verified.
  */
+// An OCI Identity Domains hostname's first label is always `idcs-<32 lowercase
+// hex chars>` -- the domain's own unique identifier, assigned by Oracle at
+// creation. Requiring it (#1029) narrows the realm-suffix check above from
+// "any Oracle tenant's identity domain" to "the shape every real identity
+// domain host actually has" -- it cannot single out the OPERATOR's own tenant
+// specifically (that would need an out-of-band allowlist of the operator's own
+// domain IDs, which this task does not have), but it does reject a host that
+// is syntactically not an identity-domain host at all, closing the gap between
+// "any Oracle realm" and "an Oracle realm host of the right shape."
+const OCI_IDENTITY_DOMAIN_LABEL_PATTERN = /^idcs-[0-9a-f]{32}$/;
+
 export function validateIdentityDomainUrl(identityDomainUrl: string): URL {
     let parsed: URL;
     try {
@@ -105,6 +116,20 @@ export function validateIdentityDomainUrl(identityDomainUrl: string): URL {
             `(expected a host under ${OCI_IDENTITY_DOMAIN_SUFFIXES.join(', ')}).`
         );
     }
+    const firstLabel = host.split('.', 1)[0];
+    if (!OCI_IDENTITY_DOMAIN_LABEL_PATTERN.test(firstLabel)) {
+        throw new Error(
+            `OCI identity domain URL host '${parsed.hostname}' does not match the OCI Identity Domains ` +
+            `hostname shape (expected the first label to be 'idcs-' followed by 32 lowercase hex characters).`
+        );
+    }
+    // #1029's recommendation also included rejecting a non-empty path. NOT
+    // applied: exchangeOidcForUpst below deliberately incorporates
+    // validated.pathname into the token endpoint it builds
+    // (`base = origin + pathname`, then `+ '/oauth2/v1/token'`), so a
+    // path-bearing identity-domain URL is existing, intentional, supported
+    // configuration -- not a mistyped input. Rejecting it here would break
+    // that path for real operators, not close a gap.
     return parsed;
 }
 

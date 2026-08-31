@@ -50,7 +50,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
 
     const setSecretCalls: string[] = [];
     const INPUTS: Record<string, string> = {
-        ociWifIdentityDomainUrl: 'https://idcs-dummy.identity.oraclecloud.com',
+        ociWifIdentityDomainUrl: 'https://idcs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.identity.oraclecloud.com',
         ociWifClientId: 'dummy-client-id',
         ociWifTenancyOcid: 'ocid1.tenancy.oc1..dummy',
         ociWifRegion: 'us-ashburn-1',
@@ -80,6 +80,42 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
     function makeCommand(): TerraformAuthorizationCommandInitializer {
         return new TerraformAuthorizationCommandInitializer('plan', 'DummyWorkingDirectory', 'OCI');
     }
+
+    // #1029: config must be validated BEFORE a live federated OIDC assertion is
+    // minted, not after -- a config error must never leave a bearer credential
+    // sitting unused. Pass/fail alone cannot prove ORDER (an invalid config
+    // throws either way): the proof is that generateIdToken is never CALLED.
+    it('never mints an OIDC assertion when ociWifIdentityDomainUrl is invalid (#1029)', async () => {
+        let generateIdTokenCalled = false;
+        itg.generateIdToken = async () => { generateIdTokenCalled = true; return 'mock-oidc-token-12345'; };
+        t.getInput = (name: string) =>
+            name === 'ociWifIdentityDomainUrl' ? 'https://evil.example.com' : INPUTS[name];
+
+        const handler = new TerraformCommandHandlerOCI();
+        await assert.rejects(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (handler as any).handleProviderWIF(makeCommand()),
+            /not an OCI Identity Domains endpoint/,
+        );
+        assert.strictEqual(generateIdTokenCalled, false,
+            'a live OIDC assertion must not be minted for a config the task is about to reject');
+    });
+
+    it('never mints an OIDC assertion when ociWifTenancyOcid is invalid (#1029)', async () => {
+        let generateIdTokenCalled = false;
+        itg.generateIdToken = async () => { generateIdTokenCalled = true; return 'mock-oidc-token-12345'; };
+        t.getInput = (name: string) =>
+            name === 'ociWifTenancyOcid' ? 'not-a-valid-ocid' : INPUTS[name];
+
+        const handler = new TerraformCommandHandlerOCI();
+        await assert.rejects(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (handler as any).handleProviderWIF(makeCommand()),
+            /tenancy OCID grammar/,
+        );
+        assert.strictEqual(generateIdTokenCalled, false,
+            'a live OIDC assertion must not be minted for a config the task is about to reject');
+    });
 
     it('writes a config file with the exact tenancy/region/key_file/fingerprint/security_token_file content, matching the real ephemeral keypair', async () => {
         const handler = new TerraformCommandHandlerOCI();

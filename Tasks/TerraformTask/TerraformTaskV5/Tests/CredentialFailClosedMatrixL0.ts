@@ -271,7 +271,7 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
             serviceConnection: 'OCI',
             inputs: {
                 environmentAuthSchemeOCI: 'WorkloadIdentityFederation',
-                ociWifIdentityDomainUrl: 'https://idcs-dummy.identity.oraclecloud.com',
+                ociWifIdentityDomainUrl: 'https://idcs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.identity.oraclecloud.com',
                 ociWifClientId: 'dummy-client-id',
                 ociWifTenancyOcid: 'ocid1.tenancy.oc1..aaaaaaaaexampletenancyocid',
                 ociWifRegion: 'us-ashburn-1',
@@ -462,7 +462,9 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         {
             // ARM_USE_MSI only reaches the agent identity while these are absent.
             site: 'azurerm.ManagedServiceIdentity.competing-credential-env', handler: 'azurerm', base: 'azurerm.ManagedServiceIdentity',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            // ARM_USE_CLI is asserted separately below (#1029): it is not merely
+            // cleared like these, it is explicitly set to 'false'.
         },
         {
             // The cell no per-branch list can close: MSI legitimately MAY set
@@ -474,11 +476,15 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         },
         {
             site: 'azurerm.WorkloadIdentityFederation.competing-credential-env', handler: 'azurerm', base: 'azurerm.WorkloadIdentityFederation',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            // ARM_USE_CLI is asserted separately below (#1029): it is not merely
+            // cleared like these, it is explicitly set to 'false'.
         },
         {
             site: 'azurerm.ServicePrincipal.competing-credential-env', handler: 'azurerm', base: 'azurerm.ServicePrincipal',
-            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_CLI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            // ARM_USE_CLI is asserted separately below (#1029): it is not merely
+            // cleared like these, it is explicitly set to 'false'.
         },
         {
             // #1026: azurerm's enableOidc = use_oidc || use_aks_workload_identity,
@@ -511,6 +517,27 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
                 assert.strictEqual(process.env[name], undefined,
                     `${row.site}: '${name}' was inherited from the agent and can out-rank the credentials this branch injects; it must be cleared`);
             }
+        });
+    }
+
+    // #1029: azurerm's own use_cli default is TRUE, so clearing ARM_USE_CLI (like
+    // every other NEUTRALIZE_ROWS name) restores that default rather than
+    // disabling it -- an inherited value would out-rank nothing, because
+    // clearing it changes nothing observable. Every azurerm scheme this handler
+    // supports authenticates via variables it sets explicitly, never an ambient
+    // `az` CLI session, so this asserts the stronger guarantee: ARM_USE_CLI is
+    // set to the literal string 'false', not merely absent.
+    const ARM_USE_CLI_DISABLED_SITES = [
+        'azurerm.ManagedServiceIdentity', 'azurerm.WorkloadIdentityFederation', 'azurerm.ServicePrincipal',
+    ] as const;
+
+    for (const base of ARM_USE_CLI_DISABLED_SITES) {
+        it(`disables ARM_USE_CLI rather than merely clearing it: ${base}`, async () => {
+            const fixture = clone(base);
+            fixture.env = { ARM_USE_CLI: 'inherited-from-agent' };
+            await run('azurerm', fixture);
+            assert.strictEqual(process.env['ARM_USE_CLI'], 'false',
+                `${base}: ARM_USE_CLI must be explicitly disabled -- azurerm's own use_cli default is true, so an absent value is not equivalent to a disabled one`);
         });
     }
 

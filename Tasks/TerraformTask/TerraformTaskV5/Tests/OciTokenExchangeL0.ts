@@ -19,7 +19,7 @@ describe('OCI token exchange — URL validation & transport', function () {
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     });
 
-    const VALID_DOMAIN = 'https://idcs-abc123.identity.oraclecloud.com';
+    const VALID_DOMAIN = 'https://idcs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.identity.oraclecloud.com';
 
     let originalFetch: typeof globalThis.fetch;
     beforeEach(() => { originalFetch = globalThis.fetch; });
@@ -29,11 +29,48 @@ describe('OCI token exchange — URL validation & transport', function () {
 
     it('accepts a genuine OCI Identity Domains HTTPS URL', () => {
         const u = validateIdentityDomainUrl(VALID_DOMAIN);
-        assert.strictEqual(u.hostname, 'idcs-abc123.identity.oraclecloud.com');
+        assert.strictEqual(u.hostname, 'idcs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.identity.oraclecloud.com');
     });
 
     it('accepts OCI government-realm identity hosts', () => {
-        assert.doesNotThrow(() => validateIdentityDomainUrl('https://idcs-x.identity.oraclegovcloud.com'));
+        assert.doesNotThrow(() => validateIdentityDomainUrl('https://idcs-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.identity.oraclegovcloud.com'));
+    });
+
+    /* #1029: tenancy-scoping -- the first label must be idcs-<32 hex chars>,
+     * not just any host under an Oracle-owned realm suffix. */
+
+    it('accepts a mixed-case idcs- label (hostnames are compared case-insensitively)', () => {
+        assert.doesNotThrow(() => validateIdentityDomainUrl('https://IDCS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC.identity.oraclecloud.com'));
+    });
+
+    it('rejects an idcs- label that is not 32 hex characters (#1029)', () => {
+        assert.throws(
+            () => validateIdentityDomainUrl('https://idcs-abc123.identity.oraclecloud.com'),
+            /does not match the OCI Identity Domains hostname shape/,
+        );
+    });
+
+    it('rejects a host under an allowed realm suffix with no idcs- label at all (#1029)', () => {
+        // Genuinely passes the realm-suffix check first (it DOES end in
+        // .identity.oraclecloud.com) -- the label check is what must catch this.
+        assert.throws(
+            () => validateIdentityDomainUrl('https://www.identity.oraclecloud.com'),
+            /does not match the OCI Identity Domains hostname shape/,
+        );
+    });
+
+    it('rejects an idcs- label containing uppercase-only-invalid or non-hex characters (#1029)', () => {
+        assert.throws(
+            () => validateIdentityDomainUrl('https://idcs-gggggggggggggggggggggggggggggggg.identity.oraclecloud.com'),
+            /does not match the OCI Identity Domains hostname shape/,
+        );
+    });
+
+    it('does NOT reject a path on an otherwise-valid identity domain URL (existing, deliberate behavior)', () => {
+        // exchangeOidcForUpst incorporates the path into the token endpoint it
+        // builds (base = origin + pathname), so a path-bearing URL is supported
+        // configuration, not an error -- see the comment on validateIdentityDomainUrl.
+        assert.doesNotThrow(() => validateIdentityDomainUrl(`${VALID_DOMAIN}/some/path`));
     });
 
     it('rejects a non-HTTPS scheme', () => {

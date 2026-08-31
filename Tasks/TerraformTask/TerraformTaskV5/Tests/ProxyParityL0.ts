@@ -74,7 +74,7 @@ const WIF_CALL_ROWS: WifCallRow[] = [
     {
         what: 'OCI Identity Domains UPST token exchange',
         respond: () => new Response(JSON.stringify({ access_token: 'the-upst' }), { status: 200 }),
-        invoke: () => exchangeOidcForUpst('jwt', 'https://idcs-abc123.identity.oraclecloud.com', 'client', publicKey),
+        invoke: () => exchangeOidcForUpst('jwt', 'https://idcs-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.identity.oraclecloud.com', 'client', publicKey),
         redirect: 'manual',
     },
 ];
