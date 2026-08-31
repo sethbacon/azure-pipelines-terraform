@@ -22,6 +22,11 @@
 # All five went stale together and the four cache-poisoning findings resurfaced,
 # on a change that touched none of the setup-node steps. Re-derived with the
 # command above rather than adjusted by hand.
+#
+# They moved again on 2026-08-31 (apt#1032): adding the "Validate workflow_dispatch
+# tag shape" step to the guard job inserted 21 lines above every ignore below,
+# shifting all five by exactly 21. Re-derived with the command above rather than
+# adjusted by hand.
 # This is the cost of line-scoped ignores, and it is the intended cost: the
 # alternative is a per-file ignore that would have silently swallowed a genuinely
 # new finding. A suppression that breaks loudly when the file moves is doing its
@@ -32,12 +37,12 @@ rules:
       # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml:185:9
-      - release.yml:218:9
-      - release.yml:260:9
-      - release.yml:506:9
+      - release.yml:206:9
+      - release.yml:239:9
+      - release.yml:281:9
+      - release.yml:527:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:473:15
+      - release.yml:494:15

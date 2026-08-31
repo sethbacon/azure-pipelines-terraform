@@ -41,6 +41,27 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      # The push trigger's own `tags:` filter (above) already constrains a tag
+      # push to the vX.Y.Z shape, but workflow_dispatch's `tag` input is free
+      # text -- the "Check tag reachable from main" and "Verify extension
+      # version matches tag" steps below both assume that shape (the latter
+      # strips a leading 'v' and compares against a semver string) without
+      # ever confirming it. A malformed value isn't a security bypass on its
+      # own -- TAG is only ever used as an env var, quoted, never interpolated
+      # into a shell/API call -- but it can make those later steps misbehave
+      # in confusing ways (e.g. "v" with no digits silently no-ops the strip
+      # and just compares the literal string). Fail fast, before any network
+      # calls, on the one input source (workflow_dispatch) that isn't already
+      # shape-constrained by the trigger itself.
+      - name: Validate workflow_dispatch tag shape
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::workflow_dispatch tag '${TAG}' does not match the required vX.Y.Z shape (the same shape the push trigger's own tags: filter enforces)." >&2
+            exit 1
+          fi
       # Preventive, release-time mirror of weekly-security.yml's
       # verify-marketplace-environment-protection job (which is only a weekly
       # DETECTIVE canary): assert the 'marketplace' environment that gates
