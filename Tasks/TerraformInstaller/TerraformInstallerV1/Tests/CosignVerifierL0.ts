@@ -277,6 +277,10 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             });
 
             await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, expectedHash);
+            assert.ok(
+                !warnings.some((w) => /cosignSha256 is not set/.test(w)),
+                'must not warn about a missing pin when one is actually set',
+            );
         });
 
         it('throws a VerificationFailure when the resolved cosign binary does not match the pinned SHA256', async () => {
@@ -314,6 +318,10 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             });
 
             await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+            assert.ok(
+                warnings.some((w) => /cosignSha256 is not set/.test(w) && w.includes('/usr/bin/cosign')),
+                'expected a warning naming the resolved path when verification is required but unpinned (#1027)',
+            );
         });
     });
 

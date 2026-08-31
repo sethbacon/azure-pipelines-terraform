@@ -132,6 +132,17 @@ export async function verifyCosignSignature(
     // from the build log.
     console.log(`Using cosign at ${cosignPath} for OpenTofu signature verification.`);
 
+    // requireCosignVerification=true is meant to be a hard cryptographic guarantee,
+    // but a bare PATH lookup with no pin (#1027) means a concurrent/prior job on a
+    // persistent self-hosted agent that can write a PATH directory can silently
+    // shadow cosign with a stub that always exits 0, converting this default-on
+    // check into a no-op. Name the resolved path so the gap -- and the exact
+    // binary being trusted -- is visible in the build log rather than only
+    // discoverable by reading this file's source.
+    if (required && !expectedCosignSha256) {
+        tasks.warning(`requireCosignVerification is enabled but cosignSha256 is not set, so the cosign binary resolved at ${cosignPath} is trusted without an integrity check of its own. On a shared/persistent agent, a prior or concurrent job with PATH write access could substitute a different binary there. Set cosignSha256 to pin the expected hash for a stronger guarantee.`);
+    }
+
     if (expectedCosignSha256) {
         // Optional, opt-in pin (#550): an operator who has provisioned cosign from a
         // known-good, integrity-verified source (e.g. sigstore/cosign-installer
