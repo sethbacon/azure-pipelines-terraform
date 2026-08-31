@@ -34,8 +34,18 @@ export function writeResultsFile(rawOutput: string): string {
     return resultsPath;
 }
 
+// XML 1.0's Char production excludes every C0 control code point except tab
+// (#x9), LF (#xA) and CR (#xD) -- everything else in [#x0-#x1F] is illegal, not
+// merely unescapable. Sentinel/OPA output (the source of c.name/c.message) can
+// embed such bytes when it echoes plan resource values, and unlike the 5
+// markup characters below, an illegal control character can't be represented
+// as a numeric character reference either -- it has to be removed (#1031).
+// eslint-disable-next-line no-control-regex
+const XML_ILLEGAL_CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+
 function xmlEscape(value: string): string {
     return value
+        .replace(XML_ILLEGAL_CONTROL_CHARS, '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')

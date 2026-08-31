@@ -1149,16 +1149,17 @@ export abstract class BaseTerraformCommandHandler {
         const workspaceName = tasks.getInput("workspaceName", false);
         const commandOptions = this.getCommandOptions();
 
-        const additionalArgs = workspaceName
-            ? `${workspaceName}${commandOptions ? ` ${commandOptions}` : ''}`
-            : commandOptions || undefined;
-
-        const workspaceCommand = this.createBaseCommand(
-            `workspace ${subCommand}`,
-            additionalArgs
-        );
+        // workspaceName is a single structured value (a workspace name), not
+        // author-controlled multi-flag text like commandOptions -- it must not go
+        // through additionalArgs/toolRunner.line(), which word-splits on
+        // whitespace (#1031). Applied as its own argv token via .arg() instead, in
+        // the same order the old spliced string would have produced (name, then
+        // commandOptions).
+        const workspaceCommand = this.createBaseCommand(`workspace ${subCommand}`);
 
         const terraformTool = this.terraformToolHandler.createToolRunner(workspaceCommand);
+        if (workspaceName) { terraformTool.arg(workspaceName); }
+        if (commandOptions) { terraformTool.line(commandOptions); }
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: workspaceCommand.workingDirectory
         });
@@ -1173,16 +1174,15 @@ export abstract class BaseTerraformCommandHandler {
             tasks.warning("terraform state push is a potentially destructive operation. Ensure you have a current backup of your state file.");
         }
 
-        const parts: string[] = [];
-        if (commandOptions) { parts.push(commandOptions); }
-        if (stateAddress) { parts.push(stateAddress); }
-
-        const stateCommand = this.createBaseCommand(
-            `state ${subCommand}`,
-            parts.length > 0 ? parts.join(' ') : undefined
-        );
+        // stateAddress is a single structured value (a resource address), kept out
+        // of additionalArgs/toolRunner.line() for the same word-splitting reason as
+        // workspaceName above (#1031); order preserved (commandOptions, then
+        // stateAddress).
+        const stateCommand = this.createBaseCommand(`state ${subCommand}`);
 
         const terraformTool = this.terraformToolHandler.createToolRunner(stateCommand);
+        if (commandOptions) { terraformTool.line(commandOptions); }
+        if (stateAddress) { terraformTool.arg(stateAddress); }
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: stateCommand.workingDirectory
         });
@@ -1239,30 +1239,36 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     public async test(): Promise<number> {
-        let commandOptions = this.getCommandOptions();
-
+        const commandOptions = this.getCommandOptions();
         const junitPath = tasks.getInput("testJunitXmlPath", false);
-        if (junitPath) {
-            commandOptions = commandOptions ? `${commandOptions} -junit-xml=${junitPath}` : `-junit-xml=${junitPath}`;
-        }
-
         const testFilter = tasks.getInput("testFilter", false);
-        if (testFilter) {
-            commandOptions = commandOptions ? `${commandOptions} -filter=${testFilter}` : `-filter=${testFilter}`;
-        }
+
+        // junitPath/testFilter are single structured values (a filesystem path, a
+        // filter pattern) baked into a whole "-flag=value" argv token each -- kept
+        // out of additionalArgs/toolRunner.line() so a value containing a space
+        // (e.g. a Windows junit path under "Program Files") can't be word-split
+        // into two argv entries and corrupt the flag (#1031). Order preserved
+        // (commandOptions text, then -junit-xml, then -filter).
+        const applyTestArgs = (terraformTool: ToolRunner): void => {
+            if (commandOptions) { terraformTool.line(commandOptions); }
+            if (junitPath) { terraformTool.arg(`-junit-xml=${junitPath}`); }
+            if (testFilter) { terraformTool.arg(`-filter=${testFilter}`); }
+        };
 
         // Service connection is optional for test. Unit/validation tests don't need
         // provider auth, but integration tests (run blocks with command = apply) may.
         const serviceName = tasks.getInput(this.getServiceName(), false);
         if (serviceName) {
-            const testCommand = this.createAuthCommand("test", commandOptions);
+            const testCommand = this.createAuthCommand("test");
             const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
+            applyTestArgs(terraformTool);
             await this.handleProvider(testCommand);
             return this.runTestCommand(terraformTool, testCommand.workingDirectory);
         }
 
-        const testCommand = this.createBaseCommand("test", commandOptions);
+        const testCommand = this.createBaseCommand("test");
         const terraformTool = this.terraformToolHandler.createToolRunner(testCommand);
+        applyTestArgs(terraformTool);
         return this.runTestCommand(terraformTool, testCommand.workingDirectory);
     }
 
@@ -1341,12 +1347,15 @@ export abstract class BaseTerraformCommandHandler {
 
         tasks.warning("terraform force-unlock removes the lock on the state for the current configuration. This will allow other users or automation to acquire the lock and potentially modify the state.");
 
-        const args = commandOptions
-            ? `-force ${commandOptions} ${lockId}`
-            : `-force ${lockId}`;
-
-        const unlockCommand = this.createBaseCommand("force-unlock", args);
+        // lockId is a single structured value (a lock ID), kept out of
+        // additionalArgs/toolRunner.line() for the same word-splitting reason as
+        // workspaceName/stateAddress above (#1031). Order preserved (-force,
+        // commandOptions, lockId).
+        const unlockCommand = this.createBaseCommand("force-unlock");
         const terraformTool = this.terraformToolHandler.createToolRunner(unlockCommand);
+        terraformTool.arg("-force");
+        if (commandOptions) { terraformTool.line(commandOptions); }
+        terraformTool.arg(lockId);
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: unlockCommand.workingDirectory
         });

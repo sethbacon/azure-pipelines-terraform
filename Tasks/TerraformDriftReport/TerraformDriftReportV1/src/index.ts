@@ -92,7 +92,19 @@ function readModuleLocks(manifestPath: string): unknown {
             tasks.debug(`Module manifest ${manifestPath} exceeds the ${MAX_PLAN_JSON_BYTES}-byte guard; skipping module_locks.`);
             return null;
         }
-        return JSON.parse(fs.readFileSync(fd, 'utf8'));
+        const parsed: unknown = JSON.parse(fs.readFileSync(fd, 'utf8'));
+        // A real `.terraform/modules/modules.json` is always a single top-level
+        // JSON object (`{"Modules": [...]}`). moduleManifest names an arbitrary
+        // operator-supplied path, so whatever it points at is untrusted content,
+        // not necessarily that file -- reject any other top-level shape (array,
+        // string, number, null) before it is forwarded into the callback body and
+        // the on-agent summary artifact, rather than passing it through verbatim
+        // (#1031).
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            tasks.debug(`Module manifest ${manifestPath} did not parse to a JSON object; skipping module_locks.`);
+            return null;
+        }
+        return parsed;
     } catch {
         return null;
     } finally {
