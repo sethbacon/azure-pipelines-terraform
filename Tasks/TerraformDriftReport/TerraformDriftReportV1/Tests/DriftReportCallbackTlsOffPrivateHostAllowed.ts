@@ -2,12 +2,16 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
-import { resolveRejectUnauthorized } from '../src/callback';
 
+// #588 companion: a callback host that resolves to a PRIVATE address is the
+// legitimate use case rejectUnauthorized=false exists for, and must still
+// succeed (with the existing RejectUnauthorizedDisabled warning), not be
+// falsely rejected by the new public-host guard. Uses a private IP literal so
+// the check is exercised with no live DNS lookup needed.
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const dir = path.join(os.tmpdir(), 'tdr-cb-tlsoff');
+const dir = path.join(os.tmpdir(), 'tdr-cb-tlsoff-private');
 fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const planFile = path.join(dir, 'plan.json');
@@ -23,20 +27,13 @@ fs.writeFileSync(
 tr.setInput('planJsonFile', planFile);
 tr.setInput('includeModuleProvenance', 'false');
 tr.setInput('failOnDrift', 'false');
-tr.setInput('callbackUrl', 'https://tsm.example.com/drift');
+tr.setInput('callbackUrl', 'https://10.0.0.5/drift');
 tr.setInput('callbackToken', 'super-secret-callback-token');
-// TLS verification disabled -> the rejectUnauthorized warning must fire.
 tr.setInput('rejectUnauthorized', 'false');
 
-tr.registerMock('./callback', {
-    postJson: async () => ({ status: 200, body: '{}' }),
-    postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
-    truncateBody: (body: string) => body,
-    resolveRejectUnauthorized,
-    // This test is about the RejectUnauthorizedDisabled warning firing, not
-    // about the public-host guard's own classification logic (covered by
-    // dedicated fixtures) -- stub it as an already-legitimate private endpoint.
-    assertRejectUnauthorizedNotAgainstPublicHost: async () => { },
+tr.registerMock('./https-client', {
+    createHttpsClient: () => () => Promise.resolve({ status: 200, body: '{}' }),
+    DEFAULT_REQUEST_TIMEOUT_MS: 30000,
 });
 
 tr.run();

@@ -22,15 +22,18 @@ function parseTimeout(): number {
  * skipTlsVerify only makes sense for a private/internal registry fronted by a CA
  * the agent doesn't trust -- there is never a legitimate reason to disable TLS
  * verification against a well-known PUBLIC registry endpoint, which is exactly
- * the on-path MITM scenario #588 flags. A malformed registryUrl is left alone
- * here; it surfaces its own clear error later when the publisher tries to use it.
+ * the on-path MITM scenario #588 flags. A malformed registryUrl fails closed
+ * (rejected) here rather than being silently let through to surface its own
+ * separate error later -- the whole point of this guard is to gate a dangerous
+ * configuration BEFORE it can take effect, so an input this guard cannot even
+ * parse must never fall through to skipTlsVerify actually being honored (#588).
  */
 function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void {
     let hostname: string;
     try {
         hostname = new URL(registryUrl).hostname.toLowerCase();
     } catch {
-        return;
+        throw new Error(tasks.loc('SkipTlsVerifyUrlUnparseable', registryUrl));
     }
     if (hostname === 'terraform.io' || hostname.endsWith('.terraform.io')) {
         throw new Error(tasks.loc('SkipTlsVerifyPublicRegistryRejected', registryUrl));

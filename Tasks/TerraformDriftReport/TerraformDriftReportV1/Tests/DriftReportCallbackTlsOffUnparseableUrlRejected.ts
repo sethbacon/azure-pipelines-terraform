@@ -2,12 +2,15 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 import os = require('os');
 import fs = require('fs');
-import { resolveRejectUnauthorized } from '../src/callback';
 
+// #588: rejectUnauthorized=false with a callbackUrl that new URL() cannot
+// parse must be REJECTED (fail closed), not silently let through. The
+// transport is stubbed so no real network call is made; the rejection must
+// happen before it is ever invoked.
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const dir = path.join(os.tmpdir(), 'tdr-cb-tlsoff');
+const dir = path.join(os.tmpdir(), 'tdr-cb-tlsoff-unparseable');
 fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const planFile = path.join(dir, 'plan.json');
@@ -23,20 +26,13 @@ fs.writeFileSync(
 tr.setInput('planJsonFile', planFile);
 tr.setInput('includeModuleProvenance', 'false');
 tr.setInput('failOnDrift', 'false');
-tr.setInput('callbackUrl', 'https://tsm.example.com/drift');
+tr.setInput('callbackUrl', 'not-a-valid-url');
 tr.setInput('callbackToken', 'super-secret-callback-token');
-// TLS verification disabled -> the rejectUnauthorized warning must fire.
 tr.setInput('rejectUnauthorized', 'false');
 
-tr.registerMock('./callback', {
-    postJson: async () => ({ status: 200, body: '{}' }),
-    postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
-    truncateBody: (body: string) => body,
-    resolveRejectUnauthorized,
-    // This test is about the RejectUnauthorizedDisabled warning firing, not
-    // about the public-host guard's own classification logic (covered by
-    // dedicated fixtures) -- stub it as an already-legitimate private endpoint.
-    assertRejectUnauthorizedNotAgainstPublicHost: async () => { },
+tr.registerMock('./https-client', {
+    createHttpsClient: () => () => Promise.resolve({ status: 200, body: '{}' }),
+    DEFAULT_REQUEST_TIMEOUT_MS: 30000,
 });
 
 tr.run();

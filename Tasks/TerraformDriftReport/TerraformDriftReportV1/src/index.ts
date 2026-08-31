@@ -4,7 +4,7 @@ import fs = require('fs');
 import os = require('os');
 import { randomUUID } from 'crypto';
 import { summarize, moduleCallsPlan, Plan, Result } from '@4cloudguru/terraform-drift-contract';
-import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError } from './callback';
+import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError, assertRejectUnauthorizedNotAgainstPublicHost } from './callback';
 import { writeSarif } from './sarif';
 import { isWithinWorkingDirectory } from './path-containment';
 import { writeSecretFile, scrubFile } from '@4cloudguru/pipeline-task-ado';
@@ -238,6 +238,10 @@ async function run(): Promise<void> {
             // resolveRejectUnauthorized); only an explicit "false" disables it.
             const rejectUnauthorized = resolveRejectUnauthorized(tasks.getInput('rejectUnauthorized', false));
             if (!rejectUnauthorized) {
+                // Refuses outright against a genuinely public callback host (#588) --
+                // disabling TLS verification only makes sense for an internal
+                // endpoint fronted by a private CA the agent doesn't trust.
+                await assertRejectUnauthorizedNotAgainstPublicHost(callbackUrl);
                 tasks.warning(tasks.loc('RejectUnauthorizedDisabled'));
             }
             const resp = await postJsonWithRetry(
