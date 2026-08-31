@@ -852,6 +852,50 @@ describe('TerraformDriftReport Test Suite', function () {
             );
         }, tr);
     });
+
+    it('DriftReportCallbackTlsOffPublicHostRejected — rejectUnauthorized=false against a public host is refused (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackTlsOffPublicHostRejected.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.stdout.includes('RejectUnauthorizedPublicHostRejected'),
+                'should fail with the public-host rejection error. stdout: ' + tr.stdout,
+            );
+            assert(
+                !tr.warningIssues.some(w => /RejectUnauthorizedDisabled/.test(w)),
+                'must reject BEFORE reaching the rejectUnauthorized warning, not warn-then-proceed',
+            );
+        }, tr);
+    });
+
+    it('DriftReportCallbackTlsOffPrivateHostAllowed — rejectUnauthorized=false against a private host still succeeds (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackTlsOffPrivateHostAllowed.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded (legitimate private callback host)');
+            assert(
+                tr.warningIssues.some(w => /RejectUnauthorizedDisabled|rejectUnauthorized is disabled/.test(w)),
+                'should still warn that TLS verification is off',
+            );
+        }, tr);
+    });
+
+    it('DriftReportCallbackTlsOffUnparseableUrlRejected — rejectUnauthorized=false with an unparseable callbackUrl fails closed (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'DriftReportCallbackTlsOffUnparseableUrlRejected.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.stdout.includes('RejectUnauthorizedUrlUnparseable'),
+                'should fail with the unparseable-URL rejection error. stdout: ' + tr.stdout,
+            );
+            assert(
+                !tr.warningIssues.some(w => /RejectUnauthorizedDisabled/.test(w)),
+                'must reject BEFORE reaching the rejectUnauthorized warning, not warn-then-proceed',
+            );
+        }, tr);
+    });
 });
 
 // #950 — the completeness markers: what the check did NOT do.

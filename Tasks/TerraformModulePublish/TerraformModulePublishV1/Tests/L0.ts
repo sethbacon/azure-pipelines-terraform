@@ -929,6 +929,26 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         }
     });
 
+    it('rejects skipTlsVerify against a registryUrl that does not parse as a URL, failing closed (#588)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishSkipTlsVerifyUnparseableUrlRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('SkipTlsVerifyUrlUnparseable'),
+                'should fail with the unparseable-URL rejection error. stdout: ' + tr.stdout,
+            );
+            assert.ok(
+                !tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
+                'must reject BEFORE reaching the skipTlsVerify warning, not warn-then-proceed',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
     it('masks the hcpToken and routes to the HCP publisher', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpToken.js'));
         await tr.runAsync();

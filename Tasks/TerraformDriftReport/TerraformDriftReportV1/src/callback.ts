@@ -1,5 +1,6 @@
+import type * as TaskLib from 'azure-pipelines-task-lib/task';
 import { createHttpsClient, HttpResponse, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
-import { retryAsync } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from '@4cloudguru/pipeline-task-core';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformModulePublish via ./https-client and guarded by
@@ -16,6 +17,40 @@ export { truncateBody } from './https-client';
  */
 export function resolveRejectUnauthorized(raw: string | undefined): boolean {
     return (raw || 'true').trim().toUpperCase() !== 'FALSE';
+}
+
+/**
+ * rejectUnauthorized=false only makes sense for an internal callback endpoint
+ * fronted by a private CA the agent doesn't trust -- there is never a
+ * legitimate reason to disable TLS verification against a genuinely public
+ * host, which is exactly the on-path MITM scenario #588 flags (this mirrors
+ * the equivalent guard TerraformModulePublishV1 already has for registryUrl).
+ * Unlike registryUrl there (a single well-known public host, terraform.io,
+ * cheap to denylist), callbackUrl is fully operator-defined with no canonical
+ * public equivalent, so this checks the actual resolved address instead:
+ * fails closed on a URL that doesn't parse, and on a host that does NOT
+ * resolve to a private/link-local/reserved address.
+ *
+ * azure-pipelines-task-lib is require()'d lazily here (instead of a top-level
+ * import), matching https-client.ts's buildProxyAgent for the same reason: an
+ * eager top-level require would run before a mock-run test harness's
+ * tr.setInput() calls when a test imports this module's exports (e.g.
+ * resolveRejectUnauthorized) directly for a pure helper, permanently
+ * poisoning task-lib's process-global input/endpoint snapshot for the rest of
+ * the test process.
+ */
+export async function assertRejectUnauthorizedNotAgainstPublicHost(callbackUrl: string): Promise<void> {
+    const tasks = require('azure-pipelines-task-lib/task') as typeof TaskLib;
+    let hostname: string;
+    try {
+        hostname = new URL(callbackUrl).hostname;
+    } catch {
+        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', callbackUrl));
+    }
+    const isPrivate = isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname);
+    if (!isPrivate) {
+        throw new Error(tasks.loc('RejectUnauthorizedPublicHostRejected', hostname));
+    }
 }
 
 /**

@@ -33,6 +33,10 @@ tr.registerMock('./callback', {
     postJsonWithRetry: async () => ({ status: 200, body: '{}' }),
     truncateBody: (body: string) => body,
     resolveRejectUnauthorized,
+    // This test is about the RejectUnauthorizedDisabled warning firing, not
+    // about the public-host guard's own classification logic (covered by
+    // dedicated fixtures) -- stub it as an already-legitimate private endpoint.
+    assertRejectUnauthorizedNotAgainstPublicHost: async () => { },
 });
 
 tr.run();
