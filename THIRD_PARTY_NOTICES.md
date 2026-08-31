@@ -23,6 +23,8 @@ repositories.
 | openpgp                                  | TerraformInstaller, PolicyAgentInstaller (GPG signature verification)                                  | LGPL-3.0-or-later |
 | undici                                   | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller, TerraformTaskV5 (HTTP/proxy client)  | MIT               |
 | @4cloudguru/terraform-drift-contract     | TerraformDriftReport (drift-summary contract)                                                          | Apache-2.0        |
+| @4cloudguru/pipeline-task-core           | PolicyAgentInstaller, PublishKbArticle, TerraformDocsInstaller, TerraformDriftReport, TerraformInstaller, TerraformModulePublish, TerraformPolicyCheck, TerraformProviderMirror, TerraformTaskV5 (shared HTTP transport, retry, and secret-handling helpers) | Apache-2.0        |
+| @4cloudguru/pipeline-task-ado            | PolicyAgentInstaller, TerraformDocsInstaller, TerraformDriftReport, TerraformInstaller, TerraformPolicyCheck, TerraformProviderMirror, TerraformTaskV5 (shared secure-temp-file, OIDC-token, and environment-variable helpers) | Apache-2.0        |
 | azure-pipelines-task-lib                 | All 11 tasks (ADO task SDK — inputs, variables, tool runners)                                          | MIT               |
 | azure-pipelines-tool-lib                 | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller (tool download/cache)                 | MIT               |
 | azure-devops-node-api                    | TerraformTaskV5 (Azure DevOps REST API client)                                                         | MIT               |
