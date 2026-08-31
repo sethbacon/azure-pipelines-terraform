@@ -1,5 +1,7 @@
 # ServiceNow Integration Setup — Least-Privilege Guide
 
+> **Moving to another extension.** `PublishKbArticle@1` (and `Markdown2Html@1`, its usual pairing in a ServiceNow KB publishing pipeline) is being republished as `PipelinePublishKbArticle` in [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs). `PublishKbArticle@1` keeps working here until that migration completes — see the README for the full cutover terms.
+
 This guide covers scoping the ServiceNow integration used by `PublishKbArticle@1` to the minimum access it actually needs, rather than a broad `admin`/`itil_admin` account.
 
 ## What the task actually does

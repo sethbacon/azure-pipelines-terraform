@@ -52,7 +52,7 @@ each one up in the upgrade guide. A footer plus a `!` header in the *same*
 commit is one declaration, not two. The `Breaking-change footers survive the
 squash` job in `.github/workflows/pr-checks.yml` counts them across the PR;
 `4cloudguru/shared-workflows' tests/test-breaking-change-footers.js` extracts that script from the workflow
-and proves it still rejects, in the required `Lint GitHub Actions` job.
+and proves it still rejects, in the required `Workflow Security` job.
 
 ## Workflow Per Change
 
@@ -372,7 +372,7 @@ Output variables: `kbArticleId`, `kbArticleNumber`, `kbWorkflowState`.
 - `execution` targets `Node24` with a `Node20_1` fallback across all tasks — Node 24 is preferred, and the `Node20_1` handler (re-added 2026-07-05, #380) lets older on-prem/air-gapped agents that lack the Node 24 runner degrade gracefully instead of failing to find a handler. A task's `Minor` must be bumped for agents to re-fetch a handler change
 - Inputs use `visibleRule` to conditionally show provider- and command-specific fields
 - `dataSourceBindings` wire up picklist inputs to Azure REST API endpoints
-- Output variables: `jsonPlanFilePath`, `jsonOutputVariablesPath`, `changesPresent`, `destroyChangesPresent`, `showFilePath`, `customFilePath`
+- Output variables: `jsonOutputVariablesPath`, `changesPresent`, `destroyChangesPresent`, `showFilePath`, `customFilePath`
 
 ## Development Workflow
 
@@ -443,7 +443,7 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the authoritative, per-
 
 ## CI/CD
 
-- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Check Shared Module Parity`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Module Publish V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Drift Report V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Markdown2Html V1`, `Build and Test Publish KB Article V1`, `Build and Test V5 Smoke`, `Build and Test Tab`, `Lint GitHub Actions`.
+- `.github/workflows/unit-test.yml` — **Active CI.** Runs on push/PR to `main` and on `workflow_call` (reused by release). Jobs: `Check Version Consistency`, `Check Shared Module Parity`, `Build and Test V5`, `Build and Test Installer V1`, `Build and Test Provider Mirror V1`, `Build and Test Module Publish V1`, `Build and Test Policy Agent Installer V1`, `Build and Test Policy Check V1`, `Build and Test Drift Report V1`, `Build and Test terraform-docs Installer V1`, `Build and Test terraform-docs V1`, `Build and Test Markdown2Html V1`, `Build and Test Publish KB Article V1`, `Build and Test V5 Smoke`, `Build and Test Tab`, `Workflow Security`, `Workflow Security Record`.
 - `.github/workflows/release-please.yml` — **Release automation.** Runs on push to `main`; uses a GitHub App token to open/update the Release PR (version bump + changelog).
 - `.github/workflows/release.yml` — **Release pipeline.** Triggered by semver tags (`v*.*.*`) or manual dispatch. Verifies tag is on `main`, runs full CI via `workflow_call`, builds release bundle, packages `.vsix`, generates CycloneDX SBOMs, signs with cosign (keyless), creates draft GitHub Release, publishes to VS Marketplace (requires `marketplace` environment approval), then undrafts the release.
 - `.github/workflows/codeql.yml` — **Code scanning.** CodeQL static analysis for TypeScript (GitHub Advanced Security).
@@ -521,7 +521,7 @@ upgraded their runner, not as a second fully-verified execution path.
 
 **`main` branch:**
 
-- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (29 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test V5 Smoke`, `Build and Test Tab`, `Lint GitHub Actions`, `Scan Workflows (zizmor)`, and `Release PR Minor Bumps` (the pr-checks.yml merge gate — a fast no-op pass on non-release PRs, and the layer-2 backstop that keeps an un-bumped Release PR from merging if the auto-bump workflow is ever broken). Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
+- Required status checks (strict — branch must be up-to-date): the complete `unit-test.yml` matrix (29 contexts) — `Check Version Consistency`, `Check Shared Module Parity`, every `Build and Test *` job on both `ubuntu-latest` and `windows-2025` (V5, Installer V1, Provider Mirror V1, Module Publish V1, Policy Agent Installer V1, Policy Check V1, Drift Report V1, terraform-docs Installer V1, terraform-docs V1, Markdown2Html V1, Publish KB Article V1), `Build and Test V5 Smoke`, `Build and Test Tab`, `Workflow Security`, `Workflow Security Record`, and `Release PR Minor Bumps` (the pr-checks.yml merge gate — a fast no-op pass on non-release PRs, and the layer-2 backstop that keeps an un-bumped Release PR from merging if the auto-bump workflow is ever broken). Pinned to the GitHub Actions app (`app_id` 15368). Add both matrix legs of any new task's job here when introducing a task.
 - Required pull request reviews: 1 approving review, dismiss stale reviews, require code owner review
 - Enforce admins: no (admin/owner can bypass review requirements as sole maintainer)
 - Required linear history: yes (squash/rebase only, no merge commits)

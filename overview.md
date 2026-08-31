@@ -15,8 +15,8 @@ This extension provides:
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
 - **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs
-- **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles
-- **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow
+- **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles (moving to [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs) as `PipelineMarkdown2Html`; `Markdown2Html@1` keeps working here until that migration completes)
+- **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow (moving to [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs) as `PipelinePublishKbArticle`; `PublishKbArticle@1` keeps working here until that migration completes)
 - Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.
@@ -134,7 +134,6 @@ If `backendType` is not set, it defaults to the value of the `provider` input, p
 | Variable                  | Set by   | Description                                                                                                                                                            |
 | ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `changesPresent`          | `plan`   | `true` when the plan detects infrastructure changes (exit code 2 with `-detailed-exitcode`). Use in `condition:` to gate apply.                                        |
-| `jsonPlanFilePath`        | `plan`   | File path to the plan's JSON output (`terraform show -json` equivalent), a policy-as-code integration hook for OPA/Sentinel-style tooling.                             |
 | `jsonOutputVariablesPath` | `output` | File path to the JSON output of `terraform output -json`.                                                                                                              |
 | `destroyChangesPresent`   | `show`   | `true` when a JSON `show` of a plan file contains resource deletions.                                                                                                  |
 | `showFilePath`            | `show`   | File path when `outputTo` is set to `file`.                                                                                                                            |
