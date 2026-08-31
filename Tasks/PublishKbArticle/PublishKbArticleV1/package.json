@@ -7,7 +7,7 @@
     "compile": "tsc -b tsconfig.json",
     "compile:tests": "tsc -p tsconfig.tests.json",
     "compile:all": "npm run compile && npm run compile:tests",
-    "test": "npm run compile:all && mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts Tests/ProxyL0.ts",
+    "test": "npm run compile:all && cross-env TS_NODE_PREFER_TS_EXTS=true mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts Tests/ProxyL0.ts",
     "test:coverage": "npm run compile:all && nyc mocha --timeout 10000 --forbid-pending --require ts-node/register Tests/L0.ts Tests/ProxyL0.ts",
     "posttest:coverage": "node ../../../scripts/check-per-file-coverage.js",
     "lint": "npx eslint src/ Tests/"
@@ -34,6 +34,7 @@
     "@types/mocha": "^10.0.0",
     "@types/node": "^24",
     "@types/sanitize-html": "^2.16.1",
+    "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
     "mocha": "^11.2.0",
     "nock": "^14.0.15",

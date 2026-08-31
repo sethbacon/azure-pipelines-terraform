@@ -1744,6 +1744,64 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
+    /*
+     * generic/hcp plan+destroy tests (#1034): both handlers were previously
+     * exercised only via init -- these prove handleProvider's no-op is safe
+     * end to end through the same plan()/destroy() flow every other provider
+     * runs, not merely that the class can be constructed. Deliberately not a
+     * full var-file/target-resources/parallelism matrix like AWS/Azure/GCP/
+     * OCI get: that logic lives entirely in the base class, already covered
+     * there, and neither handler branches on it.
+     */
+
+    it('generic backend plan should succeed', async () => {
+        let tp = path.join(__dirname, './PlanTests/Generic/GenericPlanSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GenericPlanSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('generic backend destroy should succeed', async () => {
+        let tp = path.join(__dirname, './DestroyTests/Generic/GenericDestroySuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('GenericDestroySuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('hcp backend plan should succeed', async () => {
+        let tp = path.join(__dirname, './PlanTests/HCP/HCPPlanSuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('HCPPlanSuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
+    it('hcp backend destroy should succeed', async () => {
+        let tp = path.join(__dirname, './DestroyTests/HCP/HCPDestroySuccess.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.invokedToolCount === 1, 'only the live terraform command emits a [command] line (the providers probe capture is silent, #492). actual: ' + tr.invokedToolCount);
+            assert(tr.errorIssues.length === 0, 'should have no errors');
+            assert(tr.stdOutContained('HCPDestroySuccessL0 should have succeeded.'));
+        }, tr);
+    });
+
     /* aws workload identity federation tests */
 
     it('aws plan should succeed with workload identity federation', async () => {
