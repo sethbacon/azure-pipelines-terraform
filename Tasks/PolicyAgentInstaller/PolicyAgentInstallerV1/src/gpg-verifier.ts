@@ -36,8 +36,14 @@ import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
  *   re-verification path re-throws it (fail closed) instead of degrading to the
  *   cached tool the way it does for a genuine transport outage.
  * - If the signature is invalid, throws a VerificationFailure (hard fail).
+ *
+ * `required` is a MANDATORY parameter, deliberately with no default (#1030):
+ * every current call site already passes an explicit value, so this changes
+ * nothing live -- it exists so a FUTURE call site that forgets the argument
+ * fails to compile instead of compiling clean and silently downgrading a
+ * missing signature to a warning.
  */
-export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean = false): Promise<void> {
+export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean): Promise<void> {
     const signatureBytes = await fetchBufferAllow404(signatureUrl);
     if (signatureBytes === null) {
         if (required) {

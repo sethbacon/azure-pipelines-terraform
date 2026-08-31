@@ -147,6 +147,59 @@ describe('PolicyAgentInstaller Test Suite', function () {
         }, tr);
     });
 
+    // #1030: requireGpgSignature's visibleRule hides it in the UI for
+    // policyAgent=opa, but a YAML pipeline can still set it -- where it is
+    // never read on any OPA code path. Silent inertness must not read
+    // identically to "nothing was set."
+    it('opa: warns that requireGpgSignature is inert for this agent when explicitly set (#1030)', async () => {
+        const tp = path.join(__dirname, 'OpaRequireGpgSignatureInertWarns.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_SignatureToggleInertForAgent')),
+                'setting requireGpgSignature for policyAgent=opa must warn that it has no effect. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // Negative control for the row above: requireGpgSignature simply UNSET must not
+    // warn -- the check fires on the key being explicitly present, not on its value.
+    it('opa: does NOT warn about requireGpgSignature when it was never set', async () => {
+        const tp = path.join(__dirname, 'OpaOfficialSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                !tr.warningIssues.some(w => w.includes('SignatureToggleInertForAgent')),
+                'must not warn about a toggle the operator never touched. warnings: ' + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // Second negative control: requireGpgSignature IS meaningful for Sentinel --
+    // setting it explicitly must not trigger the OPA-scoped inert warning. Without
+    // this, the "agent === opa" scoping in policy-agent-installer.ts could be
+    // dropped entirely (warn for every agent) and nothing would catch it.
+    it('sentinel: does NOT warn about requireGpgSignature when explicitly set (it is not inert here)', async () => {
+        const tp = path.join(__dirname, 'SentinelRequireGpgSignatureNotInert.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                !tr.warningIssues.some(w => w.includes('SignatureToggleInertForAgent')),
+                'requireGpgSignature is NOT inert for Sentinel; must not warn. warnings: ' + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     // #786: end-to-end Sentinel GPG-signature scenarios mirroring TerraformInstallerV1's
     // terraform GPG scenario set (the underlying gpg-verifier.ts is byte-identical, but
     // only the terraform path previously had task-flow-level bad/missing-signature proof).
