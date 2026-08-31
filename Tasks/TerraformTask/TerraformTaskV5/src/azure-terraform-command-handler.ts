@@ -366,6 +366,14 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // deliberately absent from this list -- the caller resolves and sets it
         // before calling this method.
         neutralizeEnvironmentVariables(ARM_CREDENTIAL_SELECTOR_ENV, "Azure");
+        // ARM_USE_CLI is cleared above like every other selector, but clearing
+        // is not disabling: azurerm's own use_cli default is TRUE, so an absent
+        // ARM_USE_CLI does not turn CLI auth off -- it restores azurerm's
+        // default, which is CLI auth ON. Every scheme this switch handles (MSI,
+        // WIF, ServicePrincipal) authenticates via the variables it sets below,
+        // never via an ambient `az` CLI session, so CLI auth is never wanted
+        // here -- explicitly disable it rather than relying on absence (#1029).
+        EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_CLI", "false");
         // optional=false already threw for an absent tenant, so the `?? ''` tail
         // was unreachable (#194); requireIdentityField keeps the same fail-closed
         // contract while adding the charset validation the injected value never

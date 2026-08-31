@@ -4,7 +4,7 @@ import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
-import { exchangeOidcForUpst } from './oci-token-exchange';
+import { exchangeOidcForUpst, validateIdentityDomainUrl } from './oci-token-exchange';
 import { writeSecretFile, tightenFilePermissions } from '@4cloudguru/pipeline-task-ado';
 import { normalizePem } from '@4cloudguru/pipeline-task-core';
 import { resolveWifTempDir } from './temp-dir';
@@ -385,6 +385,19 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             // service connection id.
             throw new Error("An OCI service connection is required for Workload Identity Federation. Set environmentServiceNameOCI.");
         }
+        // 0. Read and validate every WIF config input BEFORE anything is minted
+        // (#1029): a live federated OIDC assertion is a bearer credential the
+        // instant it exists, so a misconfigured input must be caught before
+        // step 1 requests one, not discovered after. No leak occurred either
+        // way -- exchangeOidcForUpst below already validated identityDomainUrl
+        // before transmitting anything -- but minting a credential that then
+        // goes unused because of a config error it should never have reached
+        // is itself worth avoiding.
+        const identityDomainUrl = validateIdentityDomainUrl(tasks.getInput("ociWifIdentityDomainUrl", true)!).href;
+        const clientId = tasks.getInput("ociWifClientId", true)!;
+        const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
+        const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
+
         // 1. Get OIDC JWT from Azure DevOps
         const oidcToken = await generateIdToken(command.serviceProviderName);
         EnvironmentVariableHelper.registerSecret(oidcToken);
@@ -407,8 +420,6 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         }
 
         // 3. Exchange OIDC JWT for OCI UPST
-        const identityDomainUrl = tasks.getInput("ociWifIdentityDomainUrl", true)!;
-        const clientId = tasks.getInput("ociWifClientId", true)!;
         const upst = await exchangeOidcForUpst(oidcToken, identityDomainUrl, clientId, publicKey);
         EnvironmentVariableHelper.registerSecret(upst);
 
@@ -429,9 +440,6 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const upstPath = path.join(tempDir, `oci-wif-upst-${sessionId}`);
         writeSecretFile(upstPath, upst);
         this.trackTempFile(upstPath);
-
-        const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
-        const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
 
         const configContent = [
             '[DEFAULT]',
