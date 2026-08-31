@@ -134,7 +134,7 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
      * read time and leaves `ENDPOINT_DATA_*` in `process.env` for the terraform
      * child, so `requireSecretField(..., { source: 'data' })` routes through
      * `readSecretEndpointDataParameter`, which reads this variable directly
-     * (src/endpoint-data-secret.ts). Stubbing only the accessor would make the
+     * (@4cloudguru/pipeline-task-ado). Stubbing only the accessor would make the
      * `complete` control row for such a branch fail for the wrong reason and
      * would let its reject row pass without ever exercising the guard, so the
      * fixture has to deliver the value the way the agent does.
