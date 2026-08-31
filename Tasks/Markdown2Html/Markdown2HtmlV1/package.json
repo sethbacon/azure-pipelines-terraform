@@ -17,7 +17,6 @@
   "engines": {
     "node": ">=24"
   },
-  "minimumAgentVersion": "3.232.1",
   "dependencies": {
     "azure-pipelines-task-lib": "^5.2.10",
     "cheerio": "^1.2.0",

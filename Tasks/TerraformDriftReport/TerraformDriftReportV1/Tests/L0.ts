@@ -8,7 +8,7 @@ import * as https from 'https';
 import tasks = require('azure-pipelines-task-lib/task');
 import { summarize } from '@4cloudguru/terraform-drift-contract';
 import { postJson, postJsonWithRetry, truncateBody } from '../src/callback';
-import { createHttpsClient } from '../src/https-client';
+import { createHttpsClient, HttpPreflightError } from '../src/https-client';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
 import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
 import {
@@ -262,6 +262,26 @@ describe('TerraformDriftReport callback transport', function () {
             server.close();
         }
     });
+
+    it('postJsonWithRetry never retries a malformed callbackUrl -- a deterministic pre-flight failure fails identically every attempt (#1033)', async () => {
+        // No scheme/authority at all -- new URL() inside createHttpsClient throws
+        // synchronously, reclassified as HttpPreflightError. Contrast with the
+        // ECONNREFUSED case above (a real transport failure, retried twice):
+        // this must fail on the FIRST attempt, with no retry logged.
+        const logs: string[] = [];
+        await assert.rejects(
+            postJsonWithRetry(
+                'not-a-valid-url',
+                { 'X-TSM-Callback-Token': 't' },
+                '{}',
+                true,
+                undefined,
+                { retries: 2, baseDelayMs: 5, log: (m) => logs.push(m) },
+            ),
+            /Failed to prepare the HTTPS request before dispatch/,
+        );
+        assert.strictEqual(logs.length, 0, 'a pre-flight failure must not burn the retry budget on a guaranteed-identical failure');
+    });
 });
 
 describe('https-client: agent proxy support', function () {
@@ -340,12 +360,16 @@ describe('https-client: agent proxy support', function () {
         }
     });
 
-    it('throws a clear error on a malformed proxy URL instead of an unhandled exception', async () => {
+    it('throws a clear error on a malformed proxy URL instead of an unhandled exception, reclassified as HttpPreflightError (#1033)', async () => {
         t.getHttpProxyConfiguration = () => ({ proxyUrl: 'not a url' });
         const client = createHttpsClient(false);
         await assert.rejects(
             client('GET', 'https://127.0.0.1:1/health', {}),
-            /Invalid proxy URL/,
+            (err: unknown) => {
+                assert.ok(err instanceof HttpPreflightError, `expected an HttpPreflightError, got: ${err}`);
+                assert.match((err as Error).message, /Invalid proxy URL/);
+                return true;
+            },
         );
     });
 

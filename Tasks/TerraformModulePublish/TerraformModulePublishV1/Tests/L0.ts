@@ -5,7 +5,7 @@ import * as https from 'https';
 import * as path from 'path';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import tasks = require('azure-pipelines-task-lib/task');
-import { HttpClient, HttpResponse, createHttpsClient, parseJson, retryHttp, truncateBody } from '../src/http';
+import { HttpClient, HttpResponse, HttpPreflightError, createHttpsClient, parseJson, retryHttp, truncateBody } from '../src/http';
 import * as priv from '../src/private-publisher';
 import * as hcp from '../src/hcp-publisher';
 import { TLS_CERT, TLS_KEY } from './loopback-tls';
@@ -44,6 +44,18 @@ describe('http client transport', () => {
         await assert.rejects(
             client('GET', 'http://insecure.example.com/api', { Authorization: 'Bearer k' }),
             /non-HTTPS/,
+        );
+    });
+
+    it('reclassifies a malformed URL as HttpPreflightError, not a plain transport error (#1033)', async () => {
+        const client = createHttpsClient(true);
+        await assert.rejects(
+            client('GET', 'not-a-valid-url', { Authorization: 'Bearer k' }),
+            (err: unknown) => {
+                assert.ok(err instanceof HttpPreflightError, `expected an HttpPreflightError, got: ${err}`);
+                assert.match((err as Error).message, /Failed to prepare the HTTPS request before dispatch/);
+                return true;
+            },
         );
     });
 
@@ -290,12 +302,16 @@ describe('http client transport: agent proxy support', function () {
         }
     });
 
-    it('throws a clear error on a malformed proxy URL instead of an unhandled exception', async () => {
+    it('throws a clear error on a malformed proxy URL instead of an unhandled exception, reclassified as HttpPreflightError (#1033)', async () => {
         t.getHttpProxyConfiguration = () => ({ proxyUrl: 'not a url' });
         const client = createHttpsClient(false);
         await assert.rejects(
             client('GET', 'https://127.0.0.1:1/api', {}),
-            /Invalid proxy URL/,
+            (err: unknown) => {
+                assert.ok(err instanceof HttpPreflightError, `expected an HttpPreflightError, got: ${err}`);
+                assert.match((err as Error).message, /Invalid proxy URL/);
+                return true;
+            },
         );
     });
 
@@ -402,6 +418,18 @@ describe('retryHttp', () => {
             /ETIMEDOUT/,
         );
         assert.strictEqual(calls, 3);
+    });
+
+    it('never retries an HttpPreflightError -- a deterministic pre-flight failure (bad URL/proxy config) fails identically every attempt (#1033)', async () => {
+        let calls = 0;
+        await assert.rejects(
+            () => retryHttp(() => {
+                calls += 1;
+                return Promise.reject(new HttpPreflightError('bad url', new Error('Invalid URL')));
+            }, { retries: 2, baseDelayMs: 0 }),
+            /bad url/,
+        );
+        assert.strictEqual(calls, 1, 'a pre-flight failure must fail on the first attempt, not burn the whole retry budget on a guaranteed-identical failure');
     });
 
     it('retries a 429 Too Many Requests response and returns the eventual success (#584)', async () => {

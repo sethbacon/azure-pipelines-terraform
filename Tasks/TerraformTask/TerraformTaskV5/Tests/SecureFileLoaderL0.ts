@@ -64,6 +64,56 @@ describe('Secure var-file loader', function () {
         );
     });
 
+    it('scrubs and deletes an orphaned secure file when the download eventually succeeds after the timeout already failed the step (#1033)', async () => {
+        // Represents the file the vendored library eventually finishes writing to
+        // disk -- AFTER downloadSecureFile() has already thrown the timeout error
+        // and its caller has moved on with no reference to this path.
+        const realPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-securefile-late-')), 'vars.tfvars');
+        const original = 'secret = "late-value"\n';
+        fs.writeFileSync(realPath, original);
+
+        let deletedId: string | undefined;
+        const loader = new SecureFileLoader(
+            {
+                // Resolves well after the loader's own (much shorter) timeout fires.
+                downloadSecureFile: () => new Promise<string>((resolve) => { setTimeout(() => resolve(realPath), 80); }),
+                deleteSecureFile: (id: string) => { deletedId = id; },
+            },
+            20,
+        );
+
+        await assert.rejects(
+            loader.downloadSecureFile('late-file'),
+            /Secure file download timed out after 20ms/,
+        );
+
+        // The background download is still in flight at this point (80ms > 20ms
+        // timeout); give it room to resolve and the loader's own cleanup to run.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        assert.strictEqual(deletedId, 'late-file', 'the orphaned file must be scrubbed+deleted once the late download resolves, not silently left on disk');
+        assert.ok(fs.readFileSync(realPath).every((b) => b === 0), "the orphaned file must be zero-scrubbed (deleteSecureFile's own scrub-before-delete), not just unlinked");
+    });
+
+    it('does not delete a normal (not-timed-out) download -- the orphan cleanup only fires for a late resolution after a timeout', async () => {
+        const realPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-securefile-normal-')), 'vars.tfvars');
+        fs.writeFileSync(realPath, 'secret = "value"\n', { mode: 0o644 });
+
+        let deleteCalls = 0;
+        const loader = new SecureFileLoader({
+            downloadSecureFile: async () => realPath,
+            deleteSecureFile: () => { deleteCalls++; },
+        });
+
+        const filePath = await loader.downloadSecureFile('normal-file');
+        assert.strictEqual(filePath, realPath);
+
+        // Give the same background .then() handler a chance to (incorrectly) fire
+        // before asserting it did not.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.strictEqual(deleteCalls, 0, 'a normal successful download must never be treated as orphaned');
+    });
+
     it('deleteSecureFile delegates to the injected helper', () => {
         let deleted = '';
         const loader = new SecureFileLoader({
