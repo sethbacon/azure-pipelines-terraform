@@ -1,0 +1,24 @@
+---
+# Calls the shared Dependabot CI-health check (4cloudguru/shared-workflows#36).
+# Triggers stay here, same as workflow-hardening.yml and signature-replay.yml:
+# what fires this repository's check is this repository's decision.
+name: Dependabot CI Health
+
+"on":
+  schedule:
+    - cron: "3 7 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-ci-health-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot-ci-health:
+    permissions:
+      contents: read
+      issues: write
+    uses: 4cloudguru/shared-workflows/.github/workflows/dependabot-ci-health.yml@0f121ce84fcd06966716146824e9764bd085936e # v1.17.0
