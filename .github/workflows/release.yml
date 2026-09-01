@@ -33,14 +33,25 @@ jobs:
     outputs:
       sha: ${{ steps.resolve-sha.outputs.sha }}
     steps:
-      # hardening-exception: egress-audit — this job calls the GitHub API and clones
-      #   this repository; harden-runner has never run in this repository, so no
-      #   endpoint baseline exists and a block policy written without one fails closed
-      #   on its first run; audit is what produces that list
+      # #1028: this job's `git fetch origin main` and marketplace-environment
+      # github-script call are the FIRST network activity in the release chain,
+      # ahead of every downstream job that needs its resolved SHA. Baseline
+      # captured from 4 real release runs (v1.14.6-v1.14.10) via harden-runner's
+      # own audit-mode connection log:
+      #   github.com    — actions/checkout, git fetch origin main
+      #   api.github.com — the marketplace-environment-protection github-script call
+      #   *.actions.githubusercontent.com — Actions-internal results reporting,
+      #     wildcarded because it is one of several per-run control-plane hosts
+      #     observed varying by shard/region in the sibling jobs below, not
+      #     something this job or repo controls.
       - name: Harden the runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            *.actions.githubusercontent.com:443
       # The push trigger's own `tags:` filter (above) already constrains a tag
       # push to the vX.Y.Z shape, but workflow_dispatch's `tag` input is free
       # text -- the "Check tag reachable from main" and "Verify extension
@@ -265,15 +276,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # hardening-exception: egress-audit — this job installs from the npm registry,
-      #   transfers artifacts through the Actions API, and clones this repository;
-      #   harden-runner has never run in this repository, so no endpoint baseline
-      #   exists and a block policy written without one fails closed on its first run;
-      #   audit is what produces that list
+      # #1028: this job holds id-token:write + attestations:write, so a
+      # compromised transitive dependency here (--ignore-scripts stops install-time
+      # hooks, not a package's own invoked logic) could try to exfiltrate either
+      # token over the network. Baseline captured from 4 real release runs
+      # (v1.14.6-v1.14.10) via harden-runner's own audit-mode connection log:
+      #   github.com            — actions/checkout
+      #   registry.npmjs.org    — npm ci (root + 11 per-task installs)
+      #   release-assets.githubusercontent.com — cosign-installer downloading the cosign binary
+      #   fulcio.sigstore.dev / rekor.sigstore.dev / timestamp.sigstore.dev /
+      #     tuf-repo-cdn.sigstore.dev — cosign keyless sign-blob (Fulcio CA, Rekor log, TSA, TUF root)
+      #   api.github.com        — attest-build-provenance / attest uploading attestations
+      #   *.actions.githubusercontent.com — Actions-internal (results reporting, OIDC token
+      #     endpoint, and a per-run "run-actions-N-azure-<region>" control-plane host that
+      #     changes every run); *.blob.core.windows.net — artifact upload/download's storage
+      #     backend, observed as 4 different "productionresultssaNN" shards across 4 runs.
+      #     Both are wildcarded because the exact subdomain is assigned per-run/per-shard by
+      #     GitHub/Azure, not something this job or repo controls (confirmed varying across
+      #     the sampled runs) — a fixed list of past shard names would fail closed on the very
+      #     next release that lands on an unseen one.
       - name: Harden the runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            registry.npmjs.org:443
+            api.github.com:443
+            release-assets.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.guard.outputs.sha }}
@@ -511,15 +547,51 @@ jobs:
       id-token: write # GitHub OIDC -> Microsoft Entra federated credential
       contents: read
     steps:
-      # hardening-exception: egress-audit — this job installs from the npm registry,
-      #   transfers artifacts through the Actions API, and clones this repository;
-      #   harden-runner has never run in this repository, so no endpoint baseline
-      #   exists and a block policy written without one fails closed on its first run;
-      #   audit is what produces that list
+      # #1028: this job holds a live Entra-federated Marketplace-publish
+      # credential, so a compromised transitive dependency here (--ignore-scripts
+      # stops install-time hooks, not a package's own invoked logic) could try to
+      # exfiltrate it over the network. Baseline captured from 4 real release runs
+      # (v1.14.6-v1.14.10) via harden-runner's own audit-mode connection log:
+      #   github.com            — actions/checkout
+      #   registry.npmjs.org    — npm ci (root)
+      #   release-assets.githubusercontent.com — cosign-installer downloading the cosign binary
+      #   tuf-repo-cdn.sigstore.dev — cosign verify-blob's Sigstore TUF trust root fetch
+      #     (verify-blob reads the cert+Rekor entry from the bundle itself, so unlike
+      #     sbom-and-sign's sign-blob this needs no live Fulcio/Rekor/TSA call)
+      #   login.microsoftonline.com — azure/login OIDC + az account get-access-token
+      #   management.azure.com  — azure/login (subscription/tenant resolution)
+      #   *.blob.core.windows.net — az CLI's own cache/telemetry (azcliprod...) plus
+      #     the Actions artifact download's storage backend, observed as 4 different
+      #     "productionresultssaNN" shards across 4 runs — wildcarded because the
+      #     exact subdomain is assigned per-run/per-shard, not something this job or
+      #     repo controls; a fixed list of past shard names would fail closed on the
+      #     very next release that lands on an unseen one.
+      #   dc.services.visualstudio.com — Application Insights telemetry (az CLI / tfx)
+      #   app.vssps.visualstudio.com / marketplace.visualstudio.com — tfx publishing
+      #     the .vsix to the VS Marketplace (the actual point of this job)
+      #   *.actions.githubusercontent.com — Actions-internal (results reporting and a
+      #     per-run "run-actions-N-azure-<region>" control-plane host that changes
+      #     every run); *.githubapp.com — the hosted-runner orchestrator/watchdog's own
+      #     periodic heartbeat, observed with different region+instance suffixes
+      #     ("eus-02", "iad-02") across runs. Both wildcarded for the same per-run/
+      #     per-shard reason as the blob-storage entry above.
       - name: Harden the runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            registry.npmjs.org:443
+            release-assets.githubusercontent.com:443
+            tuf-repo-cdn.sigstore.dev:443
+            login.microsoftonline.com:443
+            management.azure.com:443
+            dc.services.visualstudio.com:443
+            app.vssps.visualstudio.com:443
+            marketplace.visualstudio.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            *.githubapp.com:443
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.guard.outputs.sha }}
