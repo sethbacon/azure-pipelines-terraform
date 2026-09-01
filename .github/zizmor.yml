@@ -27,6 +27,12 @@
 # tag shape" step to the guard job inserted 21 lines above every ignore below,
 # shifting all five by exactly 21. Re-derived with the command above rather than
 # adjusted by hand.
+#
+# They moved again on 2026-09-01 (apt#1028): flipping guard/sbom-and-sign/
+# publish-marketplace to egress-policy: block with allowed-endpoints lists
+# inserted a different number of lines above each ignore (they are no longer a
+# uniform offset apart, since the inserted comment+allowlist blocks differ in
+# length per job). Re-derived with the command above rather than adjusted by hand.
 # This is the cost of line-scoped ignores, and it is the intended cost: the
 # alternative is a per-file ignore that would have silently swallowed a genuinely
 # new finding. A suppression that breaks loudly when the file moves is doing its
@@ -37,12 +43,12 @@ rules:
       # The release pipeline's 4 setup-node steps do not enable dependency
       # caching (no `cache:` input), so there is no cached artifact to poison.
       # zizmor flags setup-node defensively in any artifact-publishing workflow.
-      - release.yml:206:9
-      - release.yml:239:9
-      - release.yml:281:9
-      - release.yml:527:9
+      - release.yml:217:9
+      - release.yml:250:9
+      - release.yml:317:9
+      - release.yml:599:9
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:494:15
+      - release.yml:530:15
