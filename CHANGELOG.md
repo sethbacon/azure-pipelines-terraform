@@ -4,6 +4,40 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.15.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.10...v1.15.0) (2026-09-01)
+
+
+### Features
+
+* **ci:** adopt the shared Dependabot CI-health check ([#1067](https://github.com/sethbacon/azure-pipelines-terraform/issues/1067)) ([239dc93](https://github.com/sethbacon/azure-pipelines-terraform/commit/239dc93e1ad90d19bc5ae6dad84ee1d62e26085a))
+
+
+### Bug Fixes
+
+* **security:** adopt readSecretEndpointDataParameter from pipeline-task-ado ([#1070](https://github.com/sethbacon/azure-pipelines-terraform/issues/1070)) ([bbefd7e](https://github.com/sethbacon/azure-pipelines-terraform/commit/bbefd7efd296bc7e8c14849335ea713f127508e0))
+* **security:** close GCP backend-path credential gaps ([#1025](https://github.com/sethbacon/azure-pipelines-terraform/issues/1025)) ([#1055](https://github.com/sethbacon/azure-pipelines-terraform/issues/1055)) ([5083b18](https://github.com/sethbacon/azure-pipelines-terraform/commit/5083b185ee02e778ad97fc9602f280e0fb86dc30))
+* **security:** delete stale package.json minimumAgentVersion, scrub an orphaned secure file on a late download, non-retryable HTTP pre-flight errors ([#1063](https://github.com/sethbacon/azure-pipelines-terraform/issues/1063)) ([89feb61](https://github.com/sethbacon/azure-pipelines-terraform/commit/89feb61ca40f57b4ae82d11f52c91939b4ba948f))
+* **security:** don't trust a cache-hit's local integrity marker as an adversarial control ([#1056](https://github.com/sethbacon/azure-pipelines-terraform/issues/1056)) ([a4a109c](https://github.com/sethbacon/azure-pipelines-terraform/commit/a4a109c782e0de097a6368098777efc999e779c2))
+* **security:** harden the TLS-skip guards for [#588](https://github.com/sethbacon/azure-pipelines-terraform/issues/588) (public-host denylist fails closed, drift-report gets an equivalent guard) ([#1060](https://github.com/sethbacon/azure-pipelines-terraform/issues/1060)) ([ba4ca26](https://github.com/sethbacon/azure-pipelines-terraform/commit/ba4ca265fc6b0c144ce8fb654a8f9e1c21594f48))
+* **security:** make required mandatory on both signature verifiers, warn when requireGpgSignature is set for an agent it cannot apply to ([#1058](https://github.com/sethbacon/azure-pipelines-terraform/issues/1058)) ([aaf5749](https://github.com/sethbacon/azure-pipelines-terraform/commit/aaf5749c8496cfe9d713bc5c14d8eddc3637899b))
+* **security:** prefer .ts over stale compiled .js under plain mocha, add Plan/Destroy coverage for HCP/Generic backends ([#1064](https://github.com/sethbacon/azure-pipelines-terraform/issues/1064)) ([4f8e355](https://github.com/sethbacon/azure-pipelines-terraform/commit/4f8e3551001df978e630150ebb3fb78e365ebd2f))
+* **security:** scope path containment to content-supplied paths only ([#1053](https://github.com/sethbacon/azure-pipelines-terraform/issues/1053)) ([7e70b23](https://github.com/sethbacon/azure-pipelines-terraform/commit/7e70b23daf0d6bc9b2e411ca581057c8d2b32e4c))
+* **security:** shape-validate the workflow_dispatch release tag input ([#1061](https://github.com/sethbacon/azure-pipelines-terraform/issues/1061)) ([bebe015](https://github.com/sethbacon/azure-pipelines-terraform/commit/bebe0151550dfdc1d887af51ede2fa895f64f4e1))
+* **security:** tenancy-scope the OCI identity-domain host, disable ARM_USE_CLI explicitly, validate WIF config before minting an OIDC assertion ([#1057](https://github.com/sethbacon/azure-pipelines-terraform/issues/1057)) ([7a7416c](https://github.com/sethbacon/azure-pipelines-terraform/commit/7a7416c63a2046c5a30a96ada697930f47fc9375))
+* **security:** warn when requireCosignVerification is on but cosignSha256 is unset ([#1027](https://github.com/sethbacon/azure-pipelines-terraform/issues/1027)) ([#1062](https://github.com/sethbacon/azure-pipelines-terraform/issues/1062)) ([87cabbf](https://github.com/sethbacon/azure-pipelines-terraform/commit/87cabbf15c5d484b1aff1cc41173f4feadb40edf))
+* **security:** whole argv tokens for structured inputs, two-argument path.resolve, strip illegal XML control chars, validate module_locks shape ([#1059](https://github.com/sethbacon/azure-pipelines-terraform/issues/1059)) ([3e1a6cc](https://github.com/sethbacon/azure-pipelines-terraform/commit/3e1a6ccc69692fc8009a04199d4b19b1cf07f88a))
+
+
+### Documentation
+
+* **security:** third-party notices for shared packages, remove dead jsonPlanFilePath, migration-out notices on overview.md/servicenow-setup.md, fix stale CI job names ([#1065](https://github.com/sethbacon/azure-pipelines-terraform/issues/1065)) ([b6b635f](https://github.com/sethbacon/azure-pipelines-terraform/commit/b6b635f776d6e2607c15b0754211e66d101af242))
+
+
+### Security
+
+* block egress in guard, sbom-and-sign, and publish-marketplace ([#1028](https://github.com/sethbacon/azure-pipelines-terraform/issues/1028)) ([#1072](https://github.com/sethbacon/azure-pipelines-terraform/issues/1072)) ([11ab27b](https://github.com/sethbacon/azure-pipelines-terraform/commit/11ab27b81a9745168ed169f78f7b804e98423eca))
+* verify main branch protection against CLAUDE.md in CI ([#1032](https://github.com/sethbacon/azure-pipelines-terraform/issues/1032)) ([#1071](https://github.com/sethbacon/azure-pipelines-terraform/issues/1071)) ([5d6e936](https://github.com/sethbacon/azure-pipelines-terraform/commit/5d6e936cb960e281ac22227ed3434b6b3c79f891))
+
 ## [1.14.10](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.9...v1.14.10) (2026-08-29)
 
 
