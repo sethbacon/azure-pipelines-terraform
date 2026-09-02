@@ -1,12 +1,25 @@
 import * as assert from 'assert';
 import * as crypto from 'crypto';
-import { exchangeOidcForUpst, validateIdentityDomainUrl } from '../src/oci-token-exchange';
+import { exchangeOidcForUpst, validateIdentityDomainUrl } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Direct unit tests for the OCI WIF token-exchange transport hardening.
  * The federated OIDC bearer JWT is POSTed to an operator-supplied identity
  * domain URL, so the destination is validated and redirects are refused
  * before the token leaves the agent. fetch is stubbed so no network is hit.
+ *
+ * The implementation moved to @4cloudguru/pipeline-task-ado so this task and
+ * azure-pipelines-packer share one realm allowlist and one redirect policy
+ * (#1074). This suite is deliberately RETAINED and repointed at the package
+ * rather than deleted with the local copy: the package ships its own 24 tests,
+ * but these run from a consumer's side, so a behaviour reversal in a future
+ * package release fails here at the version bump instead of in a pipeline. A
+ * type-only consumer check would not catch it -- the signature is unchanged.
+ *
+ * Two properties this suite names that the package's own suite does not:
+ * a refused redirect must not be RETRIED (distinct from being refused), and
+ * the reflected-token scrub must hold on the non-JSON-200 path as well as the
+ * non-OK path. Keep both here until the package names them.
  */
 describe('OCI token exchange — URL validation & transport', function () {
     // The persistent-failure retry paths wait 200ms + 400ms between three attempts.
