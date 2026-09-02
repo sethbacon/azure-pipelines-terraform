@@ -80,7 +80,7 @@ From the verified inventory — property = "for all inputs, INVARIANT holds":
 Three security-critical validators are currently module-private + env-coupled, so they can't be property-tested as-is. Extract a pure inner function (or add an `export`) so each becomes directly fuzzable — a real robustness win for token-exfil/SSRF guards:
 - `isAllowedOidcRequestHost(hostname)` (`id-token-generator.ts`, reads `process.env`) — the ADO OIDC host allowlist (#554 fail-closed).
 - `assertGoogleTokenUri(tokenUri)` (`gcp-terraform-command-handler.ts`, module-private) — GCP `token_uri` allowlist (#494/#594).
-`validateIdentityDomainUrl` (`oci-token-exchange.ts`) and `validateMirrorUrl` (`config-generator.ts`) are already pure/exported — fuzz them directly, no refactor.
+`validateIdentityDomainUrl` (exported by `@4cloudguru/pipeline-task-ado` since #1074) and `validateMirrorUrl` (`config-generator.ts`) are already pure/exported — fuzz them directly, no refactor.
 
 ### Wiring
 - Per target-owning task: add `fast-check` to `devDependencies`; add `import './<Name>PropertyL0'` to `Tests/L0.ts` (mocha tasks) or the jest test list (tab); add `"test:fuzz:explore": "cross-env FUZZ_EXPLORE=1 mocha --timeout 300000 --require ts-node/register 'Tests/**/*PropertyL0.ts'"` (or a jest `--testPathPattern` for the tab).
