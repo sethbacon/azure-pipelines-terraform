@@ -111,7 +111,7 @@ Prefer resource-type-specific verbs/compartments over `manage all-resources` at 
 
 ## How It Works
 
-At runtime (`oci-terraform-command-handler.ts` / `oci-token-exchange.ts`), the task:
+At runtime (`oci-terraform-command-handler.ts`, calling `exchangeOidcForUpst()` from `@4cloudguru/pipeline-task-ado`), the task:
 
 1. Requests an OIDC token from Azure DevOps for the service connection (signed by `vstoken.dev.azure.com`, default `api://AzureADTokenExchange` audience — the same token-issuance path used for AWS/GCP/AzureRM WIF)
 2. Generates an ephemeral RSA-2048 key pair in memory, unique to this task run
