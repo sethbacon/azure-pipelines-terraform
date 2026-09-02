@@ -4,7 +4,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import tasks = require('azure-pipelines-task-lib/task');
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
-import { exchangeOidcForUpst } from '../src/oci-token-exchange';
+import { exchangeOidcForUpst } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * CLASS TEST — outbound proxy parity (sibling azure-pipelines-packer #196).
@@ -115,12 +115,12 @@ const SITE_ROWS: SiteRow[] = [
     {
         file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
         fn: 'handleProviderWIF', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
-        why: 'first hop of the OCI WIF flow; the second hop (oci-token-exchange) is still local and keeps its own row below',
+        why: 'first hop of the OCI WIF flow; the second hop moved into the same package (#1074) and is covered by the row below',
     },
     {
-        file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts',
-        fn: 'attemptExchange', sink: 'fetch', verdict: 'PROXIED',
-        why: 'second hop of the OCI WIF flow; carries the federated JWT, so it needs the same proxy path',
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
+        fn: 'handleProviderWIF', sink: 'exchangeOidcForUpst', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'second hop of the OCI WIF flow; carries the federated JWT, so it needs the same proxy path. The implementation moved into pipeline-task-ado (#1074) -- there is no local fetchOptions left to inspect, so the site is held to a version floor like the other package-delegated sinks',
     },
     {
         file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/http-client.ts',

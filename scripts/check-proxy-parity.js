@@ -117,6 +117,19 @@ const PACKAGE_DELEGATED_SINKS = {
         min: '0.5.0',
         carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.6.0' },
     },
+    // exchangeOidcForUpst (#1074): the OCI WIF flow's SECOND hop. This one was
+    // extracted in the other direction from the rest of this table -- it was
+    // defined here and moved out, because azure-pipelines-packer needed the
+    // same realm allowlist and redirect policy and a copy would have drifted
+    // invisibly (check-shared-modules.js verifies a provenance header, it
+    // cannot byte-compare across repos). Floor is 0.8.0, the release that
+    // first exports it; same onward-delegation shape as the two above, since
+    // its fetch options come from the package's own buildAdoFetchOptions.
+    exchangeOidcForUpst: {
+        pkg: '@4cloudguru/pipeline-task-ado',
+        min: '0.8.0',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.6.0' },
+    },
 };
 
 /**

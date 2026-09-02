@@ -174,10 +174,24 @@ azure-pipelines-terraform/
 | `generic-terraform-command-handler.ts` | `TerraformCommandHandlerGeneric` — generic backend (`backendType: generic`) wired via `-backend-config` file/args                                                                                                                                                                                                                                             |
 | `hcp-terraform-command-handler.ts`     | `TerraformCommandHandlerHCP` — HCP Terraform / Terraform Cloud backend (sets `TF_TOKEN_app_terraform_io` from `backendHCPToken`)                                                                                                                                                                                                                              |
 | `backend-detection.ts`                 | Maps a Terraform `backend.type` (from `.terraform/terraform.tfstate`) to the cloud whose credentials the backend needs — enables cross-cloud state-backend credential injection (bounded state-file read)                                                                                                                                                     |
-| `oci-token-exchange.ts`                | Exchanges the ADO OIDC token for an OCI UPST (User Principal Session Token) — the second hop of the OCI WIF flow; classifies retryable vs. deterministic failures + capped `Retry-After`                                                                                                                                                                      |
 | `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers                                                                                                                                                                                           |
 | `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant. `readSecretEndpointDataParameter`/`maskSecretLines` (reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value) come from `@4cloudguru/pipeline-task-ado` rather than a local file (#1069)                                                                                                                                                                                   |
 | `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them                                                                                                                                                                                                                                                |
+
+**`oci-token-exchange.ts` no longer lives here (#1074).** The OCI UPST exchange — the second hop of
+the OCI WIF flow — moved to `@4cloudguru/pipeline-task-ado` (`exchangeOidcForUpst`,
+`validateIdentityDomainUrl`, `OciTokenExchangeError`) when `azure-pipelines-packer` gained OCI WIF
+and needed the same four Oracle realm suffixes, the same `idcs-` first-label check and the same
+`redirect: 'manual'` refusal. It was promoted rather than copied deliberately:
+`scripts/check-shared-modules.js` verifies a provenance header exists but cannot byte-compare
+across repositories, so a second copy of a realm allowlist would have drifted invisibly. Change it
+in the package, not here. `scripts/check-proxy-parity.js` holds the call site to a version floor
+the way it already does for `generateIdToken`.
+
+`Tests/OciTokenExchangeL0.ts` was deliberately **kept** and repointed at the package rather than
+deleted with the implementation. The package ships its own tests, but these run from the consumer
+side, so a behaviour reversal in a future package release fails at the version bump here instead of
+in a pipeline — a type-only check would not catch it, since the signature is unchanged.
 
 ### Manifest (`task.json`) size & organization convention
 

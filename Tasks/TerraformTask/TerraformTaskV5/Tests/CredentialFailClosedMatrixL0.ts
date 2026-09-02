@@ -4,7 +4,11 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import tasks = require('azure-pipelines-task-lib/task');
 import idTokenGeneratorModule = require('@4cloudguru/pipeline-task-ado');
-import ociTokenExchangeModule = require('../src/oci-token-exchange');
+// Same module object as idTokenGeneratorModule above -- Node caches by
+// specifier, so these aliases share one exports object. The token exchange
+// moved into the package (#1074) and the handler now calls it as a property
+// of that object, so patching it here still intercepts the real call.
+import ociTokenExchangeModule = require('@4cloudguru/pipeline-task-ado');
 import { TerraformCommandHandlerAzureRM } from '../src/azure-terraform-command-handler';
 import { TerraformCommandHandlerAWS } from '../src/aws-terraform-command-handler';
 import { TerraformCommandHandlerGCP } from '../src/gcp-terraform-command-handler';

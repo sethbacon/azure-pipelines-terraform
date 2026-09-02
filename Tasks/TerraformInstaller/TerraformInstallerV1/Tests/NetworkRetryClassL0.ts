@@ -169,7 +169,12 @@ describe('network retry coverage (class test #879/#891)', function () {
             // here as src/id-token-generator.ts. It moved to @4cloudguru/pipeline-task-ado,
             // so it is no longer a site in this repo and carries no row; the retry
             // behaviour travelled with it and is the package's to test.
-            { file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-token-exchange.ts', fn: 'attemptExchange', sink: 'fetch', verdict: 'RETRIED', why: 'wrapped in retryAsync with its own OciTokenExchangeError retryable classification' },
+            // The OCI UPST exchange (attemptExchange -> fetch) used to sit here as
+            // src/oci-token-exchange.ts. It moved to @4cloudguru/pipeline-task-ado
+            // for the same reason as the token generator above -- azure-pipelines-packer
+            // needed it too (#1074) -- so it is no longer a site in this repo and
+            // carries no row; the retryAsync wrapper and the OciTokenExchangeError
+            // retryable classification travelled with it and are the package's to test.
             { file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/hcp-publisher.ts', fn: 'publish (module check / VCS create / version create)', sink: 'this.http via retryHttp', verdict: 'RETRIED', why: 'each is a get-or-create/idempotent call wrapped in retryHttp' },
             { file: 'Tasks/TerraformModulePublish/TerraformModulePublishV1/src/private-publisher.ts', fn: 'publish (module lookup) / createAndLinkModule', sink: 'this.http via retryHttp', verdict: 'RETRIED', why: 'get-or-create module + tolerant-of-409 link, both wrapped in retryHttp' },
             { file: 'Tasks/TerraformDriftReport/TerraformDriftReportV1/src/callback.ts', fn: 'postJsonWithRetry', sink: 'postJson', verdict: 'RETRIED', why: 'retries pure transport failures only; deliberately never retries a RECEIVED response because the callback token is one-shot -- correct as designed, not a gap' },
