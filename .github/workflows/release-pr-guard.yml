@@ -1,0 +1,188 @@
+---
+# Adopts the centralized release-PR closing-keyword guard from
+# 4cloudguru/shared-workflows (docs/release-pr-guard-adoption.md).
+#
+# WHAT IT DEFENDS AGAINST
+#
+# release-please renders EVERY issue reference a commit carries as
+# `closes [#N](...)` in the changelog -- including a line-initial `Refs #N`
+# trailer written deliberately to link a tracking issue WITHOUT closing it.
+# That changelog is the release pull request body, GitHub parses the body into
+# its linked-issue graph, and merging the pull request closes everything in
+# that graph. The non-closing word the author chose is discarded and the next
+# release closes the issue anyway, attributed to a release nobody reads line
+# by line. There is no config fix -- the verb is hardcoded upstream -- so this
+# is a guard, not a setting.
+#
+# This repository had NO closing-keyword guard before this file. It is being
+# added, not replacing a local copy.
+#
+# THREE MODES, THREE DIFFERENT THINGS
+#
+#   closing-keywords -- pull_request. Grades an open release PR and publishes
+#     a commit status. THE JOB NAME IS THE REQUIRED CONTEXT; do not rename it
+#     after it is added to branch protection.
+#   link-regrade -- schedule + workflow_dispatch. Re-grades every open release
+#     PR against the LIVE linked-issue graph, because a link made through the
+#     Development panel after the last push fires no webhook event at all.
+#   merge-backstop -- push to main. Grades the merge that already happened and
+#     reopens anything it closed by mistake. This is the only mode that
+#     writes, and reopening IS the repair -- without issues:write it fails
+#     rather than skipping, which is correct but useless.
+#
+# Inputs (status-context, base-branch, release-branch-prefix) are left at the
+# action's defaults deliberately: this repository's release-please head
+# branches use release-please's default `release-please--branches--` naming
+# (a startsWith check, not an exact match; .release-please-config.json does
+# not override it), and releases target `main` -- so nothing here needed to
+# be overridden. Re-verify against .release-please-config.json /
+# .release-please-manifest.json before assuming that still holds.
+#
+# PINNED BY FULL COMMIT SHA, not a tag or @main, on all three `uses:` lines
+# below, and all three MUST stay equal: `merge-backstop` grades by calling the
+# same `evaluate()` the pull-request job runs, and one shared pin is what
+# keeps that true here rather than only in shared-workflows' own repository.
+# v1.17.0 is the first shared-workflows release that contains the action.
+#
+# Two things this pull request does NOT do, because they are repository
+# settings rather than workflow content (see release-pr-guard-adoption.md and
+# release-pr-guard-residual.md in shared-workflows):
+#   1. Add "Release PR closes only what it completes" to main's required
+#      status checks.
+#   2. Add "release-guard/link-regrade" to main's required status checks too
+#      -- without it the scheduled re-grade can turn the status red and
+#      nothing forces anyone to look before merging.
+# Both are left to the operator.
+name: Release PR Guard
+
+"on":
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+  # Bounds the time-of-check window. GitHub's floor is 5 minutes and it does
+  # not guarantee punctuality, so this shortens the exposure rather than
+  # removing it.
+  schedule:
+    - cron: "*/5 * * * *"
+  # Fires after the merge, the one moment the answer is final.
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  # The event name is IN THE KEY. Without it every non-pull_request event
+  # collapses to one group, and a scheduled tick would CANCEL the post-merge
+  # backstop -- a silent miss in the one job that cannot be re-run by pushing
+  # again.
+  group: release-pr-guard-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Runs on EVERY pull request, not only release ones. A required context that
+  # reports on some pull requests and not others blocks the ones it skips
+  # forever, so this job is always present and the action short-circuits on a
+  # head branch release-please did not create -- posting a passing status for
+  # it.
+  #
+  # THE JOB NAME IS THE REQUIRED CONTEXT. Do not change it after adding it to
+  # branch protection; a renamed check silently stops being required.
+  closing-keywords:
+    name: Release PR closes only what it completes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      # To publish the same verdict as a commit status on the head SHA, so the
+      # scheduled re-grade has something to overwrite and a pull request is
+      # never left waiting on a context only the cron can post.
+      statuses: write
+    steps:
+      # hardening-exception: egress-audit — this job reaches only api.github.com
+      #   through the gh CLI and mints no long-lived credential, but this repository
+      #   has no recorded endpoint baseline yet for this workflow and a block policy
+      #   written without one fails closed on its first run
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      # No actions/checkout. The action carries its own implementation at
+      # `github.action_path`, and it reads the pull request through the API
+      # rather than from the event payload, so it needs nothing from this
+      # repository's tree.
+      - name: Grade the release pull request
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@0f121ce84fcd06966716146824e9764bd085936e # v1.17.0
+        with:
+          mode: pull-request
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          pr-number: ${{ github.event.pull_request.number }}
+
+  # The time-of-check half. An issue attached through the Development panel
+  # writes a `connected` timeline event, and `connected` is not an activity
+  # type on ANY webhook -- so a link made after the last push fires nothing
+  # and no event-driven check can see it. Looking again on a clock BOUNDS that
+  # window to one tick; it does not remove it.
+  link-regrade:
+    name: Re-grade open release PRs against the live link graph
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      statuses: write
+    steps:
+      # hardening-exception: egress-audit — same shape as the job above: gh CLI to
+      #   api.github.com only, no long-lived credential, and no endpoint baseline
+      #   exists yet for this workflow to write a block policy from
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Re-grade every open pull request and republish the verdict
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@0f121ce84fcd06966716146824e9764bd085936e # v1.17.0
+        with:
+          mode: link-regrade
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+
+  # Runs once the merge has happened, which is the only moment no link
+  # timing, no cancelled run and no admin bypass can dodge. It cannot prevent
+  # the close. It makes the close LOUD and puts the issue back.
+  merge-backstop:
+    name: A merged release closed only what it completes
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      # To reopen an issue the merge closed that no commit in the release
+      # asked to close. This is the repair, and it is the reason the job
+      # exists.
+      issues: write
+    steps:
+      # hardening-exception: egress-audit — same shape again: gh CLI to
+      #   api.github.com only, no long-lived credential, and no endpoint baseline
+      #   exists yet for this workflow to write a block policy from
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Grade the merge and reopen anything it closed by mistake
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@0f121ce84fcd06966716146824e9764bd085936e # v1.17.0
+        with:
+          mode: merge-backstop
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          merge-sha: ${{ github.sha }}
