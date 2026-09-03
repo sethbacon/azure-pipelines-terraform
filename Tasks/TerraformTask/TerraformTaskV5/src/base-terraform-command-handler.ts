@@ -60,12 +60,34 @@ export { MAX_CAPTURED_STDOUT_BYTES, MAX_CAPTURED_MESSAGE_BYTES } from './command
  * generic) override only handleBackend()/handleProvider() and inherit one identical
  * command-execution path, which is exactly what keeps provider behavior consistent.
  *
- * #878 is decomposing the rest. Extracted so far: temp-file lifecycle
- * ({@link TempFileManager}), argv/flag building ({@link ArgumentBuilder}),
- * command execution ({@link CommandExecutor}) and results publishing
- * ({@link ResultsPublisher}). What remains is the per-command implementations
- * themselves plus provider-detection output parsing. Each step is a pure
- * refactor with no behavior change.
+ * #878's decomposition is COMPLETE and was deliberately stopped here. Extracted:
+ * temp-file lifecycle ({@link TempFileManager}), argv/flag building
+ * ({@link ArgumentBuilder}), command execution ({@link CommandExecutor}) and
+ * results publishing ({@link ResultsPublisher}) — 2302 lines down to ~1390.
+ *
+ * THE REMAINING SIZE IS A DECISION, NOT A BACKLOG ITEM. Roughly two thirds of
+ * what is left is the sixteen per-command implementations, and moving those into
+ * their own modules is not a free refactor: every one of them reaches for members
+ * that are `protected` today — createBaseCommand, createAuthCommand,
+ * getCommandOptions, terraformToolHandler, commandExecutor, argumentBuilder,
+ * handleProvider, the afterInit/afterPlanFileWritten hooks. A command in its own
+ * file needs all of them PUBLIC, and a `CommandContext` interface does not avoid
+ * that, because a TypeScript interface cannot carry protected members.
+ *
+ * So the trade is: a smaller file, in exchange for widening the public API of the
+ * class that owns credential handling, temp-file tracking and auth-scheme
+ * validation. That was weighed and declined — the narrow surface is worth more
+ * than the line count. Do not "finish" #878 by splitting the commands out without
+ * re-opening that decision first.
+ *
+ * A second, mechanical reason to leave it: ten test suites read THIS FILE as
+ * source text and assert on its contents, and HardenedTempWritesClassL0 hard-codes
+ * `{ file: '…/base-terraform-command-handler.ts', fn: 'plan (raw
+ * terraform-plan-results attachment)' }`. A scanner left pointing at this file
+ * after its subject moved keeps passing while asserting nothing — which is a
+ * silently disarmed guard, not a failing test. Any future move here has to
+ * re-point each scanner AND confirm it then fails against the file it no longer
+ * belongs to.
  */
 export abstract class BaseTerraformCommandHandler {
     providerName: string;
