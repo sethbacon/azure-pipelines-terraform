@@ -4,6 +4,24 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.15.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.1...v1.15.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **build:** align TerraformTaskV5's tests tsconfig target with its own ([#1095](https://github.com/sethbacon/azure-pipelines-terraform/issues/1095)) ([e3ba466](https://github.com/sethbacon/azure-pipelines-terraform/commit/e3ba4661f348ce93d9aa40422edb346f1923a7a9))
+* **oci:** deliver the API-key credential through a config file, not TF_VAR_ alone ([#1090](https://github.com/sethbacon/azure-pipelines-terraform/issues/1090)) ([fee75d1](https://github.com/sethbacon/azure-pipelines-terraform/commit/fee75d1bddd363c7406c18cbf8a23a7e1f48a056))
+
+
+### Documentation
+
+* surface the ServiceNow task migration where people actually read ([#1093](https://github.com/sethbacon/azure-pipelines-terraform/issues/1093)) ([57c239f](https://github.com/sethbacon/azure-pipelines-terraform/commit/57c239fd1723e8fa6246604df09af4067e96c55a))
+
+
+### Security
+
+* adopt the superset egress gate and adjudicate the 14 ServiceNow sites ([#1092](https://github.com/sethbacon/azure-pipelines-terraform/issues/1092)) ([ff0eda9](https://github.com/sethbacon/azure-pipelines-terraform/commit/ff0eda9e1b7eae3a97b63fbab84f76729f41e0c5))
+
 ## [1.15.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.0...v1.15.1) (2026-09-03)
 
 
