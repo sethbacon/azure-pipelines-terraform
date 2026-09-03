@@ -59,7 +59,44 @@ const SINKS = [
     'downloadToFile', 'downloadTool', 'downloadToolWithTimeout', 'downloadTo',
     'downloadFromMirrorUrl', 'fetchWithTimeout', 'fetchJson', 'fetchText',
     'fetchTextAllow404', 'fetchBuffer', 'fetchBufferAllow404',
+    // This repo's own transports (#124): neither is a CLI-tool-installer
+    // download, so neither matched anything above until added here. snRequest's
+    // signature is (method, url, options?) -- url is its 2nd argument.
+    // adoRequest's is (connection, method, url, body?, transport?) -- url is
+    // its 3rd.
+    { name: 'snRequest', urlArgIndex: 1 }, { name: 'adoRequest', urlArgIndex: 2 },
 ];
+
+// Normalized {name, urlArgIndex} form. A bare string keeps the default (index 0)
+// every sink used before adoRequest needed something else.
+const SINK_ENTRIES = SINKS.map(s => (typeof s === 'string' ? { name: s, urlArgIndex: 0 } : { name: s.name, urlArgIndex: s.urlArgIndex ?? 0 }));
+
+
+// A host built by calling a small local helper is not itself runtime-allowlist
+// material when that helper's OWN doc comment carries this marker: the review
+// lives with the one function that actually knows why (a value the platform
+// supplies with no operator or attacker path to it, or an identifier already
+// checked against a restrictive charset before use), rather than being
+// asserted at every call site that happens to use it. This is a NARROWER
+// promise than a fixed literal: it is reported, never silent, so a reviewer
+// still sees every one of these in the printed output and can re-open the
+// question by reading the cited helper.
+function egressReviewedHelperReason(expr, allSource) {
+    const call = expr.match(/\$\{\s*(\w+)\s*\(/);
+    if (!call) return null;
+    const defRe = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${call[1]}\\s*\\(`);
+    const dm = defRe.exec(allSource);
+    if (!dm) return null;
+    // Bounded look-back for the doc comment immediately preceding the function
+    // (anchored to end right where the function starts) -- NOT a lazy scan over
+    // the whole corpus, which can backtrack through unrelated comments/functions
+    // and return the WRONG helper's marker when several are defined nearby.
+    const before = allSource.slice(Math.max(0, dm.index - 1000), dm.index);
+    const doc = before.match(/\/\*\*([\s\S]*?)\*\/\s*$/);
+    if (!doc) return null;
+    const marker = doc[1].match(/@egress-reviewed:\s*([^\n*]+)/);
+    return marker ? marker[1].trim() : null;
+}
 
 // A function may authorize by INVOKING an authorizer its caller injects, rather
 // than by calling assertEgressHostAllowed itself. Recognized structurally -- a
@@ -270,6 +307,12 @@ if (files.length === 0) {
     process.exit(1);
 }
 
+// egressReviewedHelperReason needs to see a marked helper's definition even
+// when it lives in a DIFFERENT file than the call site that imports it (e.g.
+// a shared `baseUrl()` used by several src modules) -- so it searches the
+// whole repo's src/ text, not just the current file's.
+const ALL_SOURCE = files.map(f => fs.readFileSync(f, 'utf8')).join('\n');
+
 const findings = [];
 const suspects = [];
 
@@ -308,11 +351,11 @@ for (const file of files) {
     const wrappers = new Map();
     for (const pass of [0, 1]) {
         const sinkNames = pass === 0
-            ? SINKS.map(n => [n, { index: 0, authorized: false }])
+            ? SINK_ENTRIES.map(e => [e.name, { index: e.urlArgIndex, authorized: false }])
             // Wrapper entries first: when a repo-local wrapper shares a name with a
             // base sink, its discovered URL-argument index and internal authorization
             // are the accurate reading, and the dedup below keeps the first verdict.
-            : [...wrappers, ...SINKS.map(n => [n, { index: 0, authorized: false }])];
+            : [...wrappers, ...SINK_ENTRIES.map(e => [e.name, { index: e.urlArgIndex, authorized: false }])];
         for (const [name, { index: urlArgIndex, authorized: viaWrapper }] of sinkNames) {
             const re = new RegExp(`(?<![.\\w])(?:\\w+\\.)?${name}\\s*(?:<[^>(]*>)?\\s*\\(`, 'g');
             let m;
@@ -352,17 +395,63 @@ for (const file of files) {
                     && (viaWrapper || fn.text.includes(`${AUTHORIZER}(`) || invokesInjectedAuthorizer(fn));
                 const rawOnly = !authorized
                     && (callbackUnauthorized || RAW_PRIMITIVES.some(p => fn.text.includes(`${p}(`)));
+                const reviewedReason = !authorized && !rawOnly ? egressReviewedHelperReason(expr, ALL_SOURCE) : null;
                 let verdict;
                 if (authorized) verdict = 'AUTHORIZED';
                 else if (rawOnly) verdict = 'TEXTUAL-ONLY';
+                else if (reviewedReason) verdict = 'EXEMPT-REVIEWED';
                 else verdict = 'UNAUTHORIZED';
-                findings.push({ verdict, rel, line: lineOf(m.index), fn: fn.name, sink: name, expr: expr.slice(0, 70) });
+                findings.push({
+                    verdict, rel, line: lineOf(m.index), fn: fn.name, sink: name,
+                    expr: expr.slice(0, 70) + (reviewedReason ? ` — ${reviewedReason}` : ''),
+                });
+            }
+        }
+    }
+
+    // --- default-injected transport aliases ---
+    // `request: RequestFn = adoRequest` is this codebase's standard test-
+    // injection seam (also `transport: Transport = httpsRequest` elsewhere):
+    // the PRODUCTION call always resolves to the default, so a call through the
+    // LOCAL PARAMETER NAME, inside the one function that declares the default,
+    // is the same sink under a different spelling -- otherwise a sink reached
+    // only this way (as adoRequest is, here) never matches its own name.
+    for (const fn of fns) {
+        const aliasRe = /(\w+)\s*:\s*\w+\s*=\s*(\w+)\s*[,)]/g;
+        let am;
+        while ((am = aliasRe.exec(fn.header)) !== null) {
+            const entry = SINK_ENTRIES.find(e => e.name === am[2]);
+            if (!entry) continue;
+            const localName = am[1];
+            const callRe = new RegExp(`(?<![.\\w])${localName}\\s*\\(`, 'g');
+            const fnMasked = masked.slice(fn.start, fn.end);
+            let cm;
+            while ((cm = callRe.exec(fnMasked)) !== null) {
+                const absIndex = fn.start + cm.index;
+                const raw = argumentAt(source, absIndex + cm[0].length - 1, entry.urlArgIndex);
+                const expr = resolveExpression(raw, fn.text, source);
+                if (isConstantHost(expr)) {
+                    findings.push({ verdict: 'EXEMPT-CONSTANT-HOST', rel, line: lineOf(absIndex), fn: fn.name, sink: entry.name, expr: expr.slice(0, 70) });
+                    continue;
+                }
+                const authorized = fn.text.includes(`${AUTHORIZER}(`) || invokesInjectedAuthorizer(fn);
+                const rawOnly = !authorized && RAW_PRIMITIVES.some(p => fn.text.includes(`${p}(`));
+                const reviewedReason = !authorized && !rawOnly ? egressReviewedHelperReason(expr, ALL_SOURCE) : null;
+                let verdict;
+                if (authorized) verdict = 'AUTHORIZED';
+                else if (rawOnly) verdict = 'TEXTUAL-ONLY';
+                else if (reviewedReason) verdict = 'EXEMPT-REVIEWED';
+                else verdict = 'UNAUTHORIZED';
+                findings.push({
+                    verdict, rel, line: lineOf(absIndex), fn: fn.name, sink: entry.name,
+                    expr: expr.slice(0, 70) + (reviewedReason ? ` — ${reviewedReason}` : ''),
+                });
             }
         }
     }
 }
 
-const order = ['UNAUTHORIZED', 'TEXTUAL-ONLY', 'AUTHORIZED', 'EXEMPT-CONSTANT-HOST'];
+const order = ['UNAUTHORIZED', 'TEXTUAL-ONLY', 'AUTHORIZED', 'EXEMPT-REVIEWED', 'EXEMPT-CONSTANT-HOST'];
 const seen = new Set();
 const unique = findings.filter(f => {
     const key = `${f.rel}:${f.line}:${f.sink}`;
@@ -409,8 +498,15 @@ for (const file of files) {
     }
 }
 
+// A sink NAME must actually be found for the gate to mean anything: this repo
+// really does make outbound requests (#124 -- this signature's own SINKS list
+// once matched none of them, printing an unconditional OK having examined zero
+// real call sites). Zero sinks despite files existing under src/ is treated the
+// same as zero files: a silent pass no one can trust.
+const vacuous = files.length > 0 && unique.length === 0;
+
 const failures = unique.filter(f => f.verdict === 'UNAUTHORIZED' || f.verdict === 'TEXTUAL-ONLY').length
-    + suspects.length + injectedCallSiteFailures.length;
+    + suspects.length + injectedCallSiteFailures.length + (vacuous ? 1 : 0);
 
 if (JSON_OUTPUT) {
     console.log(JSON.stringify({ root: ROOT, sites: unique, suspects: [...suspects, ...injectedCallSiteFailures], failures }, null, 2));
@@ -434,6 +530,12 @@ if (injectedCallSiteFailures.length) {
     console.log(`INJECTED-AUTHORIZER-NOT-SUPPLIED (${injectedCallSiteFailures.length}):`);
     for (const s of injectedCallSiteFailures) console.log(`  ${s}`);
     console.log('');
+}
+
+if (vacuous) {
+    console.error(`FAIL: 0 sink(s) matched across ${files.length} src file(s) — this signature would pass vacuously.`);
+    console.error('      Either this repo genuinely makes no outbound network calls (extend SINKS to cover its real transport');
+    console.error('      function names if it does), or the SINKS list no longer names any function this repo actually calls.');
 }
 
 if (failures > 0) {
