@@ -290,8 +290,12 @@ describe('Pre-mask defect class — credential emitted before it was registered 
             // on-disk form, which needs its own registration.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
-            assert.strictEqual(tempFiles.length, 1, 'exactly one tracked temp file: the OCI key');
-            const onDisk = fs.readFileSync(tempFiles[0], 'utf8');
+            // Two tracked files since #1082: the private key AND the synthetic OCI
+            // config that names it. Selected by NAME rather than index so this
+            // stays honest if the write order ever changes.
+            assert.strictEqual(tempFiles.length, 2, 'tracked: the OCI key and the config that names it');
+            const keyPath = tempFiles.find((p) => !p.includes('oci-apikey-config'))!;
+            const onDisk = fs.readFileSync(keyPath, 'utf8');
             const onDiskBody = onDisk.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('-----'));
             assert.ok(onDiskBody.length > 0, 'sanity: the normalized PEM has body lines');
             for (const line of onDiskBody) {
