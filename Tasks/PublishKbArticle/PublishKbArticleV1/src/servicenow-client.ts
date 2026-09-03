@@ -28,6 +28,15 @@ export interface KbCategory {
     kb_knowledge_base?: string | { value: string };
 }
 
+/**
+ * The ServiceNow REST base URL for an instance name.
+ *
+ * @egress-reviewed: `instance` is validated against a restrictive charset
+ * (letters, digits, hyphens only -- `/^[a-z0-9-]+$/i` at index.ts:83, which
+ * throws `InvalidInstance`) before ever reaching this function, so it cannot
+ * carry a scheme, a path, another host, or a redirect target -- only a
+ * subdomain label under the fixed `.service-now.com` suffix below.
+ */
 export function baseUrl(instance: string): string {
     return `https://${instance}.service-now.com`;
 }
