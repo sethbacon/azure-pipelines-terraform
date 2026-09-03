@@ -47,7 +47,16 @@ jobs:
 
       - name: Run OSV-Scanner
         id: osv
-        uses: google/osv-scanner-action/osv-scanner-action@c51854704019a247608d928f370c98740469d4b5 # v2.3.5
+        # v2.5.1, the newest release and the pin the other seven repositories in
+        # the estate carry. This one sat on v2.3.5 for weeks after they moved,
+        # because nothing watches this pin: the estate's tooling-version-drift
+        # check covers the zizmor and actionlint pins only, so an osv-scanner
+        # pin can fall behind without anything saying so (#894).
+        #
+        # The Go-toolchain abort that made a newer pin urgent elsewhere cannot
+        # reach this repository -- it carries no go.mod, so osv-scanner runs no
+        # call analysis here at all. This bump is drift removal, not a fix.
+        uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
         continue-on-error: true
         with:
           scan-args: |-
