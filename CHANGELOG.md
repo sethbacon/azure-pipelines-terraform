@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.15.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.0...v1.15.1) (2026-09-03)
+
+
+### Documentation
+
+* **oci:** retire the last references to oci-token-exchange.ts ([50e3a79](https://github.com/sethbacon/azure-pipelines-terraform/commit/50e3a794741bd2cc758c2f613498c3c4ef095b4a))
+* record that the base handler's remaining size is a decision ([#1084](https://github.com/sethbacon/azure-pipelines-terraform/issues/1084)) ([4dcb767](https://github.com/sethbacon/azure-pipelines-terraform/commit/4dcb767dd30db8eb46c31c6341274540b8d3d521))
+
+
+### Refactor
+
+* **oci:** consume the UPST exchange from the shared package ([#1076](https://github.com/sethbacon/azure-pipelines-terraform/issues/1076)) ([a53afeb](https://github.com/sethbacon/azure-pipelines-terraform/commit/a53afeb1f36fff0dce6e47ce7ecf38304126e8e1))
+
 ## [1.15.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.14.10...v1.15.0) (2026-09-01)
 
 
