@@ -450,7 +450,12 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
 
     // --- NEUTRALIZATION ROWS (#187) ------------------------------------------
 
-    const NEUTRALIZE_ROWS: Array<{ site: string; handler: string; base: string; entry?: Entry; competing: string[] }> = [
+    // `competing` names must be ABSENT afterwards. `owned` names are ones the branch
+    // legitimately sets itself (#1082): for those the property is not absence but
+    // REPLACEMENT -- the agent's inherited value must not survive, which is a
+    // stronger assertion than 'undefined' because it also proves the task's own
+    // value took over rather than the name simply being unset.
+    const NEUTRALIZE_ROWS: Array<{ site: string; handler: string; base: string; entry?: Entry; competing: string[]; owned?: string[] }> = [
         {
             site: 'aws.WorkloadIdentityFederation.competing-credential-env', handler: 'aws', base: 'aws.WorkloadIdentityFederation',
             competing: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_PROFILE', 'AWS_SHARED_CREDENTIALS_FILE'],
@@ -508,7 +513,10 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         },
         {
             site: 'oci.static.competing-credential-env', handler: 'oci', base: 'oci.static',
-            competing: ['OCI_CLI_CONFIG_FILE', 'OCI_CLI_PROFILE', 'OCI_CLI_TENANCY', 'OCI_CLI_KEY_FILE'],
+            competing: ['OCI_CLI_TENANCY', 'OCI_CLI_KEY_FILE'],
+            // The API-key branch now writes its own OCI config and names it, exactly
+            // as the WIF branch does, so these two are owned rather than competing.
+            owned: ['OCI_CLI_CONFIG_FILE', 'OCI_CLI_PROFILE'],
         },
     ];
 
@@ -520,6 +528,12 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
             for (const name of row.competing) {
                 assert.strictEqual(process.env[name], undefined,
                     `${row.site}: '${name}' was inherited from the agent and can out-rank the credentials this branch injects; it must be cleared`);
+            }
+            for (const name of row.owned ?? []) {
+                assert.notStrictEqual(process.env[name], 'inherited-from-agent',
+                    `${row.site}: '${name}' still holds the value inherited from the agent; the branch that owns this name must overwrite it`);
+                assert.ok(process.env[name],
+                    `${row.site}: '${name}' is owned by this branch and must be set to the task's own value`);
             }
         });
     }

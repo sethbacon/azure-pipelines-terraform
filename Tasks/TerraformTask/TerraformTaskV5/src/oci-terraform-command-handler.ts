@@ -374,7 +374,12 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
                 const region = requireIdentityField(command.serviceProviderName, "region", { source: 'data', pattern: REGION_PATTERN, description: 'region identifier' });
                 const fingerprint = requireIdentityField(command.serviceProviderName, "fingerprint", { source: 'data', pattern: FINGERPRINT_PATTERN, description: 'key fingerprint' });
 
+                // TF_VAR_* alone is not authoritative (#1082): see writeApiKeyConfigFile.
+                const apiKeyConfigPath = this.writeApiKeyConfigFile(tenancy, user, region, fingerprint, privateKeyFilePath);
+
                 neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI API key");
+                EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", apiKeyConfigPath);
+                EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancy);
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", user);
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", region);
@@ -386,6 +391,39 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
                 throw new Error("An OCI service connection is required for this command. Set environmentServiceNameOCI.");
             }
         }
+    }
+
+    /**
+     * Writes the API-key credential as a synthetic OCI config file and returns its
+     * path, so the credential reaches the provider even when the configuration does
+     * not wire the TF_VAR_* values (#1082).
+     *
+     * TF_VAR_* alone is not authoritative: terraform silently ignores a TF_VAR_
+     * naming a variable the configuration never declared (measured on terraform
+     * 1.13.0 -- exit 0, no diagnostic). A provider block that does not reference
+     * these variables therefore receives nothing this task injected -- and since the
+     * same branch has just cleared every OCI_CLI_* name, the operator's own ambient
+     * configuration is gone too, leaving the provider to fall through to its default
+     * ~/.oci/config: a different tenancy on a self-hosted agent that carries one.
+     *
+     * The config file is consulted only where the provider block leaves a field
+     * unset, so a configuration that DOES wire the variables is unaffected. The WIF
+     * branch below has always worked this way; this branch was the weaker sibling.
+     */
+    private writeApiKeyConfigFile(
+        tenancy: string, user: string, region: string, fingerprint: string, keyFilePath: string,
+    ): string {
+        const configPath = path.join(resolveWifTempDir(), `oci-apikey-config-${uuidV4()}`);
+        writeSecretFile(configPath, [
+            '[DEFAULT]',
+            `tenancy=${tenancy}`,
+            `user=${user}`,
+            `region=${region}`,
+            `fingerprint=${fingerprint}`,
+            `key_file=${keyFilePath}`,
+        ].join('\n') + '\n');
+        this.trackTempFile(configPath);
+        return configPath;
     }
 
     private async handleProviderWIF(command: TerraformAuthorizationCommandInitializer): Promise<void> {

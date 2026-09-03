@@ -47,6 +47,19 @@ rules:
       - release.yml:250:9
       - release.yml:317:9
       - release.yml:599:9
+  self-repository:
+    ignore:
+      # The audit asks for GitHub's `uses: $/...` form in place of `uses: ./...`.
+      # actionlint rejects `$/` as a malformed `uses` value, and actionlint is a
+      # required check here via shared-workflows' workflow-security gate, so the
+      # remediation cannot land: it was tried in 4cloudguru/shared-workflows#46,
+      # resolved correctly at runtime, and still failed that gate. actionlint
+      # support is requested in rhysd/actionlint#711, still open. Tracked in
+      # 4cloudguru/shared-workflows#45. File-scoped rather than line-scoped
+      # because no `uses: ./` in these two files is convertible until actionlint
+      # moves, not because a particular call site is special.
+      - release.yml
+      - weekly-security.yml
   superfluous-actions:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file

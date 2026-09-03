@@ -99,8 +99,12 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
-        assert.strictEqual(tempFiles.length, 1, 'exactly one tracked temp file: the private key');
-        const [privateKeyPath] = tempFiles;
+        // Two tracked files since #1082: the private key AND the synthetic OCI config
+        // that names it. Selected by NAME rather than index so this stays honest if
+        // the write order ever changes.
+        assert.strictEqual(tempFiles.length, 2, 'tracked: the private key and the OCI config that names it');
+        const privateKeyPath = tempFiles.find((p) => !p.includes('oci-apikey-config'))!;
+        assert.ok(privateKeyPath, 'the private key file must still be tracked');
 
         const writtenPem = fs.readFileSync(privateKeyPath, 'utf-8');
         assert.strictEqual(writtenPem, TEST_OCI_PRIVATE_KEY_PEM, 'the ADO spaces-form key is normalized to proper multi-line PEM on disk');
@@ -205,8 +209,12 @@ describe('handleProvider -- OCI classic API-key private key masking (#723)', fun
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const tempFiles: readonly string[] = (handler as any).tempFileManager.tracked;
-            assert.strictEqual(tempFiles.length, 1, 'the auth-delivered key still produces exactly one key file');
-            assert.strictEqual(fs.readFileSync(tempFiles[0], 'utf-8'), TEST_OCI_PRIVATE_KEY_PEM);
+            // Two tracked files since #1082: the private key AND the synthetic OCI
+            // config that names it. Selected by NAME rather than index so this
+            // stays honest if the write order ever changes.
+            assert.strictEqual(tempFiles.length, 2, 'tracked: the auth-delivered key and the OCI config');
+            const keyPath = tempFiles.find((p) => !p.includes('oci-apikey-config'))!;
+            assert.strictEqual(fs.readFileSync(keyPath, 'utf-8'), TEST_OCI_PRIVATE_KEY_PEM);
             assert.ok(setSecretCalls.includes(TEST_OCI_PRIVATE_KEY_SPACES),
                 'the auth-delivered key must be masked exactly as the data-delivered one is');
         });

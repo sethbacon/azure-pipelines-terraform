@@ -15,8 +15,21 @@ This extension provides:
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
 - **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs
-- **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles (moving to [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs) as `PipelineMarkdown2Html`; `Markdown2Html@1` keeps working here until that migration completes)
-- **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow (moving to [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs) as `PipelinePublishKbArticle`; `PublishKbArticle@1` keeps working here until that migration completes)
+- **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles ⚠️ *deprecated here -- see below*
+- **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow ⚠️ *deprecated here -- see below*
+
+> **⚠️ The two ServiceNow tasks are moving out of this extension.**
+> `Markdown2Html@1` and `PublishKbArticle@1` are deprecated here and are being republished in
+> [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs)
+> as `PipelineMarkdown2Html` and `PipelinePublishKbArticle`.
+>
+> This is a **rename, not an in-place move**: the replacements have a new name and a new task id, so an
+> existing `Markdown2Html@1` reference keeps resolving here and **nothing migrates automatically -- you
+> have to edit your YAML**. Both tasks keep working here meanwhile, every run logs a non-fatal warning,
+> and both extensions can be installed side by side. They are removed here only after both extensions
+> have published five minor releases with the task available in both.
+>
+> Every other task in this extension is unaffected.
 - Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.

@@ -85,6 +85,30 @@ To publish to the VS Marketplace:
 4. Accept the Marketplace Publisher Agreement
 5. Automated publishing uses the GitHub OIDC → Entra federated credential (no PAT). A Marketplace PAT is only needed for manual CLI publishing of private dev builds (see `docs/setup/private-testing.md`).
 
+## Deprecated: the two ServiceNow tasks are leaving this extension
+
+`Markdown2HtmlV1` and `PublishKbArticleV1` are deprecated here and are being republished in
+`azure-pipelines-release-docs` as `PipelineMarkdown2Html` and `PipelinePublishKbArticle` (#55, #573).
+
+**Do not invest in them here.** New work on either task belongs in the destination extension, and a
+fix applied only here is lost at removal. A fix that must ship before cutover has to be applied to
+BOTH repositories — the copies have already diverged once (#1046: `check-egress-authorization.js`
+plus three `src/` files), which is what let fourteen credential-bearing ServiceNow egress sites go
+unadjudicated here while the same code was adjudicated in the other repo.
+
+The migration is a **rename, not an in-place move**: a task GUID cannot be reused across two
+separately-published extensions, so the replacements carry a new name AND a new id. An existing
+`Markdown2Html@1` reference keeps resolving to the task in this extension indefinitely, which is why
+both tasks emit a non-fatal runtime warning on every run (`deprecation-notice.ts`, byte-identical
+across both tasks and gated by `scripts/check-shared-modules.js`).
+
+**Removal is bounded, not indefinite:** both tasks stay until both extensions have published five
+minor releases with the task available in both, counting from the release-docs extension's first
+published release. Removing them earlier breaks pipelines that have not yet edited their YAML;
+leaving them longer keeps two diverging copies of a credential-handling task alive.
+
+Documented for users at the top of `README.md` and in `overview.md` (the Marketplace description).
+
 ## Extension Naming — HashiCorp Trademark
 
 HashiCorp's trademark policy prohibits using "Terraform" as a standalone product name. Nominative fair use (accurately describing compatibility) is permitted. The name `"Pipeline Tasks for Terraform"` is compliant — it describes the extension's function without implying official HashiCorp affiliation.
