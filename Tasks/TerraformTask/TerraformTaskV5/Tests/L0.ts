@@ -14,6 +14,9 @@ import './RetryL0';
 import './ProxyConfigL0';
 import './ProxyParityL0';
 import './RoleSessionNameManifestL0';
+// Severity classification for the credential-neutralizing guard: the agent sets
+// SYSTEM_OIDCREQUESTURI on every job, so warning about it was noise by construction.
+import './NeutralizeSeverityL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
 // Direct unit tests for post-hoc chmod on third-party secure-file downloads.
