@@ -9,6 +9,28 @@ This is a fork of [microsoft/azure-pipelines-terraform](https://github.com/micro
 
 ---
 
+> ### ⚠️ The two ServiceNow tasks are moving out of this extension
+>
+> **`Markdown2Html@1` and `PublishKbArticle@1` are deprecated here** and are being republished in
+> [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs)
+> as **`PipelineMarkdown2Html`** and **`PipelinePublishKbArticle`**.
+>
+> **This is a rename, not an in-place move.** A task GUID cannot be reused across two separately-published
+> extensions, so the replacements have a new name *and* a new id. An existing `Markdown2Html@1` reference
+> keeps resolving to the task in **this** extension indefinitely — nothing in Azure DevOps will tell you a
+> successor exists, and nothing migrates automatically. **You have to edit your YAML.**
+>
+> | | |
+> |---|---|
+> | Nothing breaks today | Both tasks keep working here, and every run logs a non-fatal warning |
+> | Install side by side | Both extensions can be installed at once while you move |
+> | Removal | Only after both extensions have published **five minor releases** with the task available in both, counting from the release-docs extension's first published release |
+>
+> Everything else in this extension — the Terraform, policy, drift-report and terraform-docs tasks — is
+> unaffected and is not moving.
+
+---
+
 ## Tasks
 
 ### `PipelineTerraformInstaller@1` — Terraform Tool Installer
@@ -459,6 +481,12 @@ All ServiceNow requests are sent over HTTPS only (the task refuses to transmit c
 ### End-to-end: document a module and publish it to ServiceNow
 
 `PipelineTerraformDocs@1` → `Markdown2Html@1` → `PublishKbArticle@1`:
+
+> **Two of these three tasks are moving.** `Markdown2Html@1` and `PublishKbArticle@1` become
+> `PipelineMarkdown2Html` and `PipelinePublishKbArticle` in
+> [Pipeline Tasks for Release & Documentation](https://github.com/sethbacon/azure-pipelines-release-docs).
+> This example still works as written, but a pipeline written from it today will need editing at
+> cutover — see [the notice above](#tasks). Only `PipelineTerraformDocs@1` stays here.
 
 ```yaml
 - task: PipelineTerraformDocsInstaller@1
