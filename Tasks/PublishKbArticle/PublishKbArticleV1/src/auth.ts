@@ -1,5 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { snRequest, withRetry } from './servicenow-http';
+import { baseUrl } from './servicenow-client';
 
 /**
  * Obtain an OAuth token from ServiceNow using client credentials grant.
@@ -8,7 +9,11 @@ import { snRequest, withRetry } from './servicenow-http';
  */
 export async function getOAuthToken(instance: string, clientId: string, clientSecret: string): Promise<string> {
     tasks.setSecret(clientSecret);
-    const url = `https://${instance}.service-now.com/oauth_token.do`;
+    // Built through baseUrl() rather than repeating the host here, so the single
+    // @egress-reviewed helper covers this destination too (#1046). A second
+    // hand-written copy of the host string is a second thing to review, and it
+    // was the only ServiceNow URL in this task not going through the helper.
+    const url = `${baseUrl(instance)}/oauth_token.do`;
     const params = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: clientId,
