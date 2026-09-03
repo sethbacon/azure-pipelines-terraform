@@ -119,6 +119,81 @@ const REDIRECT_ROWS: RedirectRow[] = [
 /** Table C. Every egress site the signature enumerates in THIS repo. */
 type SiteRow = { file: string; fn: string; sink: string; verdict: string; why: string };
 const SITE_ROWS: SiteRow[] = [
+    // The deprecated ServiceNow task's egress sites (#1046). Invisible to this
+    // repo's previous gate, which did not model snRequest at all; the superset gate
+    // adopted from azure-pipelines-release-docs sees them and the @egress-reviewed
+    // marker on baseUrl() adjudicates them. Removing that marker turns all fourteen
+    // UNAUTHORIZED, which is what keeps these rows honest.
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/attachments.ts",
+        fn: "listArticleAttachments", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/attachments.ts",
+        fn: "uploadAttachment", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/attachments.ts",
+        fn: "deleteAttachment", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/auth.ts",
+        fn: "getOAuthToken", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "getKnowledgeBases", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "getArticle", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "createKnowledgeArticle", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "updateKnowledgeArticle", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "updateArticleBody", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "changeWorkflowState", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "getKbCategories", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "createCategory", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "findOrCreateCategory", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
+    {
+        file: "Tasks/PublishKbArticle/PublishKbArticleV1/src/servicenow-client.ts",
+        fn: "findArticleBySourceKey", sink: "snRequest", verdict: "EXEMPT-REVIEWED",
+        why: "ServiceNow host is built by baseUrl(), whose `instance` is charset-validated (/^[a-z0-9-]+$/i at index.ts:83, throwing InvalidInstance) before it can reach a URL, so it cannot carry a scheme, path, host or redirect target \u2014 only a subdomain label under the fixed .service-now.com suffix. Adjudicated via the @egress-reviewed marker on baseUrl (#1046)",
+    },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
         fn: "resolveLatestSentinel", sink: "fetchJson", verdict: "EXEMPT-CONSTANT-HOST",
