@@ -423,13 +423,28 @@ export class ResultsPublisher {
         // every caller to "set cleanupOutputFile" regardless would be stale/misleading now
         // that cleanup is opt-OUT rather than opt-in for the sensitive case.
         const willAutoCleanup = tasks.getBoolInput('cleanupOutputFile', false) || tasks.getBoolInput('cleanupOutputFileIfSensitive', false);
-        tasks.warning(
+        const message =
             `${filePath} contains ${sensitiveKeys.length} sensitive output(s) in cleartext (${sensitiveKeys.join(', ')}). ` +
             `Ensure this file is not published as a pipeline artifact. ` +
             (willAutoCleanup
                 ? `This file will be deleted automatically at the end of this step.`
-                : `Set 'cleanupOutputFileIfSensitive' (or 'cleanupOutputFile') to remove it automatically at the end of this step if downstream steps don't need to read it from disk.`)
-        );
+                : `Set 'cleanupOutputFileIfSensitive' (or 'cleanupOutputFile') to remove it automatically at the end of this step if downstream steps don't need to read it from disk.`);
+
+        // `sensitiveKeys.length > 0` is a genuine per-run fact about the plan
+        // output, not something the shipped defaults guarantee, so this
+        // disclosure belongs in the warning stream -- unlike the
+        // unconditional-noise class this file's other checks were pulled out
+        // of. What DOES vary with the operator's own configuration is
+        // severity: cleanupOutputFileIfSensitive defaults to true, so on the
+        // common path the exposure is already scheduled for deletion at the
+        // end of this step. Only the case the operator chose -- disabling
+        // BOTH cleanup options, so the file genuinely persists with secrets
+        // in cleartext -- keeps full warning severity.
+        if (willAutoCleanup) {
+            tasks.debug(message);
+        } else {
+            tasks.warning(message);
+        }
         return true;
     }
 }
