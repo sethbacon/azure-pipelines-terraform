@@ -232,7 +232,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
-    const data = await fetchJson<{ download_url: string; sha256: string; shasums_url?: string }>(infoUrl);
+    const data = await fetchJson<{ download_url: string; sha256: string; filename?: string; shasums_url?: string; shasums_signature_url?: string }>(infoUrl);
     if (!data.download_url) {
         throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
     }
@@ -306,16 +306,55 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         throw new Error(tasks.loc("TerraformDownloadFailed", safeUrl, safeMsg));
     }
 
+    // #1024: terraform-registry-backend has served shasums_url/shasums_signature_url
+    // since v1.2.5, GPG-verified by the sync job against the pinned HashiCorp key at
+    // ingest -- the SAME key this task already embeds and trusts for the hashicorp
+    // and mirror sources. Reachable here only for binary=terraform: downloadTofu
+    // never calls this function, and OpenTofu's SHA256SUMS is signed with a
+    // different key this task does not embed (its own official install path
+    // verifies via cosign instead, see downloadZipFromOpenTofu). When the registry
+    // advertises both URLs, verify the fetched SHA256SUMS' signature and derive the
+    // checksum from that VERIFIED content -- a strictly stronger guarantee than
+    // trusting data.sha256, which is only the registry's own unauthenticated
+    // assertion delivered over the same TLS session as the archive. This does not
+    // contradict the "don't fall back to shasums_url for a missing sha256" reasoning
+    // below: that is about substituting one unauthenticated value from this host for
+    // another; this authenticates shasums_url itself against an out-of-band,
+    // embedded trust root before trusting anything it says.
+    if (data.shasums_url && data.shasums_signature_url) {
+        const shasumsUrl = data.shasums_url;
+        const shasumsSignatureUrl = data.shasums_signature_url;
+        // Both URLs come from the SAME registry-controlled JSON response as
+        // download_url and get the SAME two defenses. fetchText's own redirect
+        // policy defaults to same-host-only (pipeline-task-core's http.ts), which
+        // bounds a redirect FROM either URL to the host it started on -- it does
+        // not validate that starting host, which is what assertEgressHostAllowed
+        // below covers, reusing the same allowedHosts decision as download_url.
+        if (!shasumsUrl.startsWith('https://') || !shasumsSignatureUrl.startsWith('https://')) {
+            throw new Error(tasks.loc("InsecureUrlRejected", redactUrl(!shasumsUrl.startsWith('https://') ? shasumsUrl : shasumsSignatureUrl)));
+        }
+        await assertEgressHostAllowed(new URL(shasumsUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
+        await assertEgressHostAllowed(new URL(shasumsSignatureUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
+
+        const sumsContent = await fetchText(shasumsUrl);
+        const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
+        await discardArtifactOnFailure(zipPath, async () => {
+            await verifyGpgSignature(sumsContent, shasumsSignatureUrl, requireGpg);
+            await verifySha256(zipPath, parseSha256(sumsContent, data.filename || `terraform_${version}_${osPlatform}_${arch}.zip`));
+        }, discardLog);
+        return { zipPath, verified: true };
+    }
+
     if (data.sha256) {
         await discardArtifactOnFailure(zipPath, () => verifySha256(zipPath, data.sha256), discardLog);
         // The checksum matched, but it is the REGISTRY's own assertion about the
-        // artifact, delivered over the same TLS session -- not a signature. The
-        // hashicorp and mirror sources verify SHA256SUMS against the pinned
-        // HashiCorp GPG key; this path has no signature verifier at all, and
-        // requireGpgSignature does not apply to it (task.json hides the input via
-        // visibleRule, which is UI-only -- a YAML pipeline can set it to true and
-        // silently get no signature verification). Say so rather than reporting a
-        // bare success that reads identically to the GPG-anchored paths (#1024).
+        // artifact, delivered over the same TLS session -- not a signature. This
+        // registry did not advertise shasums_url/shasums_signature_url above (an
+        // older terraform-registry-backend, gpg_verify disabled on this mirror
+        // config, or a version synced before either existed), so there is nothing
+        // to verify against the pinned HashiCorp key here. Say so rather than
+        // reporting a bare success that reads identically to the GPG-anchored
+        // paths (#1024).
         tasks.warning(tasks.loc("RegistryTrustAnchorIsChecksumOnly", infoUrl));
         return { zipPath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
