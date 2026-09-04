@@ -4,6 +4,15 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.15.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.2...v1.15.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* centralize the Marketplace publish and the pre-publish cosign gate ([#1101](https://github.com/sethbacon/azure-pipelines-terraform/issues/1101)) ([2b56bde](https://github.com/sethbacon/azure-pipelines-terraform/commit/2b56bde070a15184d1e6eade7c42cd7bf648a163))
+* stop tfx's routine preamble from masking a real publish failure ([#1099](https://github.com/sethbacon/azure-pipelines-terraform/issues/1099)) ([8e3d2ab](https://github.com/sethbacon/azure-pipelines-terraform/commit/8e3d2abc3f6e7d1e3a3cb30d7b59cc0b9fd0bc55))
+* stop warnings that fire on every default run, verify registry signatures ([#1097](https://github.com/sethbacon/azure-pipelines-terraform/issues/1097)) ([89ace6e](https://github.com/sethbacon/azure-pipelines-terraform/commit/89ace6e19c9db145374a4ca2ca140917160bc94a))
+
 ## [1.15.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.1...v1.15.2) (2026-09-03)
 
 
