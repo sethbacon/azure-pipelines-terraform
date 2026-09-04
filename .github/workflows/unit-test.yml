@@ -161,7 +161,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # --omit=dev above only audits this task's production dependencies. Its
       # devDependencies (eslint, mocha, ts-node, nyc, ...) execute real code in
       # the Lint/Compile/Test steps below the same as a production dependency
@@ -169,7 +192,30 @@ jobs:
       # overlapping audit with no --omit=dev, repeated identically in every
       # build-and-test-* job in this file.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -326,11 +372,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -488,11 +580,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -546,11 +684,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -604,11 +788,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -662,11 +892,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -720,11 +996,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -778,11 +1100,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -836,11 +1204,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -894,11 +1308,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
@@ -954,7 +1414,30 @@ jobs:
         # jest, …) is a devDependency, so --omit=dev (used by the per-task
         # audits below) would audit nothing. This is the one CI job that
         # installs the root toolchain, so it is the natural place to gate it.
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-tooling-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+            $outputText = Get-Content -Path $logFile -Raw
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Type-check tab
         run: npx --no-install tsc -p src/tab/tsconfig.json --noEmit
       - name: Run tab unit tests
