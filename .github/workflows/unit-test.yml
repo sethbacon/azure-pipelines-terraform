@@ -384,11 +384,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $output = & npm audit --omit=dev --audit-level=high 2>&1
+            $exitCode = $LASTEXITCODE
+            $outputText = $output | Out-String
+            $output
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'npm warn audit network timeout' -or
+              $outputText -match 'npm error audit endpoint returned an error'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #753): this scans the task's devDependencies too.
       - name: Audit development dependencies
-        run: npm audit --audit-level=high
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $output = & npm audit --audit-level=high 2>&1
+            $exitCode = $LASTEXITCODE
+            $outputText = $output | Out-String
+            $output
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $transientNetworkFailure =
+              $outputText -match 'npm warn audit network timeout' -or
+              $outputText -match 'npm error audit endpoint returned an error'
+
+            if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
+              Start-Sleep -Seconds (5 * $attempt)
+              continue
+            }
+
+            exit $exitCode
+          }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
       - name: Compile TypeScript
