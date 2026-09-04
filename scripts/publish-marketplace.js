@@ -68,7 +68,32 @@ const baseDelayMs = parseInt(process.env.PUBLISH_RETRY_BASE_MS || '5000', 10);
 
 // Transient: worth another attempt. Status codes are matched with explicit
 // non-digit boundaries so a version string like "1.503.0" cannot look like a 503.
-const TRANSIENT = /(?:^|[^\d.])(?:429|500|502|503|504)(?![\d.])|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|EPIPE|socket hang up|Service Unavailable|Bad Gateway|Gateway Time-?out|Internal Server Error|TooManyRequests|Too Many Requests|request timed out|network (?:error|timeout)/i;
+//
+// `Request timeout` is what the Gallery API actually says (v1.15.2, 2026-09-03:
+// "error: Request timeout: /_apis/gallery/publishers/.../extensions/...") --
+// distinct from "request timed out" and "network timeout" above, neither of
+// which it matches. Without this alternative the ALREADY_PUBLISHED collision
+// fix alone is not enough: the error becomes correctly non-retryable instead
+// of a misleading duplicate-version rejection, but it still isn't retried, and
+// the release still dies.
+const TRANSIENT = /(?:^|[^\d.])(?:429|500|502|503|504)(?![\d.])|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|EPIPE|socket hang up|Service Unavailable|Bad Gateway|Gateway Time-?out|Internal Server Error|TooManyRequests|Too Many Requests|request timed out|\brequest timeout\b|network (?:error|timeout)/i;
+
+// tfx's own routine preamble, printed before EVERY publish attempt on an
+// extension that has ever been published before ("Checking if this extension
+// is already published" / "It is, update the extension"). It has nothing to
+// do with whether THIS version is a duplicate -- it is asking whether the
+// extension exists at all -- but its raw substring "already published"
+// collided with ALREADY_PUBLISHED below. Combined with the `attempt === 1`
+// branch, that meant ANY transient failure on a first attempt, for any
+// extension with a prior release (every extension after its first), was
+// misclassified as a deterministic duplicate-version rejection and never
+// retried -- reproducing exactly the incident this script exists to prevent.
+// v1.15.2's release died this way (2026-09-03): tfx's preamble printed, the
+// isvalid lookup then hit a genuine `Request timeout`, and the script failed
+// on attempt 1/4 reporting a duplicate version that was never actually
+// checked, leaving the GitHub Release stuck in draft and nothing published.
+// Stripped before classification so it can never shadow a real message again.
+const TFX_ROUTINE_PREAMBLE = /^.*Checking if this extension is already published.*$/gm;
 
 // The version is already on the Marketplace.
 //
@@ -187,9 +212,13 @@ async function main() {
             return 0;
         }
 
+        // Every classification decision below runs against this, not the raw
+        // output -- see TFX_ROUTINE_PREAMBLE's comment for why.
+        const classifiable = output.replace(TFX_ROUTINE_PREAMBLE, '');
+
         // Uploaded, but tfx stopped waiting for validation. Ask the
         // Marketplace instead of guessing from the exit code.
-        if (VALIDATION_PENDING.test(output)) {
+        if (VALIDATION_PENDING.test(classifiable)) {
             const m = output.match(ISVALID_HINT);
             const target = m ? { publisher: m[1], extensionId: m[2], version: m[3] } : {};
             console.log(
@@ -221,7 +250,7 @@ async function main() {
         // count: a workflow-level re-run is a fresh process whose attempt
         // counter starts at 1, which is exactly the case the old
         // `attempt > 1` gate could not serve.
-        if (ALREADY_PUBLISHED.test(output)) {
+        if (ALREADY_PUBLISHED.test(classifiable)) {
             const d = output.match(DUPLICATE_DETAIL);
             const sameVersion = d && d[2] === d[3];
             const target = d
@@ -246,7 +275,7 @@ async function main() {
             return 0;
         }
 
-        if (!TRANSIENT.test(output)) {
+        if (!TRANSIENT.test(classifiable)) {
             console.error(`publish-marketplace: attempt ${attempt} failed with a non-retryable error (exit ${code}). Not retrying.`);
             return code || 1;
         }

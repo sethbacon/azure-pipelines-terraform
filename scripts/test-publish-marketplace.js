@@ -91,18 +91,50 @@ function run(name, script, env = {}) {
     return { res, calls, out: `${res.stdout}${res.stderr}` };
 }
 
-const OK = { out: 'Extension published successfully', code: 0 };
-const TRANSIENT_503 = { out: 'Error: Request failed with status code 503 Service Unavailable', code: 1 };
-const TRANSIENT_RESET = { out: 'Error: read ECONNRESET', code: 1 };
-const PERMANENT = { out: 'Error: TF400898: manifest is invalid: missing publisher', code: 1 };
-const ALREADY = { out: 'Error: The extension version 1.2.7 already exists.', code: 1 };
+// tfx's own routine preamble, printed before EVERY `extension publish`
+// attempt on an extension that has ever been published before -- captured
+// verbatim from the v1.15.2 release failure (2026-09-03). Every
+// publish-shaped fixture below is prefixed with it, because a fixture that
+// omits it is not exercising the real collision: it contains the raw
+// substring "already published", which matched ALREADY_PUBLISHED regardless
+// of what happened afterward, and every case here ran against a world where
+// that string never appeared -- which is exactly how the bug went unnoticed
+// by this file for as long as it did. `extension isvalid` is a different tfx
+// subcommand with no verified evidence it prints the same preamble, so
+// ISVALID_OK/ISVALID_BAD below are deliberately left unprefixed rather than
+// assume.
+const PUBLISH_PREAMBLE = [
+    'TFS Cross Platform Command Line Interface v0.23.2',
+    'Copyright Microsoft Corporation',
+    '> Personal access token: Checking if this extension is already published',
+    'It is, update the extension',
+    '',
+].join('\n');
+
+const OK = { out: `${PUBLISH_PREAMBLE}Extension published successfully`, code: 0 };
+const TRANSIENT_503 = { out: `${PUBLISH_PREAMBLE}Error: Request failed with status code 503 Service Unavailable`, code: 1 };
+const TRANSIENT_RESET = { out: `${PUBLISH_PREAMBLE}Error: read ECONNRESET`, code: 1 };
+const PERMANENT = { out: `${PUBLISH_PREAMBLE}Error: TF400898: manifest is invalid: missing publisher`, code: 1 };
+const ALREADY = { out: `${PUBLISH_PREAMBLE}Error: The extension version 1.2.7 already exists.`, code: 1 };
+
+// The exact shape tfx emitted when v1.15.2's release died (2026-09-03),
+// reproduced verbatim: the routine preamble, THEN a genuine Gallery-API
+// timeout. Before this fix, ALREADY_PUBLISHED matched the preamble's
+// "already published" substring -- not the error at all -- and misreported
+// this as a duplicate-version rejection on attempt 1, so it was never
+// retried despite tfx's own error naming exactly the kind of transient
+// failure this whole script exists to survive.
+const TIMEOUT_AFTER_PREAMBLE = {
+    out: `${PUBLISH_PREAMBLE}error: Request timeout: /_apis/gallery/publishers/sethbacon/extensions/pipeline-tasks-terraform?bypassScopeCheck=false`,
+    code: 255,
+};
 
 // The two shapes tfx ACTUALLY emitted when v1.14.4's release failed twice
 // (2026-08-20), reproduced verbatim. Neither was classified correctly before:
 // the first was read as a non-retryable failure although the upload had
 // succeeded, and the second matched none of ALREADY_PUBLISHED's alternatives.
 const VALIDATION_TIMEOUT = {
-    out: [
+    out: PUBLISH_PREAMBLE + [
         'error: Error: Validation is taking much longer than usual. TFX is exiting. To get the validation status, you may run the command below. This extension will be available after validation is successful.',
         'error: ',
         'error: tfx extension isvalid --publisher sethbacon --extension-id pipeline-tasks-terraform --version 1.14.4 --service-url https://marketplace.visualstudio.com/ --token <your PAT>',
@@ -113,12 +145,12 @@ const ISVALID_OK = { out: 'Extension is valid', code: 0 };
 const ISVALID_BAD = { out: 'Extension validation failed: invalid manifest', code: 0 };
 // Same version on both sides: a previous attempt or run already landed it.
 const DUP_SAME = {
-    out: 'error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.14.4  Updated version: 1.14.4',
+    out: `${PUBLISH_PREAMBLE}error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.14.4  Updated version: 1.14.4`,
     code: 255,
 };
 // A LOWER version than what is live: a real mistake, not a lost response.
 const DUP_OLDER = {
-    out: 'error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.15.0  Updated version: 1.14.4',
+    out: `${PUBLISH_PREAMBLE}error: Version number must increase each time an extension is published.  Extension: sethbacon.pipeline-tasks-terraform  Current version: 1.15.0  Updated version: 1.14.4`,
     code: 255,
 };
 
@@ -144,6 +176,15 @@ const CASES = [
         expectExit: 0,
         expectCalls: 2,
         why: 'a transport-level failure (ECONNRESET) is retried too, not just HTTP 5xx',
+    },
+    {
+        name: 'timeout-after-already-published-preamble-then-success',
+        script: [TIMEOUT_AFTER_PREAMBLE, OK],
+        expectExit: 0,
+        expectCalls: 2,
+        why: "tfx's routine \"already published\" preamble does not shadow a genuine Gallery API "
+            + 'timeout as a duplicate-version rejection (v1.15.2) -- it is retried like any other '
+            + 'transient failure',
     },
     {
         name: 'transient-exhausted',
