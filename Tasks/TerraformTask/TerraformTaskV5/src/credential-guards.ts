@@ -267,10 +267,56 @@ export function resolveOidcRequestUrl(): string | undefined {
  * Each branch therefore clears the variables of the schemes it is NOT using
  * before injecting its own.
  */
+/**
+ * Variables the Azure DevOps agent itself puts in the job environment.
+ *
+ * Clearing these is still correct -- azurerm's OIDC config chains onto them via
+ * MultiEnvDefaultFunc (#1026) -- but it is not NEWS. The agent sets
+ * SYSTEM_OIDCREQUESTURI on every job regardless of authorization scheme, so a
+ * warning here fired on every task of every pipeline and reported nothing an
+ * operator could act on.
+ *
+ * The narrow claim this set makes is about SIGNAL, not about safety: the
+ * message below names the VARIABLE and never its VALUE, so it reads identically
+ * for the agent's own endpoint and for a tampered one and has never been able to
+ * tell them apart. Demoting it to debug therefore removes no detection that
+ * existed. A value-level check is a separate control -- resolveOidcRequestUrl
+ * already host-allowlists this variable before it is handed to the provider.
+ *
+ * Membership is deliberately narrow. SYSTEM_ACCESSTOKEN is NOT here: the agent
+ * does not set it (microsoft/azure-pipelines-agent's own
+ * EnvironmentCapabilitiesProvider.cs says so), it is present only because a
+ * pipeline mapped it, and that is an operator action worth reporting.
+ */
+const AGENT_PROVIDED_ENV: ReadonlySet<string> = new Set(['SYSTEM_OIDCREQUESTURI']);
+
+/**
+ * Platform tokens an operator mapped in for an unrelated purpose.
+ *
+ * SYSTEM_ACCESSTOKEN reaches a job only through an explicit
+ * `env: SYSTEM_ACCESSTOKEN: $(System.AccessToken)`, the "Allow scripts to access
+ * the OAuth token" option, or a pre-set machine environment on a self-hosted
+ * agent -- and it is mapped for REST calls, git push and artifact feeds, not to
+ * select a cloud identity. The generic message below is wrong about it on both
+ * counts, so it gets its own text.
+ */
+const OPERATOR_MAPPED_PLATFORM_ENV: ReadonlySet<string> = new Set(['SYSTEM_ACCESSTOKEN']);
+
 export function neutralizeEnvironmentVariables(names: readonly string[], context: string): void {
     for (const name of names) {
         if (process.env[name] === undefined) continue;
         delete process.env[name];
+
+        if (AGENT_PROVIDED_ENV.has(name)) {
+            tasks.debug(`Cleared the agent-provided environment variable '${name}' before applying ${context} credentials, so the provider cannot fall back to it. The agent sets this on every job; its presence is expected and is not reported as a warning.`);
+            continue;
+        }
+
+        if (OPERATOR_MAPPED_PLATFORM_ENV.has(name)) {
+            tasks.warning(`Cleared the environment variable '${name}' before applying ${context} credentials, so the provider cannot fall back to it for authentication. This variable is not set by the agent -- a pipeline mapped it in, typically for REST or git access. It is also removed from the environment terraform runs with, so a local-exec provisioner or external data source that reads it will not see it.`);
+            continue;
+        }
+
         tasks.warning(`Cleared the inherited environment variable '${name}' before applying ${context} credentials: it selects a different identity and would otherwise take precedence over the credentials resolved from the service connection.`);
     }
 }

@@ -105,8 +105,8 @@
             "label": "Require GPG signature verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "binary = terraform && downloadSource != registry",
-            "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Disable for mirrors that do not serve .sig files."
+            "visibleRule": "binary = terraform",
+            "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Applies to the registry source too when the registry advertises a shasums_signature_url (terraform-registry-backend v1.2.5+ with GPG verification enabled on the mirror); a registry that does not serve one falls back to checksum-only trust regardless of this setting. Disable for mirrors that do not serve .sig files."
         },
         {
             "name": "requireCosignVerification",
@@ -197,7 +197,7 @@
         "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
         "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
-        "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). Integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature is verified on this path. The hashicorp and mirror sources verify SHA256SUMS against the pinned HashiCorp GPG key; requireGpgSignature does not apply to downloadSource=registry. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Use downloadSource hashicorp, or a mirror that publishes a signed SHA256SUMS, if you need signature-anchored trust.",
+        "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). This registry did not advertise a signed SHA256SUMS for this version, so integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature was verified. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Upgrade to terraform-registry-backend v1.2.5+ with GPG verification enabled on the mirror, or use downloadSource hashicorp, if you need signature-anchored trust.",
         "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is, or resolves to, a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is, or resolves to, a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",

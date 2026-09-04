@@ -151,7 +151,7 @@ describe('PolicyAgentInstaller Test Suite', function () {
     // policyAgent=opa, but a YAML pipeline can still set it -- where it is
     // never read on any OPA code path. Silent inertness must not read
     // identically to "nothing was set."
-    it('opa: warns that requireGpgSignature is inert for this agent when explicitly set (#1030)', async () => {
+    it('opa: warns when requireGpgSignature is set to a non-default value (#1030)', async () => {
         const tp = path.join(__dirname, 'OpaRequireGpgSignatureInertWarns.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
         await tr.runAsync();
@@ -162,6 +162,31 @@ describe('PolicyAgentInstaller Test Suite', function () {
                 tr.warningIssues.some(w => w.includes('loc_mock_SignatureToggleInertForAgent')),
                 'setting requireGpgSignature for policyAgent=opa must warn that it has no effect. warnings: '
                 + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // THE ROW THAT MATTERS: what a real agent sends. task.json declares
+    // requireGpgSignature defaultValue "true" and the agent materializes every
+    // declared default into INPUT_*, so this input is present on every OPA run
+    // whether or not the operator wrote it. The previous presence probe
+    // (`getInput(...) !== undefined`) was therefore true on 100% of runs of the
+    // shipped default configuration, and this task warned on every install.
+    //
+    // The negative control below it cannot catch that, because its fixture sets
+    // only three inputs and so asserts in an input environment no agent produces.
+    // It is kept -- it still pins the no-input case -- but this row is the one
+    // that fails if the probe regresses.
+    it('opa: does NOT warn when the agent materialized the declared default', async () => {
+        const tp = path.join(__dirname, 'OpaDefaultsMaterialized.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                !tr.warningIssues.some(w => w.includes('SignatureToggleInertForAgent')),
+                'the operator set nothing; a warning here fires on every default run. warnings: ' + tr.warningIssues,
             );
         }, tr);
     });

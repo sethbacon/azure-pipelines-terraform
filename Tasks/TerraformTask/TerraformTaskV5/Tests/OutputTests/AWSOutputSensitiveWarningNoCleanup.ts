@@ -4,28 +4,19 @@ import path = require('path');
 import fs = require('fs');
 import os = require('os');
 
-// `terraform output -json` emits every output's real value in cleartext,
-// including ones declared `sensitive = true` (only the human-readable console
-// format is redacted). warnIfSensitiveOutputFile() must surface a disclosure
-// naming the sensitive output so it isn't casually published as a build
-// artifact.
-//
-// cleanupOutputFileIfSensitive is set explicitly to 'true' here even though
-// it is task.json's declared default, because MockTestRunner -- unlike a real
-// ADO agent -- does not materialize declared defaults into INPUT_*; an unset
-// input reads back as false, not "true", which would exercise the wrong
-// branch of the severity split below. Matches the convention already
-// established in AWSOutputSensitiveAutoCleanup.ts.
+// Sibling of AWSOutputSensitiveWarning.ts, with BOTH cleanup inputs
+// explicitly disabled. cleanupOutputFileIfSensitive defaults to true, so
+// that fixture exercises the common path where the exposure is already
+// scheduled for deletion and the disclosure is debug-level. This fixture is
+// the case that keeps full warning severity: the operator opted out, so the
+// sensitive-output file genuinely persists in cleartext on disk.
 
-// The output command writes its JSON file under Agent.TempDirectory (#492);
-// point it at a scrubbed per-scenario directory so runs don't accumulate
-// files in the real temp directory.
-const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-warn-agenttemp');
+const agentTempDirectory = path.join(os.tmpdir(), 'tf-output-warn-nocleanup-agenttemp');
 fs.rmSync(agentTempDirectory, { recursive: true, force: true });
 fs.mkdirSync(agentTempDirectory, { recursive: true });
 process.env['AGENT_TEMPDIRECTORY'] = agentTempDirectory;
 
-let tp = path.join(__dirname, './AWSOutputSensitiveWarningL0.js');
+let tp = path.join(__dirname, './AWSOutputSensitiveWarningNoCleanupL0.js');
 let tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('provider', 'aws');
@@ -33,7 +24,8 @@ tr.setInput('command', 'output');
 tr.setInput('commandOptions', '');
 tr.setInput('workingDirectory', 'DummyWorkingDirectory');
 tr.setInput('environmentServiceNameAWS', 'AWS');
-tr.setInput('cleanupOutputFileIfSensitive', 'true');
+tr.setInput('cleanupOutputFile', 'false');
+tr.setInput('cleanupOutputFileIfSensitive', 'false');
 
 process.env['ENDPOINT_AUTH_SCHEME_AWS'] = 'Basic';
 process.env['ENDPOINT_AUTH_PARAMETER_AWS_USERNAME'] = 'test-access-key';

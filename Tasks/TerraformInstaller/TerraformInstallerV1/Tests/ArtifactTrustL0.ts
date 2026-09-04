@@ -58,6 +58,10 @@ const SITE_ROWS: SiteRow[] = [
     // ADO task lib, so the log line naming the deleted artifact is an injected
     // argument — REPORTS-DISCARD means that sink is still being passed.
     { file: TF, fn: 'downloadZipFromHashiCorp', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    // Two discardArtifactOnFailure() calls now (#1024 follow-up): the GPG-verified
+    // branch (registry advertises shasums_url + shasums_signature_url) and the
+    // checksum-only fallback branch each wrap their own.
+    { file: TF, fn: 'downloadZipFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TF, fn: 'downloadZipFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TF, fn: 'downloadZipFromOpenTofu', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
@@ -76,6 +80,15 @@ const SITE_ROWS: SiteRow[] = [
     { file: TF, fn: 'downloadZipFromHashiCorp', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF, fn: 'downloadZipFromHashiCorp', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF, fn: 'downloadZipFromRegistry', kind: 'ACQUIRE', verdict: 'VERIFIED' },
+    // GPG-verified branch (#1024 follow-up): verifyGpgSignature authenticates the
+    // fetched SHA256SUMS against the pinned HashiCorp key, then verifySha256 checks
+    // the zip against the checksum PARSED from that verified content -- both wrapped
+    // in the same discardArtifactOnFailure() call, matching downloadZipFromHashiCorp's
+    // shape.
+    { file: TF, fn: 'downloadZipFromRegistry', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+    { file: TF, fn: 'downloadZipFromRegistry', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+    // Checksum-only fallback branch: unchanged from before #1024 follow-up, reached
+    // only when the registry does not advertise both URLs above.
     { file: TF, fn: 'downloadZipFromRegistry', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'ACQUIRE', verdict: 'VERIFIED' },
     // The reported site of #65 in this repo: a mirror that publishes no SHA256SUMS

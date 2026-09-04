@@ -1,23 +1,19 @@
+// Reproduces what a REAL AGENT sends, which OpaOfficialSuccess does not.
+// task.json declares requireGpgSignature defaultValue "true", and the agent
+// materializes every declared default into INPUT_* before the task starts, so
+// this input is present on every run whether or not the operator wrote it.
+// The old presence probe warned here, on the shipped default configuration.
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// #1030: requireGpgSignature's task.json visibleRule hides it in the UI unless
-// policyAgent=sentinel, but a YAML pipeline can set it for policyAgent=opa
-// anyway, where it is never read on any code path. This must warn, not
-// silently do nothing -- otherwise an operator who believes it does something
-// gets no signal that it doesn't.
 const tp = path.join(__dirname, 'RunInstaller.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('policyAgent', 'opa');
 tr.setInput('version', '1.17.1');
 tr.setInput('downloadSource', 'official');
-// 'false', not 'true': the agent materializes the declared default "true" into
-// INPUT_* on every run, so 'true' is indistinguishable from an operator who set
-// nothing. A deviation is the only explicit set that survives that, and it is the
-// meaningful one -- switching off a toggle that was never on.
-tr.setInput('requireGpgSignature', 'false');
+tr.setInput('requireGpgSignature', 'true');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
@@ -34,6 +30,7 @@ tr.registerMock('./http-client', {
 });
 
 tr.registerMock('undici', { ProxyAgent: class { } });
+// Mock gpg-verifier so openpgp is never loaded (it needs the real crypto module).
 tr.registerMock('./gpg-verifier', { verifyGpgSignature: async () => { } });
 
 tr.registerMock('fs', {

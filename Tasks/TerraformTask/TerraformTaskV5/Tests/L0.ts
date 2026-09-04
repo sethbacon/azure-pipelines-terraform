@@ -14,6 +14,9 @@ import './RetryL0';
 import './ProxyConfigL0';
 import './ProxyParityL0';
 import './RoleSessionNameManifestL0';
+// Severity classification for the credential-neutralizing guard: the agent sets
+// SYSTEM_OIDCREQUESTURI on every job, so warning about it was noise by construction.
+import './NeutralizeSeverityL0';
 // Direct unit tests for the secure var-file loader.
 import './SecureFileLoaderL0';
 // Direct unit tests for post-hoc chmod on third-party secure-file downloads.
@@ -2154,7 +2157,11 @@ describe('Terraform Test Suite', function () {
         }, tr);
     });
 
-    it('aws output warns when a sensitive output is written to the JSON file', async () => {
+    it('aws output discloses a sensitive output at debug level when the file will be auto-cleaned (default)', async () => {
+        // cleanupOutputFileIfSensitive defaults to true, so the fixture (which
+        // sets neither cleanup input) hits the common path: the exposure is
+        // already scheduled for deletion at the end of this step, so this
+        // disclosure does not need warning severity to be actionable.
         let tp = path.join(__dirname, './OutputTests/AWSOutputSensitiveWarning.js');
         let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
 
@@ -2163,8 +2170,12 @@ describe('Terraform Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
-                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
-                'should warn about the sensitive output. warnings: ' + tr.warningIssues
+                tr.stdout.includes('sensitive output') && tr.stdout.includes('db_password'),
+                'should still disclose the sensitive output at debug level. stdout: ' + tr.stdout
+            );
+            assert(
+                !tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'must not warn when auto-cleanup is already scheduled to remove the exposure. warnings: ' + tr.warningIssues
             );
             // #492 (reopen regression floor): the raw `output -json` cleartext --
             // which includes the sensitive value -- must never be echoed to the
@@ -2172,6 +2183,26 @@ describe('Terraform Test Suite', function () {
             // carries the bare value (the agent masks it because setSecret
             // precedes it), so assert on the raw JSON fragment, which can only
             // come from a ToolRunner echo.
+            assert(!tr.stdout.includes('"value": "hunter2"'),
+                'the raw output -json echo (cleartext sensitive value) must not reach the build log (#492)');
+        }, tr);
+    });
+
+    it('aws output warns when a sensitive output is written to the JSON file and auto-cleanup is disabled', async () => {
+        // The operator explicitly opted out of BOTH cleanup inputs, so the file
+        // genuinely persists in cleartext -- the case that keeps full warning
+        // severity.
+        let tp = path.join(__dirname, './OutputTests/AWSOutputSensitiveWarningNoCleanup.js');
+        let tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(
+                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'should warn about the sensitive output when it will not be auto-cleaned. warnings: ' + tr.warningIssues
+            );
             assert(!tr.stdout.includes('"value": "hunter2"'),
                 'the raw output -json echo (cleartext sensitive value) must not reach the build log (#492)');
         }, tr);
@@ -2232,8 +2263,12 @@ describe('Terraform Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
-                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
-                'should still warn about the sensitive output. warnings: ' + tr.warningIssues
+                tr.stdout.includes('sensitive output') && tr.stdout.includes('db_password'),
+                'should still disclose the sensitive output at debug level. stdout: ' + tr.stdout
+            );
+            assert(
+                !tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'cleanupOutputFile is set, so this no longer needs warning severity. warnings: ' + tr.warningIssues
             );
             const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
             assert.strictEqual(remaining.length, 0, `expected the output JSON file to be cleaned up from Agent.TempDirectory, found: ${remaining.join(', ')}`);
@@ -2284,8 +2319,12 @@ describe('Terraform Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(
-                tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
-                'should still warn about the sensitive output. warnings: ' + tr.warningIssues
+                tr.stdout.includes('sensitive output') && tr.stdout.includes('db_password'),
+                'should still disclose the sensitive output at debug level. stdout: ' + tr.stdout
+            );
+            assert(
+                !tr.warningIssues.some((w) => w.includes('sensitive output') && w.includes('db_password')),
+                'auto-cleanup is on, so this no longer needs warning severity. warnings: ' + tr.warningIssues
             );
             const remaining = (fs.existsSync(agentTempDirectory) ? fs.readdirSync(agentTempDirectory) : []).filter((f) => f !== '.taskkey');
             assert.strictEqual(remaining.length, 0, `expected the sensitive output JSON file to be auto-cleaned up by default (#650), found: ${remaining.join(', ')}`);

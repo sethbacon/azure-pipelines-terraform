@@ -317,10 +317,32 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 exec: async () => 0,
             });
 
-            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+            const logs: string[] = [];
+            const origLog = console.log;
+            console.log = (m?: unknown) => { logs.push(String(m)); };
+            try {
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+            } finally {
+                console.log = origLog;
+            }
+
+            // The disclosure and the audit trail both survive...
             assert.ok(
-                warnings.some((w) => /cosignSha256 is not set/.test(w) && w.includes('/usr/bin/cosign')),
-                'expected a warning naming the resolved path when verification is required but unpinned (#1027)',
+                logs.some((l) => /cosignSha256 is not set/.test(l)),
+                'the unpinned-cosign disclosure and its remedy must stay in the build log (#1027)',
+            );
+            assert.ok(
+                logs.some((l) => l.includes('/usr/bin/cosign')),
+                'the resolved path must stay logged so a shadowed binary is auditable',
+            );
+            // ...but not as a warning. requireCosignVerification defaults to "true"
+            // and cosignSha256 has no default, so this predicate holds for the
+            // shipped configuration of EVERY OpenTofu install. Annotating every
+            // such run teaches operators to skip warnings; it describes the
+            // defaults rather than reporting anything about this run.
+            assert.ok(
+                !warnings.some((w) => /cosignSha256 is not set/.test(w)),
+                'must not annotate a condition that is true on every default run. warnings: ' + warnings,
             );
         });
     });

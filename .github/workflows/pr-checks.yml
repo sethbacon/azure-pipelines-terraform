@@ -237,7 +237,7 @@ jobs:
       # as "Breaking-change footers survive the squash", so no branch protection
       # moves.
       - name: Count breaking-change declarations across this PR's commits
-        uses: 4cloudguru/shared-workflows/.github/actions/breaking-change-footers@68cee21133ae19352ee69570a7747838a442b659 # v1.16.0
+        uses: 4cloudguru/shared-workflows/.github/actions/breaking-change-footers@a53b685c1f50255e5bc7061b6080d2456351b9be # v1.18.0
         with:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
           pr-number: ${{ github.event.pull_request.number }}

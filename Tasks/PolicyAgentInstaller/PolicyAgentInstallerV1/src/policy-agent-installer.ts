@@ -64,11 +64,27 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
     // template) can still set it for policyAgent=opa, where it is never read
     // on any code path (OPA has no GPG anchor on any source). Silent, not
     // wrong: nothing breaks, but an operator who set it believing it does
-    // something gets no signal that it doesn't (#1030). Checked against the
-    // RAW input (present at all), not its boolean value or default -- either
-    // true or false is equally inert for OPA, so what matters is that the
-    // key was set, not what it was set to.
-    if (agent === "opa" && tasks.getInput("requireGpgSignature", false) !== undefined) {
+    // something gets no signal that it doesn't (#1030).
+    //
+    // This used to probe `getInput(...) !== undefined`, reasoning that presence
+    // of the key was what mattered. That probe is only valid for an input whose
+    // declared defaultValue is empty. requireGpgSignature declares "true", and
+    // the agent materializes every declared default into INPUT_* before the task
+    // runs, so the input was ALWAYS present and this warned on 100% of OPA
+    // installs -- including the shipped default configuration, where the
+    // operator had set nothing at all.
+    //
+    // The original intent -- "did the operator touch this?" -- is not
+    // expressible: ADO hands the task one string and erases the difference
+    // between "unset, default materialized" and "explicitly set to the default".
+    // A DEVIATION from the declared default is the only explicit set that
+    // remains detectable, and it is also the one worth reporting: `false` on OPA
+    // means an operator tried to switch off something that was never on. Setting
+    // it to `true` on OPA is equally inert but indistinguishable from the
+    // default, so it goes unreported -- the honest limit of this check.
+    const declaredRequireGpgDefault = "true";
+    const rawRequireGpg = tasks.getInput("requireGpgSignature", false);
+    if (agent === "opa" && rawRequireGpg !== undefined && rawRequireGpg.toLowerCase() !== declaredRequireGpgDefault) {
         tasks.warning(tasks.loc("SignatureToggleInertForAgent", "requireGpgSignature", agent));
     }
 
