@@ -331,6 +331,11 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts",
+        fn: "downloadZipFromRegistry", sink: "fetchText", verdict: "AUTHORIZED",
+        why: "#1024 follow-up: shasums_url is registry-returned, same as download_url -- its host is authorized through assertEgressHostAllowed before the fetch, reusing the same allowedHosts decision; fetchText's own same-host-only redirect policy bounds any redirect to that already-authorized host",
+    },
+    {
+        file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.ts",
         fn: "downloadZipFromMirror", sink: "downloadToFile", verdict: "AUTHORIZED",
         why: "dynamic destination: the host is authorized through assertEgressHostAllowed on the initial URL and on every redirect hop (#161/#679/#729/#769/#799)",
     },

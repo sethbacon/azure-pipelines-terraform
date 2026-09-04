@@ -456,6 +456,57 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // #1024 follow-up: once the registry advertises shasums_url AND
+    // shasums_signature_url (terraform-registry-backend v1.2.5+ with GPG
+    // verification enabled), the checksum-only disclosure above no longer
+    // applies -- the registry path now verifies against the same pinned
+    // HashiCorp key the hashicorp/mirror sources use.
+    it('registry specific version: GPG-verifies SHA256SUMS and does NOT warn checksum-only when the registry advertises a signature', async () => {
+        const tp = path.join(__dirname, 'RegistryGpgVerified.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            assert(
+                !tr.warningIssues.some(w => w.includes('RegistryTrustAnchorIsChecksumOnly')),
+                'must not disclose checksum-only trust once a real signature was verified. warnings: ' + tr.warningIssues,
+            );
+            assert(
+                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.9.8/SHA256SUMS.terraform.sig?sig=def:required=true'),
+                'verifyGpgSignature must be called with the registry-advertised shasums_signature_url and requireGpgSignature (default true). stdout: ' + tr.stdout,
+            );
+        }, tr);
+    });
+
+    it('registry shasums host: rejects a shasums_url host not in the allowlist, before fetching it', async () => {
+        const tp = path.join(__dirname, 'RegistryShasumsHostReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostNotAllowed')),
+                'should fail via the same disallowed-host check download_url uses. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('registry specific version: fails closed when the registry-advertised signature does not verify', async () => {
+        const tp = path.join(__dirname, 'RegistryGpgVerifyFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a signature that fails verification must fail the task, not degrade to checksum-only trust');
+            assert(
+                tr.errorIssues.some(e => e.includes('signature does not match')),
+                'the failure must surface why. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     // --- Registry pre-signed download-URL token masking (#352) ---
     // The registry download_url carries a live storage credential in its query
     // string and tool-lib logs the URL at INFO. Assert every token component is
