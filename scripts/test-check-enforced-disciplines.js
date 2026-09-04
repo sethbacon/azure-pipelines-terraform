@@ -226,6 +226,52 @@ try {
         check(status === 0, 'a fully compliant repo passes the signature', `the compliant baseline fixture failed (exit ${status})`, out);
     }
 
+    // The signature must recognise the CURRENT shape too: publishing through
+    // the shared 4cloudguru/shared-workflows composite action, adopted after
+    // v1.15.2's release died to the exact defect this signature exists to
+    // catch. A signature that stopped recognising the discipline the moment
+    // every consumer actually migrated to it would be green for the wrong
+    // reason -- the same vacuous pass the local-wrapper shape used to leave
+    // for a repo that never wired the check in at all.
+    {
+        const root = makeCompliantRepo('shared-action-compliant');
+        const p = path.join(root, '.github/workflows/release.yml');
+        fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(
+            '      - run: node scripts/publish-marketplace.js --vsix "$VSIX_FILE"',
+            '      - uses: 4cloudguru/shared-workflows/.github/actions/publish-marketplace@9c0851095cc6deeafcd1038fab0b57be0c74cd78 # v1.19.0\n'
+            + '        with:\n'
+            + '          vsix-path: ${{ steps.mint-token.outputs.vsix-file }}\n'
+            + '          marketplace-token: ${{ steps.mint-token.outputs.token }}',
+        ));
+        const { status, out } = runSignature(root);
+        check(
+            status === 0 && out.includes('shared publish-marketplace composite action'),
+            'a repo publishing through the shared composite action passes, naming it as the reason',
+            `expected exit 0 naming the shared action, got exit ${status}`,
+            out,
+        );
+    }
+
+    // ...and must not be fooled by a job that merely NAMES the shared action in
+    // prose (a comment, a doc reference) without actually calling it -- proving
+    // the match is on the real `uses:` line, not a coincidental substring.
+    {
+        const root = makeCompliantRepo('shared-action-mention-only');
+        const p = path.join(root, '.github/workflows/release.yml');
+        fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(
+            '      - run: node scripts/publish-marketplace.js --vsix "$VSIX_FILE"',
+            '      # See 4cloudguru/shared-workflows/.github/actions/publish-marketplace for the general idea.\n'
+            + '      - run: ./node_modules/.bin/tfx extension publish --vsix "$VSIX_FILE" --auth-type pat',
+        ));
+        const { status, out } = runSignature(root);
+        check(
+            status !== 0 && out.includes('no bounded retry'),
+            'a comment merely mentioning the shared action does not satisfy the discipline',
+            `expected a non-zero exit reporting no bounded retry, got exit ${status}`,
+            out,
+        );
+    }
+
     for (const c of CASES) {
         const root = makeCompliantRepo(c.name.replace(/\//g, '-'));
         c.mutate(root);

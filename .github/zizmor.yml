@@ -33,6 +33,17 @@
 # inserted a different number of lines above each ignore (they are no longer a
 # uniform offset apart, since the inserted comment+allowlist blocks differ in
 # length per job). Re-derived with the command above rather than adjusted by hand.
+#
+# They moved again on 2026-09-04 (centralizing cosign verification and the
+# marketplace publish/retry logic into 4cloudguru/shared-workflows composite
+# actions): draft-release's inline cosign install+verify steps collapsed into
+# one verify-vsix-signature call, net-removing lines above the superfluous-actions
+# site and shifting it from 530 to 525; publish-marketplace's mint-token+retry
+# block was replaced by a shorter mint step plus a publish-marketplace call,
+# shifting the fourth cache-poisoning site from 599 to 600. The first three
+# cache-poisoning sites (217/250/317) sit above both edits and did not move.
+# Re-derived with the command above rather than adjusted by hand.
+#
 # This is the cost of line-scoped ignores, and it is the intended cost: the
 # alternative is a per-file ignore that would have silently swallowed a genuinely
 # new finding. A suppression that breaks loudly when the file moves is doing its
@@ -46,7 +57,7 @@ rules:
       - release.yml:217:9
       - release.yml:250:9
       - release.yml:317:9
-      - release.yml:599:9
+      - release.yml:600:9
   self-repository:
     ignore:
       # The audit asks for GitHub's `uses: $/...` form in place of `uses: ./...`.
@@ -64,4 +75,4 @@ rules:
     ignore:
       # softprops/action-gh-release is used deliberately for its multi-file
       # glob upload + release-notes generation; `gh release` is not equivalent.
-      - release.yml:530:15
+      - release.yml:525:15
