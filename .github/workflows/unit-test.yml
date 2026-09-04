@@ -1482,7 +1482,7 @@ jobs:
   # not because there was nothing to report. The shared job scans the repository.
   workflow-security:
     name: Workflow Security
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@a53b685c1f50255e5bc7061b6080d2456351b9be # v1.18.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
     with:
       # release.yml calls this workflow at the commit it is about to publish;
       # the linters have to read that commit, not the run's default.
@@ -1508,5 +1508,5 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@a53b685c1f50255e5bc7061b6080d2456351b9be # v1.18.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
 

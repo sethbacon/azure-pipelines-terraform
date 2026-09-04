@@ -517,7 +517,7 @@ jobs:
       # blocks publication too. Shared with azure-pipelines-packer and
       # azure-pipelines-release-docs.
       - name: Verify VSIX signature before release
-        uses: 4cloudguru/shared-workflows/.github/actions/verify-vsix-signature@450841eb41e83ae6d0b0a3ee20d1217b2887391b # v1.20.0
+        uses: 4cloudguru/shared-workflows/.github/actions/verify-vsix-signature@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
         with:
           certificate-identity-regexp: '^https://github\.com/sethbacon/azure-pipelines-terraform/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$'
       - name: Create draft GitHub Release
@@ -631,7 +631,7 @@ jobs:
       # azure-pipelines-packer (which had no equivalent gate at all before
       # this) and azure-pipelines-release-docs.
       - name: Verify VSIX signature before publish
-        uses: 4cloudguru/shared-workflows/.github/actions/verify-vsix-signature@450841eb41e83ae6d0b0a3ee20d1217b2887391b # v1.20.0
+        uses: 4cloudguru/shared-workflows/.github/actions/verify-vsix-signature@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
         with:
           certificate-identity-regexp: '^https://github\.com/sethbacon/azure-pipelines-terraform/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$'
       # Authenticate to Microsoft Entra via GitHub OIDC (federated credential) —
@@ -672,7 +672,7 @@ jobs:
         # and azure-pipelines-release-docs so a fix lands in all three the next
         # time each bumps this pin, rather than needing three separate PRs the
         # way v1.15.2's fix did.
-        uses: 4cloudguru/shared-workflows/.github/actions/publish-marketplace@450841eb41e83ae6d0b0a3ee20d1217b2887391b # v1.20.0
+        uses: 4cloudguru/shared-workflows/.github/actions/publish-marketplace@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
         with:
           vsix-path: ${{ steps.mint-token.outputs.vsix-file }}
           marketplace-token: ${{ steps.mint-token.outputs.token }}
