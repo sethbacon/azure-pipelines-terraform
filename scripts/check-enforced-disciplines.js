@@ -279,26 +279,42 @@ for (const task of tasks) {
 // off argv. Both are release-pipeline rules that were previously only comments.
 {
     const releaseYml = readIfExists('.github/workflows/release.yml') || '';
-    // Matched against the same path the wrapper check below looks for: a bare
-    // `publish-marketplace.js` substring also matches test-publish-marketplace.js,
-    // which made a job that merely runs the wrapper's own unit test look like an
-    // unguarded publish.
+    // The shared composite action (4cloudguru/shared-workflows) is the current
+    // shape, adopted after v1.15.2's release died to the exact defect this
+    // discipline exists to catch: the retry classifier's duplicate-version
+    // detector false-matched tfx's own routine preamble, so a genuine timeout
+    // was misreported as a deterministic rejection and never retried. The two
+    // OLD shapes stay recognised too -- a repo mid-migration, or a future
+    // revert, must not go undetected by this signature going blind rather
+    // than reporting the gap. `test-publish-marketplace.js` is matched away
+    // from `publish-marketplace.js` explicitly: a job that merely runs the
+    // wrapper's own unit test is not a publish job.
+    const SHARED_ACTION = 'shared-workflows/.github/actions/publish-marketplace@';
     const publishJobs = [...parseJobs(releaseYml).entries()].filter(
-        ([, text]) => /tfx\s+extension\s+publish/.test(text) || text.includes('scripts/publish-marketplace.js'),
+        ([, text]) => /tfx\s+extension\s+publish/.test(text)
+            || text.includes(SHARED_ACTION)
+            || /(?<!test-)scripts\/publish-marketplace\.js/.test(text),
     );
     if (publishJobs.length === 0) {
         record('marketplace-publish-retry', 'release.yml -> publish job', false, 'no job in release.yml publishes the extension; the signature cannot verify the publish disciplines');
     }
     for (const [jobId, text] of publishJobs) {
-        const viaWrapper = text.includes('scripts/publish-marketplace.js');
+        const viaSharedAction = text.includes(SHARED_ACTION);
+        const viaLocalWrapper = /(?<!test-)scripts\/publish-marketplace\.js/.test(text);
+        const viaWrapper = viaSharedAction || viaLocalWrapper;
         record(
             'marketplace-publish-retry',
             `release.yml -> ${jobId}`,
             viaWrapper,
-            viaWrapper
-                ? 'publishes through scripts/publish-marketplace.js (bounded retry on transient upstream failures)'
-                : 'invokes tfx directly with no bounded retry: one transient 5xx/timeout burns the release and orphans the draft (v1.2.7)',
+            viaSharedAction
+                ? 'publishes through the shared publish-marketplace composite action (bounded retry on transient upstream failures, tested in 4cloudguru/shared-workflows)'
+                : viaLocalWrapper
+                    ? 'publishes through scripts/publish-marketplace.js (bounded retry on transient upstream failures)'
+                    : 'invokes tfx directly with no bounded retry: one transient 5xx/timeout burns the release and orphans the draft (v1.2.7)',
         );
+        // The shared action's own token input is a `with:` value, never a CLI
+        // flag -- the wrapper's --token omission is what keeps it off argv
+        // either way, so the same regex covers both shapes.
         const tokenOnArgv = /--token\s+["'$]/.test(text);
         record(
             'marketplace-token-off-argv',

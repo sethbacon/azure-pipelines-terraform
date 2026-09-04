@@ -67,8 +67,6 @@ jobs:
         run: node scripts/test-check-task-list.js
       - name: Self-test check-per-file-coverage.js
         run: node scripts/test-check-per-file-coverage.js
-      - name: Self-test publish-marketplace.js
-        run: node scripts/test-publish-marketplace.js
       - name: Self-test for-each-task.js
         # Through `npm run`, deliberately, unlike its neighbours: npmCli()
         # resolves the child npm from npm_execpath, which only an `npm run`
