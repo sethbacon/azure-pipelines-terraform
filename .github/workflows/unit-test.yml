@@ -388,18 +388,18 @@ jobs:
         run: |
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            $output = & npm audit --omit=dev --audit-level=high 2>&1
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
+            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
-            $outputText = $output | Out-String
-            $output
+            $outputText = Get-Content -Path $logFile -Raw
 
             if ($exitCode -eq 0) {
               break
             }
 
             $transientNetworkFailure =
-              $outputText -match 'npm warn audit network timeout' -or
-              $outputText -match 'npm error audit endpoint returned an error'
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
 
             if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
               Start-Sleep -Seconds (5 * $attempt)
@@ -415,18 +415,18 @@ jobs:
         run: |
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            $output = & npm audit --audit-level=high 2>&1
+            $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
+            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
-            $outputText = $output | Out-String
-            $output
+            $outputText = Get-Content -Path $logFile -Raw
 
             if ($exitCode -eq 0) {
               break
             }
 
             $transientNetworkFailure =
-              $outputText -match 'npm warn audit network timeout' -or
-              $outputText -match 'npm error audit endpoint returned an error'
+              $outputText -match 'audit.*network.*(timeout|timed out)' -or
+              $outputText -match 'ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED'
 
             if ($transientNetworkFailure -and $attempt -lt $maxAttempts) {
               Start-Sleep -Seconds (5 * $attempt)
@@ -1028,4 +1028,3 @@ jobs:
       contents: read
       security-events: write
     uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@9ed6d3c988fb075f1023680d92eb4cf5a8e55056 # v1.14.0
-
