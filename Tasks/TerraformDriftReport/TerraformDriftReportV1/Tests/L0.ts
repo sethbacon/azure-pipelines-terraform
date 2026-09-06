@@ -1071,4 +1071,65 @@ describe('TerraformDriftReport completeness markers (#950)', function () {
             assert(marker in posted, `the callback body must carry ${marker}; got ${Object.keys(posted).join(', ')}`);
         }
     });
+
+    // Contract 1.4.0 (#83): `resource_drift` (infra drift, e.g. hand-edits) is
+    // summarized on parallel `drift_added`/`drift_changed`/`drift_destroyed`/
+    // `drift_summary` fields, alongside the existing `added`/`changed`/
+    // `destroyed`/`summary` computed from `resource_changes` (unapplied config
+    // changes). The task added no logic for this -- the callback body is a
+    // spread of the contract's Result (see CallbackBody in src/index.ts) -- so
+    // these tests exist to prove the new fields actually reach the wire, not
+    // to exercise any new code path. Expected values are hardcoded (not
+    // re-derived by calling summarize() here) so the test cannot pass by
+    // comparing the pre-bump contract against itself.
+    describe('infra-drift fields (contract 1.4.0, #83)', function () {
+        const DRIFT_MARKERS = ['drift_added', 'drift_changed', 'drift_destroyed', 'drift_summary'] as const;
+
+        it('resource_drift is summarized on the parallel drift_* fields, independent of resource_changes', async () => {
+            const { posted } = await runCase('driftOnly');
+            assert.strictEqual(posted.drift_added, 0);
+            assert.strictEqual(posted.drift_changed, 1);
+            assert.strictEqual(posted.drift_destroyed, 0);
+            assert(Array.isArray(posted.drift_summary), 'drift_summary must be an array');
+            assert.strictEqual((posted.drift_summary as unknown[]).length, 1);
+            // An infra-only drift plan carries no unapplied config changes: the
+            // two axes must not bleed into each other.
+            assert.deepStrictEqual(
+                [posted.added, posted.changed, posted.destroyed, posted.drifted],
+                [0, 0, 0, false],
+                'resource_drift must not affect added/changed/destroyed/drifted',
+            );
+        });
+
+        it('resource_drift honors the same skip rules as resource_changes (positive control)', async () => {
+            const { posted } = await runCase('driftSkipped');
+            assert.deepStrictEqual(
+                [posted.drift_added, posted.drift_changed, posted.drift_destroyed],
+                [0, 0, 0],
+                'no-op/read entries in resource_drift must be skipped, exactly like resource_changes',
+            );
+            assert.deepStrictEqual(posted.drift_summary, []);
+        });
+
+        it('resource_changes and resource_drift are counted independently when both are present', async () => {
+            const { posted } = await runCase('driftBoth');
+            assert.deepStrictEqual(
+                [posted.added, posted.changed, posted.destroyed, posted.drifted],
+                [1, 0, 0, true],
+                'the unapplied-change axis (resource_changes: one create)',
+            );
+            assert.deepStrictEqual(
+                [posted.drift_added, posted.drift_changed, posted.drift_destroyed],
+                [0, 0, 1],
+                'the infra-drift axis (resource_drift: one delete) must not merge with the axis above',
+            );
+        });
+
+        it('carries the drift_* wire names the backend will decode', async () => {
+            const { posted } = await runCase('driftOnly');
+            for (const marker of DRIFT_MARKERS) {
+                assert(marker in posted, `the callback body must carry ${marker}; got ${Object.keys(posted).join(', ')}`);
+            }
+        });
+    });
 });

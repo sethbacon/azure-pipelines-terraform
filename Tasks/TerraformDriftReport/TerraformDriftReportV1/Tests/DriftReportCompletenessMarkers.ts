@@ -72,6 +72,36 @@ const CASES: Record<string, unknown> = {
             },
         ],
     },
+    // Contract 1.4.0: `resource_drift` (infra drift) alongside an EMPTY
+    // `resource_changes` (no unapplied config changes). Proves drift_added/
+    // drift_changed/drift_destroyed/drift_summary are forwarded and that they
+    // do not leak into added/changed/destroyed/drifted, which stay 0/0/0/false.
+    driftOnly: {
+        resource_changes: [],
+        resource_drift: [
+            { address: 'aws_instance.drifted', change: { actions: ['update'], before: { size: 1 }, after: { size: 2 } } },
+        ],
+    },
+    // resource_drift entries go through the identical skip rules as
+    // resource_changes (exactly `["no-op"]` or `["read"]` is skipped).
+    driftSkipped: {
+        resource_changes: [],
+        resource_drift: [
+            { address: 'aws_instance.noop', change: { actions: ['no-op'], before: {}, after: {} } },
+            { address: 'aws_instance.read', change: { actions: ['read'], before: null, after: {} } },
+        ],
+    },
+    // Both axes populated at once, with different action kinds, to prove
+    // resource_changes and resource_drift are counted independently rather
+    // than merged or one shadowing the other.
+    driftBoth: {
+        resource_changes: [
+            { address: 'aws_instance.new', change: { actions: ['create'], before: null, after: {} } },
+        ],
+        resource_drift: [
+            { address: 'aws_instance.gone', change: { actions: ['delete'], before: {}, after: null } },
+        ],
+    },
 };
 
 const caseName = process.env['TDR_MARKER_CASE'] ?? 'unreadable';
