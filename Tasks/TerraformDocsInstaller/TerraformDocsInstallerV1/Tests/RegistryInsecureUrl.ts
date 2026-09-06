@@ -13,6 +13,15 @@ tr.setInput('registryMirrorName', 'terraform-docs');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 
+// dns: registry.example.com is a fictional test host with no real DNS record;
+// mock it to a public (non-private/link-local) address so the registryUrl-host
+// egress check (#1104/20) passes without a real network lookup.
+tr.registerMock('dns', {
+  promises: {
+    lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+  }
+});
+
 const EXPECTED_SHA256 = 'aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233';
 
 tr.registerMock('./http-client', {

@@ -202,6 +202,14 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
 
+    // Egress authorization for the metadata call itself: previously this was only
+    // ever enforced on the 'latest' resolution path, so a pinned-version install
+    // reached registryUrl with no allowlist or private-address check at all
+    // (#1104/20). Authorizing here makes the decision a property of the URL rather
+    // than of which resolution path ran.
+    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+    await assertEgressHostAllowed(new URL(registryUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
+
     const data = await fetchJson<{ download_url: string; sha256: string; shasums_url?: string }>(infoUrl);
     if (!data.download_url) {
         throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
@@ -228,7 +236,6 @@ async function downloadFromRegistry(version: string, registryUrl: string, mirror
     // at an arbitrary HTTPS host, so an operator can constrain the trusted storage
     // host(s) via registryAllowedHosts. Default (empty) preserves the
     // trust-the-registry behavior.
-    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
     const initialHost = new URL(data.download_url).hostname;
     // Egress authorization for the download destination -- ONE decision
     // (assertEgressHostAllowed) applied to the initial URL here and, via

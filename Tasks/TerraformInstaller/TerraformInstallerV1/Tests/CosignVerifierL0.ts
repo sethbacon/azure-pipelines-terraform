@@ -135,12 +135,20 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         t.debug = (_m: string) => { /* silence */ };
     }
 
-    it('throws when cosign is missing and verification is required', async () => {
+    it('throws a typed VerificationFailure (not a bare Error) when cosign is missing and verification is required (#589)', async () => {
         stubLogging();
         t.which = () => { throw new Error('cosign not found'); };
         await assert.rejects(
             verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true),
-            /cosign is required/,
+            (err: unknown) => {
+                // Must be a VerificationFailure, not a bare Error -- so the cache-hit
+                // re-verification path's isVerificationFailure(err) check fails
+                // closed on a withheld/missing verifier instead of degrading to the
+                // cached, never-verified binary the way any other Error would.
+                assert.ok(isVerificationFailure(err), 'expected a typed VerificationFailure, not a bare Error');
+                assert.match((err as Error).message, /cosign is required/);
+                return true;
+            },
         );
     });
 
@@ -308,9 +316,16 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             );
         });
 
-        it('does not compute or check any hash when cosignSha256 is left unset (default, unchanged behavior)', async () => {
+        it('still computes and logs the resolved binary\'s actual SHA256 when cosignSha256 is left unset (#1027: "found on PATH" is not provenance)', async () => {
             stubLogging();
-            t.which = () => '/usr/bin/cosign'; // a path that does not exist -- proves no fs read is attempted
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-nopin-test-'));
+            tmpDirToClean = tmpDir;
+            const tmpCosignPath = path.join(tmpDir, 'cosign-fake-binary');
+            const content = Buffer.from('fake cosign binary content for the unpinned-disclosure test');
+            fs.writeFileSync(tmpCosignPath, content);
+            const actualHash = crypto.createHash('sha256').update(content).digest('hex');
+
+            t.which = () => tmpCosignPath;
             hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
             t.tool = (_path: string) => ({
                 arg() { return this; },
@@ -326,14 +341,16 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 console.log = origLog;
             }
 
-            // The disclosure and the audit trail both survive...
+            // The disclosure, the audit trail, AND the actual resolved hash all
+            // survive -- an unpinned run is no longer distinguishable from a pinned
+            // one in terms of what gets logged about the binary that ran.
             assert.ok(
                 logs.some((l) => /cosignSha256 is not set/.test(l)),
                 'the unpinned-cosign disclosure and its remedy must stay in the build log (#1027)',
             );
             assert.ok(
-                logs.some((l) => l.includes('/usr/bin/cosign')),
-                'the resolved path must stay logged so a shadowed binary is auditable',
+                logs.some((l) => l.includes(tmpCosignPath) && l.includes(actualHash)),
+                `the resolved path AND its actual SHA256 must be logged unconditionally, even with no pin set. logs: ${logs.join('\n')}`,
             );
             // ...but not as a warning. requireCosignVerification defaults to "true"
             // and cosignSha256 has no default, so this predicate holds for the

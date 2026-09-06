@@ -121,16 +121,31 @@ export async function verifyCosignSignature(
         cosignPath = tasks.which('cosign', true);
     } catch {
         if (required) {
-            throw new Error('cosign is required for OpenTofu signature verification but was not found on the agent. Install cosign or set requireCosignVerification to false.');
+            // A missing cosign binary is a deterministic, reproducible local policy
+            // failure, not a transient outage -- typed as VerificationFailure so the
+            // cache-hit re-verification path (reverifyUnmarkedCacheEntry) fails
+            // closed instead of degrading to the cached, never-verified tofu binary
+            // (#589/19).
+            throw new VerificationFailure('cosign is required for OpenTofu signature verification but was not found on the agent. Install cosign or set requireCosignVerification to false.');
         }
         tasks.warning('cosign not found on agent. SHA256SUMS will be trusted without signature verification.');
         return;
     }
 
-    // cosign is discovered via a PATH lookup and is itself never integrity-verified,
-    // so log where it resolved from — a shadowed/unexpected binary is then auditable
-    // from the build log.
-    console.log(`Using cosign at ${cosignPath} for OpenTofu signature verification.`);
+    // cosign is discovered via a PATH lookup and is itself never integrity-verified
+    // by default, so log its resolved actual SHA256 unconditionally -- not only when
+    // an operator has opted into pinning it -- so the exact binary that was trusted
+    // is auditable from the build log even on the shipped, unpinned configuration
+    // (#1027/18: "found cosign on PATH" alone is not provenance). Hashing failure
+    // itself (e.g. a resolved path that vanished between `which` and here) is not a
+    // reason to fail the run when a pin was never requested -- log it and move on.
+    let resolvedCosignSha256 = 'unavailable';
+    try {
+        resolvedCosignSha256 = await computeSha256Streaming(cosignPath);
+    } catch (hashErr) {
+        tasks.debug(`Could not compute SHA256 of the resolved cosign binary at ${cosignPath}: ${hashErr instanceof Error ? hashErr.message : hashErr}`);
+    }
+    console.log(`Using cosign at ${cosignPath} (SHA256 ${resolvedCosignSha256}) for OpenTofu signature verification.`);
 
     // requireCosignVerification=true is meant to be a hard cryptographic guarantee,
     // but a bare PATH lookup with no pin (#1027) means a concurrent/prior job on a
@@ -160,9 +175,8 @@ export async function verifyCosignSignature(
         // ambient-PATH trust gap -- a PATH-write attacker who shadows `cosign` with a
         // stub is caught instead of silently trusted. Fails closed on a mismatch;
         // left unset (default), behavior is completely unchanged.
-        const actualCosignSha256 = await computeSha256Streaming(cosignPath);
-        if (actualCosignSha256.toLowerCase() !== expectedCosignSha256.toLowerCase()) {
-            throw new VerificationFailure(`cosign binary at ${cosignPath} has SHA256 ${actualCosignSha256}, which does not match the pinned cosignSha256 (${expectedCosignSha256}). Refusing to trust it for OpenTofu signature verification.`);
+        if (resolvedCosignSha256.toLowerCase() !== expectedCosignSha256.toLowerCase()) {
+            throw new VerificationFailure(`cosign binary at ${cosignPath} has SHA256 ${resolvedCosignSha256}, which does not match the pinned cosignSha256 (${expectedCosignSha256}). Refusing to trust it for OpenTofu signature verification.`);
         }
         tasks.debug('cosign binary SHA256 matches the pinned cosignSha256.');
     }

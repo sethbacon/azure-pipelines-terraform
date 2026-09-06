@@ -3,7 +3,12 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
 // registryAllowedHosts is set and the registry's download_url host matches a
-// wildcard entry — the download should proceed normally.
+// wildcard entry — the download should proceed normally. registryUrl's own
+// host (registry.example.com) must ALSO be in the allowlist (#1104/20): the
+// metadata-fetch authorization now applies the same allowedHosts decision to
+// registryUrl that the 'latest' resolution branch already applied, so an
+// operator who pins registryAllowedHosts must include the registry host
+// itself, not just the storage host download_url points at.
 const tp = path.join(__dirname, 'RegistryAllowedHostAcceptL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
@@ -11,7 +16,7 @@ tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'registry');
 tr.setInput('registryUrl', 'https://registry.example.com');
 tr.setInput('registryMirrorName', 'terraform');
-tr.setInput('registryAllowedHosts', 'other.example.com, *.storage.example.com');
+tr.setInput('registryAllowedHosts', 'registry.example.com, other.example.com, *.storage.example.com');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',

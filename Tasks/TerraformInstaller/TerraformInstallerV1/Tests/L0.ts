@@ -610,6 +610,29 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it("registryUrl's OWN host is authorized BEFORE the metadata fetch for a SPECIFIC version, not only on the 'latest' resolution branch (#1104/20)", async () => {
+        // registryUrl resolves (via the mocked dns module) to the cloud metadata
+        // address. fetchJson throws if it is ever invoked, so this distinguishes
+        // "refused before any network call" from "attempted and happened to error" --
+        // and from the pre-fix defect, where a pinned (non-'latest') version reached
+        // fetchJson with no host authorization at all.
+        const tp = path.join(__dirname, 'RegistryUrlHostAuthorizedBeforeMetadataFetch.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check on registryUrl itself, before any metadata fetch. errors: ' + tr.errorIssues,
+            );
+            assert(
+                !tr.errorIssues.some(e => e.includes('fetchJson must not be called')),
+                'fetchJson must never be reached once registryUrl host authorization has failed. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     it('registry default path redirects to a private/metadata address: should reject the redirect hop (#729 follow-up)', async () => {
         // registryAllowedHosts is unset (default path). The initial download_url
         // host is benign, but the (simulated) download follows a redirect to the
