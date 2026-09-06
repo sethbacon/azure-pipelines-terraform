@@ -255,6 +255,8 @@ Every pivot also shows a **raw fallback**: legacy `publishPlanResults` attachmen
 
 **Same-run only.** The tab only loads attachments from the current pipeline run (build ID) — it does not correlate or display a plan/apply summary from a different run, and there is no cross-run plan↔apply pairing.
 
+**Wider read audience than the live log.** These are pipeline attachments, readable by anyone with build-read on the pipeline — unlike the live job log, which the agent secret-masks, an attachment file is not; redaction (above) is the only control. See [SECURITY.md](SECURITY.md#structured-planapplystate-results-residual-risk-redaction-depends-on-terraforms-own-sensitivity-marks) for the fuller residual-risk section this depends on.
+
 For a step-by-step walkthrough of enabling structured results and reading each tab section, see [docs/structured-results.md](docs/structured-results.md).
 
 ---
