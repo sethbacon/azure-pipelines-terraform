@@ -100,6 +100,18 @@ describe('TerraformPolicyCheck Test Suite', function () {
         }, tr);
     });
 
+    it('OpaMultiResultErrorFail — an error on a later result entry is not silently dropped (#1113)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'OpaMultiResultErrorFail.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed on the entry[1] evaluation error');
+            const output = tr.errorIssues.join('\n') + '\n' + tr.stdout;
+            assert(/OPA evaluation error for 1 of 2 result\(s\)/.test(output), `error should name how many of how many entries errored; got: ${output}`);
+            assert(/b\.json/.test(output), 'error should name the path of the errored entry, not just entry[0]');
+            assert(/eval_type_error/.test(output), 'error should include the OPA error detail');
+        }, tr);
+    });
+
     // --- Sentinel engine (enforcement levels) ---
     expectSuccess('SentinelPassPath');
     expectFailure('SentinelHardFail');
