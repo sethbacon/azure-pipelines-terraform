@@ -202,4 +202,29 @@ describe('servicenow-http: agent proxy support', function () {
             target.close();
         }
     });
+
+    it('#1114: rejects an untrusted/self-signed server -- servicenow-http.ts sets no explicit rejectUnauthorized, so this proves the Node default actually verifies', async () => {
+        const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
+            res.statusCode = 200;
+            res.end('{"result":{"ok":true}}');
+        });
+        await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+        const targetPort = (target.address() as net.AddressInfo).port;
+        t.getHttpProxyConfiguration = () => undefined;
+
+        try {
+            // Deliberately the mirror image of the previous test: TLS_CERT is NOT
+            // added to https.globalAgent's trust store here, so the self-signed
+            // loopback server's certificate is untrusted by every real-world
+            // default. If servicenow-http.ts ever gained an errant
+            // `rejectUnauthorized: false` (or NODE_TLS_REJECT_UNAUTHORIZED were
+            // flipped), this would start resolving instead of rejecting.
+            await assert.rejects(
+                snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`),
+                /self.signed certificate|unable to verify the first certificate|certificate/i,
+            );
+        } finally {
+            target.close();
+        }
+    });
 });

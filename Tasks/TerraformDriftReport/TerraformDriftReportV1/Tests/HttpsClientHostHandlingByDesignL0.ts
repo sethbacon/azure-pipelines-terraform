@@ -36,4 +36,36 @@ describe('drift callback https-client: destination-host handling (by design, no 
       },
     );
   });
+
+  it('#1114: does not reject a callbackUrl resolving to a private/link-local address (e.g. the cloud metadata service) on the DEFAULT (TLS-verified) path', async () => {
+    // assertRejectUnauthorizedNotAgainstPublicHost (callback.ts) only runs
+    // when rejectUnauthorized=false -- it exists to stop TLS verification
+    // being disabled against a genuinely PUBLIC host, not to restrict which
+    // hosts the DEFAULT (rejectUnauthorized=true) path may reach. Unlike the
+    // TLS-off branch, which DriftReportCallbackTlsOff*.ts thoroughly covers,
+    // no equivalently-named test pinned the by-design absence of a general
+    // egress allowlist on this default path -- so a future contributor adding
+    // one only to the TLS-off branch (inconsistently with the rest of the
+    // callback flow) would have had no test signal either way. 169.254.169.254
+    // is a real literal address (not a DNS name), so this proves rejection
+    // happens only at the transport-attempt layer (refused/timed-out
+    // connection), never at a host-validation layer -- this request is
+    // CURRENTLY PERMITTED to reach that host by design.
+    const client = createHttpsClient(true, 2000);
+    await assert.rejects(
+      () => client('POST', 'https://169.254.169.254/drift', {}, '{}'),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.ok(
+          !/Refusing to send credentials over a non-HTTPS URL/.test(err.message),
+          'a private/link-local https:// destination must not be rejected as a scheme violation',
+        );
+        assert.ok(
+          !/not allowed|disallowed|blocked|denylist|allowlist/i.test(err.message),
+          `expected a transport-layer failure (refused/timed out), not a host-validation rejection: ${err.message}`,
+        );
+        return true;
+      },
+    );
+  });
 });
