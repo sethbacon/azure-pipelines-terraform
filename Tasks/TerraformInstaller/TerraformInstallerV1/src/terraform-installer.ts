@@ -216,10 +216,19 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     // A failed signature or checksum check DELETES the zip rather than leaving a
     // rejected — possibly tampered — artifact in the agent's temp directory (#204).
+    let gpgVerified = false;
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
+        gpgVerified = await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
     }, discardLog);
+    if (!gpgVerified) {
+        // The .sig was genuinely absent and requireGpgSignature is false: the
+        // SHA256SUMS content was never authenticated, so this reaches the same
+        // checksum-only trust level as the registry/mirror disclosures and must
+        // say so rather than reporting a bare success that reads identically to
+        // a real GPG-anchored verification (#1024/21).
+        tasks.warning(tasks.loc("GpgVerificationSkippedChecksumOnly"));
+    }
 
     return zipPath;
 }
@@ -496,10 +505,17 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
     // key (a missing .sig is fatal only when requireGpgSignature is set), then
     // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
+    let mirrorGpgVerified = false;
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+        mirrorGpgVerified = await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
     }, discardLog);
+    if (!mirrorGpgVerified) {
+        // The .sig was genuinely absent and requireGpgSignature is false: disclose
+        // the weaker, checksum-only trust level instead of a bare success that
+        // reads identically to a real GPG-anchored verification (#1024/21).
+        tasks.warning(tasks.loc("GpgVerificationSkippedChecksumOnly"));
+    }
     return { zipPath, verified: true };
 }
 

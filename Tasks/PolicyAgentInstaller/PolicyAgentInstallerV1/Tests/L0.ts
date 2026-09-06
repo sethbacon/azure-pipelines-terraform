@@ -566,9 +566,15 @@ describe('PolicyAgentInstaller Test Suite', function () {
 
         runValidations(() => {
             assert(tr.failed, 'task should have failed');
+            // M2 mutation-coverage gap: the mocked dns.lookup returns the metadata
+            // address for ANY hostname, so a mutated guard checking a hardcoded,
+            // wrong constant host would still trip a generic
+            // "RegistryDownloadHostIsPrivate" message. Require the message to name
+            // the REAL registryUrl host, or a guard checking the wrong value passes
+            // this assertion undetected.
             assert(
-                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
-                'should fail via the private-address check on registryUrl itself, before any metadata fetch. errors: ' + tr.errorIssues,
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate') && e.includes('registry.example.com')),
+                'should fail via the private-address check on registryUrl\'s OWN host (registry.example.com), before any metadata fetch. errors: ' + tr.errorIssues,
             );
             assert(
                 !tr.errorIssues.some(e => e.includes('fetchJson must not be called')),

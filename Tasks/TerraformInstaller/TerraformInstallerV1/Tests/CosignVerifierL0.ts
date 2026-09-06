@@ -341,25 +341,23 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 console.log = origLog;
             }
 
-            // The disclosure, the audit trail, AND the actual resolved hash all
-            // survive -- an unpinned run is no longer distinguishable from a pinned
-            // one in terms of what gets logged about the binary that ran.
-            assert.ok(
-                logs.some((l) => /cosignSha256 is not set/.test(l)),
-                'the unpinned-cosign disclosure and its remedy must stay in the build log (#1027)',
-            );
+            // The audit trail (which binary was trusted) and the actual resolved
+            // hash both survive as plain log lines -- an unpinned run is no less
+            // auditable than a pinned one.
             assert.ok(
                 logs.some((l) => l.includes(tmpCosignPath) && l.includes(actualHash)),
                 `the resolved path AND its actual SHA256 must be logged unconditionally, even with no pin set. logs: ${logs.join('\n')}`,
             );
-            // ...but not as a warning. requireCosignVerification defaults to "true"
-            // and cosignSha256 has no default, so this predicate holds for the
-            // shipped configuration of EVERY OpenTofu install. Annotating every
-            // such run teaches operators to skip warnings; it describes the
-            // defaults rather than reporting anything about this run.
+            // #1027, still-confirms: on the SHIPPED DEFAULT configuration
+            // (requireCosignVerification=true, cosignSha256 empty), a green run
+            // must show a real ##[warning] annotation, not just a console.log line
+            // -- otherwise nothing in the build log distinguishes this PATH-trusted,
+            // unpinned install from a fully pinned, verified one. The adjacent
+            // "cosign not found" branch already uses tasks.warning for the same
+            // reason; this must match it.
             assert.ok(
-                !warnings.some((w) => /cosignSha256 is not set/.test(w)),
-                'must not annotate a condition that is true on every default run. warnings: ' + warnings,
+                warnings.some((w) => /cosignSha256 is not set/.test(w)),
+                'must annotate the unpinned-cosign disclosure as a real warning, not only log it. warnings: ' + warnings,
             );
         });
     });

@@ -482,6 +482,26 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // M7 mutation-coverage gap: RegistryGpgVerified above always mocks
+    // verifyGpgSignature to return true, so the `if (!gpgVerified)` disclosure
+    // guard on this branch was never exercised in its false state. Here the .sig
+    // is genuinely absent and requireGpgSignature is false (a permitted skip),
+    // so the caller must still disclose RegistryTrustAnchorIsChecksumOnly.
+    it('registry specific version: discloses checksum-only trust when GPG verification of a signed SHA256SUMS was permitted to be skipped', async () => {
+        const tp = path.join(__dirname, 'RegistryGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'a registry install whose signed SHA256SUMS GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     it('registry shasums host: rejects a shasums_url host not in the allowlist, before fetching it', async () => {
         const tp = path.join(__dirname, 'RegistryShasumsHostReject.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

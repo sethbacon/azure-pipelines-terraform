@@ -151,21 +151,16 @@ export async function verifyCosignSignature(
     // but a bare PATH lookup with no pin (#1027) means a concurrent/prior job on a
     // persistent self-hosted agent that can write a PATH directory can silently
     // shadow cosign with a stub that always exits 0, converting this default-on
-    // check into a no-op. Name the resolved path so the gap -- and the exact
-    // binary being trusted -- is visible in the build log rather than only
-    // discoverable by reading this file's source.
-    //
-    // Reported at info level, not as a warning. requireCosignVerification
-    // defaults to "true" and cosignSha256 has no default, so this predicate is
-    // true for the shipped configuration of every OpenTofu install -- the
-    // operator has not chosen anything, and a warning that is guaranteed on
-    // every run is a statement about the defaults rather than a finding. The
-    // audit trail (which binary was trusted) and the remedy both stay in the
-    // log; only the ##[warning] annotation, which said "look here" on runs
-    // where nothing distinguished this one, goes away. Pinning it makes this a
-    // real cryptographic guarantee -- that is documented on the input itself.
+    // check into a no-op. This predicate is true for the shipped configuration of
+    // every OpenTofu install (requireCosignVerification defaults to "true" and
+    // cosignSha256 has no default), so it fires on every run with that default --
+    // but that is exactly why it must be a real ##[warning] annotation, not a
+    // console.log: on the shipped default config a green run currently shows
+    // nothing distinguishing "cosign was PATH-trusted with no pin" from a fully
+    // pinned, verified install (#1027, still-confirms). The adjacent "cosign not
+    // found" branch above already uses tasks.warning for the same reason.
     if (required && !expectedCosignSha256) {
-        console.log(`cosignSha256 is not set, so this binary is trusted without an integrity check of its own. On a shared or persistent agent, a prior or concurrent job with PATH write access could substitute a different binary there. Set cosignSha256 to pin the expected hash for a stronger guarantee.`);
+        tasks.warning(`cosignSha256 is not set, so this binary is trusted without an integrity check of its own. On a shared or persistent agent, a prior or concurrent job with PATH write access could substitute a different binary there. Set cosignSha256 to pin the expected hash for a stronger guarantee.`);
     }
 
     if (expectedCosignSha256) {
