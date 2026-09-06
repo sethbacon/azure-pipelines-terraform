@@ -220,13 +220,18 @@ describe('replaceSecretFile (TerraformDriftReport copy) — user-named SARIF out
 describe('writeSarif (TerraformDriftReport) — auto-generated path prefers the caller-supplied tempDir (#882)', function () {
     // Spelled out rather than cast: `Result` gained the five completeness
     // markers in contract 1.2.0, and a literal that names every field is what
-    // makes the NEXT such addition a compile error here too.
+    // makes the NEXT such addition a compile error here too -- as the four
+    // drift_* fields from contract 1.4.0 just did.
     const emptyResult: Result = {
         added: 0,
         changed: 0,
         destroyed: 0,
+        drift_added: 0,
+        drift_changed: 0,
+        drift_destroyed: 0,
         drifted: false,
         summary: [],
+        drift_summary: [],
         unparseable: false,
         unmasked: false,
         truncated: false,
