@@ -240,6 +240,43 @@ describe('PolicyAgentInstaller Test Suite', function () {
         }, tr);
     });
 
+    // M12 mutation-coverage gap: the sentinel/official call site's
+    // `if (!gpgVerified)` disclosure guard was never asserted against its own
+    // message -- SentinelGpgSignatureUnavailable above only asserts
+    // tr.succeeded, so a mutation forcing gpgVerified to always read true
+    // survived unnoticed.
+    it('sentinel official: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M12)', async () => {
+        const tp = path.join(__dirname, 'SentinelGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a sentinel official install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // M13 mutation-coverage gap: the sentinel/mirror call site's
+    // `if (!mirrorGpgVerified)` disclosure guard was never asserted against its
+    // own message -- MirrorSentinelSuccess is registered only via
+    // expectSuccess(), which never inspects warningIssues.
+    it('sentinel mirror: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M13)', async () => {
+        const tp = path.join(__dirname, 'SentinelMirrorGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a sentinel mirror install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     it('SentinelGpgVerificationFail — an invalid SHA256SUMS signature fails the task closed', async () => {
         const tp = path.join(__dirname, 'SentinelGpgVerificationFail.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);

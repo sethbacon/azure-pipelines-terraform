@@ -530,6 +530,42 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // M4 mutation-coverage gap: `if (!shasumsUrl.includes(version))` (#1104/17)
+    // rejects a registry-advertised shasums_url that names a DIFFERENT version
+    // than requested. No existing fixture ever set shasums_url to a mismatched
+    // version, so mutating that guard away survived.
+    it('registry specific version: rejects a shasums_url that does not reference the requested version (#1104/17, M4)', async () => {
+        const tp = path.join(__dirname, 'RegistryShasumsVersionMismatchReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a shasums_url naming a different version must fail the task');
+            assert(
+                tr.errorIssues.some(e => e.includes('does not reference the requested version 1.9.8')),
+                'the failure must surface the version-mismatch guard\'s own message. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    // M5 mutation-coverage gap: `if (data.filename && data.filename !== expectedZipFileName)`
+    // (#1104/17) rejects a registry-supplied filename that does not match the
+    // expected zip name for the requested version. No existing fixture ever set
+    // data.filename to a mismatched value, so mutating that guard away survived.
+    it('registry specific version: rejects a registry-supplied filename that does not match the expected zip name (#1104/17, M5)', async () => {
+        const tp = path.join(__dirname, 'RegistryFilenameMismatchReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a registry-supplied filename that does not match the expected zip name must fail the task');
+            assert(
+                tr.errorIssues.some(e => e.includes('does not match the expected filename for the requested version 1.9.8')),
+                'the failure must surface the filename-mismatch guard\'s own message. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
     // --- Registry pre-signed download-URL token masking (#352) ---
     // The registry download_url carries a live storage credential in its query
     // string and tool-lib logs the URL at INFO. Assert every token component is
@@ -886,6 +922,44 @@ describe('TerraformInstaller Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    // M9 mutation-coverage gap: the hashicorp call site's `if (!gpgVerified)`
+    // disclosure guard was never asserted against its own message -- the
+    // GpgSignatureUnavailable case above only asserts tr.succeeded, so a
+    // mutation forcing gpgVerified to always read true survived unnoticed.
+    it('hashicorp: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M9)', async () => {
+        const tp = path.join(__dirname, 'HashiCorpGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a hashicorp install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // M11 mutation-coverage gap: the mirror call site's `if (!mirrorGpgVerified)`
+    // disclosure guard was never asserted against its own message -- every
+    // existing mirror fixture either short-circuits on a null SHA256SUMS body
+    // (requireChecksum=false) or mocks verifyGpgSignature truthy.
+    it('mirror: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M11)', async () => {
+        const tp = path.join(__dirname, 'MirrorGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a mirror install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
         }, tr);
     });
 
