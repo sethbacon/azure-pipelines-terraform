@@ -33,6 +33,9 @@ import './AllowlistSanitizerL0';
 import './OutputBoundaryClassL0';
 // Prototype-pollution-safe lookup class test (issues #884/#897).
 import './PrototypeSafeLookupClassL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 
 const INSTANCE = 'testinstance';
 const BASE_URL = `https://${INSTANCE}.service-now.com`;

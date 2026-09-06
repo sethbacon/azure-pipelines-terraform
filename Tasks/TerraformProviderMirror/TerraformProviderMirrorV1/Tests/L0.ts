@@ -8,6 +8,9 @@ import fs = require('fs');
 import './UrlSecretRedactionL0';
 // Direct unit tests for the shared secure-temp writer (#628).
 import './SecureTempL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from '../src/config-generator';
 
 describe('config-generator', () => {

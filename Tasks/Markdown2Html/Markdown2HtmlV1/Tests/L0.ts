@@ -36,6 +36,9 @@ import './CssEscapeBypassL0';
 import './AllowlistSanitizerL0';
 import './MetaRefreshExternalOriginL0';
 import './PrototypeSafeLookupClassL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 
 // ---------------------------------------------------------------------------
 // Helpers

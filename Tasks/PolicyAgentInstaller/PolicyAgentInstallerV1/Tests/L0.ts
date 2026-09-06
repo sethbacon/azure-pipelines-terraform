@@ -22,6 +22,9 @@ import './UrlSecretRedactionL0';
 // (#161/#191/#200/#201, sibling azure-pipelines-packer #161). Imported for its
 // side effect of registering the suite.
 import './EgressAuthorizationL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 
 describe('PolicyAgentInstaller Test Suite', function () {
 
