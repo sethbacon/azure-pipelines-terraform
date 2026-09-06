@@ -962,13 +962,72 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         await tr.runAsync();
         try {
             assert.ok(tr.failed, 'task should have failed');
+            // registryUrl is now validated by assertRegistryBaseHasNoQueryFragmentOrUserinfo
+            // (#1110) BEFORE the skipTlsVerify branch is even reached, so an unparseable
+            // registryUrl fails with that guard's message regardless of skipTlsVerify --
+            // assertSkipTlsVerifyNotAgainstPublicRegistry's own unparseable-URL check is
+            // now unreachable dead code and was removed rather than left stale.
             assert.ok(
-                tr.stdout.includes('SkipTlsVerifyUrlUnparseable'),
+                tr.stdout.includes('RegistryBaseUrlUnparseable'),
                 'should fail with the unparseable-URL rejection error. stdout: ' + tr.stdout,
             );
             assert.ok(
                 !tr.warningIssues.some((w) => w.includes('SkipTlsVerifyEnabled')),
                 'must reject BEFORE reaching the skipTlsVerify warning, not warn-then-proceed',
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    // #1110: both publishers build request URLs by trimming a trailing slash off
+    // the base (registryUrl / hcpAddress) and concatenating a fixed API path
+    // onto it rather than resolving through the URL parser, so a query string,
+    // fragment, or embedded userinfo in the base would silently retarget --or
+    // drop-- the intended request. One case per property, split across both
+    // registry types so both call sites of the guard are exercised.
+    it('rejects a registryUrl carrying a query string, before either publisher runs (#1110)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishRegistryUrlQueryRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('rejects a registryUrl carrying a fragment, before either publisher runs (#1110)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishRegistryUrlFragmentRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
+            );
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('rejects an hcpAddress carrying userinfo, before either publisher runs (#1110)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpAddressUserinfoRejected.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
             );
         } catch (error) {
             console.log('STDERR', tr.stderr);
