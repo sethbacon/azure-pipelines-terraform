@@ -100,6 +100,22 @@ export function buildDriftSarif(result: Result): SarifLog {
  * bare os.tmpdir() -- matching index.ts's own drift-summary file, so it is
  * covered by the agent's job-end temp purge on a self-hosted/persistent agent
  * instead of sitting in the shared, never-purged OS temp directory (#882).
+ *
+ * `outPath` is resolved WITHOUT a working-directory containment guard,
+ * deliberately, for the same reason TerraformPolicyCheckV1's writeSarif and
+ * Markdown2HtmlV1's outputFile are (rd#123 finding 3; #1110 finding 1, of
+ * which this is the suite-scope residual): sarifPath is a plain operator-
+ * supplied task input, not repository content, and this repo's own documented
+ * example points it OUTSIDE the sources directory
+ * (`sarifPath: '$(Build.ArtifactStagingDirectory)/drift.sarif'` in
+ * docs/yaml-examples.md, a sibling of the checkout, not a descendant). This
+ * task also has no `workingDirectory` input to contain against, so a guard
+ * would default its root to process.cwd() -- one the operator never declared
+ * and cannot widen. Containing it would reject the documented usage while
+ * adding no protection an operator who already controls the pipeline YAML
+ * does not trivially have. Unlike moduleManifest in index.ts, which IS
+ * realpath-contained, this value is never read back or parsed -- it is only
+ * ever a write destination.
  */
 export function writeSarif(result: Result, sarifPath?: string, tempDir: string = os.tmpdir()): string {
     const outPath = sarifPath && sarifPath.trim().length > 0
