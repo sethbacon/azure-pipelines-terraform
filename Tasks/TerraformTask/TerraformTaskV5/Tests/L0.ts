@@ -103,6 +103,11 @@ import './MaskHasSensitiveLeafL0';
 // End-to-end coverage for index.ts's SIGTERM/SIGINT registration: emergency
 // cleanup runs, then the signal is re-raised (#758).
 import './SignalHandlerL0';
+// Class test for "a credential value never reaches the masker, or reaches a
+// surface the masker does not cover" (#1105): the secure var-file extractor's
+// string-unaware comment pre-pass and missing heredoc support, plus the legacy
+// plan-results attachment publishing unscrubbed plan stdout.
+import './SecretUnmaskedSurfaceClassL0';
 
 describe('Terraform Test Suite', function () {
 

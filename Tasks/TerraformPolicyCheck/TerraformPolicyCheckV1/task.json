@@ -275,6 +275,7 @@
     ],
     "messages": {
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
+        "PolicyRepoUrlUserInfoRejected": "The policy repository URL carries credentials in its userinfo (https://user:password@host/...): %s. A URL credential is written to the git child process's command line, which other processes on a shared agent can read and which the agent's secret masker does not cover. Remove the credentials from policyRepoUrl and supply them through the policyRepoToken input instead, which delivers them to git out of band.",
         "InvalidPolicyRepoRef": "Invalid policy repo ref rejected: %s. Refs must not start with '-' and may contain only letters, digits, '.', '_', '/', and '-'.",
         "PolicySubdirOutsideRepo": "Policy subdirectory escapes the cloned repository: %s",
         "PolicyRepoCloneTimedOut": "Cloning the policy repository timed out after %s ms.",

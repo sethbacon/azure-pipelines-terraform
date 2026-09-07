@@ -4,7 +4,7 @@ import path = require('path');
 import os = require('os');
 import fs = require('fs');
 import { randomUUID as uuidV4 } from 'crypto';
-import { retryAsync } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, extractUrlUserInfoSecrets, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { attachBoundedCapture } from './output-cap';
 
 // Wall-clock bound for each git invocation. git's HTTP transport has no built-in
@@ -23,6 +23,30 @@ const CLONE_RETRY_BASE_MS = 200;
 // Rejects leading-dash refs (e.g. `--upload-pack=<cmd>`) and anything outside a
 // conservative branch/tag/SHA charset, closing the argument-injection vector.
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+/**
+ * Rejects a `policyRepoUrl` that carries credentials in its userinfo, and masks
+ * them on the way out.
+ *
+ * Masking alone would not be enough here. The clone URL becomes an argv element
+ * of the `git` child process, and the process list is not a surface the agent's
+ * masker covers -- any other process on a shared agent can read it from `ps` /
+ * `/proc/<pid>/cmdline`. So the credential has to not be in the URL at all;
+ * `policyRepoToken` already delivers one safely, via per-invocation
+ * `GIT_CONFIG_*` env (see buildGitAuthEnv).
+ *
+ * The values are still registered with the masker before the throw, because the
+ * operator has already leaked them into the pipeline definition by this point
+ * and the rejection message itself must not be the thing that prints them.
+ */
+export function assertNoUrlUserInfo(url: string): void {
+    const secrets = extractUrlUserInfoSecrets(url);
+    if (secrets.length === 0) return;
+    for (const secret of secrets) {
+        tasks.setSecret(secret);
+    }
+    throw new Error(tasks.loc('PolicyRepoUrlUserInfoRejected', redactUrlUserInfo(url)));
+}
 
 /**
  * Resolves the directory containing the policies to evaluate.
@@ -52,8 +76,9 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     // gitUrl
     const url = tasks.getInput('policyRepoUrl', true)!;
     if (!url.startsWith('https://')) {
-        throw new Error(tasks.loc('InsecureUrlRejected', url));
+        throw new Error(tasks.loc('InsecureUrlRejected', redactUrlUserInfo(url)));
     }
+    assertNoUrlUserInfo(url);
     const ref = tasks.getInput('policyRepoRef') || 'main';
     if (!SAFE_REF.test(ref)) {
         throw new Error(tasks.loc('InvalidPolicyRepoRef', ref));
@@ -234,9 +259,17 @@ export async function attemptClone(gitPath: string, cloneArgs: string[], authEnv
 /**
  * Runs a git ToolRunner with a hard wall-clock timeout and a fail-fast
  * environment (never prompt for credentials; abort a stalled HTTP transfer).
+ *
+ * `silent: true` suppresses ToolRunner's own `[command] git clone -- <url> ...`
+ * echo. The agent masker cannot redact a credential nothing registered, so that
+ * echo was the one surface that printed an operator-embedded URL credential
+ * verbatim. Nothing diagnostic is lost: attemptClone captures stderr separately
+ * via attachBoundedCapture, and a failure is still surfaced through
+ * GitCommandError.
  */
 async function execGit(tool: ToolRunner, extraEnv: Record<string, string> = {}): Promise<void> {
     const options = <IExecOptions>{
+        silent: true,
         env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0',

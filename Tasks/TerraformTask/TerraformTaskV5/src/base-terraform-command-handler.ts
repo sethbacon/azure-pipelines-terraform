@@ -1,7 +1,7 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { writeSecretFile } from '@4cloudguru/pipeline-task-ado';
+import { writeSecretFile, EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import { TempFileManager } from './temp-file-manager';
 import {
     ArgumentBuilder,
@@ -15,6 +15,7 @@ import { ResultsPublisher } from './results-publisher';
 import { buildPlanDigest } from './results/plan-digest';
 import { buildStateDigest } from './results/state-digest';
 import { maskHasSensitiveLeaf } from './results/redact';
+import { scrubSecrets } from './results/secret-scrub';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -692,7 +693,14 @@ export abstract class BaseTerraformCommandHandler {
             // stdout can carry non-sensitive-but-secret attribute values, and the
             // uuid filename keeps the exclusive create collision-free.
             const attachmentPath = path.join(tempDir, `terraform-plan-${uuidV4()}.txt`);
-            writeSecretFile(attachmentPath, planStdout);
+            // An attachment is NOT agent-masked: the console echo of this same text
+            // is redacted by the agent for every value registered via setSecret, but
+            // the uploaded file receives no such treatment and is readable by anyone
+            // with build-read. The structured -summary path already scrubs with the
+            // tracked secret values; this legacy path published cleartext. Same
+            // scrub, same seed, so a secret masked in the log is no longer published
+            // verbatim beside it.
+            writeSecretFile(attachmentPath, scrubSecrets(planStdout, EnvironmentVariableHelper.getTrackedSecretValues()));
             // COMPAT (§ non-negotiable): the legacy terraform-plan-results attachment
             // name is passed RAW, exactly as before the structured-summary feature.
             // azure-pipelines-task-lib's addAttachment already escapes the value into

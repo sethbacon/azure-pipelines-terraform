@@ -27,6 +27,9 @@ import './OpaFailModeValidationL0';
 import './SignalHandlerL0';
 // Class test: git-clone retry coverage (#891).
 import './CloneRetryL0';
+// Class row: credentials embedded in policyRepoUrl reach git's argv, a surface
+// the agent masker does not cover (#1105).
+import './PolicyRepoUrlUserInfoL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
