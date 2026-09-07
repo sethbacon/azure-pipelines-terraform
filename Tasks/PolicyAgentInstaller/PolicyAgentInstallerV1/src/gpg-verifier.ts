@@ -25,9 +25,15 @@ import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
  * Verifies the GPG signature of a SHA256SUMS file against HashiCorp's public key.
  * Fetches the `.sig` file from the same base URL as the SHA256SUMS file.
  *
- * - If verification succeeds, returns the SHA256SUMS content (already fetched).
+ * Returns whether the content was ACTUALLY authenticated: `true` once a real
+ * signature verified against the pinned key, `false` when verification was
+ * permitted to be skipped (the `.sig` was genuinely absent and `required` is
+ * false). Callers whose own success message would otherwise read identically
+ * either way (#1024/21) must inspect this to disclose the weaker case.
+ *
+ * - If verification succeeds, returns true.
  * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is false, warns
- *   and returns unverified. Any OTHER fetch error (5xx / network / timeout) is
+ *   and returns false (unverified). Any OTHER fetch error (5xx / network / timeout) is
  *   transient and propagates fatally even when `required` is false -- only a
  *   confirmed absence should downgrade to a warning.
  * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is true, throws
@@ -43,14 +49,14 @@ import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
  * fails to compile instead of compiling clean and silently downgrading a
  * missing signature to a warning.
  */
-export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean): Promise<void> {
+export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean): Promise<boolean> {
     const signatureBytes = await fetchBufferAllow404(signatureUrl);
     if (signatureBytes === null) {
         if (required) {
             throw new VerificationFailure(`GPG signature file unavailable (${signatureUrl}) and signature verification is required. Set 'requireGpgSignature' to false to skip.`);
         }
         tasks.warning(`GPG signature file unavailable (${signatureUrl}). SHA256SUMS will be trusted without signature verification.`);
-        return;
+        return false;
     }
 
     tasks.debug(`Verifying GPG signature from ${signatureUrl}`);
@@ -74,4 +80,5 @@ export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl
     }
 
     tasks.debug('GPG signature verification passed');
+    return true;
 }

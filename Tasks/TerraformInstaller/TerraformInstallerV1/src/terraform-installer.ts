@@ -216,10 +216,19 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     // A failed signature or checksum check DELETES the zip rather than leaving a
     // rejected — possibly tampered — artifact in the agent's temp directory (#204).
+    let gpgVerified = false;
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
+        gpgVerified = await verifyGpgSignature(sha256SumsContent, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
     }, discardLog);
+    if (!gpgVerified) {
+        // The .sig was genuinely absent and requireGpgSignature is false: the
+        // SHA256SUMS content was never authenticated, so this reaches the same
+        // checksum-only trust level as the registry/mirror disclosures and must
+        // say so rather than reporting a bare success that reads identically to
+        // a real GPG-anchored verification (#1024/21).
+        tasks.warning(tasks.loc("GpgVerificationSkippedChecksumOnly"));
+    }
 
     return zipPath;
 }
@@ -231,6 +240,14 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
+
+    // Egress authorization for the metadata call itself: previously this was only
+    // ever enforced on the 'latest' resolution path (resolveVersionFromRegistry),
+    // so a pinned-version install reached registryUrl with no allowlist or
+    // private-address check at all (#1104/20). Authorizing here makes the decision
+    // a property of the URL rather than of which resolution path ran.
+    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
+    await assertEgressHostAllowed(new URL(registryUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
 
     const data = await fetchJson<{ download_url: string; sha256: string; filename?: string; shasums_url?: string; shasums_signature_url?: string }>(infoUrl);
     if (!data.download_url) {
@@ -260,7 +277,6 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     // download_url at an arbitrary HTTPS host, so an operator who wants to
     // constrain the trusted storage host(s) can set registryAllowedHosts.
     // Default (empty) preserves the existing trust-the-registry behavior.
-    const allowedHosts = parseAllowedHosts(tasks.getInput("registryAllowedHosts", false));
     const initialHost = new URL(data.download_url).hostname;
     // Egress authorization for the download destination -- ONE decision
     // (assertEgressHostAllowed) applied to the initial URL here and, via
@@ -335,13 +351,38 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         }
         await assertEgressHostAllowed(new URL(shasumsUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
         await assertEgressHostAllowed(new URL(shasumsSignatureUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
+        // shasumsUrl's own path must name the REQUESTED version -- otherwise a
+        // compromised registry could hand back a genuinely HashiCorp-signed
+        // SHA256SUMS for a DIFFERENT version than the one asked for (#1104/17).
+        if (!shasumsUrl.includes(version)) {
+            throw new VerificationFailure(`shasums_url (${redactUrl(shasumsUrl)}) does not reference the requested version ${version}; refusing to trust it as the checksum source.`);
+        }
 
         const sumsContent = await fetchText(shasumsUrl);
         const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
+        // The checksum-lookup key MUST be the requested version's own expected
+        // filename, never the registry-supplied data.filename -- otherwise a
+        // compromised registry can answer a request for one version with a
+        // genuinely-signed SHA256SUMS entry naming a DIFFERENT, older artifact
+        // (#1104/17). If the registry names a filename, it is compared against the
+        // expected one; it is never used AS the lookup key.
+        const expectedZipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
+        if (data.filename && data.filename !== expectedZipFileName) {
+            throw new VerificationFailure(`Registry-supplied filename (${data.filename}) does not match the expected filename for the requested version ${version} (${expectedZipFileName}); refusing to use it as the checksum-lookup key.`);
+        }
+        let gpgVerified = false;
         await discardArtifactOnFailure(zipPath, async () => {
-            await verifyGpgSignature(sumsContent, shasumsSignatureUrl, requireGpg);
-            await verifySha256(zipPath, parseSha256(sumsContent, data.filename || `terraform_${version}_${osPlatform}_${arch}.zip`));
+            gpgVerified = await verifyGpgSignature(sumsContent, shasumsSignatureUrl, requireGpg);
+            await verifySha256(zipPath, parseSha256(sumsContent, expectedZipFileName));
         }, discardLog);
+        if (!gpgVerified) {
+            // The .sig was genuinely absent and requireGpgSignature is false: the
+            // SHA256SUMS content was never authenticated, so this reaches the same
+            // checksum-only trust level as the data.sha256 branch below and must say
+            // so rather than reporting a bare success that reads identically to a
+            // real GPG-anchored verification (#1024/21).
+            tasks.warning(tasks.loc("RegistryTrustAnchorIsChecksumOnly", infoUrl));
+        }
         return { zipPath, verified: true };
     }
 
@@ -464,10 +505,17 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
     // key (a missing .sig is fatal only when requireGpgSignature is set), then
     // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
+    let mirrorGpgVerified = false;
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+        mirrorGpgVerified = await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
         await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
     }, discardLog);
+    if (!mirrorGpgVerified) {
+        // The .sig was genuinely absent and requireGpgSignature is false: disclose
+        // the weaker, checksum-only trust level instead of a bare success that
+        // reads identically to a real GPG-anchored verification (#1024/21).
+        tasks.warning(tasks.loc("GpgVerificationSkippedChecksumOnly"));
+    }
     return { zipPath, verified: true };
 }
 

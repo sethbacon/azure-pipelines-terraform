@@ -135,12 +135,20 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         t.debug = (_m: string) => { /* silence */ };
     }
 
-    it('throws when cosign is missing and verification is required', async () => {
+    it('throws a typed VerificationFailure (not a bare Error) when cosign is missing and verification is required (#589)', async () => {
         stubLogging();
         t.which = () => { throw new Error('cosign not found'); };
         await assert.rejects(
             verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true),
-            /cosign is required/,
+            (err: unknown) => {
+                // Must be a VerificationFailure, not a bare Error -- so the cache-hit
+                // re-verification path's isVerificationFailure(err) check fails
+                // closed on a withheld/missing verifier instead of degrading to the
+                // cached, never-verified binary the way any other Error would.
+                assert.ok(isVerificationFailure(err), 'expected a typed VerificationFailure, not a bare Error');
+                assert.match((err as Error).message, /cosign is required/);
+                return true;
+            },
         );
     });
 
@@ -308,9 +316,16 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             );
         });
 
-        it('does not compute or check any hash when cosignSha256 is left unset (default, unchanged behavior)', async () => {
+        it('still computes and logs the resolved binary\'s actual SHA256 when cosignSha256 is left unset (#1027: "found on PATH" is not provenance)', async () => {
             stubLogging();
-            t.which = () => '/usr/bin/cosign'; // a path that does not exist -- proves no fs read is attempted
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosign-nopin-test-'));
+            tmpDirToClean = tmpDir;
+            const tmpCosignPath = path.join(tmpDir, 'cosign-fake-binary');
+            const content = Buffer.from('fake cosign binary content for the unpinned-disclosure test');
+            fs.writeFileSync(tmpCosignPath, content);
+            const actualHash = crypto.createHash('sha256').update(content).digest('hex');
+
+            t.which = () => tmpCosignPath;
             hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
             t.tool = (_path: string) => ({
                 arg() { return this; },
@@ -326,23 +341,23 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 console.log = origLog;
             }
 
-            // The disclosure and the audit trail both survive...
+            // The audit trail (which binary was trusted) and the actual resolved
+            // hash both survive as plain log lines -- an unpinned run is no less
+            // auditable than a pinned one.
             assert.ok(
-                logs.some((l) => /cosignSha256 is not set/.test(l)),
-                'the unpinned-cosign disclosure and its remedy must stay in the build log (#1027)',
+                logs.some((l) => l.includes(tmpCosignPath) && l.includes(actualHash)),
+                `the resolved path AND its actual SHA256 must be logged unconditionally, even with no pin set. logs: ${logs.join('\n')}`,
             );
+            // #1027, still-confirms: on the SHIPPED DEFAULT configuration
+            // (requireCosignVerification=true, cosignSha256 empty), a green run
+            // must show a real ##[warning] annotation, not just a console.log line
+            // -- otherwise nothing in the build log distinguishes this PATH-trusted,
+            // unpinned install from a fully pinned, verified one. The adjacent
+            // "cosign not found" branch already uses tasks.warning for the same
+            // reason; this must match it.
             assert.ok(
-                logs.some((l) => l.includes('/usr/bin/cosign')),
-                'the resolved path must stay logged so a shadowed binary is auditable',
-            );
-            // ...but not as a warning. requireCosignVerification defaults to "true"
-            // and cosignSha256 has no default, so this predicate holds for the
-            // shipped configuration of EVERY OpenTofu install. Annotating every
-            // such run teaches operators to skip warnings; it describes the
-            // defaults rather than reporting anything about this run.
-            assert.ok(
-                !warnings.some((w) => /cosignSha256 is not set/.test(w)),
-                'must not annotate a condition that is true on every default run. warnings: ' + warnings,
+                warnings.some((w) => /cosignSha256 is not set/.test(w)),
+                'must annotate the unpinned-cosign disclosure as a real warning, not only log it. warnings: ' + warnings,
             );
         });
     });

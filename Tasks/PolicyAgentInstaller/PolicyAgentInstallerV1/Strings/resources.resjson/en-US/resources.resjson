@@ -32,6 +32,7 @@
     "loc.messages.Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
     "loc.messages.ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
     "loc.messages.ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
+    "loc.messages.GpgVerificationSkippedChecksumOnly": "GPG signature verification for this Sentinel install was permitted to be skipped (see the prior warning); the archive's integrity is anchored only to its SHA256 checksum, not to HashiCorp's pinned signing key. Set 'requireGpgSignature' to true to require a verified signature.",
     "loc.messages.CachedToolVerificationFailed": "Cached %s failed integrity re-verification (stored: %s, actual: %s). The cached copy may have been tampered with or corrupted since it was last verified; clear the tool cache for this version and re-run to force a fresh, verified download.",
     "loc.messages.ReverifyingCachedTool": "Cache hit for %s has no stored integrity marker (cached before re-verification existed, or with checksum verification disabled). Re-downloading the release to re-verify the cached executable; set requireChecksum to false to skip this.",
     "loc.messages.ForcingOnlineReverification": "Cache hit for %s has a valid local integrity marker, but forceOnlineReverification is enabled. Re-downloading the release to re-verify online rather than trusting the marker; set requireChecksum to false to skip this.",
