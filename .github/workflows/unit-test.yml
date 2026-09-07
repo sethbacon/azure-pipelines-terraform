@@ -109,6 +109,10 @@ jobs:
         run: node scripts/check-shared-modules.js
       - name: Self-test check-shared-modules.js
         run: node scripts/test-check-shared-modules.js
+      - name: Shared-module pins in lockstep (#1108 class signature)
+        run: node scripts/check-shared-module-pins.js
+      - name: Self-test check-shared-module-pins.js
+        run: node scripts/test-check-shared-module-pins.js
       - name: Check for unregistered near-duplicate modules
         run: node scripts/check-near-duplicate-modules.js
       - name: Validate egress authorization (SSRF class signature)
