@@ -264,23 +264,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install the parser release-please uses
-        working-directory: .github/commit-message-check
-        # --ignore-scripts: npm runs dependency preinstall/install/postinstall
-        # hooks by default, which is arbitrary code from the dependency tree.
-        run: npm ci --ignore-scripts
-
       - name: Parse the commit this PR would squash into main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
-            --jq '.[] | {sha: .sha, message: .commit.message, parents: (.parents | length)}' \
-            > commits.ndjson
-
-          node .github/commit-message-check/verify.mjs commits.ndjson
+        uses: 4cloudguru/shared-workflows/.github/actions/commit-message-check@a2dd4eb31617ebd7d2df51acaf5ab9ff7585cab0 # v1.21.0
+        with:
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-title: ${{ github.event.pull_request.title }}
+          repo: ${{ github.repository }}
