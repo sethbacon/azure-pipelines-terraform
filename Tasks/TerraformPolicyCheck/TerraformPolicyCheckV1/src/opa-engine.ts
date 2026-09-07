@@ -57,10 +57,18 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
         throw new Error(`Failed to parse 'opa exec' output as JSON (exit code ${code}): ${err instanceof Error ? err.message : err}. Output: ${stdout.slice(0, 500)}`);
     }
 
-    const entry = parsed.result && parsed.result[0];
-    if (entry && entry.error) {
-        throw new Error(`OPA evaluation error for ${entry.path}: ${JSON.stringify(entry.error)}`);
+    // opa exec can return one result entry per input file it evaluated (a directory
+    // input yields more than one), so an error is not necessarily on entry[0] alone --
+    // fold every entry's error into the thrown message rather than inspecting only the
+    // first and silently dropping a real evaluation error on a later entry (#1113).
+    const results = parsed.result ?? [];
+    const errored = results.filter((r): r is { path?: string; error: unknown } => r.error !== undefined && r.error !== null);
+    if (errored.length > 0) {
+        const detail = errored.map(r => `${r.path ?? '(unknown path)'}: ${JSON.stringify(r.error)}`).join('; ');
+        throw new Error(`OPA evaluation error for ${errored.length} of ${results.length} result(s): ${detail}`);
     }
+
+    const entry = results[0];
 
     const decision = entry ? entry.result : undefined;
     const violations = extractViolations(decision, failMode, decisionPath);
