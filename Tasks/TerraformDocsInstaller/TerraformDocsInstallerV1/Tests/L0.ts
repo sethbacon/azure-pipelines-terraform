@@ -24,6 +24,21 @@ import './EgressAuthorizationL0';
 // unhandledRejection registration (#1113).
 import './SignalHandlerL0';
 
+/**
+ * True when `message` names `host` as a whole token.
+ *
+ * These are task error messages, not URLs, so they cannot be anchor-matched
+ * end to end. Split into host-shaped tokens and compare for exact equality:
+ * a substring or unanchored-regex test would also accept
+ * `evilregistry.example.com` and `registry.example.com.evil.net`.
+ */
+function messageNamesHost(message: string, host: string): boolean {
+  return message
+    .split(/[^\w.-]+/)
+    .map(token => token.replace(/^[.-]+|[.-]+$/g, ''))
+    .includes(host);
+}
+
 describe('TerraformDocsInstaller Test Suite', function () {
 
   before(() => {
@@ -405,6 +420,34 @@ describe('TerraformDocsInstaller Test Suite', function () {
       assert(
         tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
         'should fail via the private-address check. errors: ' + tr.errorIssues,
+      );
+    }, tr);
+  });
+
+  it("registryUrl's OWN host is authorized BEFORE the metadata fetch for a SPECIFIC version, not only on the 'latest' resolution branch (#1104/20)", async () => {
+    const tp = path.join(__dirname, 'RegistryUrlHostAuthorizedBeforeMetadataFetch.js');
+    const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+    await tr.runAsync();
+
+    runValidations(() => {
+      assert(tr.failed, 'task should have failed');
+      // M3 mutation-coverage gap: the mocked dns.lookup returns the metadata
+      // address for ANY hostname, so a mutated guard checking a hardcoded,
+      // wrong constant host would still trip a generic
+      // "RegistryDownloadHostIsPrivate" message. Require the message to name
+      // the REAL registryUrl host, or a guard checking the wrong value passes
+      // this assertion undetected.
+      assert(
+        tr.errorIssues.some(
+          e =>
+            e.includes('RegistryDownloadHostIsPrivate') &&
+            messageNamesHost(e, 'registry.example.com'),
+        ),
+        'should fail via the private-address check on registryUrl\'s OWN host (registry.example.com), before any metadata fetch. errors: ' + tr.errorIssues,
+      );
+      assert(
+        !tr.errorIssues.some(e => e.includes('fetchJson must not be called')),
+        'fetchJson must never be reached once registryUrl host authorization has failed. errors: ' + tr.errorIssues,
       );
     }, tr);
   });
