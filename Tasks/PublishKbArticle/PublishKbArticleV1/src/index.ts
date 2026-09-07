@@ -43,9 +43,21 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     const serviceConnection = tasks.getInput('serviceConnection', false);
     if (serviceConnection) {
         const rawUrl = readEndpointUrl(serviceConnection) || '';
-        // Extract instance name from URL like https://myinstance.service-now.com
-        const urlMatch = rawUrl.match(/https?:\/\/([^.]+)\.service-now\.com/i);
-        instance = urlMatch ? urlMatch[1] : rawUrl;
+        // Extract the instance name from a URL like https://myinstance.service-now.com
+        // -- from the PARSED host, never by regex over the raw string: a credential
+        // an operator put into the connection URL (https://svc:token@myinstance...)
+        // would otherwise ride into `instance` and out through the InvalidInstance
+        // message below, where a scheme-less "svc:token@myinstance" cannot be
+        // redacted (#1105 class sweep). A URL that is not *.service-now.com falls
+        // through whole, as before, and is rejected below in redacted form.
+        let host = '';
+        try {
+            host = new URL(rawUrl).hostname;
+        } catch {
+            host = '';
+        }
+        const hostMatch = host.match(/^([^.]+)\.service-now\.com$/i);
+        instance = hostMatch ? hostMatch[1] : rawUrl;
 
         const scheme = (tasks.getEndpointAuthorizationScheme(serviceConnection, false) || '').toLowerCase();
         if (scheme === 'usernamepassword' || scheme === 'basic') {
