@@ -47,6 +47,12 @@
 //   4. CLAIM-CORROBORATING DEPENDENCIES. A tool whose mere presence in
 //      package.json makes a supply-chain claim look implemented may only be
 //      declared if a workflow or an npm script invokes it.
+//   5. THIRD-PARTY NOTICES. THIRD_PARTY_NOTICES.md's per-task attribution of
+//      bundled packages must agree with each task's package.json -- both
+//      directions for a "| Package | Bundled into |" table, package.json ->
+//      section for a per-task "## <task>" inventory. A notices file in a
+//      shape this cannot parse is reported as skipped, by name, never passed
+//      (azure-pipelines-terraform#1115).
 //
 // Usage:  node scripts/check-docs-claims.js [repoRoot] [--json]
 // Exit 0 = every checked claim holds. Exit 1 = drift, listed.
@@ -484,31 +490,49 @@ if (pkg) {
 }
 
 /* ------------------------------------------------------------------ *
- * 5. THIRD_PARTY_NOTICES.md's "Bundled into" column vs each task's own
- *    package.json. (Audit 2026-09-06 #1115: undici was under-attributed to
- *    4 of the 7 tasks that actually bundle it, and nothing here caught it.)
+ * 5. THIRD_PARTY_NOTICES.md vs each task's own package.json. (Audit
+ *    2026-09-06, azure-pipelines-terraform#1115: undici was under-attributed
+ *    to 4 of the 7 tasks that actually bundle it, and nothing caught it.)
+ *
+ *    The suite writes this document in more than one shape, and this check
+ *    reads the two it can verify mechanically rather than pretending the
+ *    third is one of them:
+ *      (a) one "| Package | Bundled into | ... |" table naming, per package,
+ *          the tasks that ship it (azure-pipelines-terraform) -- checked in
+ *          BOTH directions against every task's production dependencies;
+ *      (b) one "## <task name>" section per task, each carrying a
+ *          "| Package | Version | Licence |" inventory of everything that
+ *          task's node_modules ships (azure-pipelines-release-docs) --
+ *          checked one way: every direct production dependency of a task
+ *          must appear in that task's own section. The inventory legitimately
+ *          lists transitive packages package.json never names, so the reverse
+ *          direction is not a claim.
+ *    Anything else -- azure-pipelines-packer's prose "**Used by:**" form,
+ *    whose multi-package sections attribute per package inside one sentence
+ *    -- is reported as SKIPPED, by name, above the summary. A shape this
+ *    cannot parse is a claim it did not check, never one it passed.
  * ------------------------------------------------------------------ */
 
 /**
- * Every Tasks/<Family>/<Task>Vn/package.json's PRODUCTION dependency names,
- * keyed by the task display name THIRD_PARTY_NOTICES.md uses -- the leaf
- * directory name with a trailing 'V1' stripped (every task here is V1 except
- * TerraformTaskV5, whose version number IS part of its identity and stays).
- * Scoped to `dependencies` only, not `devDependencies`: this document's own
- * stated scope is what ships inside the .vsix's node_modules, and a dev-only
- * tool never does.
+ * Every Tasks/<Family>/<Task>/package.json's PRODUCTION dependency names,
+ * with the two names a notices document may call the task by: the leaf
+ * directory with a trailing 'V1' stripped (form (a) -- every task in that repo
+ * is V1 except TerraformTaskV5, whose version number IS part of its identity
+ * and stays) and task.json's own `name` (form (b), e.g. PipelineChangelog).
+ * Scoped to `dependencies` only, not `devDependencies`: the document's stated
+ * scope is what ships inside the .vsix's node_modules, and a dev-only tool
+ * never does.
  */
 function taskDependencyIndex() {
   const tasksDir = path.join(ROOT, 'Tasks')
-  const index = new Map()
-  if (!fs.existsSync(tasksDir)) return index
+  const tasks = []
+  if (!fs.existsSync(tasksDir)) return tasks
   for (const family of fs.readdirSync(tasksDir)) {
     const familyDir = path.join(tasksDir, family)
     if (!fs.statSync(familyDir).isDirectory()) continue
     for (const leaf of fs.readdirSync(familyDir)) {
       const pkgPath = path.join(familyDir, leaf, 'package.json')
       if (!fs.existsSync(pkgPath)) continue
-      const displayName = leaf.replace(/V1$/, '')
       let taskPkg
       try {
         taskPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
@@ -516,62 +540,112 @@ function taskDependencyIndex() {
         fail('third-party-notices', pkgPath, `could not parse: ${err.message}`)
         continue
       }
-      index.set(displayName, new Set(Object.keys(taskPkg.dependencies || {})))
+      let manifestName = null
+      try {
+        manifestName = JSON.parse(fs.readFileSync(path.join(familyDir, leaf, 'task.json'), 'utf8')).name || null
+      } catch {
+        // No task.json (or an unparseable one) is check-versions.js's finding,
+        // not this one's; the leaf-derived name still identifies the task.
+      }
+      tasks.push({
+        displayName: leaf.replace(/V1$/, ''),
+        manifestName,
+        deps: new Set(Object.keys(taskPkg.dependencies || {})),
+      })
     }
   }
-  return index
+  return tasks
+}
+
+/** `[name](url)` -> name, `` `name` `` -> name; a plain cell is returned trimmed. */
+function packageCellName(cell) {
+  const trimmed = cell.trim()
+  const link = /^\[([^\]]+)\]\([^)]*\)$/.exec(trimmed)
+  return (link ? link[1] : trimmed).replace(/^`|`$/g, '')
 }
 
 /**
- * Parses THIRD_PARTY_NOTICES.md's package table, returning one row per
- * package: its name (first cell) and the task display names named in its
- * "Bundled into" cell (second cell, comma-separated, stopping at the first
- * parenthetical -- e.g. "TerraformInstaller, PolicyAgentInstaller (HTTP/proxy
- * client)" names two tasks, not the parenthetical description).
+ * The data rows of the first markdown table in `text` whose header row
+ * matches `headerRe`, as arrays of cell strings (leading/trailing empty cells
+ * from the outer pipes dropped). null when no such header exists.
  */
-function thirdPartyNoticesTable(text) {
-  const header = /\n\|\s*Package\s*\|\s*Bundled into\s*\|/i.exec(text)
+function packageTableRows(text, headerRe) {
+  const header = headerRe.exec(text)
   if (!header) return null
-  // The regex only matches up through "Bundled into |", not the rest of the
-  // header row (a "License" column follows) -- skip to the newline that ends
-  // this line, not just past the matched prefix, or the header row's own
+  // The regex only matches a prefix of the header row -- skip to the newline
+  // that ends the whole line, not just past the match, or the header row's own
   // trailing cells are misread as the first data row.
   const headerLineEnd = text.indexOf('\n', header.index + header[0].length)
   const start = headerLineEnd === -1 ? text.length : headerLineEnd + 1
   const rows = []
   for (const line of text.slice(start).split('\n')) {
     if (!line.trimStart().startsWith('|')) break
-    const cells = line.split('|')
-    if (cells.length < 3) continue
-    const name = cells[1].trim()
-    if (!name || /^-+$/.test(name)) continue // the '| --- | --- |' separator row
-    const bundledCell = cells[2].replace(/\([^)]*\)/g, '') // drop the parenthetical description
-    const tasks = bundledCell
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-    rows.push({ name, tasks })
+    const cells = line.split('|').slice(1, -1)
+    if (cells.length < 2) continue
+    if (cells.every((c) => /^\s*:?-+:?\s*$/.test(c))) continue // the '| --- | --- |' separator row
+    rows.push(cells)
   }
   return rows
+}
+
+/**
+ * Form (a): one row per package -- its name and the task display names in its
+ * "Bundled into" cell (comma-separated, stopping at the first parenthetical:
+ * "TerraformInstaller, PolicyAgentInstaller (HTTP/proxy client)" names two
+ * tasks, not the description). null when the document is not in this form.
+ */
+function thirdPartyNoticesTable(text) {
+  const rows = packageTableRows(text, /\n\|\s*Package\s*\|\s*Bundled into\s*\|/i)
+  if (!rows) return null
+  return rows
+    .map((cells) => ({
+      name: packageCellName(cells[0]),
+      tasks: cells[1]
+        .replace(/\([^)]*\)/g, '') // drop the parenthetical description
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+    }))
+    .filter((row) => row.name)
+}
+
+/**
+ * Form (b): every "## <title>" section that carries a "| Package | ..." table,
+ * keyed by title, valued by the set of package names in that table. Sections
+ * without such a table (a licence-text appendix, an "influences" credit) are
+ * not claims about any task and are left out.
+ */
+function thirdPartyNoticesSections(text) {
+  const sections = new Map()
+  for (const part of text.split(/^## +/m).slice(1)) {
+    const nl = part.indexOf('\n')
+    const title = (nl === -1 ? part : part.slice(0, nl)).trim()
+    const body = nl === -1 ? '' : part.slice(nl)
+    const rows = packageTableRows(body, /\n\|\s*Package\s*\|/i)
+    if (!rows) continue
+    sections.set(title, new Set(rows.map((cells) => packageCellName(cells[0])).filter(Boolean)))
+  }
+  return sections
 }
 
 {
   const noticesText = readIfPresent('THIRD_PARTY_NOTICES.md')
   if (noticesText) {
+    const tasks = taskDependencyIndex()
     const rows = thirdPartyNoticesTable(noticesText)
-    if (!rows || rows.length === 0) {
-      fail('third-party-notices', 'THIRD_PARTY_NOTICES.md', 'no "| Package | Bundled into |" table found — the check would pass vacuously')
-    } else {
-      const byTask = taskDependencyIndex()
-      const allTaskNames = [...byTask.keys()]
+    const sections = rows ? null : thirdPartyNoticesSections(noticesText)
+    if (rows) {
+      // ---- form (a): per-package "Bundled into" claims, both directions ----
+      const allTaskNames = tasks.map((t) => t.displayName)
+      if (rows.length === 0) {
+        fail('third-party-notices', 'THIRD_PARTY_NOTICES.md', 'the "| Package | Bundled into |" table has no rows — the check would pass vacuously')
+      }
       for (const row of rows) {
         // A package this repo does not install as a per-task dependency at all
         // (an inspired-by credit, a webpack-bundled tab-only dependency) makes
         // no per-task claim to check -- only a name that at least one real
         // task's package.json actually declares is in scope here.
-        const actualTasks = [...byTask.entries()]
-          .filter(([, deps]) => deps.has(row.name))
-          .map(([taskName]) => taskName)
+        const actualTasks = tasks.filter((t) => t.deps.has(row.name)).map((t) => t.displayName)
         if (actualTasks.length === 0) continue
         enumerated.thirdPartyNotices++
         // "All N tasks" is this table's shorthand for azure-pipelines-task-lib,
@@ -610,6 +684,36 @@ function thirdPartyNoticesTable(text) {
           )
         }
       }
+    } else if (sections.size > 0) {
+      // ---- form (b): per-task inventories, package.json -> section ----
+      for (const task of tasks) {
+        const title = [task.manifestName, task.displayName].find((n) => n && sections.has(n))
+        if (!title) {
+          fail(
+            'third-party-notices',
+            `THIRD_PARTY_NOTICES.md -> ${task.manifestName || task.displayName}`,
+            'has no "## <task>" section with a package table, so what it bundles is undocumented',
+          )
+          continue
+        }
+        enumerated.thirdPartyNotices++
+        const listed = sections.get(title)
+        const missing = [...task.deps].filter((dep) => !listed.has(dep)).sort()
+        if (missing.length) {
+          fail(
+            'third-party-notices',
+            `THIRD_PARTY_NOTICES.md -> ${title}`,
+            `bundles ${missing.join(', ')} per its package.json, but its section's table does not list ${missing.length === 1 ? 'it' : 'them'}`,
+          )
+        }
+      }
+    } else if (/^\*\*Used by:\*\*/m.test(noticesText)) {
+      skipped.push(
+        'third-party-notices: THIRD_PARTY_NOTICES.md attributes packages to tasks in prose ("**Used by:** ..."), ' +
+          'a shape this check does not parse, so its bundled-into claims were not verified',
+      )
+    } else {
+      fail('third-party-notices', 'THIRD_PARTY_NOTICES.md', 'no package table in any recognised form — the check would pass vacuously')
     }
   }
 }
@@ -633,7 +737,7 @@ const summary =
   `${enumerated.ciJobs} documented CI job(s), ` +
   `${enumerated.pathRefs} referenced path(s), ${enumerated.fileTables} file table(s), ` +
   `${enumerated.claimDeps} claim-corroborating dependenc(ies), ` +
-  `${enumerated.thirdPartyNotices} THIRD_PARTY_NOTICES.md package row(s).`
+  `${enumerated.thirdPartyNotices} THIRD_PARTY_NOTICES.md bundled-into claim(s).`
 
 if (JSON_OUTPUT) {
   console.log(JSON.stringify({ enumerated, skipped, findings, failures: findings.length }, null, 2))
