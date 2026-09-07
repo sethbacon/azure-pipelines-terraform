@@ -965,13 +965,13 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         await tr.runAsync();
         try {
             assert.ok(tr.failed, 'task should have failed');
-            // registryUrl is now validated by assertRegistryBaseHasNoQueryFragmentOrUserinfo
-            // (#1110) BEFORE the skipTlsVerify branch is even reached, so an unparseable
-            // registryUrl fails with that guard's message regardless of skipTlsVerify --
+            // registryUrl is validated by the shared assertPlainUrlBase (#1110) BEFORE the
+            // skipTlsVerify branch is even reached, so an unparseable registryUrl fails
+            // with that guard's message regardless of skipTlsVerify --
             // assertSkipTlsVerifyNotAgainstPublicRegistry's own unparseable-URL check is
             // now unreachable dead code and was removed rather than left stale.
             assert.ok(
-                tr.stdout.includes('RegistryBaseUrlUnparseable'),
+                tr.stdout.includes('registryUrl is not a valid absolute URL'),
                 'should fail with the unparseable-URL rejection error. stdout: ' + tr.stdout,
             );
             assert.ok(
@@ -997,7 +997,7 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         try {
             assert.ok(tr.failed, 'task should have failed');
             assert.ok(
-                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                tr.stdout.includes('registryUrl must not carry a query string or fragment'),
                 'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
             );
         } catch (error) {
@@ -1013,7 +1013,7 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         try {
             assert.ok(tr.failed, 'task should have failed');
             assert.ok(
-                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                tr.stdout.includes('registryUrl must not carry a query string or fragment'),
                 'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
             );
         } catch (error) {
@@ -1029,7 +1029,7 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
         try {
             assert.ok(tr.failed, 'task should have failed');
             assert.ok(
-                tr.stdout.includes('RegistryBaseUrlHasQueryFragmentOrUserinfo'),
+                tr.stdout.includes('hcpAddress must not carry user:password@ credentials'),
                 'should fail with the query/fragment/userinfo rejection error. stdout: ' + tr.stdout,
             );
         } catch (error) {

@@ -382,6 +382,23 @@ describe('TerraformDocsInstaller Test Suite', function () {
 
   // --- Failure cases ---
   expectFailure('InsecureUrlReject');
+  // #1110 finding 2 (class fix): registryUrl / mirrorBaseUrl are bases a fixed
+  // path is concatenated onto, so '?' or '#' in them retargets the request while
+  // the host allowlist sees nothing. Asserted on the guard's own message: the
+  // fixtures also mock the client to throw, so bare failure would pass without it.
+  for (const [fixture, input] of [['RegistryUrlQueryReject', 'registryUrl'], ['MirrorBaseUrlFragmentReject', 'mirrorBaseUrl']] as const) {
+    it(`${fixture}: a query string or fragment in ${input} is refused before any request (#1110)`, async () => {
+      const tr: ttm.MockTestRunner = new ttm.MockTestRunner(path.join(__dirname, `${fixture}.js`));
+      await tr.runAsync();
+      runValidations(() => {
+        assert.ok(tr.failed, 'task should have failed');
+        assert.ok(
+          tr.errorIssues.some(e => e.includes(`${input} must not carry a query string or fragment`)),
+          'should fail via assertPlainUrlBase. errors: ' + tr.errorIssues,
+        );
+      }, tr);
+    });
+  }
   expectFailure('RegistryInsecureUrl');
   expectFailure('Sha256Fail');
   expectFailure('InvalidVersionFail');
