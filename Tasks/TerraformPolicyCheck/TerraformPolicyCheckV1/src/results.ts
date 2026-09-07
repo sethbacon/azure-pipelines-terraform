@@ -188,6 +188,21 @@ export function buildPolicySarif(result: PolicyResult, engine: string): SarifLog
  * overwrites; when no sarifPath is given the auto-generated UUID path has
  * nothing pre-existing to overwrite, so it behaves identically to an
  * exclusive create.
+ *
+ * `outPath` is resolved WITHOUT a working-directory containment guard,
+ * deliberately, for the same reason Markdown2HtmlV1's outputFile is
+ * (rd#123 finding 3 / apt audit 2026-09-06 #1110): sarifPath is a plain
+ * operator-supplied task input, not repository content, and this repo's own
+ * documented examples point it OUTSIDE the sources directory
+ * (`sarifPath: '$(Build.ArtifactStagingDirectory)/policy.sarif'` in
+ * docs/yaml-examples.md, a sibling of the checkout, not a descendant). This
+ * task also has no `workingDirectory` input to contain against, so a guard
+ * would default its root to process.cwd() -- one the operator never declared
+ * and cannot widen. Containing it would reject the documented usage while
+ * adding no protection an operator who already controls the pipeline YAML
+ * does not trivially have. writeResultsFile/writeJUnit above take no path
+ * input at all (both always write to tempDir()+uuid), so there is nothing to
+ * contain there either.
  */
 export function writeSarif(result: PolicyResult, engine: string, sarifPath?: string): string {
     const explicitPath = sarifPath && sarifPath.trim().length > 0;
