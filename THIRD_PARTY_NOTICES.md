@@ -21,7 +21,7 @@ repositories.
 | cheerio                                  | Markdown2Html, PublishKbArticle (HTML sanitize/validate)                                               | MIT               |
 | sanitize-html                            | Markdown2Html, PublishKbArticle (allowlist HTML sanitizer)                                             | MIT               |
 | openpgp                                  | TerraformInstaller, PolicyAgentInstaller (GPG signature verification)                                  | LGPL-3.0-or-later |
-| undici                                   | TerraformInstaller, PolicyAgentInstaller, TerraformDocsInstaller, TerraformTaskV5 (HTTP/proxy client)  | MIT               |
+| undici                                   | PolicyAgentInstaller, TerraformDocsInstaller, TerraformDriftReport, TerraformInstaller, TerraformPolicyCheck, TerraformProviderMirror, TerraformTaskV5 (HTTP/proxy client)  | MIT               |
 | @4cloudguru/terraform-drift-contract     | TerraformDriftReport (drift-summary contract)                                                          | Apache-2.0        |
 | @4cloudguru/pipeline-task-core           | PolicyAgentInstaller, PublishKbArticle, TerraformDocsInstaller, TerraformDriftReport, TerraformInstaller, TerraformModulePublish, TerraformPolicyCheck, TerraformProviderMirror, TerraformTaskV5 (shared HTTP transport, retry, and secret-handling helpers) | Apache-2.0        |
 | @4cloudguru/pipeline-task-ado            | PolicyAgentInstaller, TerraformDocsInstaller, TerraformDriftReport, TerraformInstaller, TerraformPolicyCheck, TerraformProviderMirror, TerraformTaskV5 (shared secure-temp-file, OIDC-token, and environment-variable helpers) | Apache-2.0        |
