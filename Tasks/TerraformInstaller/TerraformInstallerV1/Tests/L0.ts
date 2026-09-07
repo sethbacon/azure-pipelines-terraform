@@ -33,6 +33,9 @@ import './EgressAuthorizationL0';
 import './ArtifactTrustL0';
 // Table-driven class test for the network-retry-coverage defect class (#879/#891).
 import './NetworkRetryClassL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 
 describe('TerraformInstaller Test Suite', function () {
 

@@ -14,6 +14,9 @@ import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy 
 import './RetryL0';
 // Contract test pinning the shared https-client's no-destination-host-restriction design (#785).
 import './HttpsClientHostHandlingByDesignL0';
+// End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
+// unhandledRejection registration (#1113).
+import './SignalHandlerL0';
 
 const noop = (): void => {
     /* suppress log output during tests */
