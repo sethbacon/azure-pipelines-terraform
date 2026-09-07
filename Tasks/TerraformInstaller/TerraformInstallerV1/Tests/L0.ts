@@ -482,6 +482,26 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // M7 mutation-coverage gap: RegistryGpgVerified above always mocks
+    // verifyGpgSignature to return true, so the `if (!gpgVerified)` disclosure
+    // guard on this branch was never exercised in its false state. Here the .sig
+    // is genuinely absent and requireGpgSignature is false (a permitted skip),
+    // so the caller must still disclose RegistryTrustAnchorIsChecksumOnly.
+    it('registry specific version: discloses checksum-only trust when GPG verification of a signed SHA256SUMS was permitted to be skipped', async () => {
+        const tp = path.join(__dirname, 'RegistryGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'a registry install whose signed SHA256SUMS GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
     it('registry shasums host: rejects a shasums_url host not in the allowlist, before fetching it', async () => {
         const tp = path.join(__dirname, 'RegistryShasumsHostReject.js');
         const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
@@ -506,6 +526,42 @@ describe('TerraformInstaller Test Suite', function () {
             assert(
                 tr.errorIssues.some(e => e.includes('signature does not match')),
                 'the failure must surface why. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    // M4 mutation-coverage gap: `if (!shasumsUrl.includes(version))` (#1104/17)
+    // rejects a registry-advertised shasums_url that names a DIFFERENT version
+    // than requested. No existing fixture ever set shasums_url to a mismatched
+    // version, so mutating that guard away survived.
+    it('registry specific version: rejects a shasums_url that does not reference the requested version (#1104/17, M4)', async () => {
+        const tp = path.join(__dirname, 'RegistryShasumsVersionMismatchReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a shasums_url naming a different version must fail the task');
+            assert(
+                tr.errorIssues.some(e => e.includes('does not reference the requested version 1.9.8')),
+                'the failure must surface the version-mismatch guard\'s own message. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    // M5 mutation-coverage gap: `if (data.filename && data.filename !== expectedZipFileName)`
+    // (#1104/17) rejects a registry-supplied filename that does not match the
+    // expected zip name for the requested version. No existing fixture ever set
+    // data.filename to a mismatched value, so mutating that guard away survived.
+    it('registry specific version: rejects a registry-supplied filename that does not match the expected zip name (#1104/17, M5)', async () => {
+        const tp = path.join(__dirname, 'RegistryFilenameMismatchReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a registry-supplied filename that does not match the expected zip name must fail the task');
+            assert(
+                tr.errorIssues.some(e => e.includes('does not match the expected filename for the requested version 1.9.8')),
+                'the failure must surface the filename-mismatch guard\'s own message. errors: ' + tr.errorIssues,
             );
         }, tr);
     });
@@ -606,6 +662,29 @@ describe('TerraformInstaller Test Suite', function () {
             assert(
                 tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
                 'should fail via the private-address check. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it("registryUrl's OWN host is authorized BEFORE the metadata fetch for a SPECIFIC version, not only on the 'latest' resolution branch (#1104/20)", async () => {
+        // registryUrl resolves (via the mocked dns module) to the cloud metadata
+        // address. fetchJson throws if it is ever invoked, so this distinguishes
+        // "refused before any network call" from "attempted and happened to error" --
+        // and from the pre-fix defect, where a pinned (non-'latest') version reached
+        // fetchJson with no host authorization at all.
+        const tp = path.join(__dirname, 'RegistryUrlHostAuthorizedBeforeMetadataFetch.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate')),
+                'should fail via the private-address check on registryUrl itself, before any metadata fetch. errors: ' + tr.errorIssues,
+            );
+            assert(
+                !tr.errorIssues.some(e => e.includes('fetchJson must not be called')),
+                'fetchJson must never be reached once registryUrl host authorization has failed. errors: ' + tr.errorIssues,
             );
         }, tr);
     });
@@ -843,6 +922,44 @@ describe('TerraformInstaller Test Suite', function () {
         runValidations(() => {
             assert(tr.succeeded, 'task should have succeeded');
             assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    // M9 mutation-coverage gap: the hashicorp call site's `if (!gpgVerified)`
+    // disclosure guard was never asserted against its own message -- the
+    // GpgSignatureUnavailable case above only asserts tr.succeeded, so a
+    // mutation forcing gpgVerified to always read true survived unnoticed.
+    it('hashicorp: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M9)', async () => {
+        const tp = path.join(__dirname, 'HashiCorpGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a hashicorp install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    // M11 mutation-coverage gap: the mirror call site's `if (!mirrorGpgVerified)`
+    // disclosure guard was never asserted against its own message -- every
+    // existing mirror fixture either short-circuits on a null SHA256SUMS body
+    // (requireChecksum=false) or mocks verifyGpgSignature truthy.
+    it('mirror: discloses checksum-only trust when GPG verification was permitted to be skipped (#1024/21, M11)', async () => {
+        const tp = path.join(__dirname, 'MirrorGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a mirror install whose GPG verification was permitted to be skipped must still disclose checksum-only trust. warnings: '
+                + tr.warningIssues,
+            );
         }, tr);
     });
 

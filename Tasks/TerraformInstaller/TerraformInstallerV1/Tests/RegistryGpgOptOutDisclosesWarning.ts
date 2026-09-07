@@ -2,29 +2,40 @@ import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
-// registryAllowedHosts is set and the registry's download_url host matches a
-// wildcard entry — the download should proceed normally. registryUrl's own
-// host (registry.example.com) must ALSO be in the allowlist (#1104/20): the
-// metadata-fetch authorization now applies the same allowedHosts decision to
-// registryUrl that the 'latest' resolution branch already applied, so an
-// operator who pins registryAllowedHosts must include the registry host
-// itself, not just the storage host download_url points at.
-const tp = path.join(__dirname, 'RegistryAllowedHostAcceptL0.js');
+// M7 mutation-coverage gap: RegistryGpgVerified.ts always mocks verifyGpgSignature
+// to return true, so it can never observe the `if (!gpgVerified)` disclosure guard
+// on the shasums_url branch -- mutating that guard away (#1024/21 follow-up)
+// changed no test outcome. Sibling of RegistryGpgVerified.ts: registry advertises
+// BOTH shasums_url and shasums_signature_url, but the .sig is genuinely absent and
+// requireGpgSignature is false (a permitted skip), so verifyGpgSignature returns
+// false and the caller must still disclose RegistryTrustAnchorIsChecksumOnly
+// rather than reading identically to a real GPG-anchored verification.
+
+const tp = path.join(__dirname, 'RegistryGpgOptOutDisclosesWarningL0.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'registry');
 tr.setInput('registryUrl', 'https://registry.example.com');
 tr.setInput('registryMirrorName', 'terraform');
-tr.setInput('registryAllowedHosts', 'registry.example.com, other.example.com, *.storage.example.com');
+tr.setInput('requireGpgSignature', 'false');
 
 tr.registerMock('os', {
     type: () => 'Windows_NT',
     arch: () => 'x64',
-    tmpdir: () => 'C:\\fake-temp'
+    tmpdir: () => '/tmp'
 });
 
-const EXPECTED_SHA256 = 'abc123def456abc123def456abc123def456abc123def456abc123def456abc1';
+tr.registerMock('dns', {
+    promises: {
+        lookup: async (_host: string, _opts: any) => [{ address: '203.0.113.10', family: 4 }]
+    }
+});
+
+const VERIFIED_SHA256 = 'abc123def456abc123def456abc123def456abc123def456abc123def456abc1';
+const SHASUMS_URL = 'https://registry.example.com/storage/1.9.8/SHA256SUMS?sig=abc';
+const SHASUMS_SIG_URL = 'https://registry.example.com/storage/1.9.8/SHA256SUMS.terraform.sig?sig=def';
+
 tr.registerMock('./http-client', {
     fetchJson: async (url: string) => {
         if (url.includes('/terraform/binaries/terraform/versions/1.9.8/windows/amd64')) {
@@ -32,24 +43,22 @@ tr.registerMock('./http-client', {
                 os: 'windows',
                 arch: 'amd64',
                 version: '1.9.8',
-                sha256: EXPECTED_SHA256,
-                download_url: 'https://bucket-1.storage.example.com/signed/terraform_1.9.8_windows_amd64.zip'
+                filename: 'terraform_1.9.8_windows_amd64.zip',
+                sha256: VERIFIED_SHA256,
+                download_url: 'https://storage.example.com/signed/terraform_1.9.8_windows_amd64.zip',
+                shasums_url: SHASUMS_URL,
+                shasums_signature_url: SHASUMS_SIG_URL,
             };
         }
         throw new Error('Unexpected fetchJson URL: ' + url);
     },
     fetchText: async (url: string) => {
-        throw new Error('fetchText should not be called for registry download. Called with: ' + url);
+        if (url === SHASUMS_URL) {
+            return `${VERIFIED_SHA256}  terraform_1.9.8_windows_amd64.zip\n`;
+        }
+        throw new Error('Unexpected fetchText URL: ' + url);
     },
     DOWNLOAD_TIMEOUT_MS: 600000,
-    // downloadToFile replaces tools.downloadTool() only on the
-    // registryAllowedHosts-enabled path (#679) -- genuinely exercises the
-    // isHostAllowed callback terraform-installer.ts builds (real
-    // isRegistryHostAllowed logic), proving the wildcard-matched host is
-    // accepted, but stubs out the actual network/disk work the same way
-    // downloadTool is stubbed below. fs.readFileSync is mocked to always
-    // return fake-zip-content regardless of path, so no real file needs to
-    // be written to destPath.
     downloadToFile: async (url: string, _destPath: string, _timeoutMs: number, isHostAllowed: (hostname: string) => void) => {
         isHostAllowed(new URL(url).hostname);
     }
@@ -57,8 +66,11 @@ tr.registerMock('./http-client', {
 
 tr.registerMock('undici', { ProxyAgent: class { } });
 
+// The .sig is genuinely absent (404) and requireGpgSignature is false: the real
+// gpg-verifier would warn and return false. Mocked directly to false here so this
+// fixture stays focused on the CALLER'S disclosure behavior.
 tr.registerMock('./gpg-verifier', {
-    verifyGpgSignature: async () => { }
+    verifyGpgSignature: async (_sha256SumsContent: string, _signatureUrl: string, _required: boolean) => false
 });
 
 tr.registerMock('./cosign-verifier', {
@@ -74,7 +86,7 @@ tr.registerMock('crypto', {
     randomUUID: () => 'test-uuid-1234',
     createHash: (_algorithm: string) => {
         const hash: any = new (require('stream').Writable)({ write(_chunk: any, _enc: any, cb: any) { cb(); } });
-        hash.digest = (_encoding: string) => EXPECTED_SHA256;
+        hash.digest = (_encoding: string) => VERIFIED_SHA256;
         return hash;
     }
 });

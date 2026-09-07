@@ -78,6 +78,7 @@ tr.registerMock('./gpg-verifier', {
     // REVERIFY_DOWNLOAD_CALLED convention already used elsewhere in this suite.
     verifyGpgSignature: async (_sha256SumsContent: string, signatureUrl: string, required: boolean) => {
         console.log(`REGISTRY_GPG_VERIFY_CALLED:${signatureUrl}:required=${required}`);
+        return true;
     }
 });
 
