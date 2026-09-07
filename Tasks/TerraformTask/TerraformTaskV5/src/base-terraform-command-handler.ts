@@ -1,7 +1,7 @@
 import { TerraformToolHandler, ITerraformToolHandler, getBinaryName, resolveToolPath } from './terraform';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformBaseCommandInitializer, TerraformAuthorizationCommandInitializer } from './terraform-commands';
-import { writeSecretFile, EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
+import { writeSecretFile, EnvironmentVariableHelper, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { TempFileManager } from './temp-file-manager';
 import {
     ArgumentBuilder,
@@ -215,7 +215,7 @@ export abstract class BaseTerraformCommandHandler {
     }
 
     protected getCommandOptions(): string | undefined {
-        return tasks.getInput("commandOptions") || undefined;
+        return readUrlInput("commandOptions") || undefined;
     }
 
     protected createAuthCommand(commandName: string, additionalArgs?: string): TerraformAuthorizationCommandInitializer {

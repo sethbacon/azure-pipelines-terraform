@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import tasks = require('azure-pipelines-task-lib/task');
+import ado = require('@4cloudguru/pipeline-task-ado');
 import { TerraformCommandHandlerAzureRM } from '../src/azure-terraform-command-handler';
 
 /**
@@ -23,6 +24,8 @@ import { TerraformCommandHandlerAzureRM } from '../src/azure-terraform-command-h
  * .arg() call or was word-split into two ["my", "workspace"] -- exactly the
  * distinction under test here.
  */
+const adoOrigReadUrlInput = (ado as any).readUrlInput;
+
 describe('workspace/state/test/forceUnlock -- structured single-value inputs stay whole argv tokens (#1031)', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
     const t = tasks as any;
@@ -47,6 +50,9 @@ describe('workspace/state/test/forceUnlock -- structured single-value inputs sta
     }
 
     beforeEach(() => {
+        // commandOptions and the other free-form inputs are read through the package's
+        // readUrlInput (#1105 class sweep), not getInput; delegate to this file's stub.
+        (ado as any).readUrlInput = (name: string, required?: boolean) => (tasks as any).getInput(name, required);
         calls = [];
         t.tool = () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fake ToolRunner
@@ -59,6 +65,7 @@ describe('workspace/state/test/forceUnlock -- structured single-value inputs sta
     });
 
     afterEach(() => {
+        (ado as any).readUrlInput = adoOrigReadUrlInput;
         t.getInput = taskOrig.getInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.getVariable = taskOrig.getVariable;

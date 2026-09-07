@@ -7,7 +7,7 @@ import { summarize, moduleCallsPlan, Plan, Result } from '@4cloudguru/terraform-
 import { postJsonWithRetry, truncateBody, resolveRejectUnauthorized, resolveFailOnCallbackError, assertRejectUnauthorizedNotAgainstPublicHost } from './callback';
 import { writeSarif } from './sarif';
 import { isWithinWorkingDirectory } from './path-containment';
-import { writeSecretFile, scrubFile, readUrlInput } from '@4cloudguru/pipeline-task-ado';
+import { writeSecretFile, scrubFile, readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 
 /**
  * Upper bound on the JSON files this task reads into memory (the required plan
@@ -239,7 +239,7 @@ async function run(): Promise<void> {
         );
 
         const callbackUrl = readUrlInput('callbackUrl', false);
-        const callbackToken = tasks.getInput('callbackToken', false);
+        const callbackToken = readSecretInput('callbackToken', false);
         // Mask the one-shot callback token as soon as it is read, regardless of
         // whether the callback ends up being made.
         if (callbackToken) {

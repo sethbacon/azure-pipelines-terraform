@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { ToolRunner, IExecOptions } from 'azure-pipelines-task-lib/toolrunner';
 import fs = require('fs');
 import path = require('path');
@@ -68,7 +69,7 @@ async function run() {
         // additionalArgs is interposed here -- before the `--` module-path
         // terminator below -- so any flags it carries are still parsed as
         // flags rather than being swallowed as extra positionals.
-        const additionalArgs = tasks.getInput('additionalArgs', false);
+        const additionalArgs = readUrlInput('additionalArgs', false);
         if (additionalArgs) {
             toolRunner.line(additionalArgs);
         }

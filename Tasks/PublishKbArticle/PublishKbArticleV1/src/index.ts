@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readSecretInput, readEndpointUrl, redactUrlCredentialsIn } from '@4cloudguru/pipeline-task-ado';
 import path = require('path');
 import { getOAuthToken, getAuthHeaders } from './auth';
 import {
@@ -41,7 +42,7 @@ async function resolveAuth(): Promise<ResolvedAuth> {
 
     const serviceConnection = tasks.getInput('serviceConnection', false);
     if (serviceConnection) {
-        const rawUrl = tasks.getEndpointUrl(serviceConnection, false) || '';
+        const rawUrl = readEndpointUrl(serviceConnection) || '';
         // Extract instance name from URL like https://myinstance.service-now.com
         const urlMatch = rawUrl.match(/https?:\/\/([^.]+)\.service-now\.com/i);
         instance = urlMatch ? urlMatch[1] : rawUrl;
@@ -64,9 +65,9 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     instance = tasks.getInput('instance', false) || instance;
     authType = tasks.getInput('authType', false) || authType;
     clientId = tasks.getInput('clientId', false) || clientId;
-    clientSecret = tasks.getInput('clientSecret', false) || clientSecret;
+    clientSecret = readSecretInput('clientSecret', false) || clientSecret;
     username = tasks.getInput('username', false) || username;
-    password = tasks.getInput('password', false) || password;
+    password = readSecretInput('password', false) || password;
     // Mask clientSecret/password at the point of read (#771): getOAuthToken()/
     // basicAuthHeader() below also setSecret them, but only after authType
     // branching (and, for basic, header construction) -- masking here closes
@@ -81,7 +82,10 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     // Guard against URL injection: instance is interpolated into
     // https://<instance>.service-now.com, which carries the OAuth secret.
     if (!/^[a-z0-9-]+$/i.test(instance)) {
-        throw new Error(tasks.loc('InvalidInstance', instance));
+        // `instance` may still be the whole connection URL when it did not match the
+        // *.service-now.com shape, and a connection URL can carry userinfo -- the
+        // rejection must not be the disclosure (#1105 class sweep).
+        throw new Error(tasks.loc('InvalidInstance', redactUrlCredentialsIn(instance)));
     }
     if (!authType) {
         throw new Error(tasks.loc('AuthTypeRequired'));

@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
+import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { IExecOptions, ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import path = require('path');
 import os = require('os');
@@ -90,7 +90,7 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
         throw new Error(tasks.loc('InvalidPolicyRepoRef', ref));
     }
     const subdir = tasks.getInput('policyRepoSubdir');
-    const token = tasks.getInput('policyRepoToken');
+    const token = readSecretInput('policyRepoToken');
 
     // Agent.TempDirectory is auto-purged by the ADO agent at job end, which
     // backstops cleanup even if the process is killed (e.g. a cancelled build)

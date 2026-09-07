@@ -4,6 +4,7 @@ import { TerraformCommandHandlerHCP } from '../../src/hcp-terraform-command-hand
 import { TerraformCommandHandlerOCI } from '../../src/oci-terraform-command-handler';
 import { TerraformCommandHandlerGeneric } from '../../src/generic-terraform-command-handler';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
+import ado = require('@4cloudguru/pipeline-task-ado');
 
 /**
  * Direct unit tests for the HCP handler's cross-cloud
@@ -14,10 +15,18 @@ import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
  */
 describe('HCP/OCI/Generic configureBackendCredentials (cross-cloud)', function () {
   const originalGetInput = tasks.getInput;
+  // backendHCPToken and backendOCIPar are password-typed inputs, read through the
+  // package's readSecretInput (#1105 class sweep) rather than getInput, which
+  // debug-logs the value; delegate to this file's getInput stub, required flag and all.
+  const originalReadSecretInput = (ado as any).readSecretInput;
+  beforeEach(() => {
+    (ado as any).readSecretInput = (name: string, required?: boolean) => (tasks as any).getInput(name, required);
+  });
   const originalSetSecret = tasks.setSecret;
 
   afterEach(() => {
     (tasks as any).getInput = originalGetInput;
+    (ado as any).readSecretInput = originalReadSecretInput;
     (tasks as any).setSecret = originalSetSecret;
     EnvironmentVariableHelper.clearTrackedVariables();
   });

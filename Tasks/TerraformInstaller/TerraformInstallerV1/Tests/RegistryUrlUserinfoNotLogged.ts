@@ -15,12 +15,13 @@ tr.setInput('terraformVersion', '1.9.8');
 tr.setInput('downloadSource', 'registry');
 tr.setInput('registryUrl', 'https://svc:PAT-s3cr3t-value@registry.example.com');
 tr.setInput('registryMirrorName', 'terraform');
+tr.setInput('registryAllowedHosts', 'registry.example.com');
 
 tr.registerMock('os', { type: () => 'Linux', arch: () => 'x64', tmpdir: () => '/tmp' });
 tr.registerMock('undici', { ProxyAgent: class { } });
 tr.registerMock('./http-client', {
-    fetchJson: async (url: string) => { throw new Error('must not fetch with a query/fragment-carrying base: ' + url); },
-    fetchText: async (url: string) => { throw new Error('must not fetch with a query/fragment-carrying base: ' + url); }
+    fetchJson: async (url: string) => { throw new Error('client mock: the run stops here (URL deliberately not echoed)'); },
+    fetchText: async (url: string) => { throw new Error('client mock: the run stops here (URL deliberately not echoed)'); }
 });
 tr.registerMock('azure-pipelines-tool-lib/tool', {
     findLocalTool: () => null,

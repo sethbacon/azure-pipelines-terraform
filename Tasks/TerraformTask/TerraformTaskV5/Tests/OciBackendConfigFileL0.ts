@@ -6,6 +6,17 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformCommandHandlerOCI } from '../src/oci-terraform-command-handler';
 import { TEST_OCI_PRIVATE_KEY_SPACES } from './test-oci-fixtures';
+import ado = require('@4cloudguru/pipeline-task-ado');
+
+/**
+ * backendOCIPar is a password-typed input and commandOptions can embed a URL
+ * with userinfo, so the handler reads them through the package's
+ * readSecretInput / readUrlInput (#1105 class sweep) rather than task-lib's
+ * getInput, which debug-logs the value. The stubs delegate to whatever this
+ * file's getInput stub currently answers, so each scenario keeps feeding its
+ * inputs in one place.
+ */
+const adoOrig = { readSecretInput: (ado as any).readSecretInput, readUrlInput: (ado as any).readUrlInput };
 
 /**
  * Direct unit tests for the generated OCI backend config file (#545). The
@@ -52,6 +63,8 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
 
     beforeEach(() => {
         scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oci-backend-config-test-'));
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'backendServiceOCI') return 'OCI';
             if (name === 'backendOCIConfigGenerate') return 'yes';
@@ -67,6 +80,8 @@ describe('OCI backend config file — secret-file write hardening (#545)', funct
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
         t.warning = taskOrig.warning;
@@ -170,6 +185,8 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
     const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
 
     function installInputs(cleanupOCIBackendCache: boolean): void {
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'backendServiceOCI') return 'OCI';
             if (name === 'backendOCIConfigGenerate') return 'yes';
@@ -200,6 +217,8 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
@@ -247,6 +266,8 @@ describe('OCI backend cache cleanup — opt-in scrub of .terraform/terraform.tfs
 
     it('registers the cache for cleanup from handleProvider even when backendOCIConfigGenerate is no (#675 simplification: gated only on cleanupOCIBackendCache)', async () => {
         installInputs(true);
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'workingDirectory') return scratchDir;
             if (name === 'backendOCIConfigGenerate') return 'no';
@@ -299,6 +320,8 @@ describe('OCI backend cache default-secure permission tightening (#675)', functi
     const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
 
     function installInputs(cleanupOCIBackendCache: boolean): void {
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'backendServiceOCI') return 'OCI';
             if (name === 'backendOCIConfigGenerate') return 'yes';
@@ -329,6 +352,8 @@ describe('OCI backend cache default-secure permission tightening (#675)', functi
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
@@ -361,6 +386,8 @@ describe('OCI backend cache default-secure permission tightening (#675)', functi
 
     it('does nothing when no OCI PAR backend was generated this run (backendOCIConfigGenerate=no)', async () => {
         installInputs(false);
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'workingDirectory') return scratchDir;
             if (name === 'backendOCIConfigGenerate') return 'no';
@@ -456,6 +483,8 @@ describe('OCI init() integration -- afterInit() wiring survives success and fail
         if (process.platform !== 'win32') {
             fs.chmodSync(cachePath, 0o644);
         }
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'backendServiceOCI') return 'OCI';
             if (name === 'backendOCIConfigGenerate') return 'yes';
@@ -471,6 +500,8 @@ describe('OCI init() integration -- afterInit() wiring survives success and fail
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
@@ -638,6 +669,8 @@ describe('OCI plan() integration -- a bare commandOptions -out= is tightened eve
         // happens to contain a space (the equals form, `-out="<path>"`, is a
         // documented limit of that tokenizer -- see its doc comment).
         planFilePath = path.join(scratchDir, 'user-saved.tfplan');
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'provider') return 'oci';
             if (name === 'environmentServiceNameOCI') return 'OCI';
@@ -656,6 +689,8 @@ describe('OCI plan() integration -- a bare commandOptions -out= is tightened eve
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setVariable = taskOrig.setVariable;
         t.setSecret = taskOrig.setSecret;
@@ -747,6 +782,8 @@ describe('OCI custom() integration -- a bare commandOptions -out= is tightened (
         // Quoted, space-separated `-out "<path>"` form -- same tokenizer
         // choice as the plan()-integration test above.
         planFilePath = path.join(scratchDir, 'user-saved.tfplan');
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'provider') return 'oci';
             if (name === 'environmentServiceNameOCI') return 'OCI';
@@ -764,6 +801,8 @@ describe('OCI custom() integration -- a bare commandOptions -out= is tightened (
 
     afterEach(() => {
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;
@@ -872,6 +911,8 @@ describe('OCI backend config/cache paths — two-argument path.resolve when work
     const parUrl = 'https://objectstorage.us-ashburn-1.oraclecloud.com/p/TOKEN123/n/ns/b/tfstate/o/state';
 
     function installInputs(cleanupOCIBackendCache: boolean): void {
+        (ado as any).readSecretInput = (name: string) => (tasks as any).getInput(name);
+        (ado as any).readUrlInput = (name: string) => (tasks as any).getInput(name);
         t.getInput = (name: string) => {
             if (name === 'backendServiceOCI') return 'OCI';
             if (name === 'backendOCIConfigGenerate') return 'yes';
@@ -905,6 +946,8 @@ describe('OCI backend config/cache paths — two-argument path.resolve when work
     afterEach(() => {
         process.chdir(originalCwd);
         t.getInput = taskOrig.getInput;
+        (ado as any).readSecretInput = adoOrig.readSecretInput;
+        (ado as any).readUrlInput = adoOrig.readUrlInput;
         t.getBoolInput = taskOrig.getBoolInput;
         t.setSecret = taskOrig.setSecret;
         t.debug = taskOrig.debug;

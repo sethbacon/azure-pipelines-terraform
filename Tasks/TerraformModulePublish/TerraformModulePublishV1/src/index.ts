@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
+import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { assertPlainUrlBase } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
@@ -39,6 +39,19 @@ function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void 
 }
 
 /**
+ * requireInput's wording for a credential-capable input read through the
+ * package's silent readers (#1105 class sweep): getInput() debug-logs the raw
+ * value at read time, before the setSecret a few lines later, and an API key
+ * typed as a literal is not a secret variable the agent would mask. The
+ * readers are called directly with the input's name at each site -- the
+ * replay signature for this class keys on that literal -- and this only
+ * supplies the same InputRequired message a missing input got before.
+ */
+function missing(name: string): never {
+    throw new Error(tasks.loc('InputRequired', name));
+}
+
+/**
  * private-publisher.ts and hcp-publisher.ts both build request URLs by trimming
  * a trailing slash off the base (registryUrl / hcpAddress) and concatenating a
  * fixed API path onto it, rather than resolving through the URL parser -- so a
@@ -75,13 +88,13 @@ function buildPublisher(): RegistryPublisher {
         // scheme (see http.ts / https-client.ts) so the bearer is never sent over
         // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
-        const registryUrl = readUrlInput('registryUrl', true);
+        const registryUrl = readUrlInput('registryUrl') ?? missing('registryUrl');
         assertPlainUrlBase('registryUrl', registryUrl, 'reject');
         if (skipTlsVerify) {
             assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
         }
-        const apiKey = requireInput('apiKey');
+        const apiKey = readSecretInput('apiKey') ?? missing('apiKey');
         tasks.setSecret(apiKey);
         // createHttpsClient uses its own fixed default per-request socket timeout
         // here (not timeoutSeconds) -- timeoutSeconds is the user-configurable
@@ -106,7 +119,7 @@ function buildPublisher(): RegistryPublisher {
     }
 
     if (registryType === 'hcp') {
-        const token = requireInput('hcpToken');
+        const token = readSecretInput('hcpToken') ?? missing('hcpToken');
         tasks.setSecret(token);
         const hcpAddress = readUrlInput('hcpAddress') || 'https://app.terraform.io';
         assertPlainUrlBase('hcpAddress', hcpAddress, 'reject');

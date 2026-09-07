@@ -34,6 +34,7 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency summary-file scrub t
     // callbackUrl is read through the package's silent reader (#1105), which
     // reads task-lib's vault rather than getInput, so it needs its own stub.
     const origReadUrlInput = (ado as any).readUrlInput;
+    const origReadSecretInput = (ado as any).readSecretInput;
     const origGetBoolInput = tasks.getBoolInput;
     const origGetVariable = tasks.getVariable;
     const origKill = process.kill.bind(process);
@@ -72,6 +73,7 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency summary-file scrub t
             return undefined;
         };
         (ado as any).readUrlInput = (name: string) => (name === 'callbackUrl' ? 'https://tsm.example.com/callback' : undefined);
+        (ado as any).readSecretInput = (name: string) => (name === 'callbackToken' ? 'test-token' : undefined);
         t.getBoolInput = () => false;
         t.getVariable = (name: string) => (name === 'Agent.TempDirectory' ? scratchDir : undefined);
 
@@ -95,6 +97,7 @@ describe('index.ts SIGTERM/SIGINT registration -- emergency summary-file scrub t
     afterEach(() => {
         t.getInput = origGetInput;
         (ado as any).readUrlInput = origReadUrlInput;
+        (ado as any).readSecretInput = origReadSecretInput;
         t.getBoolInput = origGetBoolInput;
         t.getVariable = origGetVariable;
         p.kill = origKill;

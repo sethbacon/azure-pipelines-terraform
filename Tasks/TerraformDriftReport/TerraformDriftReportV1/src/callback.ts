@@ -45,7 +45,10 @@ export async function assertRejectUnauthorizedNotAgainstPublicHost(callbackUrl: 
     try {
         hostname = new URL(callbackUrl).hostname;
     } catch {
-        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', redactUrlUserInfo(callbackUrl)));
+        // A value new URL() rejected may still be a scheme-less `user:token@host/...`,
+        // which the URL-shaped redactor cannot see -- so anything with an '@' is
+        // described, not echoed (#1105 class sweep).
+        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', callbackUrl.includes('@') ? '(value with userinfo, redacted)' : redactUrlUserInfo(callbackUrl)));
     }
     const isPrivate = isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname);
     if (!isPrivate) {

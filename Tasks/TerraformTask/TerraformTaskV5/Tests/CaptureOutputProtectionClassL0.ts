@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import tasks = require('azure-pipelines-task-lib/task');
+import ado = require('@4cloudguru/pipeline-task-ado');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { BaseTerraformCommandHandler } from '../src/base-terraform-command-handler';
 import { CommandExecutor } from '../src/command-executor';
@@ -88,6 +89,8 @@ interface Row {
     }) => void;
 }
 
+const adoOrigReadUrlInput = (ado as any).readUrlInput;
+
 describe('captured terraform output: console-echo neutralization + file-write protection class (#869, #868)', function () {
     this.timeout(10000);
 
@@ -102,10 +105,14 @@ describe('captured terraform output: console-echo neutralization + file-write pr
     let scratchDir: string;
 
     beforeEach(() => {
+        // commandOptions and the other free-form inputs are read through the package's
+        // readUrlInput (#1105 class sweep), not getInput; delegate to this file's stub.
+        (ado as any).readUrlInput = (name: string, required?: boolean) => (tasks as any).getInput(name, required);
         scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tf-capture-protection-'));
     });
 
     afterEach(() => {
+        (ado as any).readUrlInput = adoOrigReadUrlInput;
         fs.rmSync(scratchDir, { recursive: true, force: true });
         Object.assign(t, orig);
     });

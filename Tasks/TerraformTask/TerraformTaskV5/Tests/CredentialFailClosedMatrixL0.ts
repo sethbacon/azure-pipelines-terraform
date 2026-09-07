@@ -55,6 +55,8 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         warning: t.warning,
         setSecret: t.setSecret,
         getInput: t.getInput,
+        readUrlInput: (idTokenGeneratorModule as any).readUrlInput,
+        readSecretInput: (idTokenGeneratorModule as any).readSecretInput,
         getBoolInput: t.getBoolInput,
         getVariable: t.getVariable,
         getEndpointAuthorizationParameter: t.getEndpointAuthorizationParameter,
@@ -95,6 +97,9 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
             if (required && !v) throw new Error(`Input required: ${name}`);
             return v;
         };
+        // The silent readers bypass getInput (#1105); route the matrix's inputs through the same stub.
+        (idTokenGeneratorModule as any).readUrlInput = (name: string, required?: boolean) => t.getInput(name, required);
+        (idTokenGeneratorModule as any).readSecretInput = (name: string, required?: boolean) => t.getInput(name, required);
         t.getBoolInput = (name: string) => fixture.bools?.[name] ?? false;
         t.getVariable = (name: string) => fixture.vars?.[name];
         t.getEndpointAuthorizationParameter = (id: string, key: string, optional: boolean) => {
@@ -176,6 +181,8 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
             getEndpointDataParameter: orig.getEndpointDataParameter,
             getEndpointUrl: orig.getEndpointUrl,
         });
+        (idTokenGeneratorModule as any).readUrlInput = orig.readUrlInput;
+        (idTokenGeneratorModule as any).readSecretInput = orig.readSecretInput;
         itg.generateIdToken = orig.generateIdToken;
         ote.exchangeOidcForUpst = orig.exchangeOidcForUpst;
         EnvironmentVariableHelper.clearTrackedVariables();

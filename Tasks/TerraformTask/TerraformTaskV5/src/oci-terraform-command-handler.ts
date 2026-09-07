@@ -2,7 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
-import { EnvironmentVariableHelper, readUrlInput } from '@4cloudguru/pipeline-task-ado';
+import { EnvironmentVariableHelper, readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst, validateIdentityDomainUrl } from '@4cloudguru/pipeline-task-ado';
 import { writeSecretFile, tightenFilePermissions } from '@4cloudguru/pipeline-task-ado';
@@ -156,7 +156,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // Instead, will create a backend.tf config file for it in-flight when generate option was selected 'yes' (the default setting)
         if (tasks.getInput("backendOCIConfigGenerate", true) === 'yes') {
             tasks.debug('Generating backend tf statefile config.');
-            const parUrl = (tasks.getInput("backendOCIPar", true) || '');
+            const parUrl = (readSecretInput("backendOCIPar", true) || '');
 
             // The OCI pre-authenticated request (PAR) URL embeds a long secret token in
             // its /p/<token>/ path segment; possession of the whole URL grants read/write
