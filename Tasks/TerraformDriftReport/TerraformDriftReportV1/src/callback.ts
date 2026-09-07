@@ -1,6 +1,6 @@
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
 import { createHttpsClient, HttpResponse, HttpPreflightError, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
-import { retryAsync, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformModulePublish via ./https-client and guarded by
@@ -45,7 +45,7 @@ export async function assertRejectUnauthorizedNotAgainstPublicHost(callbackUrl: 
     try {
         hostname = new URL(callbackUrl).hostname;
     } catch {
-        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', callbackUrl));
+        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', redactUrlUserInfo(callbackUrl)));
     }
     const isPrivate = isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname);
     if (!isPrivate) {

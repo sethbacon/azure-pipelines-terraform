@@ -47,6 +47,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         warning: t.warning,
         setSecret: t.setSecret,
         getInput: t.getInput,
+        readUrlInput: itg.readUrlInput,
         generateIdToken: itg.generateIdToken,
         exchangeOidcForUpst: ote.exchangeOidcForUpst,
         writeSecretFile: st.writeSecretFile,
@@ -66,6 +67,9 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         t.warning = () => { /* silence */ };
         t.setSecret = (s: string) => { setSecretCalls.push(s); };
         t.getInput = (name: string) => INPUTS[name];
+        // ociWifIdentityDomainUrl is read through the package's silent reader
+        // (#1105), which bypasses getInput, so it is stubbed on the same object.
+        itg.readUrlInput = (name: string) => INPUTS[name];
         itg.generateIdToken = async () => 'mock-oidc-token-12345';
         ote.exchangeOidcForUpst = async () => 'mock-upst-token-67890';
     });
@@ -75,6 +79,7 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         t.warning = orig.warning;
         t.setSecret = orig.setSecret;
         t.getInput = orig.getInput;
+        itg.readUrlInput = orig.readUrlInput;
         itg.generateIdToken = orig.generateIdToken;
         ote.exchangeOidcForUpst = orig.exchangeOidcForUpst;
         st.writeSecretFile = orig.writeSecretFile;
@@ -93,6 +98,8 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
         let generateIdTokenCalled = false;
         itg.generateIdToken = async () => { generateIdTokenCalled = true; return 'mock-oidc-token-12345'; };
         t.getInput = (name: string) =>
+            name === 'ociWifIdentityDomainUrl' ? 'https://evil.example.com' : INPUTS[name];
+        itg.readUrlInput = (name: string) =>
             name === 'ociWifIdentityDomainUrl' ? 'https://evil.example.com' : INPUTS[name];
 
         const handler = new TerraformCommandHandlerOCI();

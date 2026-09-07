@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { IExecOptions, ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import path = require('path');
 import os = require('os');
@@ -74,7 +75,12 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     }
 
     // gitUrl
-    const url = tasks.getInput('policyRepoUrl', true)!;
+    // Read through the package's silent reader, not getInput(): task-lib's
+    // getInput() debug-logs `policyRepoUrl=<value>` at READ time, before
+    // assertNoUrlUserInfo below could register anything, so with System.Debug on
+    // the credential it is about to refuse was already printed (#1105, the
+    // class behind the reported argv/log/message surfaces).
+    const url = readUrlInput('policyRepoUrl', true);
     if (!url.startsWith('https://')) {
         throw new Error(tasks.loc('InsecureUrlRejected', redactUrlUserInfo(url)));
     }

@@ -2,7 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
 import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from './config-generator';
 import { extractUrlUserInfoSecrets, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
-import { replaceSecretFile } from '@4cloudguru/pipeline-task-ado';
+import { replaceSecretFile, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 
 function parseMultiLineInput(input: string | undefined): string[] {
     if (!input) return [];
@@ -44,7 +44,7 @@ async function run() {
     });
 
     try {
-        const mirrorUrl = tasks.getInput('mirrorUrl', true)!;
+        const mirrorUrl = readUrlInput('mirrorUrl', true);
         const allowDirectFallback = tasks.getBoolInput('allowDirectFallback', false);
         const directExcludePatterns = parseMultiLineInput(tasks.getInput('directExcludePatterns', false));
         const directIncludePatterns = parseMultiLineInput(tasks.getInput('directIncludePatterns', false));

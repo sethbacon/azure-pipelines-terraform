@@ -6,7 +6,7 @@ import fs = require('fs');
 
 import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
-import { getBoolInputDefaultTrue } from '@4cloudguru/pipeline-task-ado';
+import { getBoolInputDefaultTrue, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { verifyGpgSignature } from './gpg-verifier';
 import { verifyCosignSignature } from './cosign-verifier';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, assertPlainUrlBase, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
@@ -71,7 +71,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
             // non-https scheme, at every read (azure-pipelines-terraform#1110 finding 2, the
             // class fix). Userinfo is allowed: a basic-auth mirror is a supported pattern here
             // and is masked/redacted downstream (#586), not refused.
-            const registryUrl = assertPlainUrlBase('registryUrl', tasks.getInput("registryUrl", true)!, 'allow');
+            const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
             const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
             resolvedVersion = inputVersion.toLowerCase() !== 'latest'
                 ? inputVersion
@@ -98,7 +98,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         let zipPath: string;
         switch (downloadSource) {
             case "registry": {
-                const registryUrl = assertPlainUrlBase('registryUrl', tasks.getInput("registryUrl", true)!, 'allow');
+                const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
                 const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
                 const result = await downloadZipFromRegistry(version, registryUrl, mirrorName);
                 zipPath = result.zipPath;
@@ -109,7 +109,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
                 break;
             }
             case "mirror": {
-                const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', tasks.getInput("mirrorBaseUrl", true)!, 'allow');
+                const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', readUrlInput("mirrorBaseUrl", true), 'allow');
                 const result = await downloadZipFromMirror(version, mirrorBaseUrl);
                 zipPath = result.zipPath;
                 verified = result.verified;
@@ -633,12 +633,12 @@ async function reverifyUnmarkedCacheEntry(
 async function downloadVerifiedZipForReverify(downloadSource: string, version: string): Promise<string> {
     switch (downloadSource) {
         case "registry": {
-            const registryUrl = assertPlainUrlBase('registryUrl', tasks.getInput("registryUrl", true)!, 'allow');
+            const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
             const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
             return (await downloadZipFromRegistry(version, registryUrl, mirrorName)).zipPath;
         }
         case "mirror": {
-            const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', tasks.getInput("mirrorBaseUrl", true)!, 'allow');
+            const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', readUrlInput("mirrorBaseUrl", true), 'allow');
             return (await downloadZipFromMirror(version, mirrorBaseUrl)).zipPath;
         }
         default: // "hashicorp"

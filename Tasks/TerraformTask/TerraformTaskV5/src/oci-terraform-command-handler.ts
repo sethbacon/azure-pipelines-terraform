@@ -2,7 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
-import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
+import { EnvironmentVariableHelper, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst, validateIdentityDomainUrl } from '@4cloudguru/pipeline-task-ado';
 import { writeSecretFile, tightenFilePermissions } from '@4cloudguru/pipeline-task-ado';
@@ -440,7 +440,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // before transmitting anything -- but minting a credential that then
         // goes unused because of a config error it should never have reached
         // is itself worth avoiding.
-        const identityDomainUrl = validateIdentityDomainUrl(tasks.getInput("ociWifIdentityDomainUrl", true)!).href;
+        const identityDomainUrl = validateIdentityDomainUrl(readUrlInput("ociWifIdentityDomainUrl", true)).href;
         const clientId = tasks.getInput("ociWifClientId", true)!;
         const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
         const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);

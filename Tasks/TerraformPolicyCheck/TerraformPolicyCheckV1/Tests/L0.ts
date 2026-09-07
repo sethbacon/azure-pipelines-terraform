@@ -213,6 +213,28 @@ describe('TerraformPolicyCheck Test Suite', function () {
         }, tr);
     });
 
+    it('PolicyRepoUrlUserinfoReject — a credential in policyRepoUrl is refused before git runs and never reaches a log-visible line (#1105)', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PolicyRepoUrlUserinfoReject.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some((e) => e.includes('PolicyRepoUrlUserInfoRejected')),
+                'the refusal must come from assertNoUrlUserInfo, not from an unanswered clone. errors: ' + tr.errorIssues,
+            );
+            // `##vso[task.setsecret]` lines are how the value is REGISTERED with the
+            // masker; the agent consumes them and they never reach the log. Every
+            // other line -- including task-lib's own `policyRepoUrl=...` debug line,
+            // which getInput() would have written raw -- must be free of it.
+            const visible = (tr.stdout + '\n' + tr.stderr + '\n' + tr.errorIssues.join('\n'))
+                .split('\n')
+                .filter((l) => !l.includes('task.setsecret'))
+                .join('\n');
+            assert(!visible.includes('PAT-s3cr3t-value'), 'the credential must not appear in any log-visible line. output: ' + visible);
+            assert(!tr.invokedToolCount, 'git must not have been invoked; tool invocations: ' + tr.invokedToolCount);
+        }, tr);
+    });
+
     it('GitCloneCleanupFailureWarns — a cleanup failure on the clone dir surfaces as a warning, not just debug (#766)', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'GitCloneCleanupFailureWarns.js'));
         await tr.runAsync();

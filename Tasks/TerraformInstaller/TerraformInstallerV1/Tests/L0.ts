@@ -634,6 +634,22 @@ describe('TerraformInstaller Test Suite', function () {
     // path is concatenated onto, so '?' or '#' in them retargets the request while
     // the host allowlist sees nothing. Asserted on the guard's own message: the
     // fixtures also mock the client to throw, so bare failure would pass without it.
+    // #1105 finding 1 (class): a credential in a URL input must never reach a
+    // log-visible line -- including task-lib's own `<input>=<value>` debug line,
+    // which getInput() writes raw at read time. `##vso[task.setsecret]` lines
+    // are how the value is registered and never reach the log, so they are
+    // excluded; everything else must be free of it.
+    it('RegistryUrlUserinfoNotLogged: a credential in registryUrl is registered before any line that could show it (#1105)', async () => {
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(path.join(__dirname, 'RegistryUrlUserinfoNotLogged.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            const visible = (tr.stdout + '\n' + tr.stderr + '\n' + tr.errorIssues.join('\n')).split('\n').filter((l) => !l.includes('task.setsecret'));
+            assert(!visible.some((l) => l.includes('PAT-s3cr3t-value')), 'the credential must not appear in any log-visible line. output: ' + visible.join('\n'));
+            const debugLine = visible.find((l) => l.includes('registryUrl='));
+            assert(debugLine && !debugLine.includes('svc:'), 'the registryUrl= debug line must be written in redacted form. line: ' + debugLine);
+        }, tr);
+    });
+
     for (const [fixture, input] of [['RegistryUrlQueryReject', 'registryUrl'], ['MirrorBaseUrlFragmentReject', 'mirrorBaseUrl']] as const) {
         it(`${fixture}: a query string or fragment in ${input} is refused before any request (#1110)`, async () => {
             const tr: ttm.MockTestRunner = new ttm.MockTestRunner(path.join(__dirname, `${fixture}.js`));
