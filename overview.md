@@ -17,6 +17,7 @@ This extension provides:
 - **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs
 - **Markdown2Html** -- Convert Markdown files to HTML for publishing as ServiceNow knowledge base articles ⚠️ *deprecated here -- see below*
 - **PublishKbArticle** -- Publish or update a knowledge base article in ServiceNow ⚠️ *deprecated here -- see below*
+- Service connections for AWS, GCP, and OCI accounts
 
 > **⚠️ The two ServiceNow tasks are moving out of this extension.**
 > `Markdown2Html@1` and `PublishKbArticle@1` are deprecated here and are being republished in
@@ -30,7 +31,6 @@ This extension provides:
 > have published five minor releases with the task available in both.
 >
 > Every other task in this extension is unaffected.
-- Service connections for AWS, GCP, and OCI accounts
 
 Runs on **Windows**, **Linux**, and **macOS** agents.
 
