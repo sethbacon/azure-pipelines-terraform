@@ -24,7 +24,7 @@ describe('config-generator', () => {
         it('should reject HTTP URLs', () => {
             assert.throws(
                 () => validateMirrorUrl('http://registry.example.com'),
-                /Only HTTPS URLs are allowed/
+                /mirrorUrl must use https/
             );
         });
 
@@ -38,8 +38,24 @@ describe('config-generator', () => {
         it('should reject invalid URLs', () => {
             assert.throws(
                 () => validateMirrorUrl('not-a-url'),
-                /Invalid mirror URL/
+                /mirrorUrl is not a valid absolute URL/
             );
+        });
+
+        // #1110 finding 2 (class fix): Terraform appends the provider path to
+        // this base, so a '?' or '#' in it retargets every lookup silently.
+        it('should reject a URL carrying a query string or fragment', () => {
+            for (const bad of ['https://registry.example.com/?x=', 'https://registry.example.com/mirror?token=1', 'https://registry.example.com/#frag']) {
+                assert.throws(
+                    () => validateMirrorUrl(bad),
+                    /mirrorUrl must not carry a query string or fragment/,
+                    `expected ${bad} to be rejected`
+                );
+            }
+        });
+
+        it('should keep accepting basic-auth userinfo, a documented internal-mirror pattern', () => {
+            assert.doesNotThrow(() => validateMirrorUrl('https://user:pass@registry.example.com/mirror/'));
         });
     });
 
@@ -548,7 +564,7 @@ describe('index entrypoint (mock run)', function () {
         assert.ok(tr.failed, 'task should have failed. stdout: ' + tr.stdout);
         assert.ok(tr.errorIssues.length > 0, 'should have at least one error issue');
         assert.ok(
-            tr.errorIssues.some(e => e.indexOf('Invalid mirror URL') >= 0),
+            tr.errorIssues.some(e => e.indexOf('mirrorUrl is not a valid absolute URL') >= 0),
             'error should mention an invalid mirror URL: ' + tr.errorIssues
         );
     });

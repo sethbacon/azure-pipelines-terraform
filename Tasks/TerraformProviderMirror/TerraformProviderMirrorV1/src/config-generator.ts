@@ -1,4 +1,4 @@
-import { redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
+import { assertPlainUrlBase } from '@4cloudguru/pipeline-task-core';
 
 export interface ProviderMirrorConfig {
     mirrorUrl: string;
@@ -14,19 +14,15 @@ export function validateMirrorUrl(url: string): void {
     if (!url) {
         throw new Error('Mirror URL is required');
     }
-
-    let parsed: URL;
-    try {
-        parsed = new URL(url);
-    } catch {
-        // Strip any embedded basic-auth userinfo from the echoed URL so a malformed
-        // credential-bearing mirror URL cannot leak into the build log (#586).
-        throw new Error(`Invalid mirror URL: ${redactUrlUserInfo(url)}`);
-    }
-
-    if (parsed.protocol !== 'https:') {
-        throw new Error(`Insecure URL rejected: ${redactUrlUserInfo(url)}. Only HTTPS URLs are allowed.`);
-    }
+    // Terraform appends `/<hostname>/<namespace>/<type>/index.json` to this
+    // value when it consults the network mirror, so it is a base a path is
+    // concatenated onto: a query string or fragment in it would silently
+    // retarget every provider lookup while the host stays the same. The shared
+    // guard (azure-pipelines-terraform#1110 finding 2, the class fix across both
+    // extensions) enforces https and rejects '?' / '#'; userinfo stays allowed
+    // because an internal mirror behind basic auth is a documented pattern here
+    // (masked and redacted before any log line, see index.ts).
+    assertPlainUrlBase('mirrorUrl', url, 'allow');
 }
 
 /**

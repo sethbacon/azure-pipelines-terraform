@@ -8,7 +8,7 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
 import { getBoolInputDefaultTrue } from '@4cloudguru/pipeline-task-ado';
 import { verifyGpgSignature } from './gpg-verifier';
-import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, assertPlainUrlBase, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 import { getPlatformString, hashFile, verifySha256, writeCacheIntegrityMarker, verifyCachedTool } from './tool-integrity';
 // Re-exported so this module's public surface is unchanged by the move to the
@@ -158,7 +158,14 @@ async function resolveVersion(agent: string, downloadSource: string, inputVersio
     }
 
     if (downloadSource === "registry") {
-        const registryUrl = tasks.getInput("registryUrl", true)!;
+        // registryUrl and mirrorBaseUrl are bases a fixed path is appended to
+        // (`${registryUrl}/terraform/binaries/...`), so a query string or fragment in
+        // either silently retargets the request while the host -- and so the egress
+        // allowlist -- stays the same. assertPlainUrlBase fails closed on that, and on a
+        // non-https scheme, at every read (azure-pipelines-terraform#1110 finding 2, the
+        // class fix). Userinfo is allowed: a basic-auth mirror is a supported pattern here
+        // and is masked/redacted downstream (#586), not refused.
+        const registryUrl = assertPlainUrlBase('registryUrl', tasks.getInput("registryUrl", true)!, 'allow');
         const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || agent);
         return resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
             assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
@@ -210,7 +217,7 @@ async function resolveLatestOpa(): Promise<string> {
 async function downloadArtifact(agent: string, downloadSource: string, version: string): Promise<{ path: string; verified: boolean }> {
     switch (downloadSource) {
         case "registry": {
-            const registryUrl = tasks.getInput("registryUrl", true)!;
+            const registryUrl = assertPlainUrlBase('registryUrl', tasks.getInput("registryUrl", true)!, 'allow');
             const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || agent);
             const result = await downloadFromRegistry(agent, version, registryUrl, mirrorName);
             // Strip any embedded basic-auth userinfo before persisting the source
@@ -219,7 +226,7 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
             return result;
         }
         case "mirror": {
-            const mirrorBaseUrl = tasks.getInput("mirrorBaseUrl", true)!;
+            const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', tasks.getInput("mirrorBaseUrl", true)!, 'allow');
             const result = await downloadFromMirror(agent, version, mirrorBaseUrl);
             // Strip any embedded basic-auth userinfo before persisting the source
             // into a downstream-readable pipeline variable (#586).

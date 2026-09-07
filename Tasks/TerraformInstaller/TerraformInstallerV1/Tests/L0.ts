@@ -630,6 +630,24 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    // #1110 finding 2 (class fix): registryUrl / mirrorBaseUrl are bases a fixed
+    // path is concatenated onto, so '?' or '#' in them retargets the request while
+    // the host allowlist sees nothing. Asserted on the guard's own message: the
+    // fixtures also mock the client to throw, so bare failure would pass without it.
+    for (const [fixture, input] of [['RegistryUrlQueryReject', 'registryUrl'], ['MirrorBaseUrlFragmentReject', 'mirrorBaseUrl']] as const) {
+        it(`${fixture}: a query string or fragment in ${input} is refused before any request (#1110)`, async () => {
+            const tr: ttm.MockTestRunner = new ttm.MockTestRunner(path.join(__dirname, `${fixture}.js`));
+            await tr.runAsync();
+            runValidations(() => {
+                assert(tr.failed, 'task should have failed');
+                assert(
+                    tr.errorIssues.some(e => e.includes(`${input} must not carry a query string or fragment`)),
+                    'should fail via assertPlainUrlBase. errors: ' + tr.errorIssues,
+                );
+            }, tr);
+        });
+    }
+
     it('registryUrl on a private address: should reject during version resolution, before any download_url exists (packer#330 sibling)', async () => {
         // The existing guard covers only the download_url the registry returns.
         // Resolving 'latest' hits the network first, so nothing checked registryUrl's

@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { assertPlainUrlBase } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
 import { RegistryPublisher, RegistryType } from './types';
@@ -25,7 +26,7 @@ function parseTimeout(): number {
  * the on-path MITM scenario #588 flags (#588).
  *
  * registryUrl no longer needs its own unparseable-URL check here: the only call
- * site (below) always runs assertRegistryBaseHasNoQueryFragmentOrUserinfo first,
+ * site (below) always runs assertRegistryBase (assertPlainUrlBase) first,
  * which already requires registryUrl to parse as a URL before this function ever
  * sees it (#1110) -- so `new URL(registryUrl)` below cannot throw in practice.
  */
@@ -40,25 +41,17 @@ function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void 
  * private-publisher.ts and hcp-publisher.ts both build request URLs by trimming
  * a trailing slash off this base and concatenating a fixed API path onto it,
  * rather than resolving through the URL parser -- so a query string or fragment
- * embedded in the base silently retargets the request. A base of
- * 'https://registry.example/?x=' lands the intended '/api/v1/modules/...' path
- * inside the query string instead of the URL path, and userinfo in the base
- * would ride along with every request built from it. registryUrl/hcpAddress are
- * operator inputs (not a privilege-boundary crossing) and the https scheme is
- * still enforced downstream, but this still fails closed on it, before either
- * publisher ever builds a URL from it, rather than resolving through the parser
- * downstream where a mismatch would be silent (#1110).
+ * embedded in the base silently retargets the request, and userinfo in it would
+ * ride along with every bearer-authenticated request built from it. The guard
+ * is the shared assertPlainUrlBase from @4cloudguru/pipeline-task-core (the
+ * class fix for #1110 finding 2: every installer of both extensions has the
+ * same concatenation), called with 'reject' for userinfo because these
+ * requests carry their own token. It runs before either publisher ever builds
+ * a URL, and before the skipTlsVerify guard below, which is why that guard no
+ * longer needs its own unparseable-URL check.
  */
-function assertRegistryBaseHasNoQueryFragmentOrUserinfo(base: string, inputName: string): void {
-    let parsed: URL;
-    try {
-        parsed = new URL(base);
-    } catch {
-        throw new Error(tasks.loc('RegistryBaseUrlUnparseable', inputName, base));
-    }
-    if (parsed.search || parsed.hash || parsed.username || parsed.password) {
-        throw new Error(tasks.loc('RegistryBaseUrlHasQueryFragmentOrUserinfo', inputName, base));
-    }
+function assertRegistryBase(base: string, inputName: string): void {
+    assertPlainUrlBase(inputName, base, 'reject');
 }
 
 function buildPublisher(): RegistryPublisher {
@@ -83,7 +76,7 @@ function buildPublisher(): RegistryPublisher {
         // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         const registryUrl = requireInput('registryUrl');
-        assertRegistryBaseHasNoQueryFragmentOrUserinfo(registryUrl, 'registryUrl');
+        assertRegistryBase(registryUrl, 'registryUrl');
         if (skipTlsVerify) {
             assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
@@ -116,7 +109,7 @@ function buildPublisher(): RegistryPublisher {
         const token = requireInput('hcpToken');
         tasks.setSecret(token);
         const hcpAddress = tasks.getInput('hcpAddress', false) || 'https://app.terraform.io';
-        assertRegistryBaseHasNoQueryFragmentOrUserinfo(hcpAddress, 'hcpAddress');
+        assertRegistryBase(hcpAddress, 'hcpAddress');
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).
         return new HcpPublisher(createHttpsClient(true), {
