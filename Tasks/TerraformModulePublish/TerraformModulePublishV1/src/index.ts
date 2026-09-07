@@ -22,21 +22,42 @@ function parseTimeout(): number {
  * skipTlsVerify only makes sense for a private/internal registry fronted by a CA
  * the agent doesn't trust -- there is never a legitimate reason to disable TLS
  * verification against a well-known PUBLIC registry endpoint, which is exactly
- * the on-path MITM scenario #588 flags. A malformed registryUrl fails closed
- * (rejected) here rather than being silently let through to surface its own
- * separate error later -- the whole point of this guard is to gate a dangerous
- * configuration BEFORE it can take effect, so an input this guard cannot even
- * parse must never fall through to skipTlsVerify actually being honored (#588).
+ * the on-path MITM scenario #588 flags (#588).
+ *
+ * registryUrl no longer needs its own unparseable-URL check here: the only call
+ * site (below) always runs assertRegistryBaseHasNoQueryFragmentOrUserinfo first,
+ * which already requires registryUrl to parse as a URL before this function ever
+ * sees it (#1110) -- so `new URL(registryUrl)` below cannot throw in practice.
  */
 function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void {
-    let hostname: string;
-    try {
-        hostname = new URL(registryUrl).hostname.toLowerCase();
-    } catch {
-        throw new Error(tasks.loc('SkipTlsVerifyUrlUnparseable', registryUrl));
-    }
+    const hostname = new URL(registryUrl).hostname.toLowerCase();
     if (hostname === 'terraform.io' || hostname.endsWith('.terraform.io')) {
         throw new Error(tasks.loc('SkipTlsVerifyPublicRegistryRejected', registryUrl));
+    }
+}
+
+/**
+ * private-publisher.ts and hcp-publisher.ts both build request URLs by trimming
+ * a trailing slash off this base and concatenating a fixed API path onto it,
+ * rather than resolving through the URL parser -- so a query string or fragment
+ * embedded in the base silently retargets the request. A base of
+ * 'https://registry.example/?x=' lands the intended '/api/v1/modules/...' path
+ * inside the query string instead of the URL path, and userinfo in the base
+ * would ride along with every request built from it. registryUrl/hcpAddress are
+ * operator inputs (not a privilege-boundary crossing) and the https scheme is
+ * still enforced downstream, but this still fails closed on it, before either
+ * publisher ever builds a URL from it, rather than resolving through the parser
+ * downstream where a mismatch would be silent (#1110).
+ */
+function assertRegistryBaseHasNoQueryFragmentOrUserinfo(base: string, inputName: string): void {
+    let parsed: URL;
+    try {
+        parsed = new URL(base);
+    } catch {
+        throw new Error(tasks.loc('RegistryBaseUrlUnparseable', inputName, base));
+    }
+    if (parsed.search || parsed.hash || parsed.username || parsed.password) {
+        throw new Error(tasks.loc('RegistryBaseUrlHasQueryFragmentOrUserinfo', inputName, base));
     }
 }
 
@@ -62,6 +83,7 @@ function buildPublisher(): RegistryPublisher {
         // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         const registryUrl = requireInput('registryUrl');
+        assertRegistryBaseHasNoQueryFragmentOrUserinfo(registryUrl, 'registryUrl');
         if (skipTlsVerify) {
             assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
@@ -93,11 +115,13 @@ function buildPublisher(): RegistryPublisher {
     if (registryType === 'hcp') {
         const token = requireInput('hcpToken');
         tasks.setSecret(token);
+        const hcpAddress = tasks.getInput('hcpAddress', false) || 'https://app.terraform.io';
+        assertRegistryBaseHasNoQueryFragmentOrUserinfo(hcpAddress, 'hcpAddress');
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).
         return new HcpPublisher(createHttpsClient(true), {
             ...coordinates,
-            address: tasks.getInput('hcpAddress', false) || 'https://app.terraform.io',
+            address: hcpAddress,
             token,
             vcsRepoIdentifier: tasks.getInput('vcsRepoIdentifier', false) || '',
             vcsBranch: tasks.getInput('vcsBranch', false) || 'main',
