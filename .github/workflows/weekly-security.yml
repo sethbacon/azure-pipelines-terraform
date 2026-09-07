@@ -56,8 +56,20 @@ jobs:
         # The Go-toolchain abort that made a newer pin urgent elsewhere cannot
         # reach this repository -- it carries no go.mod, so osv-scanner runs no
         # call analysis here at all. This bump is drift removal, not a fix.
-        uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
-        continue-on-error: true
+        # THE SHARED ACTION, NOT THE OFFICIAL ONE, AND NO continue-on-error (#894).
+        #
+        # `continue-on-error` was the defect: it collapsed exit 1 ("ran, found
+        # something") and the error exits (127 general error, 128 no packages) into
+        # one `outcome == 'failure'`, and it rewrote a failed step's `conclusion` to
+        # `success`. A scanner that had stopped working produced exactly the same
+        # green as one that ran and found nothing, in the run history and in the API
+        # alike.
+        #
+        # The shared action reports the exit code it ACTUALLY got and exposes it as
+        # `outputs.exit-code`, `outputs.findings` and `outputs.errored`, so the steps
+        # below no longer have to infer the verdict from the artifact -- and a
+        # scanner error fails the job immediately rather than passing for clean.
+        uses: 4cloudguru/shared-workflows/.github/actions/osv-scan@3aae0966a70daa50bcfe741ef07e20e86c814af4 # v1.20.2
         with:
           scan-args: |-
             --recursive
@@ -67,7 +79,7 @@ jobs:
 
       # Surface the scan result in the run's Summary tab so a reviewer sees the
       # findings (or a clean result) without opening the step logs. Runs even
-      # when the scan step reports vulnerabilities (continue-on-error above).
+      # when the scan reports vulnerabilities: findings no longer fail the step.
       - name: Publish OSV results to job summary
         if: always()
         run: |
@@ -83,51 +95,13 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # DISTINGUISH A BROKEN SCANNER FROM A CLEAN ONE (#894).
-      #
-      # continue-on-error above collapses osv-scanner's exit 1 ("vulnerabilities
-      # found") and its error exits -- 127 (general error) and 128 (no packages
-      # found) -- into one `outcome == 'failure'`, and GitHub exposes the raw
-      # exit code nowhere. So the step below used to file an issue TITLED
-      # "vulnerabilities found" for a scanner that had simply stopped working.
-      #
-      # That is not hypothetical: terraform-state-manager-backend#334 filed
-      # exactly that issue, asserting vulnerabilities that did not exist, while
-      # seven genuinely reachable advisories stayed invisible. The scanner image
-      # ships its own Go toolchain and runs it with GOTOOLCHAIN=local, so it
-      # aborts on any module whose `go` directive is newer -- and a broken
-      # scanner produced the same green as a clean one for weeks.
-      #
-      # CHECKED ON THE ARTIFACT, NOT THE EXIT CODE, because the exit code is
-      # exactly what is unavailable. A findings table always names at least one
-      # advisory; a scanner that aborted names none. That test is independent of
-      # the output format and of however "no vulnerabilities found" is worded.
-      #
-      # This FAILS THE RUN rather than warning. A permanently-red Monday for a
-      # broken scanner is the notification; a silently green one is the defect,
-      # and the whole point of #894 is that the two were indistinguishable.
-      - name: Distinguish a broken scanner from real findings
-        id: osv_verdict
-        if: steps.osv.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          if [ -s osv-results.txt ] && grep -qE '(GHSA|OSV|CVE|GO|PYSEC|RUSTSEC)-[0-9A-Za-z-]+' osv-results.txt; then
-            echo "findings=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "findings=false" >> "$GITHUB_OUTPUT"
-          echo "::error title=OSV-Scanner did not scan::osv-scanner exited non-zero but its output names no advisory. Exit 1 always carries at least one, so this was a scanner error (127 general error, or 128 no packages found), NOT a clean scan and NOT a finding. Do not file a vulnerabilities-found issue for it -- fix the scanner. See #894."
-          {
-            echo '## ⚠️ OSV-Scanner did not complete'
-            echo ''
-            echo 'The scan step exited non-zero but produced no advisory identifiers.'
-            echo 'This run tells you **nothing** about whether this repository has'
-            echo 'known vulnerabilities.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
+      # The verdict step that used to live here inferred "did the scanner
+      # actually run?" from whether the report named an advisory, because the
+      # exit code was unavailable. The shared action reports the exit code, so
+      # the inference is gone and `outputs.findings` is read directly.
 
       - name: Create issue on new vulnerabilities
-        if: steps.osv.outcome == 'failure' && steps.osv_verdict.outputs.findings == 'true'
+        if: steps.osv.outputs.findings == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
