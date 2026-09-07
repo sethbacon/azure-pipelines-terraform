@@ -423,7 +423,11 @@ describe('TerraformDocsInstaller Test Suite', function () {
       // the REAL registryUrl host, or a guard checking the wrong value passes
       // this assertion undetected.
       assert(
-        tr.errorIssues.some(e => e.includes('RegistryDownloadHostIsPrivate') && e.includes('registry.example.com')),
+        tr.errorIssues.some(
+          e =>
+            e.includes('RegistryDownloadHostIsPrivate') &&
+            /(?<![\w.-])registry\.example\.com(?![\w-])/.test(e),
+        ),
         'should fail via the private-address check on registryUrl\'s OWN host (registry.example.com), before any metadata fetch. errors: ' + tr.errorIssues,
       );
       assert(
