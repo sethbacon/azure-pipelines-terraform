@@ -26,7 +26,7 @@ function parseTimeout(): number {
  * the on-path MITM scenario #588 flags (#588).
  *
  * registryUrl no longer needs its own unparseable-URL check here: the only call
- * site (below) always runs assertRegistryBase (assertPlainUrlBase) first,
+ * site (below) always runs assertPlainUrlBase first,
  * which already requires registryUrl to parse as a URL before this function ever
  * sees it (#1110) -- so `new URL(registryUrl)` below cannot throw in practice.
  */
@@ -39,20 +39,19 @@ function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void 
 
 /**
  * private-publisher.ts and hcp-publisher.ts both build request URLs by trimming
- * a trailing slash off this base and concatenating a fixed API path onto it,
- * rather than resolving through the URL parser -- so a query string or fragment
- * embedded in the base silently retargets the request, and userinfo in it would
- * ride along with every bearer-authenticated request built from it. The guard
- * is the shared assertPlainUrlBase from @4cloudguru/pipeline-task-core (the
- * class fix for #1110 finding 2: every installer of both extensions has the
- * same concatenation), called with 'reject' for userinfo because these
- * requests carry their own token. It runs before either publisher ever builds
- * a URL, and before the skipTlsVerify guard below, which is why that guard no
- * longer needs its own unparseable-URL check.
+ * a trailing slash off the base (registryUrl / hcpAddress) and concatenating a
+ * fixed API path onto it, rather than resolving through the URL parser -- so a
+ * query string or fragment embedded in the base silently retargets the request,
+ * and userinfo in it would ride along with every bearer-authenticated request
+ * built from it. Both bases therefore go through @4cloudguru/pipeline-task-core's
+ * assertPlainUrlBase (the class fix for #1110 finding 2: every installer of both
+ * extensions has the same concatenation) with 'reject' for userinfo, because
+ * these requests carry their own token. Called directly at each read, naming
+ * the input, which is the shape the replay signature for this class keys on;
+ * it runs before either publisher ever builds a URL, and before the
+ * skipTlsVerify guard below, which is why that guard no longer needs its own
+ * unparseable-URL check.
  */
-function assertRegistryBase(base: string, inputName: string): void {
-    assertPlainUrlBase(inputName, base, 'reject');
-}
 
 function buildPublisher(): RegistryPublisher {
     const registryType = requireInput('registryType') as RegistryType;
@@ -76,7 +75,7 @@ function buildPublisher(): RegistryPublisher {
         // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         const registryUrl = requireInput('registryUrl');
-        assertRegistryBase(registryUrl, 'registryUrl');
+        assertPlainUrlBase('registryUrl', registryUrl, 'reject');
         if (skipTlsVerify) {
             assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
@@ -109,7 +108,7 @@ function buildPublisher(): RegistryPublisher {
         const token = requireInput('hcpToken');
         tasks.setSecret(token);
         const hcpAddress = tasks.getInput('hcpAddress', false) || 'https://app.terraform.io';
-        assertRegistryBase(hcpAddress, 'hcpAddress');
+        assertPlainUrlBase('hcpAddress', hcpAddress, 'reject');
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).
         return new HcpPublisher(createHttpsClient(true), {
