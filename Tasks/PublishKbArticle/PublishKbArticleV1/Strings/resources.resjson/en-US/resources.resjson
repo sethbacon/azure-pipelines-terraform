@@ -3,6 +3,7 @@
   "loc.helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
   "loc.description": "Publish or update a knowledge base article in ServiceNow",
   "loc.instanceNameFormat": "Publish KB Article $(title)",
+  "loc.messages.KbArticleJsonScanFailed": "Could not scan the working directory for a KB article JSON file (%s); proceeding as if none was found. If this task should have found an existing KB<number>.json here, investigate before trusting the resulting create/update outcome.",
   "loc.messages.OAuthTokenError": "Error obtaining OAuth token: %s",
   "loc.messages.OAuthAccessTokenRequired": "OAuth authentication requires an access token",
   "loc.messages.BasicAuthCredentialsRequired": "Basic authentication requires username and password.",

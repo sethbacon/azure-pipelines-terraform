@@ -214,7 +214,18 @@ export function findKbArticleJson(): Record<string, unknown> | null {
     let jsonFiles: string[];
     try {
         jsonFiles = fs.readdirSync('.').filter(f => KB_ARTICLE_JSON_NAME_RE.test(f));
-    } catch {
+    } catch (error) {
+        // ENOENT on '.' (the working directory itself gone -- deleted mid-run,
+        // an unmounted volume) is the one case indistinguishable from "no
+        // matching file present" in substance, since either way there is
+        // nothing to read; anything else (EACCES, ENOTDIR, ...) is a real
+        // environment problem masquerading as "no KB JSON found" if left
+        // silent, so surface it for whoever investigates an unexpected
+        // "article created instead of updated" outcome (#1113).
+        const code = (error as NodeJS.ErrnoException)?.code;
+        if (code !== 'ENOENT') {
+            tasks.warning(tasks.loc('KbArticleJsonScanFailed', code ?? String(error)));
+        }
         return null;
     }
     const candidates: { filename: string; mtimeMs: number; data: Record<string, unknown> }[] = [];

@@ -257,6 +257,7 @@
         }
     },
     "messages": {
+        "KbArticleJsonScanFailed": "Could not scan the working directory for a KB article JSON file (%s); proceeding as if none was found. If this task should have found an existing KB<number>.json here, investigate before trusting the resulting create/update outcome.",
         "OAuthTokenError": "Error obtaining OAuth token: %s",
         "OAuthAccessTokenRequired": "OAuth authentication requires an access token",
         "BasicAuthCredentialsRequired": "Basic authentication requires username and password.",

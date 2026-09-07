@@ -338,11 +338,15 @@ export async function processArticleImages(
         // operator isn't surprised by attached-but-unlinked attachments before the
         // next run's idempotent re-sync catches up (#509).
         if (srcToId.size > 0) {
-            const uploadedNames = refs
+            // Name each attachment's sys_id alongside its filename (not just the
+            // filename) so an operator can act on the orphaned attachment directly
+            // -- e.g. verify or delete it via the ServiceNow attachment API --
+            // without waiting on the next run's idempotent re-sync to catch up (#1113).
+            const uploaded = refs
                 .filter((ref) => srcToId.has(ref.originalSrc))
-                .map((ref) => ref.fileName)
+                .map((ref) => `${ref.fileName} (sys_id ${srcToId.get(ref.originalSrc)})`)
                 .join(', ');
-            tasks.warning(tasks.loc('ImagesUploadedBeforeAbort', srcToId.size, uploadedNames));
+            tasks.warning(tasks.loc('ImagesUploadedBeforeAbort', srcToId.size, uploaded));
         }
         throw err;
     }
