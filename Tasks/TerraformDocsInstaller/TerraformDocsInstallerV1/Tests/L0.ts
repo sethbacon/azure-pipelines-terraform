@@ -24,6 +24,21 @@ import './EgressAuthorizationL0';
 // unhandledRejection registration (#1113).
 import './SignalHandlerL0';
 
+/**
+ * True when `message` names `host` as a whole token.
+ *
+ * These are task error messages, not URLs, so they cannot be anchor-matched
+ * end to end. Split into host-shaped tokens and compare for exact equality:
+ * a substring or unanchored-regex test would also accept
+ * `evilregistry.example.com` and `registry.example.com.evil.net`.
+ */
+function messageNamesHost(message: string, host: string): boolean {
+  return message
+    .split(/[^\w.-]+/)
+    .map(token => token.replace(/^[.-]+|[.-]+$/g, ''))
+    .includes(host);
+}
+
 describe('TerraformDocsInstaller Test Suite', function () {
 
   before(() => {
@@ -426,7 +441,7 @@ describe('TerraformDocsInstaller Test Suite', function () {
         tr.errorIssues.some(
           e =>
             e.includes('RegistryDownloadHostIsPrivate') &&
-            /(?<![\w.-])registry\.example\.com(?![\w-])/.test(e),
+            messageNamesHost(e, 'registry.example.com'),
         ),
         'should fail via the private-address check on registryUrl\'s OWN host (registry.example.com), before any metadata fetch. errors: ' + tr.errorIssues,
       );
