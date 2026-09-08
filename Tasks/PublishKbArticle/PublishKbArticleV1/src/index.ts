@@ -1,5 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
-import { readSecretInput, readEndpointUrl, redactUrlCredentialsIn } from '@4cloudguru/pipeline-task-ado';
+import { readSecretInput, readUrlInput, readEndpointUrl, redactUrlCredentialsIn } from '@4cloudguru/pipeline-task-ado';
 import path = require('path');
 import { getOAuthToken, getAuthHeaders } from './auth';
 import {
@@ -74,7 +74,9 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     }
 
     // Inline inputs override / supplement service connection
-    instance = tasks.getInput('instance', false) || instance;
+    // `instance` accepts a whole URL, so it can carry userinfo like the connection
+    // URL above; read it through the silent reader too (#1105 class sweep).
+    instance = readUrlInput('instance', false) || instance;
     authType = tasks.getInput('authType', false) || authType;
     clientId = tasks.getInput('clientId', false) || clientId;
     clientSecret = readSecretInput('clientSecret', false) || clientSecret;

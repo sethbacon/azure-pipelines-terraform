@@ -842,7 +842,10 @@ export abstract class BaseTerraformCommandHandler {
         const outputTo = tasks.getInput("outputTo");
         const commandOptions = this.getCommandOptions();
         const customCommand = this.createAuthCommand(
-            tasks.getInput("customCommand", true)!,
+            // A free-form argument string: read through the package's silent reader so
+            // a URL with userinfo or a credential-named -var assignment in it is
+            // registered before task-lib's own debug line could print it (#1105).
+            readUrlInput("customCommand", true),
             commandOptions
         );
 

@@ -121,8 +121,11 @@ export function assertIdentityValue(value: string | undefined, subject: string, 
  * in task-lib's vaulting list, so it also stays in `process.env` for the
  * terraform child to inherit. `readSecretEndpointDataParameter` reads the same
  * variable directly, registers it line-wise with the masker, and deletes it
- * (@4cloudguru/pipeline-task-ado). `ENDPOINT_AUTH_*` IS vaulted and its accessor does
- * not log the value, so the auth family is read as before.
+ * (@4cloudguru/pipeline-task-ado). `ENDPOINT_AUTH_*` IS vaulted, and although its
+ * accessor logs the value too, the agent registers every auth-parameter value
+ * with the masker before the task starts (a fixed list of non-secret keys such
+ * as Scope/TenantId excepted), so that line is written masked; the auth family
+ * is read as before.
  *
  * Routing this through the shared helper rather than the OCI call site keeps the
  * two guards composed: the next data-parameter secret inherits the non-logging
