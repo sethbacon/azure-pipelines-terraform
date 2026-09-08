@@ -22,6 +22,10 @@ import {
  */
 const ARM_IDENTITY_SELECTORS = {
     secret: 'ARM_CLIENT_SECRET',
+    // azurerm reads client_secret_file_path when client_secret is empty, so the
+    // file-path spelling selects the same identity the inline one does
+    // (azure-pipelines-terraform#1107 finding 1).
+    secretFilePath: 'ARM_CLIENT_SECRET_FILE_PATH',
     oidcToken: 'ARM_OIDC_TOKEN',
     certPath: 'ARM_CLIENT_CERTIFICATE_PATH',
     cert: 'ARM_CLIENT_CERTIFICATE',
@@ -36,9 +40,15 @@ const ARM_IDENTITY_SELECTORS = {
  * ARM_SUBSCRIPTION_ID is not here: it names a target, not an identity, and is
  * resolved and set by the caller before `setCommonVariables` runs.
  */
-const ARM_CREDENTIAL_SELECTOR_ENV = [
+export const ARM_CREDENTIAL_SELECTOR_ENV = [
     'ARM_CLIENT_ID',
+    // azurerm's *_FILE_PATH variants are read whenever the inline value is
+    // empty (client_id_file_path, client_secret_file_path), so an inherited
+    // path variable selects an identity exactly like the inline one; the
+    // wholesale clear must name both spellings (#1107 finding 1).
+    'ARM_CLIENT_ID_FILE_PATH',
     'ARM_CLIENT_SECRET',
+    'ARM_CLIENT_SECRET_FILE_PATH',
     'ARM_CLIENT_CERTIFICATE',
     'ARM_CLIENT_CERTIFICATE_PATH',
     'ARM_CLIENT_CERTIFICATE_PASSWORD',
@@ -390,7 +400,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 // secret/OIDC/certificate variables are absent, so an inherited one
                 // must be cleared or it silently selects a different principal (#187).
                 neutralizeEnvironmentVariables(
-                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useOidc],
+                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.secretFilePath, ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useOidc],
                     "Azure Managed Identity");
                 EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_MSI", "true");
                 // ARM_USE_MSI alone authenticates as the agent's system-assigned identity.
@@ -409,7 +419,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
 
             case AuthorizationScheme.WorkloadIdentityFederation: {
                 neutralizeEnvironmentVariables(
-                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi],
+                    [ARM_IDENTITY_SELECTORS.secret, ARM_IDENTITY_SELECTORS.secretFilePath, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi],
                     "Azure Workload Identity Federation");
                 const workloadIdentityFederationCredentials = await this.getWorkloadIdentityFederationCredentials(serviceConnectionID, fallbackToIdTokenGeneration);
                 if (useCliFlagsForBackend) {

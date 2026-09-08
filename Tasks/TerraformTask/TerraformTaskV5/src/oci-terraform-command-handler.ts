@@ -33,6 +33,21 @@ const OCI_COMPETING_CREDENTIAL_ENV = [
     'OCI_CLI_KEY_FILE',
     'OCI_CLI_REGION',
 ] as const;
+
+/**
+ * The TF_VAR_* identity values the API-key branch of this handler injects and
+ * the WIF branch does not: a WIF run on an agent that inherited them (a previous
+ * API-key step in the same job, an operator variable) would hand the provider a
+ * user OCID, fingerprint and key path that describe a DIFFERENT identity than
+ * the one the security token was minted for. TF_VAR_tenancy_ocid and
+ * TF_VAR_region are not here because the WIF branch sets them itself
+ * (azure-pipelines-terraform#1107 finding 3).
+ */
+const OCI_API_KEY_TF_VAR_ENV = [
+    'TF_VAR_user_ocid',
+    'TF_VAR_fingerprint',
+    'TF_VAR_private_key_path',
+];
 import path = require('path');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -503,6 +518,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
 
         // 6. Set environment variables for the OCI Terraform provider
         neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
+        neutralizeEnvironmentVariables(OCI_API_KEY_TF_VAR_ENV, "OCI Workload Identity Federation");
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath);
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_AUTH", "security_token");

@@ -6,6 +6,7 @@ import * as os from 'os';
 
 // Direct unit tests for OCI WIF token-exchange URL validation & transport.
 import './OciTokenExchangeL0';
+import './AzurermCredentialEnvTableL0';
 // Direct unit tests for the OIDC ID-token generator (WIF fallback).
 import './IdTokenGeneratorL0';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
