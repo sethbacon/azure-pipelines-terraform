@@ -15,6 +15,7 @@ import {
     REGION_PATTERN,
     requireIdentityField,
     requireSecretField,
+    assertIdentityValue,
 } from './credential-guards';
 
 /**
@@ -456,7 +457,10 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // goes unused because of a config error it should never have reached
         // is itself worth avoiding.
         const identityDomainUrl = validateIdentityDomainUrl(tasks.getInput("ociWifIdentityDomainUrl", true)!).href;
-        const clientId = tasks.getInput("ociWifClientId", true)!;
+        // Charset-validated like its three siblings: the value is interpolated
+        // into the token-exchange request body, and this was the one WIF input
+        // read without any grammar check (azure-pipelines-terraform#1107 finding 2).
+        const clientId = assertIdentityValue(tasks.getInput("ociWifClientId", true), "Input 'ociWifClientId'");
         const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
         const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
 
