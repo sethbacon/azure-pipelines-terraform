@@ -200,3 +200,25 @@ describe('sanitizeHtmlForPublish — real-parser head/body allowlist (#820)', ()
         assert.strictEqual($('body').attr('class'), 'kb-body', 'body attributes preserved');
     });
 });
+
+describe('sanitizeHtmlForPublish — the head is not a hiding place (#1106)', () => {
+    const THEME = '.hljs { color: #abb2bf; background: #282c34; padding: 1em }';
+
+    it("drops an author-supplied <style> that could cover the portal, and keeps the document's own flow-only theme (finding 2)", () => {
+        const doc = '<!doctype html><html><head><title>t</title>'
+            + `<style>${THEME}</style>`
+            + '<style>.cover { position: fixed; inset: 0; z-index: 2147483647; opacity: 0 }</style>'
+            + '</head><body><p>body</p></body></html>';
+        const out = sanitizeHtmlForPublish(doc);
+        assert.ok(!/position\s*:\s*fixed/i.test(out), `the overlay style must not survive: ${out}`);
+        assert.ok(!/z-index/i.test(out), 'nor its stacking order');
+        assert.ok(out.includes('.hljs'), `the document's own theme must survive: ${out}`);
+        assert.ok(out.includes('<p>body</p>'), 'the body is untouched by this');
+    });
+
+    it('namespaces an id in the head-bearing document too, so the body path and the full-document path agree (finding 3)', () => {
+        const out = sanitizeHtmlForPublish('<!doctype html><html><head><title>t</title></head><body><h2 id="body">H</h2><a href="#body">j</a></body></html>');
+        assert.ok(out.includes('id="kb-body"'), `id namespaced: ${out}`);
+        assert.ok(out.includes('href="#kb-body"'), `in-page link follows it: ${out}`);
+    });
+});

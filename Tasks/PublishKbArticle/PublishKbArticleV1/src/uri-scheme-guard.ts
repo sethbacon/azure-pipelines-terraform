@@ -119,6 +119,25 @@ export const DANGEROUS_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'n
 export const DANGEROUS_CSS_PATTERN = /url\s*\(|@import|expression\s*\(|-moz-binding|behaviou?r\s*:/i;
 
 /**
+ * CSS that takes an element OUT of the document flow and puts it over the page:
+ * the clickjacking primitive. A KB article is rendered inside the ServiceNow
+ * portal, so a `position: fixed` block with a high `z-index` can cover the
+ * portal's own controls, and `opacity: 0` plus `pointer-events` makes the cover
+ * invisible while still taking the click.
+ *
+ * The body path never had to care -- `allowedStyles` there admits only
+ * `text-align` and `color`, so these properties cannot survive in an inline
+ * attribute. The document's `<head><style>` did: it is allowlisted so the fixed
+ * Markdown2Html syntax-highlighting theme (url-free, flow-only) survives
+ * publication, and an author-supplied `<style>` rode in beside it with any CSS
+ * that merely avoided a `url()` (azure-pipelines-terraform#1106 finding 2).
+ * Checked with the same comment-and-escape handling as the pattern above, so a
+ * commented or `\70 osition`-escaped spelling is caught too.
+ */
+export const DANGEROUS_CSS_OVERLAY_PATTERN =
+  /position\s*:\s*(fixed|absolute|sticky)|z-index\s*:|opacity\s*:|pointer-events\s*:|transform\s*:|clip-path\s*:/i;
+
+/**
  * Strip CSS comments the way a browser's CSS tokenizer does, as the FIRST step —
  * before any escape decoding. A real CSS comment is discarded by the lexer and
  * acts only as a token separator, so `url` and its `(` split by a comment
@@ -167,7 +186,7 @@ function decodeCssEscapes(css: string): string {
 /**
  * True if author-supplied CSS (a `<style>` element's text or an inline `style`
  * attribute) contains a network-fetching / script-executing construct
- * (DANGEROUS_CSS_PATTERN) a browser would act on. The check mirrors the CSS
+ * (DANGEROUS_CSS_PATTERN, DANGEROUS_CSS_OVERLAY_PATTERN) a browser would act on. The check mirrors the CSS
  * tokenizer's ordering — comments lexed BEFORE escapes are processed — and tests
  * the blocklist against BOTH forms, blocking if EITHER matches:
  *   (a) the raw text with real CSS comments stripped — catches a literal
@@ -189,10 +208,13 @@ function decodeCssEscapes(css: string): string {
  */
 export function cssHasDangerousConstruct(css: string): boolean {
   const commentStripped = stripCssComments(css);
-  if (DANGEROUS_CSS_PATTERN.test(commentStripped)) {
-    return true;
+  const decoded = decodeCssEscapes(commentStripped);
+  for (const pattern of [DANGEROUS_CSS_PATTERN, DANGEROUS_CSS_OVERLAY_PATTERN]) {
+    if (pattern.test(commentStripped) || pattern.test(decoded)) {
+      return true;
+    }
   }
-  return DANGEROUS_CSS_PATTERN.test(decodeCssEscapes(commentStripped));
+  return false;
 }
 
 /**
