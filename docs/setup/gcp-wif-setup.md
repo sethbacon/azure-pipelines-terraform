@@ -142,6 +142,7 @@ You will need these values for the pipeline task configuration:
     environmentServiceNameGCP: 'my-gcp-service-connection'
     environmentAuthSchemeGCP: 'WorkloadIdentityFederation'
     gcpProjectNumber: '123456789012'
+    gcpProjectId: 'my-project'
     gcpWorkloadIdentityPoolId: 'azure-devops-pool'
     gcpWorkloadIdentityProviderId: 'azure-devops-provider'
     gcpServiceAccountEmail: 'terraform-deployer@my-project.iam.gserviceaccount.com'
@@ -155,7 +156,7 @@ At runtime, the task:
 1. Requests an OIDC token from Azure DevOps (signed by `vstoken.dev.azure.com`)
 2. Writes the token to a temporary file on the agent
 3. Constructs an external account credentials JSON file pointing to the token file and the GCP WIF pool/provider
-4. Sets `GOOGLE_CREDENTIALS` to the path of the credentials file
+4. Sets `GOOGLE_CREDENTIALS` to the path of the credentials file, and `GOOGLE_PROJECT` to `gcpProjectId` (the same project ID the service-connection scheme uses; leave it empty and the project NUMBER is used instead, with a warning)
 5. Runs `terraform plan` (or apply/destroy)
 6. The Terraform Google provider uses `GOOGLE_CREDENTIALS` to call `sts.googleapis.com` for token exchange
 7. GCP validates the OIDC token signature and attribute conditions

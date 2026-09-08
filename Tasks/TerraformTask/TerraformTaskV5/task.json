@@ -666,6 +666,14 @@
             "helpMarkDown": "Numeric GCP project number where the Workload Identity Pool lives."
         },
         {
+            "name": "gcpProjectId",
+            "type": "string",
+            "label": "GCP Project ID",
+            "required": false,
+            "visibleRule": "provider = gcp && environmentAuthSchemeGCP = WorkloadIdentityFederation && command != init && command != validate && command != workspace && command != state && command != fmt && command != get && command != forceunlock && command != test",
+            "helpMarkDown": "Project ID (for example `my-project-123`) that Terraform's Google provider should default to. Sets GOOGLE_PROJECT the way the service-connection scheme does. When empty, GOOGLE_PROJECT falls back to the project NUMBER from gcpProjectNumber, which is a different identifier."
+        },
+        {
             "name": "gcpWorkloadIdentityPoolId",
             "type": "string",
             "label": "Workload Identity Pool ID",

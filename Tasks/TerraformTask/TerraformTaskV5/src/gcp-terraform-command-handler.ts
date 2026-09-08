@@ -21,6 +21,9 @@ import {
  * Cleared on both provider branches so the run cannot authenticate as an
  * identity the service connection never named (#187).
  */
+/** The documented grammar of a GCP project ID (not the numeric project number). */
+const GCP_PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
 const GOOGLE_COMPETING_CREDENTIAL_ENV = [
     'GOOGLE_APPLICATION_CREDENTIALS',
     'GOOGLE_OAUTH_ACCESS_TOKEN',
@@ -310,7 +313,22 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
 
         neutralizeEnvironmentVariables(GOOGLE_COMPETING_CREDENTIAL_ENV, "GCP Workload Identity Federation");
         EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);
-        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);
+        // GOOGLE_PROJECT is the provider's default `project`: the static-key branch
+        // sets it to the connection's project ID, and this branch used to set it
+        // to the project NUMBER the pool lives in -- a different value of a
+        // different kind for the same variable, so a configuration that worked
+        // under one auth scheme resolved its resources against a different
+        // project identifier under the other (azure-pipelines-terraform#1107
+        // finding 4). gcpProjectId is the ID the provider should default to; the
+        // number remains the fallback for pipelines that predate the input.
+        const projectId = tasks.getInput("gcpProjectId", false);
+        if (projectId) {
+            EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT",
+                assertIdentityValue(projectId, "Input 'gcpProjectId'", GCP_PROJECT_ID_PATTERN, "GCP project ID (6-30 lowercase letters, digits or hyphens, starting with a letter)"));
+        } else {
+            tasks.warning("gcpProjectId is not set, so GOOGLE_PROJECT is the project NUMBER from gcpProjectNumber; the service-connection scheme sets it to the project ID. Set gcpProjectId to make both schemes default the provider to the same project identifier.");
+            EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", projectNumber);
+        }
     }
 }
 
