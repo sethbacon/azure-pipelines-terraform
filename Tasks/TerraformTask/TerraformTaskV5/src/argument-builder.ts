@@ -1,4 +1,5 @@
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
+import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { getSecureVarFileArgs } from './secure-file-loader';
 import { TempFileManager } from './temp-file-manager';
 import tasks = require('azure-pipelines-task-lib/task');
@@ -273,7 +274,7 @@ export class ArgumentBuilder {
     }
 
     appendTerraformVariables(terraformTool: ToolRunner): void {
-        const variables = tasks.getInput("terraformVariables", false);
+        const variables = readUrlInput("terraformVariables", false);
         if (!variables) return;
 
         for (const trimmed of splitNonEmptyLines(variables, { skipComments: true })) {

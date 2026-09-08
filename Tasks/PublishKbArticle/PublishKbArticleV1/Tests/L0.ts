@@ -2752,4 +2752,36 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
             assert.ok(!/NETWORK_CALLED/.test(tr.stdout + tr.errorIssues.join('\n')), 'no network client should have been invoked');
         }, tr);
     });
+
+    // #1105 class rows (credential-capable input read through task-lib's logging
+    // readers). "Log-visible" is every line except the agent-consumed
+    // ##vso[task.setsecret] registration, which is where the value is SUPPOSED to appear.
+    it('PasswordInputNotLogged — a literal password input never reaches a log-visible line; its debug line is written as password=*** (#1105)', async () => {
+        const tp = nodePath.join(__dirname, 'PasswordInputNotLogged.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(tr.errorIssues.some((e) => /instance is required|InstanceRequired/i.test(e)), `error should mention the missing instance: ${tr.errorIssues}`);
+            const visible = (tr.stdout + '\n' + tr.stderr + '\n' + tr.errorIssues.join('\n')).split('\n').filter((l) => !l.includes('task.setsecret'));
+            assert.ok(!visible.some((l) => l.includes('basic-pw-s3cr3t-literal')), 'the password must not appear in any log-visible line. output: ' + visible.join('\n'));
+            assert.ok(tr.stdout.includes('##vso[task.setsecret]basic-pw-s3cr3t-literal'), 'the password must be registered with the masker');
+            const debugLine = visible.find((l) => l.includes('password='));
+            assert.ok(debugLine && debugLine.includes('password=***'), 'the password= debug line must be written as password=***. line: ' + debugLine);
+            assert.ok(!/NETWORK_CALLED/.test(tr.stdout + tr.errorIssues.join('\n')), 'no network client should have been invoked');
+        }, tr);
+    });
+
+    it('EndpointUrlUserinfoNotLogged — a credential in the service connection URL never reaches a log-visible line, and never rides into the instance name (#1105)', async () => {
+        const tp = nodePath.join(__dirname, 'EndpointUrlUserinfoNotLogged.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.failed, 'task should have failed');
+            const visible = (tr.stdout + '\n' + tr.stderr + '\n' + tr.errorIssues.join('\n')).split('\n').filter((l) => !l.includes('task.setsecret'));
+            assert.ok(!visible.some((l) => l.includes('ep-s3cr3t-value')), 'the connection URL credential must not appear in any log-visible line. output: ' + visible.join('\n'));
+            assert.ok(tr.stdout.includes('##vso[task.setsecret]ep-s3cr3t-value'), 'the userinfo password must be registered with the masker');
+            assert.ok(tr.errorIssues.some((e) => e.includes('STOP_HERE')), `the run must reach the first ServiceNow call, i.e. the instance derived from the URL was clean and passed validation: ${tr.errorIssues}`);
+        }, tr);
+    });
 });

@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { IExecOptions, ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import path = require('path');
 import os = require('os');
@@ -74,7 +75,12 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
     }
 
     // gitUrl
-    const url = tasks.getInput('policyRepoUrl', true)!;
+    // Read through the package's silent reader, not getInput(): task-lib's
+    // getInput() debug-logs `policyRepoUrl=<value>` at READ time, before
+    // assertNoUrlUserInfo below could register anything, so with System.Debug on
+    // the credential it is about to refuse was already printed (#1105, the
+    // class behind the reported argv/log/message surfaces).
+    const url = readUrlInput('policyRepoUrl', true);
     if (!url.startsWith('https://')) {
         throw new Error(tasks.loc('InsecureUrlRejected', redactUrlUserInfo(url)));
     }
@@ -84,7 +90,7 @@ export async function resolvePolicyDir(tempDirs: string[]): Promise<string> {
         throw new Error(tasks.loc('InvalidPolicyRepoRef', ref));
     }
     const subdir = tasks.getInput('policyRepoSubdir');
-    const token = tasks.getInput('policyRepoToken');
+    const token = readSecretInput('policyRepoToken');
 
     // Agent.TempDirectory is auto-purged by the ADO agent at job end, which
     // backstops cleanup even if the process is killed (e.g. a cancelled build)

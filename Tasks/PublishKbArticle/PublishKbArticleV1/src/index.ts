@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readSecretInput, readUrlInput, readEndpointUrl, redactUrlCredentialsIn } from '@4cloudguru/pipeline-task-ado';
 import path = require('path');
 import { getOAuthToken, getAuthHeaders } from './auth';
 import {
@@ -41,10 +42,22 @@ async function resolveAuth(): Promise<ResolvedAuth> {
 
     const serviceConnection = tasks.getInput('serviceConnection', false);
     if (serviceConnection) {
-        const rawUrl = tasks.getEndpointUrl(serviceConnection, false) || '';
-        // Extract instance name from URL like https://myinstance.service-now.com
-        const urlMatch = rawUrl.match(/https?:\/\/([^.]+)\.service-now\.com/i);
-        instance = urlMatch ? urlMatch[1] : rawUrl;
+        const rawUrl = readEndpointUrl(serviceConnection) || '';
+        // Extract the instance name from a URL like https://myinstance.service-now.com
+        // -- from the PARSED host, never by regex over the raw string: a credential
+        // an operator put into the connection URL (https://svc:token@myinstance...)
+        // would otherwise ride into `instance` and out through the InvalidInstance
+        // message below, where a scheme-less "svc:token@myinstance" cannot be
+        // redacted (#1105 class sweep). A URL that is not *.service-now.com falls
+        // through whole, as before, and is rejected below in redacted form.
+        let host = '';
+        try {
+            host = new URL(rawUrl).hostname;
+        } catch {
+            host = '';
+        }
+        const hostMatch = host.match(/^([^.]+)\.service-now\.com$/i);
+        instance = hostMatch ? hostMatch[1] : rawUrl;
 
         const scheme = (tasks.getEndpointAuthorizationScheme(serviceConnection, false) || '').toLowerCase();
         if (scheme === 'usernamepassword' || scheme === 'basic') {
@@ -61,12 +74,14 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     }
 
     // Inline inputs override / supplement service connection
-    instance = tasks.getInput('instance', false) || instance;
+    // `instance` accepts a whole URL, so it can carry userinfo like the connection
+    // URL above; read it through the silent reader too (#1105 class sweep).
+    instance = readUrlInput('instance', false) || instance;
     authType = tasks.getInput('authType', false) || authType;
     clientId = tasks.getInput('clientId', false) || clientId;
-    clientSecret = tasks.getInput('clientSecret', false) || clientSecret;
+    clientSecret = readSecretInput('clientSecret', false) || clientSecret;
     username = tasks.getInput('username', false) || username;
-    password = tasks.getInput('password', false) || password;
+    password = readSecretInput('password', false) || password;
     // Mask clientSecret/password at the point of read (#771): getOAuthToken()/
     // basicAuthHeader() below also setSecret them, but only after authType
     // branching (and, for basic, header construction) -- masking here closes
@@ -81,7 +96,10 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     // Guard against URL injection: instance is interpolated into
     // https://<instance>.service-now.com, which carries the OAuth secret.
     if (!/^[a-z0-9-]+$/i.test(instance)) {
-        throw new Error(tasks.loc('InvalidInstance', instance));
+        // `instance` may still be the whole connection URL when it did not match the
+        // *.service-now.com shape, and a connection URL can carry userinfo -- the
+        // rejection must not be the disclosure (#1105 class sweep).
+        throw new Error(tasks.loc('InvalidInstance', redactUrlCredentialsIn(instance)));
     }
     if (!authType) {
         throw new Error(tasks.loc('AuthTypeRequired'));

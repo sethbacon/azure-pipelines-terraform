@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { assertPlainUrlBase } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
@@ -74,13 +75,13 @@ function buildPublisher(): RegistryPublisher {
         // scheme (see http.ts / https-client.ts) so the bearer is never sent over
         // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
-        const registryUrl = requireInput('registryUrl');
+        const registryUrl = readUrlInput('registryUrl', true);
         assertPlainUrlBase('registryUrl', registryUrl, 'reject');
         if (skipTlsVerify) {
             assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
         }
-        const apiKey = requireInput('apiKey');
+        const apiKey = readSecretInput('apiKey', true);
         tasks.setSecret(apiKey);
         // createHttpsClient uses its own fixed default per-request socket timeout
         // here (not timeoutSeconds) -- timeoutSeconds is the user-configurable
@@ -105,9 +106,9 @@ function buildPublisher(): RegistryPublisher {
     }
 
     if (registryType === 'hcp') {
-        const token = requireInput('hcpToken');
+        const token = readSecretInput('hcpToken', true);
         tasks.setSecret(token);
-        const hcpAddress = tasks.getInput('hcpAddress', false) || 'https://app.terraform.io';
+        const hcpAddress = readUrlInput('hcpAddress') || 'https://app.terraform.io';
         assertPlainUrlBase('hcpAddress', hcpAddress, 'reject');
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).

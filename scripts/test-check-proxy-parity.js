@@ -32,9 +32,9 @@ const CORE = '@4cloudguru/pipeline-task-core';
 // (#1108 finding 2), so raising a floor means raising these two in the same
 // change. Named once so that is a single edit rather than a hunt through the
 // cases below, each of which is about something else entirely.
-const CURRENT_PKG = '^0.9.1';
-const CURRENT_CORE = '^0.9.0';
-const CURRENT_CORE_INSTALLED = '0.9.0';
+const CURRENT_PKG = '^0.11.0';
+const CURRENT_CORE = '^0.9.1';
+const CURRENT_CORE_INSTALLED = '0.9.1';
 
 let failures = 0;
 const report = (ok, msg) => {

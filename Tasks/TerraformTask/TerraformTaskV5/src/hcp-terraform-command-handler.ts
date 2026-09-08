@@ -2,7 +2,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler } from './base-terraform-command-handler';
-import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
+import { EnvironmentVariableHelper, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 
 export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
     constructor() {
@@ -22,7 +22,7 @@ export class TerraformCommandHandlerHCP extends BaseTerraformCommandHandler {
      * competing identity to neutralize.
      */
     private applyBackendEnv(): void {
-        const token = tasks.getInput("backendHCPToken", true)!;
+        const token = readSecretInput("backendHCPToken", true);
         if (token) { EnvironmentVariableHelper.registerSecret(token); }
         EnvironmentVariableHelper.setEnvironmentVariable("TF_TOKEN_app_terraform_io", token, true);
 

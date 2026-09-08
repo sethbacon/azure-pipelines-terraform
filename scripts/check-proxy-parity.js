@@ -107,7 +107,7 @@ const PACKAGE_DELEGATED_SINKS = {
         // First carried in ado 0.3.0; the floor tracks the fleet (see
         // staleFloors below), so it moves up with the estate rather than
         // staying at a historical value it can no longer fire on.
-        min: '0.9.1',
+        min: '0.11.0',
         // The package delegates onward to core, so the direct floor above only
         // vouches for the wiring - not for which implementation it wires up.
         // ado@0.2.0 declared core ^0.3.1 while the tasks declared ^0.5.0, and
@@ -115,7 +115,7 @@ const PACKAGE_DELEGATED_SINKS = {
         // npm nested a second copy, and the delegated client ran the older one.
         // Both floors passed throughout. Hence the resolved check below.
         // First carried in core 0.5.0; floor tracks the fleet.
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.1' },
     },
     // generateIdToken (#46 extraction): the OIDC token exchange's fetch(), and
     // the proxy decision that wraps it (buildAdoFetchOptions), both moved into
@@ -127,8 +127,8 @@ const PACKAGE_DELEGATED_SINKS = {
     generateIdToken: {
         pkg: '@4cloudguru/pipeline-task-ado',
         // First carried in ado 0.5.0 / core 0.6.0; floors track the fleet.
-        min: '0.9.1',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
+        min: '0.11.0',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.1' },
     },
     // exchangeOidcForUpst (#1074): the OCI WIF flow's SECOND hop. This one was
     // extracted in the other direction from the rest of this table -- it was
@@ -141,8 +141,8 @@ const PACKAGE_DELEGATED_SINKS = {
     exchangeOidcForUpst: {
         pkg: '@4cloudguru/pipeline-task-ado',
         // First exported in ado 0.8.0 / core 0.6.0; floors track the fleet.
-        min: '0.9.1',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
+        min: '0.11.0',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.1' },
     },
 };
 
@@ -199,7 +199,7 @@ const PROXY_AGENT_BUILDERS = ['buildProxyAgent', 'createProxyTunnelAgent'];
  */
 const DELEGATED_NODE_HTTP_SINKS = {
     // First carried in core 0.6.0; floor tracks the fleet (see staleFloors).
-    httpsRequest: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
+    httpsRequest: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.1' },
 };
 
 /**

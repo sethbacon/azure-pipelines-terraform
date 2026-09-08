@@ -1,4 +1,5 @@
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { TerraformAuthorizationCommandInitializer } from './terraform-commands';
 import { BaseTerraformCommandHandler, splitNonEmptyLines } from './base-terraform-command-handler';
@@ -15,7 +16,7 @@ export class TerraformCommandHandlerGeneric extends BaseTerraformCommandHandler 
             terraformToolRunner.arg(`-backend-config=${configFile.trim()}`);
         }
 
-        const configArgs = tasks.getInput("backendConfigArgs", false);
+        const configArgs = readUrlInput("backendConfigArgs", false);
         for (const trimmed of splitNonEmptyLines(configArgs, { skipComments: true })) {
             terraformToolRunner.arg(`-backend-config=${trimmed}`);
         }
