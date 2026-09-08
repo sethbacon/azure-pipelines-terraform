@@ -105,6 +105,22 @@ describe('handleProviderWIF -- OCI WIF config content, fingerprint, secret maski
             'a live OIDC assertion must not be minted for a config the task is about to reject');
     });
 
+    it('never mints an OIDC assertion when ociWifClientId is malformed (#1107 finding 2)', async () => {
+        let generateIdTokenCalled = false;
+        itg.generateIdToken = async () => { generateIdTokenCalled = true; return 'mock-oidc-token-12345'; };
+        t.getInput = (name: string) =>
+            name === 'ociWifClientId' ? 'client id\nwith a newline' : INPUTS[name];
+
+        const handler = new TerraformCommandHandlerOCI();
+        await assert.rejects(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (handler as any).handleProviderWIF(makeCommand()),
+            /ociWifClientId/,
+        );
+        assert.strictEqual(generateIdTokenCalled, false,
+            'a live OIDC assertion must not be minted for a config the task is about to reject');
+    });
+
     it('never mints an OIDC assertion when ociWifTenancyOcid is invalid (#1029)', async () => {
         let generateIdTokenCalled = false;
         itg.generateIdToken = async () => { generateIdTokenCalled = true; return 'mock-oidc-token-12345'; };
