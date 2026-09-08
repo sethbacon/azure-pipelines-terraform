@@ -478,7 +478,7 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         {
             // ARM_USE_MSI only reaches the agent identity while these are absent.
             site: 'azurerm.ManagedServiceIdentity.competing-credential-env', handler: 'azurerm', base: 'azurerm.ManagedServiceIdentity',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_SECRET_FILE_PATH', 'ARM_CLIENT_ID_FILE_PATH', 'ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
             // ARM_USE_CLI is asserted separately below (#1029): it is not merely
             // cleared like these, it is explicitly set to 'false'.
         },
@@ -492,13 +492,13 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         },
         {
             site: 'azurerm.WorkloadIdentityFederation.competing-credential-env', handler: 'azurerm', base: 'azurerm.WorkloadIdentityFederation',
-            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_CLIENT_SECRET', 'ARM_CLIENT_SECRET_FILE_PATH', 'ARM_CLIENT_ID_FILE_PATH', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
             // ARM_USE_CLI is asserted separately below (#1029): it is not merely
             // cleared like these, it is explicitly set to 'false'.
         },
         {
             site: 'azurerm.ServicePrincipal.competing-credential-env', handler: 'azurerm', base: 'azurerm.ServicePrincipal',
-            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
+            competing: ['ARM_OIDC_TOKEN', 'ARM_CLIENT_SECRET_FILE_PATH', 'ARM_CLIENT_ID_FILE_PATH', 'ARM_CLIENT_CERTIFICATE_PATH', 'ARM_USE_MSI', 'ARM_USE_OIDC', 'ARM_USE_AKS_WORKLOAD_IDENTITY'],
             // ARM_USE_CLI is asserted separately below (#1029): it is not merely
             // cleared like these, it is explicitly set to 'false'.
         },
@@ -524,6 +524,14 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
             // The API-key branch now writes its own OCI config and names it, exactly
             // as the WIF branch does, so these two are owned rather than competing.
             owned: ['OCI_CLI_CONFIG_FILE', 'OCI_CLI_PROFILE'],
+        },
+        {
+            // #1107 finding 3: the API-key sibling injects TF_VAR_user_ocid/
+            // fingerprint/private_key_path; inherited into a WIF run they describe
+            // a different identity than the security token the branch minted.
+            site: 'oci.WorkloadIdentityFederation.competing-credential-env', handler: 'oci', base: 'oci.WorkloadIdentityFederation',
+            competing: ['OCI_CLI_TENANCY', 'OCI_CLI_KEY_FILE', 'TF_VAR_user_ocid', 'TF_VAR_fingerprint', 'TF_VAR_private_key_path'],
+            owned: ['OCI_CLI_CONFIG_FILE', 'OCI_CLI_PROFILE', 'OCI_CLI_AUTH'],
         },
     ];
 

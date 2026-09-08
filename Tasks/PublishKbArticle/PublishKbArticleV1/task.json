@@ -15,7 +15,7 @@
     "demands": [],
     "version": {
         "Major": "1",
-        "Minor": "24",
+        "Minor": "25",
         "Patch": "0"
     },
     "minimumAgentVersion": "4.265.1",
@@ -317,12 +317,14 @@
         "AvailableKnowledgeBases": "Available Knowledge Bases:",
         "KnowledgeBaseEntry": "  Title: %s | KB ID: %s",
         "KbListingComplete": "Knowledge base listing complete.",
-        "DryRunMissingFields": "Dry run: create would fail \u2014 missing required field(s): %s.",
-        "DryRunComplete": "Dry run complete \u2014 no changes made.",
+        "DryRunMissingFields": "Dry run: create would fail — missing required field(s): %s.",
+        "DryRunComplete": "Dry run complete — no changes made.",
         "ArticleNumberLine": "Article Number: %s",
         "ArticleIdLine": "Article ID: %s",
         "WorkflowStateLine": "Workflow State: %s",
         "ImagesRewritten": "Rewrote %s image reference(s) to ServiceNow attachments.",
-        "ImagesMissingSummary": "%s image(s) not found and left unchanged."
+        "ImagesMissingSummary": "%s image(s) not found and left unchanged.",
+        "ImageTypeRefused": "Skipping image src '%s': SVG images are not attached to ServiceNow articles because an SVG can carry script; convert it to PNG/JPEG/GIF/WebP.",
+        "ImagesRefusedSummary": "%s image(s) skipped because their type is refused (SVG): %s. Convert them to a raster format to have them attached."
     }
 }

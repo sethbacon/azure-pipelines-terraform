@@ -93,17 +93,29 @@ const DELEGATED_FETCH_SINKS = ['createHttpClient'];
  * the wiring and the tests that assert its ordering. So the assertion becomes a
  * version floor, and the site stays in the report either way.
  */
+/**
+ * Each floor below started as the release that first carried the behaviour. It
+ * is now kept level with what the estate actually declares: a floor the whole
+ * fleet has passed cannot fire, and a gate that cannot fire is green about
+ * nothing (#1108 finding 2). `staleFloors()` fails this gate with the value to
+ * raise a floor to, so a fleet-wide package bump raises it in the same change
+ * instead of leaving the bar behind.
+ */
 const PACKAGE_DELEGATED_SINKS = {
     createAdoHttpClient: {
         pkg: '@4cloudguru/pipeline-task-ado',
-        min: '0.3.0',
+        // First carried in ado 0.3.0; the floor tracks the fleet (see
+        // staleFloors below), so it moves up with the estate rather than
+        // staying at a historical value it can no longer fire on.
+        min: '0.9.1',
         // The package delegates onward to core, so the direct floor above only
         // vouches for the wiring - not for which implementation it wires up.
         // ado@0.2.0 declared core ^0.3.1 while the tasks declared ^0.5.0, and
         // caret on a 0.x version is patch-only, so the ranges were disjoint,
         // npm nested a second copy, and the delegated client ran the older one.
         // Both floors passed throughout. Hence the resolved check below.
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.5.0' },
+        // First carried in core 0.5.0; floor tracks the fleet.
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
     },
     // generateIdToken (#46 extraction): the OIDC token exchange's fetch(), and
     // the proxy decision that wraps it (buildAdoFetchOptions), both moved into
@@ -114,21 +126,23 @@ const PACKAGE_DELEGATED_SINKS = {
     // proxy logic even with a fresh ado floor.
     generateIdToken: {
         pkg: '@4cloudguru/pipeline-task-ado',
-        min: '0.5.0',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.6.0' },
+        // First carried in ado 0.5.0 / core 0.6.0; floors track the fleet.
+        min: '0.9.1',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
     },
     // exchangeOidcForUpst (#1074): the OCI WIF flow's SECOND hop. This one was
     // extracted in the other direction from the rest of this table -- it was
     // defined here and moved out, because azure-pipelines-packer needed the
     // same realm allowlist and redirect policy and a copy would have drifted
     // invisibly (check-shared-modules.js verifies a provenance header, it
-    // cannot byte-compare across repos). Floor is 0.8.0, the release that
-    // first exports it; same onward-delegation shape as the two above, since
-    // its fetch options come from the package's own buildAdoFetchOptions.
+    // cannot byte-compare across repos). Same onward-delegation shape as the
+    // two above, since its fetch options come from the package's own
+    // buildAdoFetchOptions.
     exchangeOidcForUpst: {
         pkg: '@4cloudguru/pipeline-task-ado',
-        min: '0.8.0',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.6.0' },
+        // First exported in ado 0.8.0 / core 0.6.0; floors track the fleet.
+        min: '0.9.1',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
     },
 };
 
@@ -184,8 +198,97 @@ const PROXY_AGENT_BUILDERS = ['buildProxyAgent', 'createProxyTunnelAgent'];
  * without one is not a weaker proxy — it is no proxy at all.
  */
 const DELEGATED_NODE_HTTP_SINKS = {
-    httpsRequest: { pkg: '@4cloudguru/pipeline-task-core', min: '0.6.0' },
+    // First carried in core 0.6.0; floor tracks the fleet (see staleFloors).
+    httpsRequest: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.0' },
 };
+
+/**
+ * Every version floor this file enforces, as (package, floor, where it is
+ * written). Kept derivable rather than hand-listed so a floor added to a table
+ * above cannot escape the currency check below by being forgotten here.
+ */
+function declaredFloors() {
+    const out = [];
+    for (const [sink, entry] of Object.entries(PACKAGE_DELEGATED_SINKS)) {
+        out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}`, pkg: entry.pkg, min: entry.min });
+        if (entry.carries) out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}.carries`, pkg: entry.carries.pkg, min: entry.carries.min });
+    }
+    for (const [sink, entry] of Object.entries(DELEGATED_NODE_HTTP_SINKS)) {
+        out.push({ where: `DELEGATED_NODE_HTTP_SINKS.${sink}`, pkg: entry.pkg, min: entry.min });
+    }
+    return out;
+}
+
+/** Every task manifest under ROOT/Tasks, however deep. */
+function taskManifests() {
+    const found = [];
+    const walk = (dir) => {
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) walk(full);
+            else if (entry.name === 'package.json') found.push(full);
+        }
+    };
+    walk(path.join(ROOT, 'Tasks'));
+    return found;
+}
+
+/** The floor a caret/exact range pins, as [major, minor, patch], or null. */
+function rangeFloor(range) {
+    const parsed = /^\^?(\d+)\.(\d+)\.(\d+)/.exec(String(range).trim());
+    return parsed ? parsed.slice(1).map(Number) : null;
+}
+
+const compareVersions = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+/**
+ * The lowest version of `pkg` any task in this repository actually declares,
+ * or null when no task depends on it.
+ */
+function fleetFloor(pkg) {
+    let lowest = null;
+    for (const manifest of taskManifests()) {
+        let json;
+        try {
+            json = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+        } catch {
+            continue;
+        }
+        const parsed = rangeFloor((json.dependencies || {})[pkg]);
+        if (parsed && (lowest === null || compareVersions(parsed, lowest) < 0)) lowest = parsed;
+    }
+    return lowest;
+}
+
+/**
+ * A floor BELOW what every task already declares is inert: it cannot fire, and
+ * a gate that cannot fire is green about nothing -- the same failure mode
+ * check-shared-modules.js's own self-test exists to prevent for its FAMILIES
+ * list (#1108 finding 2). The floors above are historical by design (each names
+ * the release that first carried the behaviour, which is why the comment beside
+ * it is worth reading), so this does not rewrite them: it fails the gate with
+ * the value to raise them to, which makes raising them part of the fleet bump
+ * that moved past them rather than something to notice later.
+ */
+function staleFloors() {
+    const stale = [];
+    for (const floor of declaredFloors()) {
+        const fleet = fleetFloor(floor.pkg);
+        if (!fleet) continue;
+        const declared = rangeFloor(floor.min);
+        if (declared && compareVersions(declared, fleet) < 0) {
+            stale.push({ ...floor, fleet: fleet.join('.') });
+        }
+    }
+    return stale;
+}
 
 /** Proxy-aware by construction inside azure-pipelines-tool-lib (see header). */
 const TOOL_LIB_SINKS = ['downloadTool'];
@@ -623,10 +726,11 @@ if (sites.length === 0) {
 }
 
 const failures = sites.filter((s) => s.verdict === 'UNPROXIED').length;
+const stale = staleFloors();
 
 if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ sites, failures }, null, 2));
-    process.exit(failures ? 1 : 0);
+    console.log(JSON.stringify({ sites, failures, staleFloors: stale }, null, 2));
+    process.exit(failures || stale.length ? 1 : 0);
 }
 
 const order = ['UNPROXIED', 'PROXIED', 'PROXIED-BY-PACKAGE', 'EXEMPT-TOOL-LIB', 'EXEMPT-PROXY-TRANSPORT', 'EXEMPT-BROWSER'];
@@ -639,9 +743,20 @@ for (const verdict of order) {
     }
 }
 
+if (stale.length) {
+    console.error(`\nSTALE FLOORS (${stale.length})`);
+    for (const f of stale) {
+        console.error(`  ${f.where}: floor ${f.min} for ${f.pkg}, but every task already declares >= ${f.fleet} -- the floor cannot fire.`);
+    }
+}
+
 if (failures) {
     console.error(`\nFAIL: ${failures} outbound call site(s) ignore the agent proxy configuration.`);
     console.error('      Spread buildProxyFetchOptions()/buildFetchOptions() into the RequestInit, or supply an agent.');
-    process.exit(1);
 }
-console.log(`\nOK: all ${sites.length} outbound call site(s) honour the agent proxy configuration or carry a verified exemption.`);
+if (stale.length) {
+    console.error(`\nFAIL: ${stale.length} version floor(s) have fallen behind the fleet and can no longer fire.`);
+    console.error('      Raise each to the version shown, keeping the comment that says which release first carried the behaviour.');
+}
+if (failures || stale.length) process.exit(1);
+console.log(`\nOK: all ${sites.length} outbound call site(s) honour the agent proxy configuration or carry a verified exemption, and every version floor still tracks the fleet.`);
