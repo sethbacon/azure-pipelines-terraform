@@ -169,6 +169,36 @@ export abstract class BaseTerraformCommandHandler {
         // No-op by default — see TerraformCommandHandlerOCI.afterPlanFileWritten override.
     }
 
+    /**
+     * Hook invoked by the state-touching commands that reach NEITHER
+     * `handleBackend()` (init) NOR `handleProvider()` (plan/apply/destroy/
+     * refresh/import/output/show/custom): `workspace`, `state` and
+     * `forceUnlock` run terraform against the working directory with no
+     * provider auth of their own, so any per-step backend-credential
+     * housekeeping a provider handler registers from those two entry points
+     * was unreachable from them (#675, option 3).
+     *
+     * "State-touching" is not a fresh judgement here: it is
+     * {@link STATE_COMMANDS} in `parent-handler.ts`, which already classifies
+     * `workspace`/`state`/`forceunlock` as commands that read or write remote
+     * state (and already excludes `validate`/`fmt`/`get`/`test`, which never
+     * touch the backend and therefore never cause the credential cache to be
+     * written or re-read). Called BEFORE the tool runs, so a command that
+     * fails still leaves the registration in place for the parent handler's
+     * `finally` cleanup.
+     *
+     * No-op by default; overridden by the OCI handler (#675) to register the
+     * opt-in `cleanupOCIBackendCache` scrub of the PAR bearer credential
+     * `terraform init` caches in `<workingDirectory>/.terraform/terraform.tfstate`,
+     * so an operator whose LAST command against a working directory is
+     * `state`/`workspace`/`forceunlock` gets the same scrub the input already
+     * promises for `apply`/`destroy`. Changes no default: the OCI override is
+     * itself gated on the (default-off) `cleanupOCIBackendCache` input.
+     */
+    protected async onStateTouchingCommand(_workingDirectory: string): Promise<void> {
+        // No-op by default — see TerraformCommandHandlerOCI.onStateTouchingCommand override.
+    }
+
     constructor() {
         this.providerName = "";
         this.terraformToolHandler = new TerraformToolHandler(tasks);
@@ -1193,6 +1223,11 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(workspaceCommand);
         if (workspaceName) { terraformTool.arg(workspaceName); }
         if (commandOptions) { terraformTool.line(commandOptions); }
+        // #675 option 3: workspace reaches neither handleBackend nor
+        // handleProvider, so this is its only route to the provider handler's
+        // per-step backend-credential housekeeping. Before the tool runs, so a
+        // failing workspace command is still covered.
+        await this.onStateTouchingCommand(workspaceCommand.workingDirectory);
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: workspaceCommand.workingDirectory
         });
@@ -1216,6 +1251,8 @@ export abstract class BaseTerraformCommandHandler {
         const terraformTool = this.terraformToolHandler.createToolRunner(stateCommand);
         if (commandOptions) { terraformTool.line(commandOptions); }
         if (stateAddress) { terraformTool.arg(stateAddress); }
+        // #675 option 3 — see workspace() above for the reasoning.
+        await this.onStateTouchingCommand(stateCommand.workingDirectory);
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: stateCommand.workingDirectory
         });
@@ -1389,6 +1426,8 @@ export abstract class BaseTerraformCommandHandler {
         terraformTool.arg("-force");
         if (commandOptions) { terraformTool.line(commandOptions); }
         terraformTool.arg(lockId);
+        // #675 option 3 — see workspace() above for the reasoning.
+        await this.onStateTouchingCommand(unlockCommand.workingDirectory);
         return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
             cwd: unlockCommand.workingDirectory
         });
