@@ -4,6 +4,34 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.15.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.3...v1.15.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* add uncaughtException/unhandledRejection guards to 7 tasks missing them ([#1124](https://github.com/sethbacon/azure-pipelines-terraform/issues/1124)) ([2e32aaa](https://github.com/sethbacon/azure-pipelines-terraform/commit/2e32aaa71d9895232e4a8c365f8cb9dc65008be5))
+* correct undici's attribution, add a gate that would have caught it ([#1128](https://github.com/sethbacon/azure-pipelines-terraform/issues/1128)) ([1c4e9bb](https://github.com/sethbacon/azure-pipelines-terraform/commit/1c4e9bb3288db9a49267d993a1a821f4a59afbf2))
+* delegate isAllowedOidcRequestHost to pipeline-task-ado instead of a local copy ([#1130](https://github.com/sethbacon/azure-pipelines-terraform/issues/1130)) ([67969b6](https://github.com/sethbacon/azure-pipelines-terraform/commit/67969b6cbca045f79b6139cac83908550b4e5d8c))
+* fold every OPA result entry's error, not just entry[0] ([#1122](https://github.com/sethbacon/azure-pipelines-terraform/issues/1122)) ([d2ba28a](https://github.com/sethbacon/azure-pipelines-terraform/commit/d2ba28a0d3ddb644241bc5fd95bf5b381dee9af2))
+* guard every operator-supplied URL base with the shared assertPlainUrlBase ([#1135](https://github.com/sethbacon/azure-pipelines-terraform/issues/1135)) ([45b2c5d](https://github.com/sethbacon/azure-pipelines-terraform/commit/45b2c5d644aebf74696a8c91c7d4a4e70f8756c6))
+* **installers:** make verification controls fail closed across all three installers ([#1117](https://github.com/sethbacon/azure-pipelines-terraform/issues/1117)) ([7eada13](https://github.com/sethbacon/azure-pipelines-terraform/commit/7eada13b7f8b0e499e5bc6af5004948eba2c88e5))
+* reject a registryUrl/hcpAddress carrying a query, fragment, or userinfo ([#1123](https://github.com/sethbacon/azure-pipelines-terraform/issues/1123)) ([18b57d0](https://github.com/sethbacon/azure-pipelines-terraform/commit/18b57d01597b2ac2508fe8e727f96a7825d14aac))
+* **security:** close secret-reaches-unmasked-surface class ([#1138](https://github.com/sethbacon/azure-pipelines-terraform/issues/1138)) ([dad48d4](https://github.com/sethbacon/azure-pipelines-terraform/commit/dad48d45ff516aa7cfe55fe4222215720e95efdf))
+* surface non-ENOENT KB-json scan failures, name the sys_id on a mid-loop abort ([#1126](https://github.com/sethbacon/azure-pipelines-terraform/issues/1126)) ([b162e84](https://github.com/sethbacon/azure-pipelines-terraform/commit/b162e84158e8278c888200624dee53c8c4e206a8))
+
+
+### Dependencies
+
+* pin @4cloudguru/pipeline-task-ado ^0.9.0 in every consuming task ([#1134](https://github.com/sethbacon/azure-pipelines-terraform/issues/1134)) ([e4fb26b](https://github.com/sethbacon/azure-pipelines-terraform/commit/e4fb26bccedd7284d6a9d8180f9318032f2807cc))
+* pin @4cloudguru/pipeline-task-core ^0.9.0 in PublishKbArticleV1 ([#1137](https://github.com/sethbacon/azure-pipelines-terraform/issues/1137)) ([7b530ac](https://github.com/sethbacon/azure-pipelines-terraform/commit/7b530acffd9679616c4edb57bcb839b937a7bffe))
+
+
+### Documentation
+
+* mark the two deprecated ServiceNow tasks, fix an orphaned overview.md bullet ([#1125](https://github.com/sethbacon/azure-pipelines-terraform/issues/1125)) ([1ed209c](https://github.com/sethbacon/azure-pipelines-terraform/commit/1ed209c5329bf814f5ea4f74e1d4558ba3c9e4b0))
+* record why DriftReport's writeSarif operator path is uncontained ([#1131](https://github.com/sethbacon/azure-pipelines-terraform/issues/1131)) ([529e45a](https://github.com/sethbacon/azure-pipelines-terraform/commit/529e45ae90804b3740111d4b9d662a17aaef9247))
+* record why writeSarif's operator path is uncontained ([#1121](https://github.com/sethbacon/azure-pipelines-terraform/issues/1121)) ([b10418c](https://github.com/sethbacon/azure-pipelines-terraform/commit/b10418c3790d8451367f60aaa5e754b5d9cfefdb))
+
 ## [1.15.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.2...v1.15.3) (2026-09-04)
 
 
