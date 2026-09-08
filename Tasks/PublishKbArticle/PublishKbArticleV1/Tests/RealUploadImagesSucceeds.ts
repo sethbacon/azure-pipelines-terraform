@@ -39,6 +39,7 @@ tr.registerMock('./attachments', {
     html: '<p>Body with an image</p><img src="sys_attachment.do?sys_id=att-1">',
     uploaded: 1,
     missing: [],
+    refused: [],
   }),
 });
 
