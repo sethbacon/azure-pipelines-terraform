@@ -1118,8 +1118,15 @@ export abstract class BaseTerraformCommandHandler {
      * unsafe.
      */
     private async runDestroyPlanForSummary(planFilePath: string, workingDirectory: string): Promise<void> {
-        const planCommand = this.createBaseCommand("plan", `-destroy -out=${planFilePath}`);
+        const planCommand = this.createBaseCommand("plan");
         const planTool = this.terraformToolHandler.createToolRunner(planCommand);
+        // -destroy/-out are discrete argv tokens, not spliced into additionalArgs
+        // (which reaches toolRunner.line() and word-splits on whitespace) -- a
+        // tempDir containing a space (#1031 reopen) would otherwise fragment
+        // -out=<path> into two argv entries. Matches plan()'s own -out= injection
+        // above (`terraformTool.arg(\`-out=${planFilePath}\`)`).
+        planTool.arg("-destroy");
+        planTool.arg(`-out=${planFilePath}`);
         this.argumentBuilder.applyTokens(planTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,
         }));
