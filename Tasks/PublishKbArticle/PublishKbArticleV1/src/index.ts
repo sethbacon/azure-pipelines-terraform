@@ -431,6 +431,9 @@ async function run() {
             if (result.missing.length > 0) {
                 console.log(tasks.loc('ImagesMissingSummary', result.missing.length));
             }
+            if (result.refused.length > 0) {
+                tasks.warning(tasks.loc('ImagesRefusedSummary', result.refused.length, result.refused.join(', ')));
+            }
         }
 
         tasks.setResult(tasks.TaskResult.Succeeded, '');

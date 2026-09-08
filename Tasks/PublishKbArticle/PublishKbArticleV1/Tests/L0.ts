@@ -19,7 +19,7 @@ import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 import * as client from '../src/servicenow-client';
 import { formatDryRunReport, DryRunPlan } from '../src/dry-run';
 import { extractLocalImageRefs, rewriteImageSrcs } from '../src/image-rewrite';
-import { processArticleImages, syncImageAttachment, contentTypeFor, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment, MAX_ATTACHMENT_BYTES } from '../src/attachments';
+import { processArticleImages, syncImageAttachment, contentTypeFor, isRefusedImageType, fileSha256, listArticleAttachments, uploadAttachment, deleteAttachment, MAX_ATTACHMENT_BYTES } from '../src/attachments';
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 import { migrationNotice, MIGRATION_URL } from '../src/deprecation-notice';
@@ -1747,8 +1747,19 @@ describe('attachments helpers', () => {
     it('maps file extensions to content types', () => {
         assert.strictEqual(contentTypeFor('a.png'), 'image/png');
         assert.strictEqual(contentTypeFor('a.JPG'), 'image/jpeg');
-        assert.strictEqual(contentTypeFor('a.svg'), 'image/svg+xml');
+        // SVG is not an attachable type (#1106): the allowlist no longer knows it,
+        // and the upload loop refuses it by extension before reading the file.
+        assert.strictEqual(contentTypeFor('a.svg'), 'application/octet-stream');
         assert.strictEqual(contentTypeFor('a.unknown'), 'application/octet-stream');
+    });
+
+    it('refuses SVG by extension, case-insensitively, and nothing else in the allowlist (#1106)', () => {
+        for (const name of ['logo.svg', 'LOGO.SVG', 'dir/x.svgz', 'a.b.svg']) {
+            assert.strictEqual(isRefusedImageType(name), true, name);
+        }
+        for (const name of ['a.png', 'a.jpg', 'a.jpeg', 'a.gif', 'a.webp', 'a.bmp', 'svg.png', 'a.svg.png']) {
+            assert.strictEqual(isRefusedImageType(name), false, name);
+        }
     });
 
     it('computes a sha256 of file bytes', () => {
@@ -1995,6 +2006,24 @@ describe('processArticleImages', () => {
         assert.strictEqual(result.uploaded, 0);
         assert.deepStrictEqual(result.missing, ['./images/nope.png']);
         assert.strictEqual(result.html, html, 'missing image src left unchanged');
+    });
+
+    it('never uploads an SVG, even when the file exists and failOnMissing is true: refused, warned, src left unchanged (#1106)', async () => {
+        fs.writeFileSync(nodePath.join(baseDir, 'images', 'diagram.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+        // The attachment list is fetched once; an upload POST is NOT mocked, so a
+        // regression that uploads the SVG fails here with an unmatched request.
+        nock(BASE_URL).get('/api/now/attachment').query(true).reply(200, { result: [] });
+        const logged: string[] = [];
+
+        const html = '<p><img src="./images/diagram.svg"></p>';
+        const result = await processArticleImages(
+            INSTANCE, HEADERS, 'art1', html, baseDir, true, (m) => logged.push(m),
+        );
+        assert.strictEqual(result.uploaded, 0);
+        assert.deepStrictEqual(result.refused, ['./images/diagram.svg']);
+        assert.deepStrictEqual(result.missing, []);
+        assert.strictEqual(result.html, html, 'refused image src left unchanged');
+        assert.ok(logged.some((m) => /ImageTypeRefused|SVG/.test(m)), `a warning must name the refusal: ${logged}`);
     });
 
     it('throws on missing image when failOnMissing is true', async () => {

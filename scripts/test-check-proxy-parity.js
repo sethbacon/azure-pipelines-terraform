@@ -27,13 +27,22 @@ const SCRIPT = path.join(__dirname, 'check-proxy-parity.js');
 const PKG = '@4cloudguru/pipeline-task-ado';
 const CORE = '@4cloudguru/pipeline-task-core';
 
+// The versions a healthy fixture declares and installs. They must sit at or
+// above every floor in the gate's tables -- and those floors track the fleet
+// (#1108 finding 2), so raising a floor means raising these two in the same
+// change. Named once so that is a single edit rather than a hunt through the
+// cases below, each of which is about something else entirely.
+const CURRENT_PKG = '^0.9.1';
+const CURRENT_CORE = '^0.9.0';
+const CURRENT_CORE_INSTALLED = '0.9.0';
+
 let failures = 0;
 const report = (ok, msg) => {
     if (ok) console.log(`  OK   ${msg}`);
     else { console.error(`  FAIL ${msg}`); failures += 1; }
 };
 
-function fixture(name, { deps = {}, coreVersion = '0.7.0', sources = {} }) {
+function fixture(name, { deps = {}, coreVersion = CURRENT_CORE_INSTALLED, sources = {} }) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), `proxy-parity-${name}-`));
     fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
     fs.copyFileSync(SCRIPT, path.join(root, 'scripts', 'check-proxy-parity.js'));
@@ -69,7 +78,7 @@ export async function handle(): Promise<void> {
 // ── 1. imported from the package: floor applies, verdict is PROXIED-BY-PACKAGE
 {
     const root = fixture('imported', {
-        deps: { [PKG]: '^0.5.1', [CORE]: '^0.7.0' },
+        deps: { [PKG]: CURRENT_PKG, [CORE]: CURRENT_CORE },
         sources: { 'handler.ts': CALLER(`import { generateIdToken } from '${PKG}';`, 'generateIdToken') },
     });
     const out = run(root);
@@ -124,7 +133,7 @@ export async function generateIdToken(id: string): Promise<string> {
 // ── 3. aliased import: the call names the alias, and it must still be seen
 {
     const root = fixture('aliased', {
-        deps: { [PKG]: '^0.5.1', [CORE]: '^0.7.0' },
+        deps: { [PKG]: CURRENT_PKG, [CORE]: CURRENT_CORE },
         sources: { 'handler.ts': CALLER(`import { generateIdToken as mintToken } from '${PKG}';`, 'mintToken') },
     });
     const out = run(root);
@@ -136,13 +145,58 @@ export async function generateIdToken(id: string): Promise<string> {
 // ── 4. imported from the package but below the floor: the floor still bites
 {
     const root = fixture('stale', {
-        deps: { [PKG]: '^0.4.0', [CORE]: '^0.7.0' },
+        deps: { [PKG]: '^0.4.0', [CORE]: CURRENT_CORE },
         sources: { 'handler.ts': CALLER(`import { generateIdToken } from '${PKG}';`, 'generateIdToken') },
     });
     const out = run(root);
     const sites = out.sites.filter((s) => s.sink === 'generateIdToken');
     report(sites.length === 1 && sites[0].verdict === 'UNPROXIED',
         `below the version floor -> UNPROXIED (got ${JSON.stringify(sites.map((s) => s.verdict))})`);
+}
+
+// ── 5. #1108 finding 2: a version floor that has fallen behind the fleet is
+// inert -- it cannot fire, so the gate is green about nothing. The check must
+// report it, and must NOT report a floor the fleet has not yet passed.
+{
+    const root = fixture('stale-floor', {
+        // Far ahead of every floor in the tables, so all of them are inert.
+        deps: { [PKG]: '^9.9.9', [CORE]: '^9.9.9' },
+        sources: { 'handler.ts': CALLER(`import { generateIdToken } from '${PKG}';`, 'generateIdToken') },
+    });
+    const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'check-proxy-parity.js'), '--json', root],
+        { encoding: 'utf8', cwd: root });
+    let out = {};
+    try { out = JSON.parse(r.stdout); } catch { /* reported below */ }
+    const stale = out.staleFloors || [];
+    report(r.status !== 0 && stale.length > 0 && stale.every((f) => f.fleet === '9.9.9'),
+        `a floor the whole fleet has passed -> reported stale and fails (exit ${r.status}, ${stale.length} stale)`);
+    report(stale.some((f) => f.where === 'DELEGATED_NODE_HTTP_SINKS.httpsRequest'),
+        'the raw-https floor is covered too, not just the package-delegated table');
+}
+
+// ── 6. the same check must stay quiet while the floors still track the fleet
+{
+    const root = fixture('current-floor', {
+        deps: { [PKG]: CURRENT_PKG, [CORE]: CURRENT_CORE },
+        sources: { 'handler.ts': CALLER(`import { generateIdToken } from '${PKG}';`, 'generateIdToken') },
+    });
+    const out = run(root);
+    report((out.staleFloors || []).length === 0,
+        `floors level with the fleet -> nothing reported (got ${JSON.stringify(out.staleFloors)})`);
+}
+
+// ── 7. a task that depends on neither package must not make every floor "stale"
+{
+    const root = fixture('no-dependency', {
+        deps: {},
+        sources: { 'handler.ts': 'export const noop = 1;\nconst r = await fetch(url, { ...buildFetchOptions() });\n' },
+    });
+    const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'check-proxy-parity.js'), '--json', root],
+        { encoding: 'utf8', cwd: root });
+    let out = {};
+    try { out = JSON.parse(r.stdout); } catch { /* reported below */ }
+    report(Array.isArray(out.staleFloors) && out.staleFloors.length === 0,
+        `no task declares the packages -> no floor is judged stale (got ${JSON.stringify(out.staleFloors)})`);
 }
 
 if (failures > 0) {

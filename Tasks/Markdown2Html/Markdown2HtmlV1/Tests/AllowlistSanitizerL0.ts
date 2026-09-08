@@ -23,6 +23,7 @@
 import assert = require('assert');
 import * as cheerio from 'cheerio';
 import { convertMarkdownToHtml, applyAllowlistSanitizer } from '../src/render';
+import { cssHasDangerousConstruct } from '../src/uri-scheme-guard';
 
 describe('Allowlist sanitizer — content fidelity (#552)', () => {
     it('preserves GFM table structure and per-column text-align styles', () => {
@@ -60,7 +61,41 @@ describe('Allowlist sanitizer — content fidelity (#552)', () => {
         assert.strictEqual(links.length, 2, 'both links preserved');
         assert.strictEqual($('a').first().attr('href'), 'https://example.com/docs', 'external href preserved');
         assert.strictEqual($('a').first().attr('title'), 'hover', 'link title preserved');
-        assert.strictEqual($('a').last().attr('href'), '#top', 'fragment href preserved');
+        // The fragment is republished under the id namespace, which is where the
+        // heading it points at also lands, so the link still resolves (#1106
+        // finding 3).
+        assert.strictEqual($('a').last().attr('href'), '#kb-top', 'fragment href namespaced, not dropped');
+    });
+
+    it('namespaces id/name so an author-supplied value cannot clobber a DOM property, and keeps in-page links pointing at it (#1106 finding 3)', () => {
+        const $ = cheerio.load(applyAllowlistSanitizer(
+            '<h2 id="body">Heading</h2><a name="location">anchor</a><a href="#body">jump</a>'
+            + '<p id="kb-already">already namespaced</p><a href="https://example.com/#body">external</a>',
+        ));
+        assert.strictEqual($('h2').attr('id'), 'kb-body', 'an id that names a document property is namespaced');
+        assert.strictEqual($('a[name]').attr('name'), 'kb-location', 'a legacy anchor name is namespaced too');
+        assert.strictEqual($('a[href^="#"]').attr('href'), '#kb-body', 'the in-page link follows the id');
+        assert.strictEqual($('p').attr('id'), 'kb-already', 'namespacing is idempotent, so a second pass does not double it');
+        assert.strictEqual($('a[href^="https"]').attr('href'), 'https://example.com/#body',
+            'an EXTERNAL url keeps its fragment: it addresses another document, where our namespace does not apply');
+    });
+
+    for (const css of [
+        'body { position: fixed; top: 0; left: 0 }',
+        '.x { position:absolute }',
+        '.x { z-index: 9999 }',
+        '.x { opacity: 0 }',
+        '.x { pointer-events: none }',
+        '.x { po/*c*/sition: fixed }',
+        '.x { \\70 osition: fixed }',
+    ]) {
+        it(`rejects overlay CSS a clickjacking cover needs: ${css.slice(0, 40)} (#1106 finding 2)`, () => {
+            assert.strictEqual(cssHasDangerousConstruct(css), true, css);
+        });
+    }
+
+    it('still accepts the flow-only CSS the syntax-highlighting theme is made of', () => {
+        assert.strictEqual(cssHasDangerousConstruct('.hljs { color: #abb2bf; background: #282c34; padding: 1em }'), false);
     });
 
     it('preserves lists, blockquotes and inline formatting (em/strong/strikethrough/code)', () => {
