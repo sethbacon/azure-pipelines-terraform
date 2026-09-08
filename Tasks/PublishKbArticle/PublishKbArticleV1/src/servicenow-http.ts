@@ -178,6 +178,17 @@ export async function snRequest(
         body: encodeBody(options.body),
         timeoutMs,
         agent: buildProxyAgent(timeoutMs),
+        // Pinned explicitly, at the call site that carries the credential. The
+        // class fix is in the shared transport, which now writes this default
+        // itself rather than letting an absent key fall back to
+        // NODE_TLS_REJECT_UNAUTHORIZED (an agent where that is 0, machine-wide
+        // or set by an unrelated job, would otherwise stop verifying the server
+        // for the OAuth secret, the bearer token and the Basic password this
+        // request carries). Stated here too because there is no ServiceNow
+        // equivalent of the private-CA case that motivates the opt-out
+        // elsewhere: this caller must never be given one
+        // (azure-pipelines-terraform#1106 finding 4).
+        rejectUnauthorized: true,
     });
 
     let data: Record<string, unknown> = {};
