@@ -64,8 +64,8 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         EnvironmentVariableHelper.registerSecret(secretKey);
 
         neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static backend");
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKey, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretKey, true, true);
     }
 
     private setupBackend(backendServiceName: string) {
@@ -100,8 +100,8 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
         // web-identity token file, so an inherited pair would silently discard
         // the assertion just written above (#187).
         neutralizeEnvironmentVariables(AWS_STATIC_CREDENTIAL_ENV, "AWS Workload Identity Federation");
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", params.roleArn);
-        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_ARN", params.roleArn, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFilePath, false, true);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_REGION", params.region);
         EnvironmentVariableHelper.setEnvironmentVariable("AWS_ROLE_SESSION_NAME", params.sessionName);
     }
@@ -176,8 +176,8 @@ export class TerraformCommandHandlerAWS extends BaseTerraformCommandHandler {
                 const secretAccessKey = requireSecretField(command.serviceProviderName, "password");
                 EnvironmentVariableHelper.registerSecret(secretAccessKey);
                 neutralizeEnvironmentVariables(AWS_FEDERATED_CREDENTIAL_ENV, "AWS static");
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId);
-                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_ACCESS_KEY_ID", accessKeyId, false, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("AWS_SECRET_ACCESS_KEY", secretAccessKey, true, true);
             } else {
                 // Silently injecting nothing leaves terraform to authenticate from
                 // whatever ambient credentials the agent carries -- the defect this

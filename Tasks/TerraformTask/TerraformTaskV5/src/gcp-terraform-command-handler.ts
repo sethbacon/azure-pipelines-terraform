@@ -153,7 +153,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         // comment. Clearing the provider list here instead would break the
         // cross-cloud run this method also serves (#1025).
         neutralizeEnvironmentVariables(GOOGLE_BACKEND_COMPETING_CREDENTIAL_ENV, "GCP backend");
-        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_BACKEND_CREDENTIALS", credentialsFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_BACKEND_CREDENTIALS", credentialsFilePath, false, true);
     }
 
     private setupBackend(backendServiceName: string) {
@@ -280,7 +280,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
                 const project = requireIdentityField(command.serviceProviderName, "project", { source: 'data' });
 
                 neutralizeEnvironmentVariables(GOOGLE_COMPETING_CREDENTIAL_ENV, "GCP service account key");
-                EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", jsonKeyFilePath);
+                EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", jsonKeyFilePath, false, true);
                 EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_PROJECT", project);
             } else {
                 // Silently injecting nothing leaves terraform to authenticate from
@@ -312,7 +312,7 @@ export class TerraformCommandHandlerGCP extends BaseTerraformCommandHandler {
         });
 
         neutralizeEnvironmentVariables(GOOGLE_COMPETING_CREDENTIAL_ENV, "GCP Workload Identity Federation");
-        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath);
+        EnvironmentVariableHelper.setEnvironmentVariable("GOOGLE_CREDENTIALS", credentialsFilePath, false, true);
         // GOOGLE_PROJECT is the provider's default `project`: the static-key branch
         // sets it to the connection's project ID, and this branch used to set it
         // to the project NUMBER the pool lives in -- a different value of a
