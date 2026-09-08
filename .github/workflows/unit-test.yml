@@ -446,6 +446,18 @@ jobs:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
         run: node src/index.js
+      # This task's entire security value is verifying a downloaded binary
+      # (GPG signature over SHA256SUMS via gpg-verifier.ts, plus cosign via
+      # cosign-verifier.ts) -- the load-only smoke check above only proves the
+      # compiled module graph parses under Node 20, since with no ADO inputs
+      # supplied the task's own try/catch short-circuits into a caught
+      # failure before any of that verification logic runs. Mirroring
+      # build-and-test-v5's identical step (#720): run the real,
+      # input-populated mocha suite under Node 20 too, closing the
+      # behavioral-parity gap for a task whose whole job is supply-chain
+      # trust (#654).
+      - name: Run real unit tests under Node 20 (#654)
+        run: npm test
 
   build-and-test-mirror-v1:
     name: Build and Test Provider Mirror V1 (${{ matrix.os }})
@@ -758,6 +770,18 @@ jobs:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
         run: node src/index.js
+      # This task's entire security value is verifying a downloaded binary
+      # (GPG signature over SHA256SUMS via gpg-verifier.ts for Sentinel, or
+      # sha256 via tool-integrity.ts for OPA) -- the load-only smoke check
+      # above only proves the compiled module graph parses under Node 20,
+      # since with no ADO inputs supplied the task's own try/catch
+      # short-circuits into a caught failure before any of that verification
+      # logic runs. Mirroring build-and-test-v5's identical step (#720): run
+      # the real, input-populated mocha suite under Node 20 too, closing the
+      # behavioral-parity gap for a task whose whole job is supply-chain
+      # trust (#654).
+      - name: Run real unit tests under Node 20 (#654)
+        run: npm test
 
   build-and-test-policy-check-v1:
     name: Build and Test Policy Check V1 (${{ matrix.os }})
@@ -1070,6 +1094,19 @@ jobs:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
         run: node src/index.js
+      # This task's entire security value is verifying a downloaded binary
+      # (sha256 via tool-integrity.ts, verified against the same GitHub
+      # release origin -- there is no detached GPG/cosign signature for
+      # terraform-docs) -- the load-only smoke check above only proves the
+      # compiled module graph parses under Node 20, since with no ADO inputs
+      # supplied the task's own try/catch short-circuits into a caught
+      # failure before any of that verification logic runs. Mirroring
+      # build-and-test-v5's identical step (#720): run the real,
+      # input-populated mocha suite under Node 20 too, closing the
+      # behavioral-parity gap for a task whose whole job is supply-chain
+      # trust (#654).
+      - name: Run real unit tests under Node 20 (#654)
+        run: npm test
 
   build-and-test-docs-v1:
     name: Build and Test terraform-docs V1 (${{ matrix.os }})

@@ -518,18 +518,30 @@ Verified tooling snapshot (periodically re-verified rather than tracked to an ex
 
 CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). Node 20 is EOL as of April 2026.
 
-**Node 20 is load-only, not a behavioral gate (#720):** every task ships a `Node20_1` fallback
-handler (see above), and each task's CI leg has a "Set up Node 20 for Node20_1 handler smoke
-test" step that runs the already-compiled `src/index.js` under Node 20 with no ADO inputs
-supplied — this proves the compiled module graph parses and loads under Node 20 (a real,
-useful check: a Node-20-incompatible dependency or syntax construct would fail it), but the
-task's own try/catch converts the resulting "input required" error into a caught failure
-before any real command, credential, or verification logic executes. The full mocha/L0
-assertion suite only ever runs under Node 24 — **Node 24 is the sole behavioral gate**;
-Node 20 is deliberately load-only. This is an intentional scope decision (not an oversight):
-running the full test suite twice per task would roughly double CI time for every task, and
-Node 20 is already EOL, so the fallback handler exists purely for agents that haven't yet
-upgraded their runner, not as a second fully-verified execution path.
+**Node 20 is load-only for most tasks, but a real behavioral gate for verifying ones (#654,
+#720):** every task ships a `Node20_1` fallback handler (see above), and each task's CI leg has a
+"Set up Node 20 for Node20_1 handler smoke test" step that runs the already-compiled
+`src/index.js` under Node 20 with no ADO inputs supplied — this proves the compiled module graph
+parses and loads under Node 20 (a real, useful check: a Node-20-incompatible dependency or syntax
+construct would fail it), but the task's own try/catch converts the resulting "input required"
+error into a caught failure before any real command, credential, or verification logic executes.
+For most tasks the full mocha/L0 assertion suite only ever runs under Node 24 — Node 24 is the
+sole behavioral gate for them, and Node 20 is deliberately load-only. This is an intentional scope
+decision (not an oversight): running the full test suite twice per task would roughly double CI
+time for every task, and Node 20 is already EOL, so the fallback handler exists purely for agents
+that haven't yet upgraded their runner, not as a second fully-verified execution path.
+
+**The exception is a task whose security value IS artifact verification** — TerraformInstallerV1
+(GPG signature + cosign), PolicyAgentInstallerV1 (GPG signature for Sentinel, sha256 for OPA), and
+TerraformDocsInstallerV1 (sha256) — where the load-only smoke check would never actually exercise
+the GPG/cosign/sha256 verification logic, HTTP client, or egress-allowlist code, since no ADO
+inputs means the try/catch short-circuits before any of that runs. Those three jobs additionally
+run the real, input-populated `npm test` suite under Node 20 (mirroring TerraformTaskV5's
+identical `#720` step), closing the behavioral-parity gap for the tasks whose whole job is
+supply-chain trust. `scripts/check-enforced-disciplines.js`'s `verification-real-tests-under-node20`
+check enforces this split: a verifying task (matched by shipping `gpg-verifier.ts`,
+`cosign-verifier.ts`, `tool-integrity.ts`, or a `verifySha256` function) must have a real `npm test`
+step after its Node 20 setup; a non-verifying task stays load-only.
 
 ## Supported Providers
 
