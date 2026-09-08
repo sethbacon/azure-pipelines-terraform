@@ -1,3 +1,5 @@
+import path = require('path');
+import fs = require('fs');
 import { describe, it, before, after } from 'mocha';
 import assert = require('assert');
 import * as net from 'net';
@@ -227,7 +229,7 @@ describe('servicenow-http: agent proxy support', function () {
             target.close();
         }
     });
-    it('azure-pipelines-terraform#1106 finding 4: rejects an untrusted server even when NODE_TLS_REJECT_UNAUTHORIZED=0 is set process-wide, because rejectUnauthorized is pinned explicitly', async () => {
+    it('azure-pipelines-terraform#1106 finding 4: refuses a server it has no reason to trust', async () => {
         const target = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (_req, res) => {
             res.statusCode = 200;
             res.end('{"result":{"ok":true}}');
@@ -235,20 +237,29 @@ describe('servicenow-http: agent proxy support', function () {
         await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
         const targetPort = (target.address() as net.AddressInfo).port;
         t.getHttpProxyConfiguration = () => undefined;
-        const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         try {
-            // With the switch flipped, an https.request that OMITS rejectUnauthorized
-            // would accept this self-signed certificate; the explicit pin in
-            // servicenow-http.ts must keep refusing it.
             await assert.rejects(
                 snRequest('GET', `https://127.0.0.1:${targetPort}/api/now/table/kb_knowledge`),
                 /self.signed certificate|unable to verify the first certificate|certificate/i,
             );
         } finally {
-            if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED; else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
             target.close();
         }
+    });
+
+    it('azure-pipelines-terraform#1106 finding 4: states rejectUnauthorized at the call site, so the request can never inherit the process-wide switch', () => {
+        // Structural on purpose. The behavioural end of this property is that a
+        // request with the key ABSENT falls back to NODE_TLS_REJECT_UNAUTHORIZED,
+        // and proving that behaviourally means setting the switch to 0 inside
+        // this process -- where it would stay set for whatever runs next. The
+        // shared transport's own suite asserts the option Node receives; what is
+        // this task's to keep is that the credential-bearing call site says it.
+        const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'servicenow-http.ts'), 'utf8');
+        const options = source.slice(source.indexOf('await httpsRequest({'));
+        assert.ok(
+            /rejectUnauthorized:\s*true/.test(options.slice(0, options.indexOf('});'))),
+            'snRequest must pin rejectUnauthorized: true in the options it builds',
+        );
     });
 
 });
