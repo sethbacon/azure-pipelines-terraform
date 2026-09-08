@@ -493,6 +493,109 @@ jobs:
               .catch(function (err) { console.error("OpenTofu cosign canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
+  # ── cosign pin freshness ───────────────────────────────
+  # The managed cosign install (#1027/#1118) makes OpenTofu's authenticity anchor a
+  # binary this task downloads and hashes ITSELF, against the pinned tag and the
+  # per-platform digests in src/cosign-pins.ts. That closes the ambient-PATH trust
+  # gap, and opens a maintenance obligation in its place: a pin nobody rotates ends
+  # up shipping a verifier with known CVEs, and a pin transcribed wrongly verifies
+  # nothing on the platforms it was mistyped for. This job owns both halves, the
+  # same way hashicorp-gpg-canary below owns the embedded GPG key's expiry:
+  #
+  #   1. STALENESS -- fail once the pin is more than COSIGN_PIN_MAX_MINORS_BEHIND
+  #      minor releases or COSIGN_PIN_MAX_DAYS_BEHIND days behind the current
+  #      sigstore/cosign release (both budgets are asserted by CosignPinsL0, so
+  #      widening the window is a visible test change, not a silent one).
+  #   2. TRANSCRIPTION -- re-fetch the PINNED release's own cosign_checksums.txt and
+  #      require every digest in the shipped table to match it byte for byte. An
+  #      offline unit test cannot do this (it would need a preimage of a real
+  #      release asset), so this is the only place a mistyped digest is caught.
+  #
+  # Non-required: a failure here only opens an issue via notify-on-failure below,
+  # it never blocks a PR.
+  cosign-pin-freshness:
+    name: cosign pin freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
+    steps:
+      # hardening-exception: egress-audit — this job installs from the npm registry,
+      #   clones this repository and calls the GitHub API; harden-runner has never run
+      #   in this repository, so no endpoint baseline exists and a block policy written
+      #   without one fails closed on its first run; audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Install installer-task dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile installer task (emits the JS this check requires)
+        run: npm run compile
+      - name: Fail if the pinned cosign release is stale, or its digests no longer match upstream
+        # Reads the SHIPPED table rather than a copy of it, so this check cannot drift
+        # from what the task actually enforces -- the same reason the sha256-only
+        # installer drift canary below reuses each installer's own asset-name builder.
+        run: |
+          node -e '
+            const pins = require("./src/cosign-pins");
+            const UA = { "User-Agent": "azure-pipelines-terraform cosign-pin-freshness" };
+            function minorOf(v) { const m = /^(\d+)\.(\d+)\./.exec(v); if (!m) { throw new Error("Unparseable pinned cosign version: " + v); } return { major: Number(m[1]), minor: Number(m[2]) }; }
+            (async function () {
+              const res = await fetch("https://api.github.com/repos/sigstore/cosign/releases/latest", { headers: UA });
+              if (!res.ok) { throw new Error("sigstore/cosign releases API returned HTTP " + res.status); }
+              const latest = await res.json();
+              const latestVersion = String(latest.tag_name || "").replace(/^v/, "");
+              if (!latestVersion) { throw new Error("sigstore/cosign releases API returned no tag_name"); }
+              console.log("Pinned: " + pins.COSIGN_PINNED_TAG + " (" + pins.COSIGN_PINNED_RELEASE_DATE + "). Latest upstream: v" + latestVersion + " (" + latest.published_at + ").");
+
+              const failures = [];
+              const pinned = minorOf(pins.COSIGN_PINNED_VERSION);
+              const current = minorOf(latestVersion);
+              const minorsBehind = current.major > pinned.major ? Infinity : current.minor - pinned.minor;
+              if (minorsBehind > pins.COSIGN_PIN_MAX_MINORS_BEHIND) {
+                failures.push("the pin is " + (minorsBehind === Infinity ? "a MAJOR release" : minorsBehind + " minor releases") + " behind v" + latestVersion + " (budget: " + pins.COSIGN_PIN_MAX_MINORS_BEHIND + ")");
+              }
+              const daysBehind = Math.floor((Date.parse(latest.published_at) - Date.parse(pins.COSIGN_PINNED_RELEASE_DATE)) / 86400000);
+              if (daysBehind > pins.COSIGN_PIN_MAX_DAYS_BEHIND) {
+                failures.push("the pinned release is " + daysBehind + " days older than the current one (budget: " + pins.COSIGN_PIN_MAX_DAYS_BEHIND + ")");
+              }
+
+              const sums = await fetch("https://github.com/sigstore/cosign/releases/download/" + pins.COSIGN_PINNED_TAG + "/cosign_checksums.txt", { headers: UA, redirect: "follow" });
+              if (!sums.ok) { throw new Error("cosign_checksums.txt for " + pins.COSIGN_PINNED_TAG + " returned HTTP " + sums.status); }
+              const upstream = new Map();
+              for (const line of (await sums.text()).split("\n")) {
+                const m = /^([0-9a-f]{64})\s+(\S+)\s*$/.exec(line);
+                if (m) { upstream.set(m[2], m[1]); }
+              }
+              const table = pins.cosignPinnedAssets();
+              if (table.length === 0) { throw new Error("the shipped cosign pin table is EMPTY -- this check would pass vacuously"); }
+              for (const entry of table) {
+                const actual = upstream.get(entry.assetName);
+                if (!actual) { failures.push(pins.COSIGN_PINNED_TAG + " no longer publishes " + entry.assetName); }
+                else if (actual !== entry.sha256) { failures.push(entry.assetName + " digest drift: shipped " + entry.sha256 + ", upstream " + actual); }
+                else { console.log("OK: " + entry.assetName + " matches the pinned release (" + entry.sha256.slice(0, 12) + "...)."); }
+              }
+
+              if (failures.length > 0) {
+                console.error("cosign pin check FAILED:");
+                for (const f of failures) { console.error("  - " + f); }
+                console.error("Rotate the pin: re-fetch cosign_checksums.txt for the new tag and replace COSIGN_PINNED_TAG, COSIGN_PINNED_VERSION, COSIGN_PINNED_RELEASE_DATE and ALL digests in Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-pins.ts together.");
+                process.exit(1);
+              }
+              console.log("OK: the pinned cosign release is current within budget and every shipped digest matches upstream.");
+            })().catch(function (err) { console.error("cosign pin freshness check FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+
   # ── HashiCorp GPG trust-root canary ────────────────────
   # Exercises the installer's REAL verifyGpgSignature() (gpg-verifier.ts) against
   # the embedded HashiCorp public key (hashicorp-gpg-key.ts) using a current
@@ -718,6 +821,7 @@ jobs:
         verify-marketplace-environment-protection,
         verify-branch-protection,
         opentofu-cosign-canary,
+        cosign-pin-freshness,
         hashicorp-gpg-canary,
         sha256-only-installer-drift-canary,
       ]
