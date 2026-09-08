@@ -129,6 +129,8 @@ jobs:
         run: node scripts/test-check-proxy-parity.js
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
         run: node scripts/check-proxy-parity.js
+      - name: Self-test check-docs-claims.js
+        run: node scripts/test-check-docs-claims.js
       - name: Validate documented claims against the code
         run: node scripts/check-docs-claims.js
 

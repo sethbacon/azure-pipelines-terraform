@@ -51,7 +51,15 @@
 #      status checks.
 #   2. Add "release-guard/link-regrade" to main's required status checks too
 #      -- without it the scheduled re-grade can turn the status red and
-#      nothing forces anyone to look before merging.
+#      nothing forces anyone to look before merging. PRODUCER (sethbacon/azure-pipelines-terraform#1120):
+#      posted by BOTH jobs below, as a commit status via the Statuses API --
+#      neither overrides this action's `status-context` input, so both
+#      inherit its default (literally "release-guard/link-regrade"), which is
+#      why the context matches neither job's `name:`. See "Required status
+#      check provenance" in this repository's CLAUDE.md/README for the full
+#      mapping (workflow, jobs, events, action pin, token) -- read that table
+#      before any branch-protection PUT, which replaces the contexts list
+#      wholesale.
 # Both are left to the operator.
 name: Release PR Guard
 
