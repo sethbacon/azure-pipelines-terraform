@@ -4,6 +4,24 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.16.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.4...v1.16.0) (2026-09-08)
+
+
+### Features
+
+* gcpProjectId sets GOOGLE_PROJECT under GCP WIF the way the service-connection scheme does (WIP, [#1107](https://github.com/sethbacon/azure-pipelines-terraform/issues/1107) finding 4) ([#1146](https://github.com/sethbacon/azure-pipelines-terraform/issues/1146)) ([d249ab4](https://github.com/sethbacon/azure-pipelines-terraform/commit/d249ab4e9a9163953d052889cc43491fa5cae1a1))
+
+
+### Bug Fixes
+
+* clear azurerm's *_FILE_PATH credential selectors and the API-key TF_VAR_* leftovers on the OCI WIF branch (WIP, [#1107](https://github.com/sethbacon/azure-pipelines-terraform/issues/1107) findings 1 and 3) ([#1144](https://github.com/sethbacon/azure-pipelines-terraform/issues/1144)) ([c2fbfa8](https://github.com/sethbacon/azure-pipelines-terraform/commit/c2fbfa896651d74c742bac1b708c0529fa2bfba2))
+* fail the proxy-parity gate when a version floor falls behind the fleet ([#1140](https://github.com/sethbacon/azure-pipelines-terraform/issues/1140)) ([650e34b](https://github.com/sethbacon/azure-pipelines-terraform/commit/650e34bbc000a687ab62044307cd102939d57944))
+* pin certificate verification on the ServiceNow transport ([#1143](https://github.com/sethbacon/azure-pipelines-terraform/issues/1143)) ([89bac94](https://github.com/sethbacon/azure-pipelines-terraform/commit/89bac9463b6c042c811bec1bd1f91ab88c1d896d))
+* read every credential-capable input through the package silent readers ([#1147](https://github.com/sethbacon/azure-pipelines-terraform/issues/1147)) ([feed5a6](https://github.com/sethbacon/azure-pipelines-terraform/commit/feed5a6cb5f2a69b430e41744a1ec812a22a8870))
+* refuse SVG image attachments in PublishKbArticle (WIP, azure-pipelines-terraform[#1106](https://github.com/sethbacon/azure-pipelines-terraform/issues/1106) finding 1) ([#1141](https://github.com/sethbacon/azure-pipelines-terraform/issues/1141)) ([3001803](https://github.com/sethbacon/azure-pipelines-terraform/commit/3001803c6b3cebb9290667946e6b1345cdb525ca))
+* reject overlay CSS in a published document's head and namespace author-supplied id/name (WIP, [#1106](https://github.com/sethbacon/azure-pipelines-terraform/issues/1106) findings 2 and 3) ([#1142](https://github.com/sethbacon/azure-pipelines-terraform/issues/1142)) ([71d4f8d](https://github.com/sethbacon/azure-pipelines-terraform/commit/71d4f8daccd6151191c4ea34585c1c2c8aa99563))
+* validate ociWifClientId before minting the OIDC assertion (WIP, [#1107](https://github.com/sethbacon/azure-pipelines-terraform/issues/1107) finding 2) ([#1145](https://github.com/sethbacon/azure-pipelines-terraform/issues/1145)) ([ec68a04](https://github.com/sethbacon/azure-pipelines-terraform/commit/ec68a04bbb78a61334ae5f168788066f797da71b))
+
 ## [1.15.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.3...v1.15.4) (2026-09-07)
 
 
