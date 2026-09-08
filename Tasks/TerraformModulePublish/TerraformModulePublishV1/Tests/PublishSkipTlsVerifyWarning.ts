@@ -1,5 +1,6 @@
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { stubDnsZone, TLS_OPT_OUT_ZONE } from './stub-dns';
 
 // Drives src/index.ts down the PRIVATE-registry path with skipTlsVerify=true, so
 // the SkipTlsVerifyEnabled warning path is actually exercised (audit id31/#731 --
@@ -7,6 +8,10 @@ import path = require('path');
 // publisher and http transport are stubbed so no real network call is made.
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
+
+// The #588 guard classifies a NAME by the address it resolves to, so this
+// fixture pins a zone instead of depending on the runner's network.
+stubDnsZone(TLS_OPT_OUT_ZONE);
 
 tr.setInput('registryType', 'private');
 tr.setInput('namespace', 'aceo');

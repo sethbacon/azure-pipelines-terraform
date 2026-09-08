@@ -1,6 +1,6 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
-import { assertPlainUrlBase } from '@4cloudguru/pipeline-task-core';
+import { assertPlainUrlBase, assertTlsOptOutDestinationIsPrivate, TlsOptOutDestinationError } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
 import { RegistryPublisher, RegistryType } from './types';
@@ -22,19 +22,33 @@ function parseTimeout(): number {
 
 /**
  * skipTlsVerify only makes sense for a private/internal registry fronted by a CA
- * the agent doesn't trust -- there is never a legitimate reason to disable TLS
- * verification against a well-known PUBLIC registry endpoint, which is exactly
- * the on-path MITM scenario #588 flags (#588).
+ * the agent doesn't trust, so the destination must be PROVABLY private before the
+ * switch is honoured -- the #588 class. The two-entry `*.terraform.io` denylist
+ * this replaced was bypassed by the rooted FQDN `https://app.terraform.io./`
+ * (WHATWG URL keeps the trailing dot, so the host matched neither arm while DNS
+ * resolved it to the real public registry), and it left every other public host
+ * unguarded. Enumerating the public internet is not a control.
  *
- * registryUrl no longer needs its own unparseable-URL check here: the only call
- * site (below) always runs assertPlainUrlBase first,
- * which already requires registryUrl to parse as a URL before this function ever
- * sees it (#1110) -- so `new URL(registryUrl)` below cannot throw in practice.
+ * The decision itself lives in @4cloudguru/pipeline-task-core
+ * (assertTlsOptOutDestinationIsPrivate): TerraformDriftReportV1's callbackUrl
+ * needs the identical control, and a hand-copy of a host classifier is how the
+ * two spellings diverged in the first place. Only the loc mapping is task-side,
+ * so the message stays localised per input.
+ *
+ * registryUrl needs no separate unparseable/userinfo check here: the only call
+ * site (below) runs assertPlainUrlBase first (#1110), so those branches of the
+ * shared guard are unreachable from this task -- they are mapped anyway rather
+ * than assumed away, because the guard is what decides, not the caller.
  */
-function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void {
-    const hostname = new URL(registryUrl).hostname.toLowerCase();
-    if (hostname === 'terraform.io' || hostname.endsWith('.terraform.io')) {
-        throw new Error(tasks.loc('SkipTlsVerifyPublicRegistryRejected', registryUrl));
+async function assertSkipTlsVerifyDestinationIsPrivate(registryUrl: string): Promise<void> {
+    try {
+        await assertTlsOptOutDestinationIsPrivate('registryUrl', registryUrl);
+    } catch (error) {
+        if (error instanceof TlsOptOutDestinationError) {
+            // safeDestination, never the raw input: it can carry userinfo.
+            throw new Error(tasks.loc('SkipTlsVerifyPublicRegistryRejected', error.safeDestination));
+        }
+        throw error;
     }
 }
 
@@ -54,7 +68,7 @@ function assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl: string): void 
  * unparseable-URL check.
  */
 
-function buildPublisher(): RegistryPublisher {
+async function buildPublisher(): Promise<RegistryPublisher> {
     const registryType = requireInput('registryType') as RegistryType;
     const coordinates = {
         namespace: requireInput('namespace'),
@@ -68,17 +82,17 @@ function buildPublisher(): RegistryPublisher {
     if (registryType === 'private') {
         // skipTlsVerify is an accepted, opt-in last resort for an internal registry
         // fronted by a private CA the agent does not trust. It is deliberately
-        // guarded, not silent: rejected outright against a known public registry
-        // host (#588, assertSkipTlsVerifyNotAgainstPublicRegistry above), the
-        // apiKey is setSecret-masked below, the warning names the exact
-        // consequence, and createHttpsClient still hard-enforces the https://
-        // scheme (see http.ts / https-client.ts) so the bearer is never sent over
-        // a cleartext scheme. Prefer installing the CA via NODE_EXTRA_CA_CERTS.
+        // guarded, not silent: honoured ONLY against a destination proven private
+        // (#588, assertSkipTlsVerifyDestinationIsPrivate above), the apiKey is
+        // setSecret-masked below, the warning names the exact consequence, and
+        // createHttpsClient still hard-enforces the https:// scheme (see http.ts /
+        // https-client.ts) so the bearer is never sent over a cleartext scheme.
+        // Prefer installing the CA via NODE_EXTRA_CA_CERTS.
         const skipTlsVerify = tasks.getBoolInput('skipTlsVerify', false);
         const registryUrl = readUrlInput('registryUrl', true);
         assertPlainUrlBase('registryUrl', registryUrl, 'reject');
         if (skipTlsVerify) {
-            assertSkipTlsVerifyNotAgainstPublicRegistry(registryUrl);
+            await assertSkipTlsVerifyDestinationIsPrivate(registryUrl);
             tasks.warning(tasks.loc('SkipTlsVerifyEnabled'));
         }
         const apiKey = readSecretInput('apiKey', true);
@@ -159,7 +173,7 @@ async function run(): Promise<void> {
     });
 
     try {
-        const result = await buildPublisher().publish();
+        const result = await (await buildPublisher()).publish();
         console.log(result.message);
         tasks.setResult(tasks.TaskResult.Succeeded, result.message);
     } catch (error) {

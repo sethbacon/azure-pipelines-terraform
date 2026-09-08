@@ -991,7 +991,10 @@ a private-CA endpoint the agent does not trust. For a TSM endpoint fronted by a
 private CA, prefer installing that CA via `NODE_EXTRA_CA_CERTS` on the agent —
 `rejectUnauthorized: false` is a last resort, since it then sends the callback
 token over a connection whose certificate is not authenticated, so it could be
-captured by an on-path attacker.
+captured by an on-path attacker. It is honoured only when `callbackUrl` is, or
+resolves to, a private/link-local address; against a public destination — or a
+URL that does not parse, or one carrying `user:password@` credentials — the task
+fails rather than sending the token to an unverified peer.
 
 ### Emit a SARIF report
 
@@ -1078,7 +1081,10 @@ never inline the literal. For an internal registry fronted by a private CA the
 agent does not trust, prefer installing the CA via `NODE_EXTRA_CA_CERTS`;
 `skipTlsVerify: true` is a last resort, since it then sends the API key over a
 connection whose certificate is not authenticated, so it could be captured by
-an on-path attacker.
+an on-path attacker. It is honoured only when `registryUrl` is, or resolves to,
+a private/link-local address; against a public destination — including the
+rooted spelling `https://app.terraform.io./` — the task fails rather than
+sending the API key to an unverified peer.
 
 ### Publish to HCP Terraform
 

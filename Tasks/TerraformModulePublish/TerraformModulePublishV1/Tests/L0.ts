@@ -17,6 +17,8 @@ import './HttpsClientHostHandlingByDesignL0';
 // End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
 // unhandledRejection registration (#1113).
 import './SignalHandlerL0';
+// CLASS TEST for #588: skipTlsVerify honoured only against a provably private destination.
+import './TlsOptOutDestinationClassL0';
 
 const noop = (): void => {
     /* suppress log output during tests */

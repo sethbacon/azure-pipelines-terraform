@@ -1,14 +1,20 @@
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { stubDnsZone, TLS_OPT_OUT_ZONE } from './stub-dns';
 
 // #588 lookalike-safety companion to PublishSkipTlsVerifyPublicRegistryRejected:
-// a host that merely CONTAINS "terraform.io" as a substring, without an actual
-// dot-anchored suffix match, must NOT be falsely rejected -- it's a legitimate
-// private registry the skipTlsVerify escape hatch exists for. Confirms the
-// suffix check is dot-anchored (endsWith('.terraform.io') / === 'terraform.io'),
-// not a bare substring match.
+// a host whose NAME contains "terraform.io" but which resolves into RFC1918
+// space must NOT be falsely rejected -- it's a legitimate private registry the
+// skipTlsVerify escape hatch exists for. Since the guard became a
+// private-destination check rather than a name denylist, this confirms the
+// decision is made on the RESOLVED ADDRESS: no spelling of a name, lookalike or
+// otherwise, can decide it either way.
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
+
+// The #588 guard classifies a NAME by the address it resolves to, so this
+// fixture pins a zone instead of depending on the runner's network.
+stubDnsZone(TLS_OPT_OUT_ZONE);
 
 tr.setInput('registryType', 'private');
 tr.setInput('namespace', 'aceo');
