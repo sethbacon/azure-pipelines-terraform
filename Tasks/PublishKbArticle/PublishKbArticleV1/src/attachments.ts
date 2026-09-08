@@ -206,10 +206,26 @@ const CONTENT_TYPES: Record<string, string> = {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
     '.webp': 'image/webp',
     '.bmp': 'image/bmp',
 };
+
+/**
+ * Image types the task refuses to attach, whatever the file's bytes say. SVG is
+ * a document format, not a raster: it can carry <script>, event-handler
+ * attributes and foreignObject HTML, and executes when opened outside a plain
+ * <img> (a direct sys_attachment.do navigation, an <object>/<embed>, a
+ * browser tab). The sanitizer already rejects `data:image/svg+xml` in the body
+ * for exactly that reason; uploading the same content as an attachment the
+ * article then links to would re-open the door it closed
+ * (azure-pipelines-terraform#1106 finding 1). Checked by extension, before the
+ * file is even read.
+ */
+const REFUSED_IMAGE_EXTENSIONS: ReadonlySet<string> = new Set(['.svg', '.svgz']);
+
+export function isRefusedImageType(fileName: string): boolean {
+    return REFUSED_IMAGE_EXTENSIONS.has(path.extname(fileName).toLowerCase());
+}
 
 export function contentTypeFor(fileName: string): string {
     return CONTENT_TYPES[path.extname(fileName).toLowerCase()] || 'application/octet-stream';
@@ -273,6 +289,8 @@ export interface ProcessImagesResult {
     uploaded: number;
     /** Original srcs that were skipped because the file was missing. */
     missing: string[];
+    /** Original srcs that were skipped because their type is refused (SVG). */
+    refused: string[];
 }
 
 /**
@@ -282,6 +300,9 @@ export interface ProcessImagesResult {
  * - Resolves relative srcs against imageBaseDir.
  * - Uses match-by-filename-replace-if-changed idempotency (syncImageAttachment).
  * - Missing files: skipped (left as-is in the body) unless `failOnMissing`.
+ * - Refused types (SVG): always skipped with a warning, never uploaded; not a
+ *   `force`-bypassable check, because it is a security decision, not a
+ *   content-loss heuristic.
  */
 export async function processArticleImages(
     instance: string,
@@ -294,16 +315,22 @@ export async function processArticleImages(
 ): Promise<ProcessImagesResult> {
     const refs = extractLocalImageRefs(html, imageBaseDir, log);
     if (refs.length === 0) {
-        return { html, uploaded: 0, missing: [] };
+        return { html, uploaded: 0, missing: [], refused: [] };
     }
 
     const existing = await listArticleAttachments(instance, headers, articleId);
     const srcToId = new Map<string, string>();
     const missing: string[] = [];
+    const refused: string[] = [];
     let uploaded = 0;
 
     try {
         for (const ref of refs) {
+            if (isRefusedImageType(ref.fileName)) {
+                log(`[WARN] ${tasks.loc('ImageTypeRefused', ref.originalSrc)}`);
+                refused.push(ref.originalSrc);
+                continue;
+            }
             if (!fs.existsSync(ref.absPath)) {
                 const msg = tasks.loc('ImageNotFound', ref.originalSrc, ref.absPath);
                 if (failOnMissing) {
@@ -351,5 +378,5 @@ export async function processArticleImages(
         throw err;
     }
 
-    return { html: rewriteImageSrcs(html, srcToId), uploaded, missing };
+    return { html: rewriteImageSrcs(html, srcToId), uploaded, missing, refused };
 }
