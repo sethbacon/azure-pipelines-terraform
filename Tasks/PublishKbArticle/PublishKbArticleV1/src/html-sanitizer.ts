@@ -75,6 +75,50 @@ function forceNoopenerNoreferrer(tagName: string, attribs: sanitizeHtml.Attribut
     return { tagName, attribs: { ...attribs, rel: Array.from(relTokens).join(' ') } };
 }
 
+/**
+ * The prefix every author-supplied `id`/`name` is published under.
+ *
+ * DOM clobbering: `document.<name>` and `window.<name>` resolve to an ELEMENT
+ * when a document contains `id="<name>"` or `<a name="<name>">`, so an article
+ * carrying `id="body"`, `id="cookie"` or `<a name="location">` shadows the
+ * property a script on the hosting page reads and changes what that script
+ * does -- without any script of its own, which is why the allowlist above (all
+ * of it about active content) never saw it (azure-pipelines-terraform#1106
+ * finding 3).
+ *
+ * Dropping the attributes outright would break in-page anchors, which is what
+ * headings and a table of contents are made of. Namespacing them cannot: no
+ * property of `document` or `window` starts with `kb-`, and a hyphen is not
+ * valid in a JavaScript identifier, so a namespaced value can shadow nothing.
+ * Same-document `href="#..."` targets are rewritten in the same pass, so the
+ * links still land.
+ */
+const ID_NAMESPACE = 'kb-';
+
+/** Idempotent: a value already published under the namespace is left alone. */
+function namespaceId(value: string): string {
+    return value.startsWith(ID_NAMESPACE) ? value : ID_NAMESPACE + value;
+}
+
+/**
+ * Applies the namespace to `id` on every element, to `name` on the elements
+ * where it is a DOM-clobbering surface rather than form data, and to the
+ * fragment of a same-document `href`.
+ */
+function namespaceClobberingAttributes(tagName: string, attribs: sanitizeHtml.Attributes): sanitizeHtml.Tag {
+    const next: sanitizeHtml.Attributes = { ...attribs };
+    if (typeof next.id === 'string' && next.id !== '') {
+        next.id = namespaceId(next.id);
+    }
+    if (tagName === 'a' && typeof next.name === 'string' && next.name !== '') {
+        next.name = namespaceId(next.name);
+    }
+    if (tagName === 'a' && typeof next.href === 'string' && next.href.startsWith('#') && next.href.length > 1) {
+        next.href = '#' + namespaceId(next.href.slice(1));
+    }
+    return { tagName, attribs: next };
+}
+
 const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
     allowedTags: [
         // markdown-it structural + block output
@@ -144,6 +188,10 @@ const SANITIZE_HTML_OPTIONS: sanitizeHtml.IOptions = {
     // #835: force rel="noopener noreferrer" onto any <a target=…> — see
     // forceNoopenerNoreferrer above.
     transformTags: {
+        // Order matters: sanitize-html applies '*' first and then the
+        // tag-specific handler, so the anchor handler receives the already
+        // namespaced attributes and only has to add its rel tokens.
+        '*': namespaceClobberingAttributes,
         a: forceNoopenerNoreferrer,
     },
 };
