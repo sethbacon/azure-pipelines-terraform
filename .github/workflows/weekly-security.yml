@@ -475,6 +475,18 @@ jobs:
       - name: Verify SHA256SUMS with the installer's own cosign verifier (real argv, end-to-end)
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          # The verifier runs in managed mode (required=true below): it downloads
+          # the pinned cosign through azure-pipelines-tool-lib rather than trusting
+          # whatever is on PATH, and refuses to fall back. tool-lib's downloadTool
+          # and findLocalTool read the ADO agent variables Agent.TempDirectory and
+          # Agent.ToolsDirectory and throw "<name> is not set" when absent. An ADO
+          # agent always sets them; a GitHub runner never does, so this harness has
+          # to. Without these two lines the canary failed on its first managed-mode
+          # run (2026-09-09) with "Agent.TempDirectory is not set" -- a harness
+          # gap, not a verifier defect. task-lib maps Agent.X to the AGENT_X
+          # environment variable.
+          AGENT_TEMPDIRECTORY: ${{ runner.temp }}
+          AGENT_TOOLSDIRECTORY: ${{ runner.tool_cache }}
         # Reuses cosign-verifier.ts's verifyCosignSignature (required=true, so a
         # missing/bad signature or a wrong-identity certificate hard-fails) rather than
         # reimplementing the cosign invocation: it fetches the .sig/.pem from the same
