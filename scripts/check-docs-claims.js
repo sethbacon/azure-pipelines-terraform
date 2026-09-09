@@ -178,10 +178,25 @@ const CONTROLS = {
     // that echoes "## OSV-Scanner results" into the job summary, so deleting the
     // scanner and keeping the heading left this row reading `enforced` and the
     // gate reporting OK — caught by mutating it, which is the only way that kind
-    // of thing is ever caught. If this control is ever reimplemented as a
-    // checksum-verified binary download (see SECURITY.md's residual risk about
-    // the mutable image tag), this expression has to move with it.
-    detect: () => inWorkflows(/uses:\s*\S*osv-scanner/i),
+    // of thing is ever caught.
+    //
+    // Widened `osv-scanner` -> `osv-scan` on 2026-09-09. The extensions no
+    // longer call google/osv-scanner-action directly; they call
+    // 4cloudguru/shared-workflows' `.github/actions/osv-scan`, which runs the
+    // same scanner in a digest-pinned image and reports the real exit code.
+    // The old expression required the literal "osv-scanner", which that path
+    // does not contain, so a repository that ported to the shared action was
+    // reported as claiming `enforced` over a control this gate could no longer
+    // see — the inverse of the failure above, and the same drift. This is the
+    // CANONICAL copy that signature replay runs against every extension; the
+    // first repository to port hit it here, not in its own copy, which had
+    // already been widened. The shortened stem still matches the official
+    // action's path (`osv-scanner-action` contains `osv-scan`), so a repository
+    // that has not ported is detected too, and the `uses:` anchor still keeps
+    // the job-summary heading from satisfying it. If this control is ever
+    // reimplemented as a checksum-verified binary download, this expression
+    // has to move with it again.
+    detect: () => inWorkflows(/uses:\s*\S*osv-scan/i),
   },
   'sbom-attestation': {
     summary: 'an SBOM is generated and attested by a workflow',
