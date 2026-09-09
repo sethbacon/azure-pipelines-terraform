@@ -81,7 +81,8 @@ directories and their per-task test commands.
      must stay identical, every outbound HTTP call must honour the agent proxy
      configuration, and documented claims must match the code
      (`scripts/check-shared-modules.js`, `scripts/check-egress-authorization.js`,
-     `scripts/check-proxy-parity.js`, `scripts/check-docs-claims.js`).
+     `scripts/check-proxy-parity.js`, and `4cloudguru/shared-workflows`' SHA-pinned
+     `check-shared-module-pins` and `check-docs-claims` composite actions).
    - `Build and Test V5` — lint, compile and unit tests for TerraformTaskV5.
    - `Build and Test V5 Smoke`
    - `Build and Test Installer V1`
@@ -105,8 +106,15 @@ directories and their per-task test commands.
    <!-- ci-jobs:end -->
 
    This list is checked against `.github/workflows/unit-test.yml` by
-   `scripts/check-docs-claims.js`, in both directions, so it cannot drift as jobs
-   are added or renamed. Adding a task means adding its job here too.
+   `4cloudguru/shared-workflows`' `check-docs-claims` composite action — pinned by
+   full commit SHA and run as a step of the `Check Shared Module Parity` job, so
+   there is no copy in this repository to edit — in both directions, so it cannot
+   drift as jobs are added or renamed. Adding a task means adding its job here too.
+   To run it before pushing, against a sibling checkout of that repository:
+
+   ```bash
+   node ../shared-workflows/.github/actions/check-docs-claims/check-docs-claims.js .
+   ```
 
    `.github/workflows/pr-checks.yml` gates the PR as well, with the conventional
    title check, dependency review, the Release-PR Minor-bump backstop, and the

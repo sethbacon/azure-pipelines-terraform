@@ -501,7 +501,14 @@ npm run check:shared  # verify (this is what CI runs)
 
 Syncing is deliberately **not** wired into the build. If it ran automatically before packaging, a genuine unintended divergence would be silently repaired instead of failing CI, which is exactly what the gate exists to prevent. Syncing is an authoring step; CI only ever verifies.
 
-The `Check Shared Module Parity` job also runs `scripts/check-shared-module-pins.js` — the #1108 class signature: every task must declare the same range of, and resolve the same version of, `@4cloudguru/pipeline-task-core` and `@4cloudguru/pipeline-task-ado`, with no nested second copy, so a fix shipped in either package reaches every task at once rather than the ones Dependabot happened to bump — and `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — both it and its self-test are **steps inside existing required jobs**, so branch protection needs no change.
+The `Check Shared Module Parity` job also runs the **shared composite action** `4cloudguru/shared-workflows/.github/actions/check-shared-module-pins`, pinned by full commit SHA — the #1108 class signature: every task must declare the same range of, and resolve the same version of, `@4cloudguru/pipeline-task-core` and `@4cloudguru/pipeline-task-ado`, with no nested second copy, so a fix shipped in either package reaches every task at once rather than the ones Dependabot happened to bump — and `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — each of these is a **step inside an existing required job**, so branch protection needs no change.
+
+The pins gate and the documented-claims gate below used to be `scripts/` copies here. They moved to `4cloudguru/shared-workflows` on 2026-09-09: four hand-copies of each existed across the estate — this repository, `azure-pipelines-packer`, `azure-pipelines-release-docs`, and the canonical copy signature replay runs from `security-orchestration` — and the docs-claims copies had already drifted three ways, twice in one day with a fix landing in a hand-copy and never reaching canonical. There is consequently **no local copy to edit or to weaken**, and each gate's mutation self-test moved with it and runs in that repository's CI beside the implementation rather than here beside a fork of it. Both are deliberately **composite actions and not reusable workflows**: a reusable workflow reports as `<caller-job-id> / <called-job-name>`, which would rename `Check Shared Module Parity`, and that name is a required status context on `main`. To run either before pushing, against a sibling checkout of `shared-workflows` (the estate's `reposRoot` layout):
+
+```bash
+node ../shared-workflows/.github/actions/check-shared-module-pins/check-shared-module-pins.js .
+node ../shared-workflows/.github/actions/check-docs-claims/check-docs-claims.js .
+```
 
 ## Local Development Environment
 
@@ -601,9 +608,11 @@ run on `pull_request` at all. Read against the shared action's source rather tha
 | Availability consequence | If `4cloudguru/shared-workflows` removes or breaks `release-pr-closing-keywords`, or this workflow file is removed or renamed, the context stops posting entirely and `main` blocks every pull request here — and, because the workflow is byte-identical, in `azure-pipelines-packer` and `azure-pipelines-release-docs` too. |
 | Preserve on any protection PUT | Yes. `PUT /repos/<owner>/<repo>/branches/main/protection` replaces `required_status_checks.contexts` wholesale, so a payload assembled without reading this table silently drops the context rather than erroring. |
 
-Machine-checked by `scripts/check-docs-claims.js` (`node scripts/check-docs-claims.js`; CI's
-`Check Shared Module Parity` job runs it) — a workflow named here that cannot actually post the
-context fails the build:
+Machine-checked by the shared composite action
+`4cloudguru/shared-workflows/.github/actions/check-docs-claims`, which CI's
+`Check Shared Module Parity` job runs as a SHA-pinned step (locally, against a sibling checkout:
+`node ../shared-workflows/.github/actions/check-docs-claims/check-docs-claims.js .`) — a workflow
+named here that cannot actually post the context fails the build:
 
 <!-- required-checks:begin -->
 | Context | Workflow |
