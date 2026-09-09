@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.16.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.0...v1.16.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* honour skipTlsVerify and rejectUnauthorized only against a provably private destination ([#1149](https://github.com/sethbacon/azure-pipelines-terraform/issues/1149)) ([01f33bb](https://github.com/sethbacon/azure-pipelines-terraform/commit/01f33bb8734094cfcf6a659888a7ce75246680b1))
+* install and hash cosign rather than trusting whatever the agent's PATH resolves ([#1150](https://github.com/sethbacon/azure-pipelines-terraform/issues/1150)) ([357e4b5](https://github.com/sethbacon/azure-pipelines-terraform/commit/357e4b5be3253a59f5ba79551e50e1297103bc19))
+
+
+### Dependencies
+
+* bump the js-yaml override to the patched 4.3.2 ([#1156](https://github.com/sethbacon/azure-pipelines-terraform/issues/1156)) ([583282d](https://github.com/sethbacon/azure-pipelines-terraform/commit/583282d5fb9a3ae2ccb5f409f7d17b6a53af52ae))
+
 ## [1.16.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.15.4...v1.16.0) (2026-09-08)
 
 
