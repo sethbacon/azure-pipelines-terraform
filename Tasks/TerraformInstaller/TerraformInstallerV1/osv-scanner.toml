@@ -14,3 +14,23 @@
 id = "GHSA-w5hq-g745-h8pq"
 ignoreUntil = 2027-02-05
 reason = "uuid via azure-pipelines-tool-lib, no fix upstream (tool-lib pins ^3.3.2); vulnerable v3/v5/v6-with-buffer path unreachable (tool-lib only calls v4); Dependabot alert #42 dismissed as accepted-risk; see SECURITY.md."
+
+# GHSA-vwc7-r8mq-g2x9 (adm-zip, moderate) -- accepted, no safe fix available.
+# Reached transitively through azure-pipelines-task-lib, which pins
+# adm-zip ^0.6.0. The advisory's first_patched_version is none -- latest
+# adm-zip is the vulnerable 0.6.0 itself -- and the upstream fix
+# (cthackers/adm-zip#575) is open as of 2026-09-08. The Node task-lib
+# package never loads adm-zip: zero references in any shipped file
+# (verified across every file in the installed 5.279.0 package) and zero
+# TypeScript references in the upstream source repository -- the
+# dependency belongs to task-lib's PowerShell half, which these tasks do
+# not ship (microsoft/azure-pipelines-task-lib#1202, "Fix adm-zip
+# vulnerability in task-lib", closed 2026-08-26). The only archive
+# extraction any task performs is azure-pipelines-tool-lib's extractZip(),
+# which shells out to PowerShell Expand-Archive on Windows and 'unzip'
+# elsewhere -- not adm-zip. Bounded, not open-ended -- re-evaluate at
+# expiry or when adm-zip > 0.6.0 ships, whichever is first.
+[[IgnoredVulns]]
+id = "GHSA-vwc7-r8mq-g2x9"
+ignoreUntil = 2026-12-31
+reason = "adm-zip via azure-pipelines-task-lib ^0.6.0; no patched version exists (advisory first_patched_version: none; upstream fix cthackers/adm-zip#575 open); the Node task-lib never loads adm-zip (zero references in any shipped file -- it belongs to task-lib's PowerShell half, microsoft/azure-pipelines-task-lib#1202) and tool-lib's extractZip shells out to PowerShell/unzip; re-evaluate at expiry or when adm-zip > 0.6.0 ships, whichever is first"
