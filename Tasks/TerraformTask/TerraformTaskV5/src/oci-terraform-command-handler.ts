@@ -235,6 +235,28 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     /**
+     * The third route to {@link registerOciBackendCacheForCleanup}, beside
+     * `setupBackend()` (init) and `handleProvider()` (plan/apply/destroy/
+     * refresh/import/output/show/custom): `workspace`, `state` and
+     * `forceUnlock` run terraform against an already-`init`-ed working
+     * directory with no provider auth at all, so before this override they
+     * reached neither entry point and the opt-in scrub silently did nothing
+     * there — the gap the `cleanupOCIBackendCache` help text used to admit
+     * (#675, option 3).
+     *
+     * Same gating and the same safety argument as the `handleProvider()`
+     * registration: it fires only on the operator's explicit
+     * `cleanupOCIBackendCache` opt-in (so no default changes), and scrubbing a
+     * cache that turns out not to exist is a no-op via `scrubAndUnlink`'s own
+     * existence check. Not gated on `backendOCIConfigGenerate` for the reason
+     * given there — that input's group is only visible/defaulted for
+     * `command = init`.
+     */
+    protected async onStateTouchingCommand(workingDirectory: string): Promise<void> {
+        this.registerOciBackendCacheForCleanup(workingDirectory);
+    }
+
+    /**
      * Default-secure companion to the opt-in scrub above (#675): whenever this
      * run generated a fresh OCI PAR backend, `terraform init` copies the PAR
      * bearer URL into `<workingDirectory>/.terraform/terraform.tfstate` under

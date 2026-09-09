@@ -163,4 +163,29 @@ describe('workspace/state/test/forceUnlock -- structured single-value inputs sta
             { method: 'arg', value: 'lock id with spaces' },
         ]);
     });
+
+    it('runDestroyPlanForSummary(): -destroy and -out=<path> are discrete .arg() tokens even when the temp directory contains a space (#1031 reopen)', async () => {
+        // A self-hosted agent installed under "C:\Program Files\agent" (or any
+        // operator-set Agent.TempDirectory containing a space) is exactly the
+        // shape of value that broke this call site: it was spliced into
+        // `-destroy -out=${planFilePath}` and handed to toolRunner.line(), which
+        // word-splits on whitespace, fragmenting -out=<path> into two argv
+        // entries the moment the path contains a space.
+        installInputs({ workingDirectory: 'DummyWorkingDirectory' });
+        const handler = new TerraformCommandHandlerAzureRM();
+        stubExecWithTimeout(handler);
+        const planFilePath = 'C:\\Program Files\\agent\\_work\\terraform-destroy-abc123.tfplan';
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- runDestroyPlanForSummary is private
+        await (handler as any).runDestroyPlanForSummary(planFilePath, 'DummyWorkingDirectory');
+
+        assert.deepStrictEqual(calls, [
+            { method: 'arg', value: 'plan' },
+            { method: 'arg', value: '-destroy' },
+            { method: 'arg', value: `-out=${planFilePath}` },
+        ]);
+        // The defect this guards against: a single .line() call carrying both
+        // flags concatenated, which word-splits "Program" and "Files\..." apart.
+        assert.ok(!calls.some(c => c.method === 'line'), 'expected no .line() call -- -destroy/-out= must be discrete .arg() tokens, not word-split additionalArgs');
+    });
 });

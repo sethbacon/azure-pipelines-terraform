@@ -568,6 +568,42 @@ upgraded their runner, not as a second fully-verified execution path.
 
 These settings are documented here in prose, so they are re-verified automatically, not just written down: the `verify-branch-protection` job in `weekly-security.yml` reads `main`'s live branch protection via the GitHub API (needs a token scoped with `administration:read`, minted from the `RELEASE_DISPATCH_APP` installation) and fails the scheduled run (filing an issue) if the required-status-checks strictness, review count/dismiss-stale/code-owner settings, enforce-admins, linear-history, conversation-resolution, or force-push/deletion rules drift from what is written above. It deliberately does not diff the exact list of 29 required-status-check contexts — that list changes with ordinary task additions — only the structural settings.
 
+`main` also requires the context `release-guard/link-regrade`, tracked separately below because
+its producer could not be read off the workflow that posts it without reading the shared action's
+source — the list above is silent on it for that reason, not because it stopped being required.
+
+#### Required status check provenance: `release-guard/link-regrade`
+
+Filed as #1120: this context's `<suite>/<run>` shape looks like a GitHub App check suite, and
+neither of `release-pr-guard.yml`'s two jobs is named `link-regrade` — `re-grade open release PRs
+against the live link graph` doesn't derive it, and the job whose *key* is `link-regrade` doesn't
+run on `pull_request` at all. Read against the shared action's source rather than guessed:
+
+| Field | Value |
+| --- | --- |
+| Workflow file | `.github/workflows/release-pr-guard.yml` |
+| Jobs that post it | `closing-keywords` (display name `Release PR closes only what it completes`) on every `pull_request` (`opened`, `edited`, `synchronize`, `reopened`); `link-regrade` (display name `Re-grade open release PRs against the live link graph`) on `schedule (*/5 * * * *)` and `workflow_dispatch` |
+| Action | `4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@3aae0966a70daa50bcfe741ef07e20e86c814af4` (v1.20.2) |
+| How it posts | Neither job overrides the action's `status-context` input, so both inherit its default — literally `release-guard/link-regrade` in the action's `action.yml` — and post it as a **commit status** (`POST /repos/<repo>/statuses/<head-sha>` with an explicit `context=` field), not a check run. That is why it does not match either job's `name:`: a commit-status context is chosen by the caller at call time and is independent of the job that calls it. The two jobs sharing one context is deliberate — it is what lets the scheduled re-grade overwrite the pull-request-time verdict on the same SHA. |
+| Token | this workflow's own `${{ secrets.GITHUB_TOKEN }}`, scoped `statuses: write` in both jobs' `permissions:` block — not a GitHub App, and not `RELEASE_DISPATCH_APP` or `SUITE_READ_APP_ID` |
+| Availability consequence | If `4cloudguru/shared-workflows` removes or breaks `release-pr-closing-keywords`, or this workflow file is removed or renamed, the context stops posting entirely and `main` blocks every pull request here — and, because the workflow is byte-identical, in `azure-pipelines-packer` and `azure-pipelines-release-docs` too. |
+| Preserve on any protection PUT | Yes. `PUT /repos/<owner>/<repo>/branches/main/protection` replaces `required_status_checks.contexts` wholesale, so a payload assembled without reading this table silently drops the context rather than erroring. |
+
+Machine-checked by `scripts/check-docs-claims.js` (`node scripts/check-docs-claims.js`; CI's
+`Check Shared Module Parity` job runs it) — a workflow named here that cannot actually post the
+context fails the build:
+
+<!-- required-checks:begin -->
+| Context | Workflow |
+| --- | --- |
+| `release-guard/link-regrade` | `.github/workflows/release-pr-guard.yml` |
+<!-- required-checks:end -->
+
+**Should it remain required? Yes.** It is the only re-grade of the closing-keyword class after the
+PR's last push — an issue linked through the Development panel fires no webhook `connected` event,
+so the scheduled job is the only thing that ever looks again before merge. Removing it from required
+checks would leave that window unguarded rather than shrink it.
+
 ### Merge Strategy
 
 - **Squash merge only** — merge commits and rebase merges are disabled

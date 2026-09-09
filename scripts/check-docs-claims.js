@@ -54,6 +54,12 @@
 //      shape this cannot parse is reported as skipped, by name, never passed
 //      (azure-pipelines-terraform#1115).
 //
+//   6. REQUIRED-STATUS-CHECK PROVENANCE. A doc's `<!-- required-checks:begin -->`
+//      table names, per required commit-status/check-run context, the workflow
+//      that produces it -- and that workflow must actually be ABLE to post it
+//      (declares `statuses: write` on some job, or carries a job named exactly
+//      for the context), not merely exist (azure-pipelines-terraform#1120).
+//
 // Usage:  node scripts/check-docs-claims.js [repoRoot] [--json]
 // Exit 0 = every checked claim holds. Exit 1 = drift, listed.
 // ===========================================================================
@@ -714,6 +720,69 @@ function thirdPartyNoticesSections(text) {
       )
     } else {
       fail('third-party-notices', 'THIRD_PARTY_NOTICES.md', 'no package table in any recognised form — the check would pass vacuously')
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 6. Required-status-check provenance -- extends REFERENCED PATHS.
+ *    (azure-pipelines-terraform#1120.) A doc naming a workflow as the
+ *    producer of a required commit-status / check-run CONTEXT is making a
+ *    claim in two parts: the workflow exists (an ordinary path-ref, above),
+ *    and it can actually POST under that context. #1120 found
+ *    `release-guard/link-regrade` required on `main` in all three
+ *    extensions, produced by neither job's `name:` in the workflow that
+ *    posts it -- because it is a commit-status CONTEXT string passed
+ *    explicitly to the Statuses API (the shared closing-keywords action's
+ *    `status-context` input, left at its default), independent of either
+ *    job's display name. So "the workflow exists" is not enough: it must
+ *    also declare `statuses: write` on some job (a commit status, whose
+ *    context is chosen at call time and need not match any job name), or
+ *    carry a job literally named the context (a check run, whose context
+ *    IS the job name). Reported as an ordinary path-ref finding -- the
+ *    claim is still "this doc's reference to this path is trustworthy",
+ *    just a stronger reading of trustworthy than "the file exists".
+ *
+ *      <!-- required-checks:begin -->
+ *      | Context | Workflow |
+ *      | --- | --- |
+ *      | `release-guard/link-regrade` | `.github/workflows/release-pr-guard.yml` |
+ *      <!-- required-checks:end -->
+ * ------------------------------------------------------------------ */
+
+for (const doc of DOCS) {
+  const text = readIfPresent(doc)
+  if (!text) continue
+  const region = /<!--\s*required-checks:begin\s*-->([\s\S]*?)<!--\s*required-checks:end\s*-->/.exec(text)
+  if (!region) continue
+  for (const line of region[1].split('\n')) {
+    if (!line.trimStart().startsWith('|')) continue
+    const cells = line.split('|').slice(1, -1)
+    if (cells.length < 2) continue
+    const context = /`([^`]+)`/.exec(cells[0])
+    const workflowRef = /`([^`]+)`/.exec(cells[1])
+    if (!context || !workflowRef) continue // header row or the '| --- | --- |' separator
+    enumerated.pathRefs++
+    const workflowPath = workflowRef[1]
+    const workflow = readIfPresent(workflowPath)
+    if (!workflow) {
+      fail('path-ref', doc, `documents "${context[1]}" as produced by ${workflowPath}, which does not exist`)
+      continue
+    }
+    const runnable = workflow
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n')
+    const canPostCommitStatus = /^\s*statuses:\s*write\s*$/m.test(runnable)
+    const jobNamedForContext = workflowJobNames(workflow).includes(context[1])
+    if (!canPostCommitStatus && !jobNamedForContext) {
+      fail(
+        'path-ref',
+        doc,
+        `documents "${context[1]}" as produced by ${workflowPath}, but that workflow neither declares ` +
+          `\`statuses: write\` on any job (to post a commit status under an arbitrary context) nor names a ` +
+          `job "${context[1]}" (to report a check run under it) -- it cannot post this context`,
+      )
     }
   }
 }
