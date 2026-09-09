@@ -185,6 +185,14 @@ const SITE_ROWS: SiteRow[] = [
         why: 'same tool-lib transport as the HashiCorp path',
     },
     {
+        // The managed cosign install (#1027/#1118). The verifier's own binary is
+        // fetched the same way the tools it verifies are, so it inherits the same
+        // agent proxy configuration rather than opening a second, unproxied path.
+        file: 'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts',
+        fn: 'resolveManagedCosign', sink: 'downloadTool', verdict: 'EXEMPT-TOOL-LIB',
+        why: 'same tool-lib transport as the OpenTofu path it exists to verify',
+    },
+    {
         file: 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts',
         fn: 'downloadTo', sink: 'downloadTool', verdict: 'EXEMPT-TOOL-LIB',
         why: 'same tool-lib transport',

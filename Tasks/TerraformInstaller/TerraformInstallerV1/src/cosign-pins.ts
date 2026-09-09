@@ -57,15 +57,22 @@ export const COSIGN_PIN_MAX_DAYS_BEHIND = 120;
  * entry and resolveCosignPin() returns undefined for them: the caller must fail
  * closed or be told to opt into `cosignSource: ambient`, never silently fall back
  * to PATH.
+ *
+ * A Map, not an object literal, because it is read by a COMPUTED key -- the #884
+ * prototype-chain class. An object literal indexed by cosignAssetName()'s result
+ * would resolve an inherited Object.prototype member instead of missing, and the
+ * `sha256 ? ... : undefined` not-found branch below would never fire. Today's key
+ * charset makes that unreachable, but the structural immunity costs nothing and
+ * is what the rest of this repository's lookup tables already use.
  */
-const COSIGN_ASSET_SHA256: Readonly<Record<string, string>> = Object.freeze({
-    'cosign-darwin-amd64': '2347488e5d5b25336644024dfeca5601b190e91197a71a917bda44744aff106c',
-    'cosign-darwin-arm64': '5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76',
-    'cosign-linux-amd64': '4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71',
-    'cosign-linux-arm': '3275e61b43a45aa56a6242b49475d8a01874a07469c08fc32d027ba554996e4c',
-    'cosign-linux-arm64': 'c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a',
-    'cosign-windows-amd64.exe': '9fe59be0eca1271873ce019061335eb1ac419b7059202e797828467ddabe33be',
-});
+const COSIGN_ASSET_SHA256: ReadonlyMap<string, string> = new Map([
+    ['cosign-darwin-amd64', '2347488e5d5b25336644024dfeca5601b190e91197a71a917bda44744aff106c'],
+    ['cosign-darwin-arm64', '5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76'],
+    ['cosign-linux-amd64', '4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71'],
+    ['cosign-linux-arm', '3275e61b43a45aa56a6242b49475d8a01874a07469c08fc32d027ba554996e4c'],
+    ['cosign-linux-arm64', 'c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a'],
+    ['cosign-windows-amd64.exe', '9fe59be0eca1271873ce019061335eb1ac419b7059202e797828467ddabe33be'],
+]);
 
 export interface CosignPin {
     /** The release-asset file name, which is also the cached executable's name. */
@@ -109,11 +116,11 @@ export function cosignAssetName(platform: string, nodeArch: string): string | un
 export function resolveCosignPin(platform: string, nodeArch: string): CosignPin | undefined {
     const assetName = cosignAssetName(platform, nodeArch);
     if (!assetName) return undefined;
-    const sha256 = COSIGN_ASSET_SHA256[assetName];
+    const sha256 = COSIGN_ASSET_SHA256.get(assetName);
     return sha256 ? { assetName, sha256 } : undefined;
 }
 
 /** Every (assetName, sha256) pair in the pinned table -- the freshness/table tests read this. */
 export function cosignPinnedAssets(): ReadonlyArray<CosignPin> {
-    return Object.entries(COSIGN_ASSET_SHA256).map(([assetName, sha256]) => ({ assetName, sha256 }));
+    return [...COSIGN_ASSET_SHA256].map(([assetName, sha256]) => ({ assetName, sha256 }));
 }
