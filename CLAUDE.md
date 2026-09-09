@@ -518,18 +518,30 @@ Verified tooling snapshot (periodically re-verified rather than tracked to an ex
 
 CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). Node 20 is EOL as of April 2026.
 
-**Node 20 is load-only, not a behavioral gate (#720):** every task ships a `Node20_1` fallback
-handler (see above), and each task's CI leg has a "Set up Node 20 for Node20_1 handler smoke
-test" step that runs the already-compiled `src/index.js` under Node 20 with no ADO inputs
-supplied — this proves the compiled module graph parses and loads under Node 20 (a real,
-useful check: a Node-20-incompatible dependency or syntax construct would fail it), but the
-task's own try/catch converts the resulting "input required" error into a caught failure
-before any real command, credential, or verification logic executes. The full mocha/L0
-assertion suite only ever runs under Node 24 — **Node 24 is the sole behavioral gate**;
-Node 20 is deliberately load-only. This is an intentional scope decision (not an oversight):
-running the full test suite twice per task would roughly double CI time for every task, and
-Node 20 is already EOL, so the fallback handler exists purely for agents that haven't yet
-upgraded their runner, not as a second fully-verified execution path.
+**Node 20 is load-only for most tasks, but a real behavioral gate for verifying ones (#654,
+#720):** every task ships a `Node20_1` fallback handler (see above), and each task's CI leg has a
+"Set up Node 20 for Node20_1 handler smoke test" step that runs the already-compiled
+`src/index.js` under Node 20 with no ADO inputs supplied — this proves the compiled module graph
+parses and loads under Node 20 (a real, useful check: a Node-20-incompatible dependency or syntax
+construct would fail it), but the task's own try/catch converts the resulting "input required"
+error into a caught failure before any real command, credential, or verification logic executes.
+For most tasks the full mocha/L0 assertion suite only ever runs under Node 24 — Node 24 is the
+sole behavioral gate for them, and Node 20 is deliberately load-only. This is an intentional scope
+decision (not an oversight): running the full test suite twice per task would roughly double CI
+time for every task, and Node 20 is already EOL, so the fallback handler exists purely for agents
+that haven't yet upgraded their runner, not as a second fully-verified execution path.
+
+**The exception is a task whose security value IS artifact verification** — TerraformInstallerV1
+(GPG signature + cosign), PolicyAgentInstallerV1 (GPG signature for Sentinel, sha256 for OPA), and
+TerraformDocsInstallerV1 (sha256) — where the load-only smoke check would never actually exercise
+the GPG/cosign/sha256 verification logic, HTTP client, or egress-allowlist code, since no ADO
+inputs means the try/catch short-circuits before any of that runs. Those three jobs additionally
+run the real, input-populated `npm test` suite under Node 20 (mirroring TerraformTaskV5's
+identical `#720` step), closing the behavioral-parity gap for the tasks whose whole job is
+supply-chain trust. `scripts/check-enforced-disciplines.js`'s `verification-real-tests-under-node20`
+check enforces this split: a verifying task (matched by shipping `gpg-verifier.ts`,
+`cosign-verifier.ts`, `tool-integrity.ts`, or a `verifySha256` function) must have a real `npm test`
+step after its Node 20 setup; a non-verifying task stays load-only.
 
 ## Supported Providers
 
@@ -567,6 +579,42 @@ upgraded their runner, not as a second fully-verified execution path.
 - Branch deletion: blocked
 
 These settings are documented here in prose, so they are re-verified automatically, not just written down: the `verify-branch-protection` job in `weekly-security.yml` reads `main`'s live branch protection via the GitHub API (needs a token scoped with `administration:read`, minted from the `RELEASE_DISPATCH_APP` installation) and fails the scheduled run (filing an issue) if the required-status-checks strictness, review count/dismiss-stale/code-owner settings, enforce-admins, linear-history, conversation-resolution, or force-push/deletion rules drift from what is written above. It deliberately does not diff the exact list of 29 required-status-check contexts — that list changes with ordinary task additions — only the structural settings.
+
+`main` also requires the context `release-guard/link-regrade`, tracked separately below because
+its producer could not be read off the workflow that posts it without reading the shared action's
+source — the list above is silent on it for that reason, not because it stopped being required.
+
+#### Required status check provenance: `release-guard/link-regrade`
+
+Filed as #1120: this context's `<suite>/<run>` shape looks like a GitHub App check suite, and
+neither of `release-pr-guard.yml`'s two jobs is named `link-regrade` — `re-grade open release PRs
+against the live link graph` doesn't derive it, and the job whose *key* is `link-regrade` doesn't
+run on `pull_request` at all. Read against the shared action's source rather than guessed:
+
+| Field | Value |
+| --- | --- |
+| Workflow file | `.github/workflows/release-pr-guard.yml` |
+| Jobs that post it | `closing-keywords` (display name `Release PR closes only what it completes`) on every `pull_request` (`opened`, `edited`, `synchronize`, `reopened`); `link-regrade` (display name `Re-grade open release PRs against the live link graph`) on `schedule (*/5 * * * *)` and `workflow_dispatch` |
+| Action | `4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@3aae0966a70daa50bcfe741ef07e20e86c814af4` (v1.20.2) |
+| How it posts | Neither job overrides the action's `status-context` input, so both inherit its default — literally `release-guard/link-regrade` in the action's `action.yml` — and post it as a **commit status** (`POST /repos/<repo>/statuses/<head-sha>` with an explicit `context=` field), not a check run. That is why it does not match either job's `name:`: a commit-status context is chosen by the caller at call time and is independent of the job that calls it. The two jobs sharing one context is deliberate — it is what lets the scheduled re-grade overwrite the pull-request-time verdict on the same SHA. |
+| Token | this workflow's own `${{ secrets.GITHUB_TOKEN }}`, scoped `statuses: write` in both jobs' `permissions:` block — not a GitHub App, and not `RELEASE_DISPATCH_APP` or `SUITE_READ_APP_ID` |
+| Availability consequence | If `4cloudguru/shared-workflows` removes or breaks `release-pr-closing-keywords`, or this workflow file is removed or renamed, the context stops posting entirely and `main` blocks every pull request here — and, because the workflow is byte-identical, in `azure-pipelines-packer` and `azure-pipelines-release-docs` too. |
+| Preserve on any protection PUT | Yes. `PUT /repos/<owner>/<repo>/branches/main/protection` replaces `required_status_checks.contexts` wholesale, so a payload assembled without reading this table silently drops the context rather than erroring. |
+
+Machine-checked by `scripts/check-docs-claims.js` (`node scripts/check-docs-claims.js`; CI's
+`Check Shared Module Parity` job runs it) — a workflow named here that cannot actually post the
+context fails the build:
+
+<!-- required-checks:begin -->
+| Context | Workflow |
+| --- | --- |
+| `release-guard/link-regrade` | `.github/workflows/release-pr-guard.yml` |
+<!-- required-checks:end -->
+
+**Should it remain required? Yes.** It is the only re-grade of the closing-keyword class after the
+PR's last push — an issue linked through the Development panel fires no webhook `connected` event,
+so the scheduled job is the only thing that ever looks again before merge. Removing it from required
+checks would leave that window unguarded rather than shrink it.
 
 ### Merge Strategy
 

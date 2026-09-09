@@ -115,7 +115,20 @@
             "defaultValue": "true",
             "required": false,
             "visibleRule": "binary = tofu",
-            "helpMarkDown": "When enabled (default), fail the install if cosign is not available on the agent or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. Install cosign on the agent (e.g. sigstore/cosign-installer) to satisfy this. Set to false only to fall back to checksum-only verification on agents without cosign."
+            "helpMarkDown": "When enabled (default), fail the install if cosign cannot be obtained or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. With the default cosignSource (managed) the task installs its own pinned, hash-verified cosign, so no agent preparation is needed. Set to false only to fall back to checksum-only verification."
+        },
+        {
+            "name": "cosignSource",
+            "type": "pickList",
+            "label": "cosign source",
+            "defaultValue": "managed",
+            "required": false,
+            "visibleRule": "binary = tofu",
+            "options": {
+                "managed": "Managed (task downloads and hash-verifies a pinned cosign)",
+                "ambient": "Ambient (use the cosign already on the agent's PATH)"
+            },
+            "helpMarkDown": "Where the cosign binary used to verify OpenTofu's SHA256SUMS comes from. **managed** (default) downloads the pinned sigstore/cosign release for this agent's platform, verifies it against a SHA256 shipped in the task, caches it in the agent tool cache, and runs only that copy -- the agent's PATH is never consulted. **ambient** uses whatever `cosign` resolves to on PATH, which is not itself integrity-verified unless you also set cosignSha256; choose it for image-baked or air-gapped agents that provision cosign themselves. A managed download that fails while requireCosignVerification is true fails the task -- it never falls back to PATH."
         },
         {
             "name": "cosignSha256",
@@ -124,7 +137,7 @@
             "defaultValue": "",
             "required": false,
             "visibleRule": "binary = tofu",
-            "helpMarkDown": "Optional. cosign is discovered via a PATH lookup and is never itself integrity-verified by default, so a prior step that prepends a directory to PATH could shadow it with a stub that always reports success. If you provision cosign from a known, integrity-verified source, set this to its exact SHA256 to pin and verify the resolved binary before it is trusted -- a mismatch fails the install. Leave empty (default) to keep the existing ambient-PATH trust behavior unchanged."
+            "helpMarkDown": "Optional, and honoured in both cosignSource modes. Under `ambient`, cosign is discovered via a PATH lookup and is never itself integrity-verified, so a prior step that prepends a directory to PATH could shadow it with a stub that always reports success -- set this to the exact SHA256 of the cosign you provisioned and a mismatch fails the install. Under `managed` the task already verifies its own download against a shipped pin, so this is an additional operator-owned expectation rather than the only one. Leave empty (default) unless you are pinning a cosign you provisioned yourself."
         },
         {
             "name": "requireChecksum",

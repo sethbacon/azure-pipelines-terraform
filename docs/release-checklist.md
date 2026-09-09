@@ -34,6 +34,8 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] `PipelineTerraformInstaller@1` with `binary: terraform`, `terraformVersion: latest` — installs and reports version
 - [ ] `PipelineTerraformInstaller@1` with `binary: tofu`, `terraformVersion: latest` — installs and reports version
+- [ ] …and on an agent with **no cosign installed**: the same step still succeeds, and the log line reads `Using cosign at <agent tool cache path> (SHA256 …, source managed)` — the task installed and hash-verified its own verifier rather than trusting one on `PATH` (see SECURITY.md, "The cosign verifier is installed and hashed by the task")
+- [ ] `PipelineTerraformInstaller@1` with `binary: tofu` and `cosignSource: ambient` on an agent that has cosign — still succeeds, logs `source ambient`, and emits the unpinned-verifier warning
 - [ ] `PipelineTerraformInstaller@1` with a pinned version (e.g. `1.14.8`) — installs correct version
 
 ## 4b. Provider mirror task smoke test

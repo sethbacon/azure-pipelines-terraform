@@ -359,6 +359,15 @@ const SITE_ROWS: SiteRow[] = [
         fn: "downloadZipFromOpenTofu", sink: "fetchText", verdict: "EXEMPT-CONSTANT-HOST",
         why: "compile-time constant host (releases.hashicorp.com / github.com / api.github.com / checkpoint-api.hashicorp.com) \u2014 nothing at run time can influence it",
     },
+    {
+        // The managed cosign install (#1027/#1118). The pinned release tag and the
+        // asset name both come from the shipped cosign-pins.ts table, so no task
+        // input reaches this URL at all -- the destination of the VERIFIER'S own
+        // download is the one that must not be operator-steerable.
+        file: "Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts",
+        fn: "resolveManagedCosign", sink: "downloadTool", verdict: "EXEMPT-CONSTANT-HOST",
+        why: "compile-time constant host (github.com) \u2014 the sigstore/cosign release asset for the pinned tag; nothing at run time can influence it",
+    },
 ];
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');

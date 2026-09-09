@@ -50,6 +50,11 @@ function makeCompliantRepo(name) {
         execution: { Node24: { target: 'src/index.js' }, Node20_1: { target: 'src/index.js' } },
     }, null, 2));
     write(root, `${TASK}/src/index.ts`, 'export const demo = 1;\n');
+    // Makes DemoTaskV1 a "verifying" task for discipline 6 below (matched by
+    // filename, same as the real gpg-verifier.ts/cosign-verifier.ts/
+    // tool-integrity.ts modules) -- the compliant fixture must exercise that
+    // discipline too, not just be exempt from it.
+    write(root, `${TASK}/src/tool-integrity.ts`, 'export async function verifySha256(): Promise<void> {}\n');
     write(root, `${TASK}/.nycrc.json`, JSON.stringify({ exclude: ['src/**/*.d.ts'] }, null, 2));
     write(root, `${TASK}/Tests/EntryPointL0.ts`, "import '../src/index';\n");
 
@@ -74,6 +79,7 @@ jobs:
         with:
           node-version: "20"
       - run: node src/index.js
+      - run: npm test
 `);
     write(root, '.github/workflows/pr-checks.yml', `---
 name: PR Checks
@@ -161,6 +167,19 @@ const CASES = [
         // "test-workflow" rather than "unit-test.yml": the gate reads whichever
         // of unit-test.yml / ci.yml a repo keeps its task tests in.
         expect: 'declares the Node20_1 handler but no test-workflow job',
+    },
+    {
+        name: 'verification-real-tests-under-node20',
+        why: 'a verifying task (ships tool-integrity.ts) whose Node 20 leg is load-only smoke, never the real suite (#654)',
+        // Removes ONLY the trailing real-test step, leaving the Node 20 setup
+        // and the load-only smoke check (discipline 3's own concern) intact --
+        // this must fire on discipline 6 specifically, not be indistinguishable
+        // from the execution-handler-exercised mutation above.
+        mutate: (root) => {
+            const p = path.join(root, '.github/workflows/unit-test.yml');
+            fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('      - run: node src/index.js\n      - run: npm test\n', '      - run: node src/index.js\n'));
+        },
+        expect: 'only the load-only smoke check (if any) exercises it',
     },
     {
         name: 'minor-bump-enforced/script',

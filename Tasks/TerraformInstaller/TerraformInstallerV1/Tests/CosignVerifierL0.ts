@@ -13,6 +13,14 @@ import * as httpClient from '../src/http-client';
 // the mocha parent process and stub the shared task-lib / http-client singletons
 // in place; the MockTestRunner integration tests in L0.ts run in child processes
 // and are unaffected. afterEach restores every stub.
+//
+// Every call below passes cosignSource explicitly as 'ambient' (#1118). These
+// suites are about the PATH-resolved verifier: its fail-closed behaviour on a
+// missing binary, the operator pin, and the argv it builds. The SHIPPED DEFAULT is
+// now 'managed', and which binary each configuration actually executes is the
+// subject of the separate class test in ManagedVerifierResolutionL0.ts — passing
+// the argument here keeps that distinction visible instead of letting these rows
+// quietly change meaning with the default.
 
 describe('cosign-verifier: OpenTofu certificate identity regexp (version-bound, #611; workflow-file-bound, #697)', () => {
     const VERSION = '1.11.6';
@@ -139,7 +147,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         stubLogging();
         t.which = () => { throw new Error('cosign not found'); };
         await assert.rejects(
-            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true),
+            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient'),
             (err: unknown) => {
                 // Must be a VerificationFailure, not a bare Error -- so the cache-hit
                 // re-verification path's isVerificationFailure(err) check fails
@@ -155,7 +163,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
     it('warns and returns when cosign is missing and verification is not required', async () => {
         stubLogging();
         t.which = () => { throw new Error('cosign not found'); };
-        await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, false);
+        await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, false, undefined, 'ambient');
         assert.ok(
             warnings.some((w) => /without signature verification/.test(w)),
             'expected a downgrade warning',
@@ -169,7 +177,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         // Reachable release withholding required signing material must fail closed as a
         // VerificationFailure (so the cache-hit re-verify path re-throws), not degrade.
         await assert.rejects(
-            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true),
+            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient'),
             (err: unknown) => {
                 assert.ok(isVerificationFailure(err), 'expected a VerificationFailure');
                 assert.match((err as Error).message, /unavailable and verification is required/);
@@ -191,7 +199,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             exec: async () => 0,
         });
 
-        await verifyCosignSignature('sums-content', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+        await verifyCosignSignature('sums-content', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
 
         const idIdx = args.indexOf('--certificate-identity-regexp');
         assert.ok(idIdx >= 0, 'the --certificate-identity-regexp flag should be passed');
@@ -218,7 +226,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         const origLog = console.log;
         console.log = (m?: unknown) => { logs.push(String(m)); };
         try {
-            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
         } finally {
             console.log = origLog;
         }
@@ -237,7 +245,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             exec: async () => 1,
         });
         await assert.rejects(
-            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true),
+            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient'),
             (err: unknown) => {
                 assert.ok(isVerificationFailure(err), 'a cosign verification failure must be typed');
                 assert.match((err as Error).message, /verification failed/i);
@@ -251,7 +259,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         t.which = () => '/usr/bin/cosign';
         hc.fetchBufferAllow404 = async () => { throw new Error('HTTP 503'); };
         await assert.rejects(
-            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, false),
+            verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, false, undefined, 'ambient'),
             /fetch failed for OpenTofu verification/,
         );
     });
@@ -284,7 +292,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 exec: async () => 0,
             });
 
-            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, expectedHash);
+            await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, expectedHash, 'ambient');
             assert.ok(
                 !warnings.some((w) => /cosignSha256 is not set/.test(w)),
                 'must not warn about a missing pin when one is actually set',
@@ -307,7 +315,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
 
             const wrongHash = 'a'.repeat(64);
             await assert.rejects(
-                verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, wrongHash),
+                verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, wrongHash, 'ambient'),
                 (err: unknown) => {
                     assert.ok(isVerificationFailure(err), 'a cosign hash mismatch must be a typed VerificationFailure (fail closed)');
                     assert.match((err as Error).message, /does not match the pinned cosignSha256/);
@@ -336,7 +344,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
             const origLog = console.log;
             console.log = (m?: unknown) => { logs.push(String(m)); };
             try {
-                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
             } finally {
                 console.log = origLog;
             }
@@ -348,13 +356,16 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 logs.some((l) => l.includes(tmpCosignPath) && l.includes(actualHash)),
                 `the resolved path AND its actual SHA256 must be logged unconditionally, even with no pin set. logs: ${logs.join('\n')}`,
             );
-            // #1027, still-confirms: on the SHIPPED DEFAULT configuration
-            // (requireCosignVerification=true, cosignSha256 empty), a green run
-            // must show a real ##[warning] annotation, not just a console.log line
-            // -- otherwise nothing in the build log distinguishes this PATH-trusted,
+            // #1027: on an UNPINNED AMBIENT configuration (cosignSource=ambient,
+            // requireCosignVerification=true, cosignSha256 empty), a green run must
+            // show a real ##[warning] annotation, not just a console.log line --
+            // otherwise nothing in the build log distinguishes this PATH-trusted,
             // unpinned install from a fully pinned, verified one. The adjacent
             // "cosign not found" branch already uses tasks.warning for the same
-            // reason; this must match it.
+            // reason; this must match it. #1118 made that configuration an explicit
+            // opt-out rather than the shipped default, so this warning now marks an
+            // operator's own choice instead of firing on every OpenTofu install --
+            // ManagedVerifierResolutionL0 asserts the managed default does NOT warn.
             assert.ok(
                 warnings.some((w) => /cosignSha256 is not set/.test(w)),
                 'must annotate the unpinned-cosign disclosure as a real warning, not only log it. warnings: ' + warnings,
@@ -390,7 +401,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                     exec: async () => 0,
                 });
 
-                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
 
                 const underScratch = args.filter((a) => a.startsWith(scratchDir));
                 assert.strictEqual(underScratch.length, 3, `expected the sha256sums/.sig/.pem paths under Agent.TempDirectory; got args: ${args.join(', ')}`);
@@ -422,7 +433,7 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
                 });
                 hc.fetchBufferAllow404 = async () => new Uint8Array([1]);
 
-                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true);
+                await verifyCosignSignature('sums', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
 
                 const used = args.filter((a) => a.startsWith(scratchDir));
                 assert.strictEqual(used.length, 3, `expected 3 verification-input paths; got args: ${args.join(', ')}`);
@@ -489,7 +500,7 @@ describe('cosign-verifier: real cosign invocation (defined only when cosign is a
                     ? new TextEncoder().encode('-----BEGIN CERTIFICATE-----\nbm90LWEtcmVhbC1jZXJ0\n-----END CERTIFICATE-----\n')
                     : new Uint8Array([0x00, 0x01, 0x02, 0x03]);
             await assert.rejects(
-                verifyCosignSignature('sums-content', 'https://x.example/SHA256SUMS.sig', 'https://x.example/SHA256SUMS.pem', VERSION, true),
+                verifyCosignSignature('sums-content', 'https://x.example/SHA256SUMS.sig', 'https://x.example/SHA256SUMS.pem', VERSION, true, undefined, 'ambient'),
                 (err: unknown) => {
                     assert.ok(isVerificationFailure(err), 'a real cosign non-zero exit must map to a typed VerificationFailure');
                     return true;
