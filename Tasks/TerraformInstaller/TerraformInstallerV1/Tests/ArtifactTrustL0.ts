@@ -41,6 +41,11 @@ const TD = 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/terraform-
 // beside the hashing primitives they are built on (#998), one per task's own
 // src/ directory (kept byte-identical, guarded by check-shared-modules.js).
 const TF_TI = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/tool-integrity.ts';
+// The VERIFIER itself is now an installed, verified artifact (#1027/#1118), so it
+// is a trust site in its own right: the managed cosign is downloaded, hashed
+// against the shipped pin, discarded on a mismatch, and cached with an integrity
+// marker exactly like the tools it goes on to verify.
+const TF_COS = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts';
 const PA_TI = 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/tool-integrity.ts';
 const TD_TI = 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/tool-integrity.ts';
 
@@ -72,6 +77,17 @@ const SITE_ROWS: SiteRow[] = [
     { file: PA, fn: 'verifyMirrorChecksum', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TD, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TD, fn: 'verifyChecksumOrSkip', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: TF_COS, fn: 'resolveManagedCosign', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+
+    // ---------------- TerraformInstallerV1: the cosign VERIFIER itself (#1118) -----
+    // OpenTofu's authenticity anchor is an external binary, so that binary is an
+    // artifact this task installs and must therefore verify like any other. These
+    // four rows are the whole point of the managed default: acquire it, hash it
+    // against the shipped pin, delete it on a mismatch, and never admit a cache
+    // entry that does not match.
+    { file: TF_COS, fn: 'resolveManagedCosign', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
+    { file: TF_COS, fn: 'resolveManagedCosign', kind: 'ACQUIRE', verdict: 'VERIFIED' },
+    { file: TF_COS, fn: 'resolveManagedCosign', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
 
     // ---------------- TerraformInstallerV1: terraform (GPG) + OpenTofu (cosign) ----
     { file: TF, fn: 'downloadTerraform', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },

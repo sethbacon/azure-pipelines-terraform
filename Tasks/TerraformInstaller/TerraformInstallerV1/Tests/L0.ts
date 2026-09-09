@@ -5,6 +5,13 @@ import * as path from 'path';
 // Direct unit tests for the cosign verifier (version-bound certificate-identity +
 // fail-closed behavior). Registered alongside the integration suite below.
 import './CosignVerifierL0';
+// The shipped sigstore/cosign pin table the managed verifier install is anchored
+// to (#1027/#1118): asset names, digest shape, and the platforms that have no pin.
+import './CosignPinsL0';
+// Table-driven class test for the "a verification control is satisfiable without
+// verifying" defect class (#1027/#1118): which cosign binary each configuration
+// would actually execute, with a real stub planted on PATH.
+import './ManagedVerifierResolutionL0';
 // Direct unit tests for the GPG signature gate exercising the REAL gpg-verifier
 // (real openpgp signatures, wrong-key rejection, HashiCorp trust-root canary) — #497.
 import './GpgVerifierL0';

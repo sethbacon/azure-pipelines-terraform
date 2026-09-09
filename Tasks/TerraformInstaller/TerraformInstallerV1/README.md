@@ -44,7 +44,30 @@ Note: the marker sits next to the executable it protects; it defends against cor
 
 ### cosign for OpenTofu signature verification
 
-OpenTofu downloads are verified with [cosign](https://github.com/sigstore/cosign) (`requireCosignVerification`, default `true`). The task resolves the `cosign` binary from the agent's `PATH` and logs the resolved path, so a shadowed or unexpected copy is auditable from the build log. Install cosign on the agent from a trusted, pinned source — for example, the official sigstore release channel or the [sigstore/cosign-installer](https://github.com/sigstore/cosign-installer) action pinned to a full commit SHA (as this repository's weekly canary does) — since the task cannot verify the integrity of the verifier itself.
+OpenTofu downloads are verified with [cosign](https://github.com/sigstore/cosign) (`requireCosignVerification`, default `true`). Because cosign is OpenTofu's *only* authenticity anchor here, the task treats the verifier as an artifact it must verify like any other.
+
+**`cosignSource: managed` (default).** The task downloads the pinned sigstore/cosign release asset for the agent's platform from `github.com`, checks it against a SHA256 shipped inside the task (`src/cosign-pins.ts`), caches it in the agent tool cache with an integrity marker, and runs only that copy. The agent's `PATH` is never consulted, so a step or a concurrent job that can write a `PATH` directory cannot shadow `cosign` with a stub that exits 0. A digest mismatch deletes the download and fails the task; a download failure while `requireCosignVerification` is `true` fails the task as well — it never falls back to an unverified binary. No agent preparation is required, and nothing needs to be installed on the image.
+
+**`cosignSource: ambient`.** The historical behaviour, kept for image-baked and air-gapped agents that provision cosign themselves: the task resolves `cosign` from `PATH`. That binary is not integrity-verified by anything, so the task emits a build warning on every unpinned run. If you use this mode, install cosign from a trusted, pinned source — for example the [sigstore/cosign-installer](https://github.com/sigstore/cosign-installer) action pinned to a full commit SHA (as this repository's weekly canary does) — and set `cosignSha256` to that binary's exact digest so a substitution fails the install.
+
+In both modes the resolved path and the binary's actual SHA256 are logged, so exactly which verifier was trusted is auditable after the fact.
+
+The pin is not fire-and-forget: the `cosign pin freshness` job in `.github/workflows/weekly-security.yml` fails weekly once the pinned release falls more than two minor releases or 120 days behind current, and independently re-fetches the pinned release's `cosign_checksums.txt` to confirm every shipped digest still matches upstream.
+
+### Outbound network destinations
+
+With the default settings the installer task reaches only these hosts (an air-gapped or proxy-restricted agent needs them allowed, or needs the corresponding feature turned off):
+
+| Host | When | Why |
+| ---- | ---- | --- |
+| `releases.hashicorp.com` | `binary=terraform`, `downloadSource=hashicorp` | Terraform release archive, `SHA256SUMS` and its GPG `.sig` |
+| `checkpoint-api.hashicorp.com` | `binary=terraform` and `terraformVersion=latest` | `latest` version resolution |
+| `github.com` | `binary=tofu` | OpenTofu release archive, `SHA256SUMS`, `.sig` and `.pem` — **and the pinned `sigstore/cosign` release asset when `cosignSource=managed`** |
+| `api.github.com` | `binary=tofu` and `terraformVersion=latest` | `latest` version resolution |
+| `objects.githubusercontent.com` | any `github.com` download | GitHub's release-asset CDN, which `github.com` redirects to |
+| the host you configure | `downloadSource=registry` / `mirror` | your registry or mirror (`registryAllowedHosts` / `mirrorAllowedHosts` constrain it) |
+
+Setting `cosignSource: ambient` removes the cosign asset download; it does not remove `github.com`, which the OpenTofu release itself comes from.
 
 ### Output Variables
 

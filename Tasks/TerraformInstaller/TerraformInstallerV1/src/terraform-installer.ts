@@ -8,7 +8,7 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
 import { getBoolInputDefaultTrue, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { verifyGpgSignature } from './gpg-verifier';
-import { verifyCosignSignature } from './cosign-verifier';
+import { CosignSource, verifyCosignSignature } from './cosign-verifier';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, assertPlainUrlBase, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
 import { getPlatformString, hashFile, verifySha256, writeCacheIntegrityMarker, verifyCachedTool } from './tool-integrity';
@@ -789,9 +789,19 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     // against an operator-supplied hash before trusting it, closing the ambient
     // PATH-lookup trust gap. Unset (default), behavior is unchanged.
     const cosignSha256 = tasks.getInput("cosignSha256", false);
+    // #1118: 'managed' (the default, and what an agent that does not materialize
+    // task.json defaults falls back to here) makes the task install and hash its own
+    // pinned cosign; 'ambient' is the explicit opt-out that keeps the historical
+    // PATH lookup for image-baked agents. Any other value is rejected rather than
+    // silently treated as one of the two -- a typo must not select the weaker mode.
+    const cosignSourceInput = (tasks.getInput("cosignSource", false) || 'managed').trim();
+    if (cosignSourceInput !== 'managed' && cosignSourceInput !== 'ambient') {
+        throw new Error(`cosignSource must be 'managed' or 'ambient', but was '${cosignSourceInput}'.`);
+    }
+    const cosignSource: CosignSource = cosignSourceInput;
     // As on the hashicorp path: a failed cosign or checksum check discards the zip (#204).
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined);
+        await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined, cosignSource);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
     }, discardLog);
 
