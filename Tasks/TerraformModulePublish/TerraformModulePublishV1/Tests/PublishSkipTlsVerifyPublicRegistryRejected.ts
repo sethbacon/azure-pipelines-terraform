@@ -1,5 +1,6 @@
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { stubDnsZone, TLS_OPT_OUT_ZONE } from './stub-dns';
 
 // #588: skipTlsVerify against a known-public Terraform registry host
 // (*.terraform.io) must be rejected outright -- there is never a legitimate
@@ -9,6 +10,10 @@ import path = require('path');
 // the rejection must happen before either is ever invoked.
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
+
+// The #588 guard classifies a NAME by the address it resolves to, so this
+// fixture pins a zone instead of depending on the runner's network.
+stubDnsZone(TLS_OPT_OUT_ZONE);
 
 tr.setInput('registryType', 'private');
 tr.setInput('namespace', 'aceo');

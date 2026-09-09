@@ -1,6 +1,6 @@
 import type * as TaskLib from 'azure-pipelines-task-lib/task';
 import { createHttpsClient, HttpResponse, HttpPreflightError, DEFAULT_REQUEST_TIMEOUT_MS } from './https-client';
-import { retryAsync, isPrivateOrLinkLocalHost, resolvesToPrivateOrLinkLocalAddress, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
+import { retryAsync, assertTlsOptOutDestinationIsPrivate, TlsOptOutDestinationError } from '@4cloudguru/pipeline-task-core';
 
 // The HTTPS transport (createHttpsClient, truncateBody, types) is shared
 // byte-for-byte with TerraformModulePublish via ./https-client and guarded by
@@ -21,15 +21,18 @@ export function resolveRejectUnauthorized(raw: string | undefined): boolean {
 
 /**
  * rejectUnauthorized=false only makes sense for an internal callback endpoint
- * fronted by a private CA the agent doesn't trust -- there is never a
- * legitimate reason to disable TLS verification against a genuinely public
- * host, which is exactly the on-path MITM scenario #588 flags (this mirrors
- * the equivalent guard TerraformModulePublishV1 already has for registryUrl).
- * Unlike registryUrl there (a single well-known public host, terraform.io,
- * cheap to denylist), callbackUrl is fully operator-defined with no canonical
- * public equivalent, so this checks the actual resolved address instead:
- * fails closed on a URL that doesn't parse, and on a host that does NOT
- * resolve to a private/link-local/reserved address.
+ * fronted by a private CA the agent doesn't trust, so the destination must be
+ * PROVABLY private before the switch is honoured -- the #588 class, shared
+ * with TerraformModulePublishV1's registryUrl.
+ *
+ * The decision lives in @4cloudguru/pipeline-task-core
+ * (assertTlsOptOutDestinationIsPrivate) rather than here: this task and
+ * ModulePublish had two hand-written spellings of the same control, and the
+ * weaker of the two was bypassed by a rooted FQDN because neither normalised
+ * the hostname. The shared guard lowercases and strips ONE trailing dot before
+ * every comparison, refuses userinfo, and fails closed on a URL that does not
+ * parse; only the loc mapping below is task-side, so the message stays
+ * localised per input.
  *
  * azure-pipelines-task-lib is require()'d lazily here (instead of a top-level
  * import), matching https-client.ts's buildProxyAgent for the same reason: an
@@ -41,18 +44,18 @@ export function resolveRejectUnauthorized(raw: string | undefined): boolean {
  */
 export async function assertRejectUnauthorizedNotAgainstPublicHost(callbackUrl: string): Promise<void> {
     const tasks = require('azure-pipelines-task-lib/task') as typeof TaskLib;
-    let hostname: string;
     try {
-        hostname = new URL(callbackUrl).hostname;
-    } catch {
-        // A value new URL() rejected may still be a scheme-less `user:token@host/...`,
-        // which the URL-shaped redactor cannot see -- so anything with an '@' is
-        // described, not echoed (#1105 class sweep).
-        throw new Error(tasks.loc('RejectUnauthorizedUrlUnparseable', callbackUrl.includes('@') ? '(value with userinfo, redacted)' : redactUrlUserInfo(callbackUrl)));
-    }
-    const isPrivate = isPrivateOrLinkLocalHost(hostname) || await resolvesToPrivateOrLinkLocalAddress(hostname);
-    if (!isPrivate) {
-        throw new Error(tasks.loc('RejectUnauthorizedPublicHostRejected', hostname));
+        await assertTlsOptOutDestinationIsPrivate('callbackUrl', callbackUrl);
+    } catch (error) {
+        if (error instanceof TlsOptOutDestinationError) {
+            // safeDestination, never the raw input: it can carry userinfo (#1105 class sweep).
+            throw new Error(
+                error.reason === 'not-private'
+                    ? tasks.loc('RejectUnauthorizedPublicHostRejected', error.safeDestination)
+                    : tasks.loc('RejectUnauthorizedUrlUnparseable', error.safeDestination),
+            );
+        }
+        throw error;
     }
 }
 

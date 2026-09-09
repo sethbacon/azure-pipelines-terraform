@@ -34,6 +34,8 @@ import './SecureTempL0';
 import './RetryL0';
 // End-to-end coverage for index.ts's SIGTERM/SIGINT emergency summary-file scrub (#775).
 import './SignalHandlerL0';
+// CLASS TEST for #588: rejectUnauthorized=false honoured only against a provably private destination.
+import './TlsOptOutDestinationClassL0';
 
 describe('TerraformDriftReport callback transport', function () {
     it('refuses to POST the callback token over a non-HTTPS URL', async () => {
