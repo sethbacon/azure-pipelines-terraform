@@ -109,10 +109,16 @@ jobs:
         run: node scripts/check-shared-modules.js
       - name: Self-test check-shared-modules.js
         run: node scripts/test-check-shared-modules.js
+      # The gate itself lives in 4cloudguru/shared-workflows now, as a composite
+      # action, so this repository carries no copy of it to drift or to weaken.
+      # A COMPOSITE and not a reusable workflow deliberately: a reusable
+      # workflow reports as `<caller-job-id> / <called-job-name>` and would
+      # RENAME this job, whose name is a required status context on `main`. A
+      # composite is a step inside this job, so the context does not move.
+      # Its mutation self-test moved with it and runs in that repository's CI
+      # beside the implementation, rather than here beside a fork of it.
       - name: Shared-module pins in lockstep (#1108 class signature)
-        run: node scripts/check-shared-module-pins.js
-      - name: Self-test check-shared-module-pins.js
-        run: node scripts/test-check-shared-module-pins.js
+        uses: 4cloudguru/shared-workflows/.github/actions/check-shared-module-pins@c4694311531adcddc243fff1894398920f88a1f9 # main c469431, pre-v1.23.0
       - name: Check for unregistered near-duplicate modules
         run: node scripts/check-near-duplicate-modules.js
       - name: Validate egress authorization (SSRF class signature)
@@ -129,10 +135,12 @@ jobs:
         run: node scripts/test-check-proxy-parity.js
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
         run: node scripts/check-proxy-parity.js
-      - name: Self-test check-docs-claims.js
-        run: node scripts/test-check-docs-claims.js
+      # Same move, same reasoning as check-shared-module-pins above: the gate is
+      # the shared composite action, pinned by SHA, and its self-test runs in
+      # that repository's CI. Four hand-copies of this 844-line script existed
+      # across the estate and had already drifted three ways.
       - name: Validate documented claims against the code
-        run: node scripts/check-docs-claims.js
+        uses: 4cloudguru/shared-workflows/.github/actions/check-docs-claims@c4694311531adcddc243fff1894398920f88a1f9 # main c469431, pre-v1.23.0
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})
