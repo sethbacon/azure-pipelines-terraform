@@ -646,6 +646,34 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
         });
     }
 
+    // --- FAILCLOSED-SET ROWS (#1029 reopen) ----------------------------------
+    // Every guard above proves an UPSTREAM accessor (requireIdentityField,
+    // assertIdentityValue, ...) rejects an absent/malformed field before
+    // EnvironmentVariableHelper.setEnvironmentVariable() is ever called with an
+    // empty value. That is exactly the arrangement #1029 reopened over: the
+    // property held only because every call site happened to have (and keep) an
+    // upstream guard, and the helper's own `required` flag -- added so the
+    // guarantee would not depend on that -- was never passed. These rows prove
+    // the OTHER half directly: at a representative site per handler, using that
+    // handler's real (name, isSecret) call shape, the helper itself now throws
+    // on an empty value, independent of whatever guard sits in front of it.
+    const FAILCLOSED_REPRESENTATIVE: Array<[string, string, boolean]> = [
+        ['aws', 'AWS_ACCESS_KEY_ID', false],
+        ['azurerm', 'ARM_CLIENT_ID', false],
+        ['gcp', 'GOOGLE_CREDENTIALS', false],
+        ['hcp', 'TF_TOKEN_app_terraform_io', true],
+        ['oci', 'OCI_CLI_CONFIG_FILE', false],
+    ];
+
+    for (const [handler, name, isSecret] of FAILCLOSED_REPRESENTATIVE) {
+        it(`empty ${name} throws from the helper itself, not just the upstream guard (representative site: ${handler})`, () => {
+            assert.throws(
+                () => EnvironmentVariableHelper.setEnvironmentVariable(name, '', isSecret, true),
+                /was not set because the value was empty or undefined/,
+                `${handler}'s ${name} call now passes required:true -- the helper must fail closed even if a future change drops the upstream guard`);
+        });
+    }
+
     // --- STRUCTURAL ROW: the matrix itself must have no unguarded cell --------
     // This is what keeps the table above honest: a NEW handler, or a new branch
     // in an existing one, appears as a new matrix cell and fails here until it

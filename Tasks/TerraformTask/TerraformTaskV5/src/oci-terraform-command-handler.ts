@@ -416,13 +416,13 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
                 const apiKeyConfigPath = this.writeApiKeyConfigFile(tenancy, user, region, fingerprint, privateKeyFilePath);
 
                 neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI API key");
-                EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", apiKeyConfigPath);
+                EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", apiKeyConfigPath, false, true);
                 EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancy);
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", user);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancy, false, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_user_ocid", user, false, true);
                 EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", region);
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", fingerprint);
-                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_private_key_path", privateKeyFilePath);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_fingerprint", fingerprint, false, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_private_key_path", privateKeyFilePath, false, true);
             } else {
                 // Silently injecting nothing leaves terraform to authenticate from
                 // the agent's ambient OCI config or instance principal.
@@ -545,12 +545,12 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         // 6. Set environment variables for the OCI Terraform provider
         neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
         neutralizeEnvironmentVariables(OCI_API_KEY_TF_VAR_ENV, "OCI Workload Identity Federation");
-        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath, false, true);
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
         EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_AUTH", "security_token");
 
         // Also set TF_VAR_ env vars for users who reference these in their provider block
-        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancyOcid);
+        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancyOcid, false, true);
         EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", region);
     }
 }

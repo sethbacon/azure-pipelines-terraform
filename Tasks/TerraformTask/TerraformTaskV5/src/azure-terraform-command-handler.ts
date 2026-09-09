@@ -388,7 +388,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // was unreachable (#194); requireIdentityField keeps the same fail-closed
         // contract while adding the charset validation the injected value never
         // had (#199) and a message that names the field.
-        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", requireIdentityField(serviceConnectionID, "tenantid"));
+        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", requireIdentityField(serviceConnectionID, "tenantid"), false, true);
 
         switch (authorizationScheme) {
             case AuthorizationScheme.ManagedServiceIdentity: {
@@ -412,7 +412,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 // back to system-assigned MSI, unchanged from before.
                 const msiClientId = getManagedIdentityClientId(serviceConnectionID);
                 if (msiClientId) {
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", msiClientId);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", msiClientId, false, true);
                 }
                 break;
             }
@@ -427,13 +427,13 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     this.backendConfig.set("client_id", workloadIdentityFederationCredentials.servicePrincipalId);
                     this.backendConfig.set("use_oidc", "true");
                 } else {
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", workloadIdentityFederationCredentials.servicePrincipalId);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", workloadIdentityFederationCredentials.servicePrincipalId, false, true);
                     EnvironmentVariableHelper.setEnvironmentVariable("ARM_USE_OIDC", "true");
                 }
 
                 if (fallbackToIdTokenGeneration) {
                     tasks.debug("ID token generation fallback is enabled, generating ID Token.");
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_TOKEN", workloadIdentityFederationCredentials.oidcToken, true);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_TOKEN", workloadIdentityFederationCredentials.oidcToken, true, true);
                 } else {
                     tasks.debug("ID token generation fallback is disabled, using ID Token Refresh.");
                     if (useCliFlagsForBackend) {
@@ -446,8 +446,8 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                         // ARM_OIDC_AZURE_SERVICE_CONNECTION_ID is kept as the
                         // AzAPI-compatibility fallback name azurerm also honors, so AzAPI
                         // users are unaffected (#572).
-                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID", serviceConnectionID);
-                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID);
+                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID", serviceConnectionID, false, true);
+                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_AZURE_SERVICE_CONNECTION_ID", serviceConnectionID, false, true);
                     }
                     // SECURITY (#761): this default "ID token refresh" path exports the
                     // pipeline's broad System.AccessToken (the SystemVssConnection AccessToken)
@@ -464,7 +464,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                         throw new Error("AccessToken not found in SystemVssConnection. Ensure the pipeline has OIDC enabled.");
                     }
                     EnvironmentVariableHelper.registerSecret(accessToken);
-                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true);
+                    EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_TOKEN", accessToken, true, true);
                     // #1026 follow-up: that fix clears SYSTEM_OIDCREQUESTURI at the end of
                     // both Azure entry points, which was the ONLY name carrying this URL --
                     // azurerm resolves oidc_request_url from ARM_OIDC_REQUEST_URL ->
@@ -475,7 +475,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     // ambient value unvalidated.
                     const oidcRequestUrl = resolveOidcRequestUrl();
                     if (oidcRequestUrl) {
-                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_URL", oidcRequestUrl);
+                        EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_URL", oidcRequestUrl, false, true);
                     }
                 }
 
@@ -490,8 +490,8 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                 neutralizeEnvironmentVariables(
                     [ARM_IDENTITY_SELECTORS.oidcToken, ARM_IDENTITY_SELECTORS.certPath, ARM_IDENTITY_SELECTORS.cert, ARM_IDENTITY_SELECTORS.useMsi, ARM_IDENTITY_SELECTORS.useOidc],
                     "Azure service principal");
-                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId);
-                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_ID", servicePrincipalCredentials.servicePrincipalId, false, true);
+                EnvironmentVariableHelper.setEnvironmentVariable("ARM_CLIENT_SECRET", servicePrincipalCredentials.servicePrincipalKey, true, true);
                 break;
             }
         }

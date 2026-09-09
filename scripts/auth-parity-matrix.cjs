@@ -287,6 +287,44 @@ const GUARD_HELPERS = [
 /** Fields whose VALUE is opaque: presence is the only checkable property. */
 const SECRET_KEY_RE = /(password|secret|privatekey|key$|accesstoken|token|jwt)/i;
 
+/**
+ * Environment variable NAMES a handler sets that carry a credential or an
+ * identity selector for provider/backend authentication (#1029 finding 4
+ * reopen). `EnvironmentVariableHelper.setEnvironmentVariable()` grew a
+ * `required` fourth parameter that throws on an empty value instead of
+ * degrading to a warning, specifically so the fail-closed guarantee does not
+ * rest on every caller remembering (or keeping) an upstream guard -- but the
+ * flag is opt-in, and the 2026-09-05 blind re-audit found that none of the
+ * ~74 credential-bearing call sites across both extensions passed it. Every
+ * `setEnvironmentVariable("<name>", ...)` call for one of these names must
+ * pass a literal `true` as its fourth argument, else it is UNGUARDED.
+ *
+ * Deliberately EXCLUDED -- not a credential, so not in this set:
+ *   - ARM_SUBSCRIPTION_ID: names the TARGET subscription/resource scope, not
+ *     a credential; already only set inside `if (subscriptionId)` after
+ *     assertIdentityValue.
+ *   - ARM_USE_CLI / ARM_USE_MSI / ARM_USE_OIDC: fixed literal flags
+ *     ("true"/"false"), never operator/connection input.
+ *   - AWS_REGION / TF_VAR_region / GOOGLE_PROJECT: region/project
+ *     identifiers, not credentials.
+ *   - AWS_ROLE_SESSION_NAME: a per-run CloudTrail-attribution string (#197's
+ *     own class), not a credential.
+ *   - TF_CLOUD_ORGANIZATION / TF_WORKSPACE: non-secret HCP Terraform config,
+ *     each already guarded by its own `if (x && x.trim())`.
+ *   - OCI_CLI_PROFILE / OCI_CLI_AUTH: fixed literal constants ("DEFAULT" /
+ *     "security_token"), never operator/connection input.
+ */
+const FAILCLOSED_CREDENTIAL_ENV = new Set([
+    'ARM_CLIENT_ID', 'ARM_CLIENT_SECRET', 'ARM_TENANT_ID', 'ARM_OIDC_TOKEN',
+    'ARM_OIDC_REQUEST_TOKEN', 'ARM_OIDC_REQUEST_URL',
+    'ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID', 'ARM_OIDC_AZURE_SERVICE_CONNECTION_ID',
+    'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_ROLE_ARN', 'AWS_WEB_IDENTITY_TOKEN_FILE',
+    'GOOGLE_CREDENTIALS', 'GOOGLE_BACKEND_CREDENTIALS',
+    'OCI_CLI_CONFIG_FILE',
+    'TF_VAR_tenancy_ocid', 'TF_VAR_user_ocid', 'TF_VAR_fingerprint', 'TF_VAR_private_key_path',
+    'TF_TOKEN_app_terraform_io',
+]);
+
 function analyzeHandler(file, root) {
     const raw = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
     const code = stripComments(raw);
@@ -311,11 +349,27 @@ function analyzeHandler(file, root) {
         const hit = markers.find((m) => m.line >= r.lo - 14 && m.line <= r.hi);
         return hit ? hit.reason : null;
     };
+    // A marker anywhere in [region.lo, region.hi] -- no lookback. exemptionFor()
+    // deliberately reaches 14 lines ABOVE a region so a marker can sit above the
+    // read it describes, but that leaks across adjacent `case` arms when one
+    // branch is short: a marker just inside a preceding branch can fall within
+    // the next branch's lookback window and silently EXEMPT a genuinely
+    // unguarded cell in that sibling branch (caught by mutation testing the
+    // failclosed-set cells below on the packer copy of this script -- the
+    // ManagedServiceIdentity marker exempted a mutated WorkloadIdentityFederation
+    // cell). Cell kinds whose exemption must not cross a branch boundary pass
+    // strictExempt.
+    const strictExemptionFor = (line) => {
+        const r = regionFor(line);
+        const hit = markers.find((m) => m.line >= r.lo && m.line <= r.hi);
+        return hit ? hit.reason : null;
+    };
 
-    const add = (cellName, verdict, detail, line, branchOverride) => {
+    const add = (cellName, verdict, detail, line, branchOverride, strictExempt) => {
         const sc = scopes[line] || { method: '<top>', branch: '<top>' };
         const branch = branchOverride || sc.branch;
-        const exempt = verdict === 'UNGUARDED' ? exemptionFor(line) : null;
+        const lookup = strictExempt ? strictExemptionFor : exemptionFor;
+        const exempt = verdict === 'UNGUARDED' ? lookup(line) : null;
         cells.push({
             file: rel, handler, branch, cell: cellName,
             site: `${handler}.${branch}.${cellName}`,
@@ -501,6 +555,29 @@ function analyzeHandler(file, root) {
                 ok ? 'empty service connection throws before the OIDC request'
                    : 'empty service connection reaches the OIDC/credential request unchecked',
                 line);
+        }
+    }
+
+    // ---- 6a. FAILCLOSED-SET cells: a credential-bearing setEnvironmentVariable()
+    //          call must pass required:true (4th arg, literal `true`) so the
+    //          helper itself throws on an empty value instead of degrading to a
+    //          warning -- the fix for #1029's reopen ("the fourth parameter
+    //          exists and no caller uses it").
+    {
+        const re = /\bsetEnvironmentVariable\s*\(/g;
+        let m;
+        while ((m = re.exec(code))) {
+            const argText = callArgs(code, m.index + m[0].length - 1);
+            if (argText === null) continue;
+            const args = splitArgs(argText);
+            const name = unquote(args[0] || '');
+            if (!FAILCLOSED_CREDENTIAL_ENV.has(name)) continue;
+            const line = lineOf(starts, m.index);
+            const required = (args[3] || '').trim() === 'true';
+            add(`failclosed:${name}`, required ? 'GUARDED' : 'UNGUARDED',
+                required ? 'passes required:true -- an empty value now throws'
+                         : `credential-bearing name '${name}' set without required:true -- an empty value degrades to a warning (#1029)`,
+                line, undefined, /* strictExempt */ true);
         }
     }
 
