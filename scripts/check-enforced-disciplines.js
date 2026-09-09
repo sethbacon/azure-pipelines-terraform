@@ -194,6 +194,45 @@ for (const wf of ['unit-test.yml', 'ci.yml']) {
 // A repo may name one job per task, or fan every task out through a single
 // runner. Under the second shape no job mentions any task directory, so matching
 // only on the path would report a fully-tested repo as untested.
+/**
+ * The highest Node major any of the task's PRODUCTION dependencies demands,
+ * read from the LOCKFILE rather than from node_modules.
+ *
+ * The lockfile records each package's `engines`, is committed, and is present
+ * before `npm ci` runs -- which the gate's own job does not do for every task.
+ * Reading node_modules made this waiver depend on an install that had not
+ * happened, so it passed locally and failed in continuous integration.
+ *
+ * A task cannot be asked to run its real suite under a Node version its own
+ * dependencies refuse to load on. PackerInstallerV1 is the live case: it
+ * declares a Node20_1 fallback handler while pinning undici ^8, whose
+ * `engines.node` is >= 22.19.0, and undici 8 genuinely fails to load on Node 20.
+ * Demanding a real Node 20 leg there would be demanding a step that cannot pass.
+ *
+ * Reporting that as EXEMPT rather than OK is the point: the exemption text names
+ * the dependency and the version, so the deeper contradiction -- a declared
+ * handler the task's own dependencies cannot satisfy -- is stated in the gate's
+ * output every run rather than discovered again by the next person who widens
+ * this rule.
+ */
+function dependencyNodeFloor(taskDir) {
+    const lock = readJsonIfExists(`${taskDir}/package-lock.json`);
+    const manifest = readJsonIfExists(`${taskDir}/package.json`);
+    if (!lock || !lock.packages || !manifest) return null;
+    const direct = new Set(Object.keys(manifest.dependencies || {}));
+    let floor = null;
+    for (const [key, entry] of Object.entries(lock.packages)) {
+        const name = key.startsWith('node_modules/') ? key.slice('node_modules/'.length) : null;
+        if (!name || !direct.has(name)) continue;
+        const range = entry.engines && entry.engines.node;
+        const m = typeof range === 'string' && range.match(/>=?\s*(\d+)/);
+        if (!m) continue;
+        const major = parseInt(m[1], 10);
+        if (floor === null || major > floor.major) floor = { major, dep: name, range };
+    }
+    return floor;
+}
+
 const fanOutScripts = Object.entries((readJsonIfExists('package.json') || {}).scripts || {})
     .filter(([, cmd]) => /for-each-task(?:\.js)?\s+(?:test|smoke)\b/.test(cmd))
     .map(([name]) => name);
@@ -293,6 +332,16 @@ for (const task of tasks) {
             if (!fallback) continue;
             const major = parseInt(fallback[1], 10);
             const ok = jobsForTask.some(([, text]) => hasRealTestAfterNodeSetup(text, major));
+            const floor = dependencyNodeFloor(task);
+            if (floor && floor.major > major) {
+                record(
+                    'verification-real-tests-under-node20',
+                    `${task} -> ${handler}`,
+                    true,
+                    `EXEMPT: ${task} cannot run under Node ${major} at all -- its dependency '${floor.dep}' declares engines.node '${floor.range}'. The real-test requirement is waived, and the ${handler} handler this task advertises cannot work either; that contradiction needs its own decision (drop the handler, or move the dependency to a version that supports Node ${major}).`,
+                );
+                continue;
+            }
             record(
                 'verification-real-tests-under-node20',
                 `${task} -> ${handler}`,
