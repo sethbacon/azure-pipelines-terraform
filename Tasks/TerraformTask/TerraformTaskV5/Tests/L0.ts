@@ -42,6 +42,8 @@ import './AutomationEnvL0';
 import './OciWifConfigValidationL0';
 // Direct unit tests for the generated OCI backend config file's secret-file write.
 import './OciBackendConfigFileL0';
+// CLASS test (#675 option 3): which commands can reach the OCI PAR backend cache cleanup.
+import './OciBackendCacheCommandReachClassL0';
 import './ArgvTokenBoundaryL0';
 // Direct unit tests for the optional MSI user-assigned client ID.
 import './ManagedIdentityClientIdL0';
