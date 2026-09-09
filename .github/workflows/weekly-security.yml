@@ -418,7 +418,10 @@ jobs:
   # Exercises the installer's REAL verifyCosignSignature() (cosign-verifier.ts) --
   # the exact argv it builds, including the version-bound certificate-identity regexp
   # (buildOpenTofuCertIdentityRegexp, #611) and pinned OIDC issuer -- against a real
-  # cosign binary and a current OpenTofu release's SHA256SUMS/.sig/.pem. This is the
+  # cosign binary and a current OpenTofu release's SHA256SUMS/.sig/.pem, once per
+  # shipped cosignSource mode: `managed` (the default; the verifier downloads the
+  # pinned cosign itself and ignores PATH) and `ambient` (the operator opt-out; the
+  # cosign that the Install-cosign step below puts on PATH). This is the
   # cosign equivalent of the hashicorp-gpg-canary below: it drives THIS codebase's
   # own invocation end-to-end rather than a hand-typed `cosign verify-blob`, so a bug
   # that only manifests against the real binary (a flag cosign silently ignores, a
@@ -447,6 +450,11 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      # Serves the `ambient` invocation only: managed mode downloads its own pinned
+      # cosign and never looks at PATH, so this binary is what the ambient run
+      # resolves with tasks.which("cosign"). Remove this step and the ambient
+      # run fails with "cosign is required ... but was not found on the agent",
+      # which is the right outcome -- that is the verifier refusing to degrade.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -500,8 +508,22 @@ jobs:
             const version = process.env.VERSION;
             const content = fs.readFileSync("SHA256SUMS", "utf8");
             const base = "https://github.com/opentofu/opentofu/releases/download/v" + version + "/tofu_" + version + "_SHA256SUMS";
-            verifyCosignSignature(content, base + ".sig", base + ".pem", version, true)
-              .then(function () { console.log("OK: OpenTofu cosign signature verified via the task-owned verifier for tofu " + version); })
+            // Both shipped cosignSource modes, in sequence, each with required=true.
+            //   managed: the default -- downloads the pinned cosign through tool-lib
+            //            and never consults PATH, so the cosign-installer step above
+            //            is deliberately invisible to this run.
+            //   ambient: the operator opt-out -- tasks.which("cosign"), i.e. exactly
+            //            the binary the cosign-installer step above put on PATH. This
+            //            is the only place that mode is exercised end to end; without
+            //            it the installer step would install a binary nothing uses.
+            const run = function (mode) {
+              return verifyCosignSignature(content, base + ".sig", base + ".pem", version, true, undefined, mode)
+                .then(function () { console.log("OK [" + mode + "]: OpenTofu cosign signature verified via the task-owned verifier for tofu " + version); })
+                .catch(function (err) { throw new Error("[" + mode + "] " + (err && err.message ? err.message : err)); });
+            };
+            run("managed")
+              .then(function () { return run("ambient"); })
+              .then(function () { console.log("OK: both cosignSource modes verified for tofu " + version); })
               .catch(function (err) { console.error("OpenTofu cosign canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
