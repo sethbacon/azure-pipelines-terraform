@@ -39,6 +39,11 @@
 //   LATEST        'latest' version resolution. Falling back to a pinned constant
 //                 on failure silently hands a security-currency-seeking caller a
 //                 stale binary (#78).
+//   DELEGATED-VERIFY
+//                 an import of the verification decision ITSELF from
+//                 @4cloudguru/pipeline-task-core. Every kind above asks whether
+//                 an artifact reached a verifier; this one asks whether the
+//                 verifier that runs is the one that was reviewed (#399).
 //
 // Discovery is by CODE SHAPE, not by call-site name: sites are found by walking
 // **/src/**/*.ts, splitting each file into top-level functions, and following an
@@ -53,6 +58,22 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Shared with check-proxy-parity.js (#399). The cryptographic verification
+// decision is DELEGATED to @4cloudguru/pipeline-task-core, so the version that
+// resolves is part of this signature's story: an unpinned verifier is an
+// unverified artifact one npm resolution away.
+//
+// The lib travels WITH the gate, the way lib/task-dirs.js already travels with
+// check-enforced-disciplines.js -- lib/ here is part of the gate, which is why
+// gatelib refuses a shared copy that arrives without it. Every walk INSIDE it
+// stops at the tree being ANALYSED, which is ROOT below, never __dirname: that
+// is the property that lets this one canonical copy be handed a checkout it
+// does not live in, and the file records what the alternative cost -- 19
+// fabricated sites across three repositories, from a boundary that followed the
+// script instead of the tree. ROOT is therefore passed in explicitly on every
+// call rather than read from this module's scope.
+const { packageDelegationVerdict } = require('./lib/package-delegation.js');
 
 const JSON_OUTPUT = process.argv.includes('--json');
 const ROOT = path.resolve(process.argv.filter((a) => a !== '--json')[2] || process.cwd());
@@ -564,7 +585,157 @@ const FAIL_VERDICTS = new Set([
     'TRUSTS-UNMARKED-CACHE',
     'RECORDS-UNVERIFIED',
     'STALE-FALLBACK',
+    'DELEGATED-VERIFIER-UNPINNED',
 ]);
+
+// ---- DELEGATED-VERIFY: the signature decision itself lives in a package (#399).
+//
+// Every other kind here asks whether an artifact reached a verifier. This one
+// asks whether the verifier that runs is the one that was reviewed. verifyDetached
+// decides whether a downloaded binary's checksums were signed by HashiCorp, and it
+// is imported from @4cloudguru/pipeline-task-core/gpg -- so a floor that drifts, or
+// a second nested copy, silently changes what "verified" means. That is the same
+// hazard the network sinks are held to; it was simply never applied to the crypto one.
+//
+// Absorbed from azure-pipelines-packer's copy, where it was written. It finds
+// TWICE as many sites in azure-pipelines-terraform as in the repository that
+// wrote it -- two tasks importing verifyDetached that terraform's own gate
+// could not see -- which is the whole argument for one canonical copy: a blind
+// axis and a clean one are indistinguishable from the exit code.
+const DELEGATED_VERIFIERS = {
+    verifyDetached: {
+        pkg: '@4cloudguru/pipeline-task-core',
+        // Kept level with what the fleet declares, not with the release that
+        // first exported verifyDetached (0.7.1). staleFloors() below compares
+        // this against every task's declared range and fails the gate with the
+        // value to raise it to; when the detector was ported (2026-09-09) it
+        // reported exactly that on every clean tree -- min 0.7.1 against a
+        // fleet at ^0.9.3, exit 1 with zero failures -- and this is the change
+        // that acted on the report. A bar every task cleared several minors ago
+        // cannot fire, and cannot fire is green about nothing (#1108 finding 2);
+        // the next fleet-wide bump raises this in the same change or the gate
+        // refuses it.
+        min: '0.9.3',
+        capability: 'the detached-signature verification decision',
+        provides: 'the GPG verification decision',
+    },
+};
+
+for (const file of files) {
+    const raw = fs.readFileSync(file, 'utf8');
+    const rel = path.relative(ROOT, file).split(path.sep).join('/');
+    for (const [name, spec] of Object.entries(DELEGATED_VERIFIERS)) {
+        // Import specifiers are string literals, so the binding is read from raw
+        // source; a name inside a comment cannot create a site because it must
+        // appear in an import FROM that package.
+        const imported = new RegExp(`import\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*from\\s*['"]${spec.pkg.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:/[\\w./-]+)?['"]`);
+        if (!imported.test(raw)) continue;
+        const { ok, why } = packageDelegationVerdict(file, spec, ROOT);
+        sites.push({
+            kind: 'DELEGATED-VERIFY', rel, fn: name,
+            verdict: ok ? 'PINNED-DELEGATE' : 'DELEGATED-VERIFIER-UNPINNED',
+            why, line: raw.slice(0, raw.search(imported)).split('\n').length,
+        });
+    }
+}
+
+// ---- Floor currency, ported from check-proxy-parity.js (#1108 finding 2).
+//
+// DELEGATED_VERIFIERS is the first table in this gate that enforces a minimum
+// version of a shared package, which hands it the failure mode that gate has
+// already been through: a floor naming the release that FIRST carried a
+// behaviour goes stale as the fleet moves past it, nothing compares the two, and
+// the bar ends up below every task in the repository. From the exit code that is
+// indistinguishable from a repository with nothing wrong.
+//
+// This does not rewrite a floor. It fails the gate with the value to raise it
+// to, which makes raising it part of the fleet bump that moved past it rather
+// than something to notice later.
+
+/**
+ * Every version floor this file enforces, as (package, floor, where it is
+ * written). Derived from the table rather than hand-listed, so a floor added to
+ * DELEGATED_VERIFIERS cannot escape the currency check by being forgotten here.
+ */
+function declaredFloors() {
+    const out = [];
+    for (const [sink, entry] of Object.entries(DELEGATED_VERIFIERS)) {
+        out.push({ where: `DELEGATED_VERIFIERS.${sink}`, pkg: entry.pkg, min: entry.min });
+        if (entry.carries) out.push({ where: `DELEGATED_VERIFIERS.${sink}.carries`, pkg: entry.carries.pkg, min: entry.carries.min });
+    }
+    return out;
+}
+
+/**
+ * Every task manifest under ROOT/Tasks, however deep.
+ *
+ * Named apart from this file's own walk() because that one collects the
+ * TypeScript under every src directory and this one collects manifests; folding
+ * the two into one predicate-driven walk would tie the src walk's skip list to
+ * this one's, and they are not the same list.
+ */
+function walkTaskManifests(dir, found = []) {
+    let entries;
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return found;
+    }
+    for (const entry of entries) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walkTaskManifests(full, found);
+        else if (entry.name === 'package.json') found.push(full);
+    }
+    return found;
+}
+
+/** The floor a caret/exact range pins, as [major, minor, patch], or null. */
+function rangeFloor(range) {
+    const parsed = /^\^?(\d+)\.(\d+)\.(\d+)/.exec(String(range).trim());
+    return parsed ? parsed.slice(1).map(Number) : null;
+}
+
+const compareVersions = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+/**
+ * The LOWEST version of `pkg` any task in this repository actually declares, or
+ * null when no task depends on it.
+ *
+ * Lowest, not highest, and the difference is the whole safety of this check: one
+ * task still sitting at the floor keeps the bar live for every other task, and a
+ * repository that does not use the package at all has no fleet to be measured
+ * against -- null, never a notional 0.0.0, which would report every floor in
+ * every unrelated repository as stale.
+ */
+function fleetFloor(pkg) {
+    let lowest = null;
+    for (const manifest of walkTaskManifests(path.join(ROOT, 'Tasks'))) {
+        let json;
+        try {
+            json = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+        } catch {
+            continue;
+        }
+        const parsed = rangeFloor((json.dependencies || {})[pkg]);
+        if (parsed && (lowest === null || compareVersions(parsed, lowest) < 0)) lowest = parsed;
+    }
+    return lowest;
+}
+
+/** Floors that sit below what every task already declares, with the value to raise them to. */
+function staleFloors() {
+    const stale = [];
+    for (const floor of declaredFloors()) {
+        const fleet = fleetFloor(floor.pkg);
+        if (!fleet) continue;
+        const declared = rangeFloor(floor.min);
+        if (declared && compareVersions(declared, fleet) < 0) {
+            stale.push({ ...floor, fleet: fleet.join('.') });
+        }
+    }
+    return stale;
+}
 
 const seen = new Set();
 const unique = sites.filter((s) => {
@@ -575,14 +746,20 @@ const unique = sites.filter((s) => {
 }).sort((a, b) => a.rel.localeCompare(b.rel) || a.line - b.line || a.kind.localeCompare(b.kind));
 
 const failures = unique.filter((s) => FAIL_VERDICTS.has(s.verdict));
+const stale = staleFloors();
 
 if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ root: ROOT, sites: unique, failures: failures.length, scanned: files.length }, null, 2));
-    process.exit(failures.length > 0 ? 1 : 0);
+    // `failures` stays the count of DEFECTIVE ROWS and nothing else. The replay
+    // adapter classifies the rows itself and die()s when its own count and this
+    // number disagree, so folding a stale floor in here would turn an inert bar
+    // into could-not-run on every host at once. A stale floor is its own field
+    // and its own reason for exiting 1.
+    console.log(JSON.stringify({ root: ROOT, sites: unique, failures: failures.length, scanned: files.length, staleFloors: stale }, null, 2));
+    process.exit(failures.length || stale.length ? 1 : 0);
 }
 
 console.log(`artifact-trust signature — ${path.basename(ROOT)} (${files.length} src file(s), ${unique.length} trust site(s))\n`);
-for (const kind of ['ACQUIRE', 'VERIFY', 'DISCARD', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
+for (const kind of ['ACQUIRE', 'VERIFY', 'DELEGATED-VERIFY', 'DISCARD', 'SUMS-ABSENT', 'CACHE-ADMIT', 'RECORD-READ', 'RECORD-WRITE', 'LATEST']) {
     const rows = unique.filter((s) => s.kind === kind);
     if (rows.length === 0) continue;
     console.log(`${kind} (${rows.length}):`);
@@ -590,9 +767,20 @@ for (const kind of ['ACQUIRE', 'VERIFY', 'DISCARD', 'SUMS-ABSENT', 'CACHE-ADMIT'
     console.log('');
 }
 
+if (stale.length) {
+    console.error(`\nSTALE FLOORS (${stale.length})`);
+    for (const f of stale) {
+        console.error(`  ${f.where}: floor ${f.min} for ${f.pkg}, but every task already declares >= ${f.fleet} -- the floor cannot fire.`);
+    }
+}
+
 if (failures.length > 0) {
     console.error(`FAIL: ${failures.length} residual instance(s) of the artifact-trust class.`);
     for (const f of failures) console.error(`  ${f.rel}:${f.line} ${f.fn}() [${f.kind}] ${f.verdict}\n      ${f.why}`);
-    process.exit(1);
 }
-console.log('OK: every path by which an artifact becomes trusted verifies it, discards it on failure, and degrades legibly.');
+if (stale.length) {
+    console.error(`\nFAIL: ${stale.length} version floor(s) have fallen behind the fleet and can no longer fire.`);
+    console.error('      Raise each to the version shown, keeping the comment that says which release first carried the behaviour.');
+}
+if (failures.length || stale.length) process.exit(1);
+console.log('OK: every path by which an artifact becomes trusted verifies it, discards it on failure, and degrades legibly, and every version floor still tracks the fleet.');
