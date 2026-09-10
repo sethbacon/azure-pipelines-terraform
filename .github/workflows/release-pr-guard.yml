@@ -125,7 +125,7 @@ jobs:
       # rather than from the event payload, so it needs nothing from this
       # repository's tree.
       - name: Grade the release pull request
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@2c099c719d1ec5c0e77c578c701b7119cef6ac09 # v1.23.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
         with:
           mode: pull-request
           gh-token: ${{ secrets.GITHUB_TOKEN }}
@@ -157,7 +157,7 @@ jobs:
           egress-policy: audit
 
       - name: Re-grade every open pull request and republish the verdict
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@2c099c719d1ec5c0e77c578c701b7119cef6ac09 # v1.23.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
         with:
           mode: link-regrade
           gh-token: ${{ secrets.GITHUB_TOKEN }}
@@ -188,7 +188,7 @@ jobs:
           egress-policy: audit
 
       - name: Grade the merge and reopen anything it closed by mistake
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@2c099c719d1ec5c0e77c578c701b7119cef6ac09 # v1.23.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
         with:
           mode: merge-backstop
           gh-token: ${{ secrets.GITHUB_TOKEN }}

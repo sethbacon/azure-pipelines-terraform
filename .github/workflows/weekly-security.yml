@@ -69,7 +69,7 @@ jobs:
         # `outputs.exit-code`, `outputs.findings` and `outputs.errored`, so the steps
         # below no longer have to infer the verdict from the artifact -- and a
         # scanner error fails the job immediately rather than passing for clean.
-        uses: 4cloudguru/shared-workflows/.github/actions/osv-scan@2c099c719d1ec5c0e77c578c701b7119cef6ac09 # v1.23.0
+        uses: 4cloudguru/shared-workflows/.github/actions/osv-scan@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
         with:
           scan-args: |-
             --recursive
