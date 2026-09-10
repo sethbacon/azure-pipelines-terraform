@@ -46,6 +46,14 @@ const TF_TI = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/tool-integrity.
 // against the shipped pin, discarded on a mismatch, and cached with an integrity
 // marker exactly like the tools it goes on to verify.
 const TF_COS = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/cosign-verifier.ts';
+// The GPG verification DECISION is not written in this repository at all:
+// verifyDetached is imported from @4cloudguru/pipeline-task-core/gpg, so the
+// verifier that was reviewed and the verifier that actually runs are the same
+// thing only while that dependency stays pinned at or above the floor the gate
+// carries (sethbacon/azure-pipelines-packer#399, where the detector was written).
+// Two tasks import it; both are trust sites in their own right.
+const TF_GPG = 'Tasks/TerraformInstaller/TerraformInstallerV1/src/gpg-verifier.ts';
+const PA_GPG = 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/gpg-verifier.ts';
 const PA_TI = 'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/tool-integrity.ts';
 const TD_TI = 'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/src/tool-integrity.ts';
 
@@ -88,6 +96,17 @@ const SITE_ROWS: SiteRow[] = [
     { file: TF_COS, fn: 'resolveManagedCosign', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
     { file: TF_COS, fn: 'resolveManagedCosign', kind: 'ACQUIRE', verdict: 'VERIFIED' },
     { file: TF_COS, fn: 'resolveManagedCosign', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+
+    // ---------------- the delegated GPG verifier itself --------------------------
+    // PINNED-DELEGATE means the importing task declares a range for
+    // @4cloudguru/pipeline-task-core whose floor is at or above the one the gate
+    // enforces (0.9.3), and resolves to a single copy -- so the detached-signature
+    // decision that runs is the one that was reviewed. These two rows were invisible
+    // to this repository's own copy of the gate until it was synced to canonical:
+    // the detector was written in azure-pipelines-packer and finds twice as many
+    // sites here as there.
+    { file: TF_GPG, fn: 'verifyDetached', kind: 'DELEGATED-VERIFY', verdict: 'PINNED-DELEGATE' },
+    { file: PA_GPG, fn: 'verifyDetached', kind: 'DELEGATED-VERIFY', verdict: 'PINNED-DELEGATE' },
 
     // ---------------- TerraformInstallerV1: terraform (GPG) + OpenTofu (cosign) ----
     { file: TF, fn: 'downloadTerraform', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },

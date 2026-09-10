@@ -47,20 +47,175 @@
 //                               not on the agent: there is no task-lib and the
 //                               browser applies the user's own proxy settings.
 //
+//   4. Every version floor in the tables must still be able to FIRE. A floor
+//      the whole fleet has already passed is inert, and a gate whose bar sits
+//      under the floor is green about nothing (sethbacon/azure-pipelines-terraform#1108,
+//      finding 2 -- a bare number here would resolve in THIS repository).
+//
+// Where the floors come from
+// --------------------------
+// A floor is the highest of three terms, and each term answers a different
+// question (see lib/package-delegation.js's highestFloor, which is the rule):
+//
+//   since           per SINK, in the table below -- the release that FIRST
+//                   carried the behaviour. History; it never moves, and no
+//                   repository can lower it.
+//   ESTATE_FLOORS   per PACKAGE, in this file -- the RATCHET. The lowest
+//                   version any repository in the estate may declare. Raised
+//                   deliberately here, once every repository has passed it.
+//   the data file   per PACKAGE, in the repository being analysed -- the fleet
+//                   tracker, raised by the same change that bumps its packages.
+//                   OPTIONAL in this phase; see REQUIRE_DATA.
+//
+// Because the rule is a MAX, a term can only ever RAISE the bar. That is the
+// whole reason one of the three is safe to keep in a file the analysed
+// repository owns: it cannot weaken a verdict the other two already reached.
+//
+// This gate is CANONICAL: it is resolved from this one copy and run against
+// trees it does not live in, so every path it walks is derived from ROOT (argv)
+// and never from __dirname. lib/package-delegation.js, which it requires from
+// beside itself, carries the same discipline in each of its walks and takes
+// ROOT as an explicit argument for that reason. The last time a boundary here
+// followed the script instead of the tree it fabricated 19 sites across three
+// repositories.
+//
 // Repo-agnostic: it discovers `**/src/**/*.ts(x)` under the repo root, so it runs
-// unchanged in azure-pipelines-packer and azure-pipelines-terraform. Usage:
+// unchanged in azure-pipelines-packer, azure-pipelines-terraform and
+// azure-pipelines-release-docs. Usage:
 //
 //     node scripts/check-proxy-parity.js [repoRoot] [--json]
 //
-// Exit 0 = no residual instances of the class. Exit 1 = residuals, listed.
+// Exit 0 = no residual instances of the class. Exit 1 = residuals, listed
+// (unproxied call sites, or a floor that can no longer fire) -- or, with no
+// JSON printed, the vacuity bail-out below. Exit 2 = the gate could not run: a
+// data file it cannot read. Neither of the last two is ever a clean repository,
+// and the replay adapter distinguishes them by whether an envelope was printed.
 
 const fs = require('fs');
 const path = require('path');
+const { packageDelegationVerdict, highestFloor } = require('./lib/package-delegation.js');
 
 // `--json` prints the machine-readable finding list (consumed by the class
 // test's per-site table) instead of the human report; the exit code is identical.
 const JSON_OUTPUT = process.argv.includes('--json');
 const ROOT = path.resolve(process.argv.filter((a) => a !== '--json')[2] || process.cwd());
+
+// ---------------------------------------------------------------------------
+// PER-REPO DATA. This gate is the same bytes for every repository it analyses.
+// The only thing a repository contributes is a NUMBER THAT MOVES WITH ITS OWN
+// PACKAGE FLEET, and nothing else: no sink name, no builder name, no exemption
+// path. A repository must not be able to make itself invisible to the
+// recogniser by editing a file the recogniser reads -- deleting a sink from a
+// per-repo table would look exactly like a repository that has no such call.
+//
+// Resolved against ROOT (argv), never __dirname, for the same reason the
+// declaredDependency()/lockfileFor() walk boundary in lib/package-delegation.js
+// is: this gate is ONE copy serving every root the replay walks, so "this
+// repository's data" has to be a fact about the tree being ANALYSED and not
+// about wherever this file happens to sit.
+/**
+ * THE RATCHET. The lowest version of each package ANY repository in the estate
+ * is permitted to declare, whatever its own data file says. The per-repo data
+ * file can only ever RAISE the bar (effective = max of the three), so a
+ * repository cannot weaken this gate by editing a file it owns -- which is the
+ * one thing that would otherwise be wrong with moving the floors out.
+ *
+ * It is raised HERE, deliberately, once every repository has passed a version.
+ * It is not a per-PR chore: `staleFloors()` never fails on it, because a single
+ * repository bumping first would then turn every other repository red. Its lag
+ * is reported instead, and the replay -- the only thing that sees all three
+ * repositories at once -- is what turns "every repo reports the same lag" into
+ * "raise it".
+ */
+const ESTATE_FLOORS = {
+    '@4cloudguru/pipeline-task-ado': '0.11.0',
+    '@4cloudguru/pipeline-task-core': '0.9.3',
+};
+
+const DATA_REL = path.join('scripts', 'lib', 'proxy-parity.data.json');
+const DATA_PATH = path.join(ROOT, DATA_REL);
+
+/**
+ * PHASE A: the per-repo data file is OPTIONAL, and this constant is `false`.
+ *
+ * No repository carries one yet. The gate is resolved from this single copy for
+ * every root the replay walks, so the moment absent data is a failure, every
+ * repository without a file is exit 2 -- a distributed migration run in the
+ * wrong order. Data files land in each repo FIRST (they are inert while this is
+ * off, because the enforced floor is a max and a missing term cannot lower it),
+ * and only once all of them carry one does this default flip and the override
+ * below get deleted.
+ *
+ * Absent data therefore falls back to max(since, ESTATE_FLOORS), which -- with
+ * the ratchet set to today's fleet -- is exactly the strongest floor any copy of
+ * this gate enforces today. Nothing is weakened by the file not existing yet.
+ *
+ * `PROXY_PARITY_DATA_OPTIONAL=0` selects the Phase C behaviour now. It exists so
+ * the fail-closed path is a path the self-test can EXECUTE rather than a branch
+ * nobody has ever run; a loader whose refusal has never fired is a refusal
+ * nobody has verified.
+ */
+const REQUIRE_DATA = process.env.PROXY_PARITY_DATA_OPTIONAL === '0';
+
+function loadFloors() {
+    let raw;
+    try {
+        raw = fs.readFileSync(DATA_PATH, 'utf8');
+    } catch {
+        if (REQUIRE_DATA) {
+            console.error(`FAIL: ${DATA_REL} is missing under ${ROOT}. This gate's version floors are a fact about THIS repository's fleet; without them the gate would run with no bar at all, which is could-not-run, not a clean repository.`);
+            process.exit(2);
+        }
+        return null;
+    }
+    let json;
+    try {
+        json = JSON.parse(raw);
+    } catch (err) {
+        console.error(`FAIL: ${DATA_REL} under ${ROOT} is not parseable JSON: ${err.message}`);
+        process.exit(2);
+    }
+    if (json.schemaVersion !== 1) {
+        console.error(`FAIL: ${DATA_REL} declares schemaVersion ${JSON.stringify(json.schemaVersion)}; this gate reads 1. A schema it cannot read is could-not-run.`);
+        process.exit(2);
+    }
+    const floors = json.floors;
+    if (!floors || typeof floors !== 'object' || Array.isArray(floors)) {
+        console.error(`FAIL: ${DATA_REL} under ${ROOT} carries no \`floors\` object.`);
+        process.exit(2);
+    }
+    for (const [pkg, value] of Object.entries(floors)) {
+        if (!/^\d+\.\d+\.\d+$/.test(String(value))) {
+            console.error(`FAIL: ${DATA_REL} floor for ${pkg} is ${JSON.stringify(value)}; an exact x.y.z is the only form this gate can compare.`);
+            process.exit(2);
+        }
+    }
+    return floors;
+}
+
+const REPO_FLOORS = loadFloors();
+
+/**
+ * The floor actually enforced for `pkg` at a sink introduced in `since`.
+ *
+ * max(since, repo floor) -- never the repo value alone. `since` is the release
+ * that FIRST carried the behaviour and is a fact about the package, so it lives
+ * in this file and a repository cannot lower it. The repo floor is the fleet
+ * tracker and can only ever raise the bar. A data file is therefore incapable
+ * of weakening a verdict below what the package's own history allows, and any
+ * attempt to lower it under the fleet is what staleFloors() fails on.
+ */
+function effectiveFloor(pkg, since) {
+    return highestFloor(since, ESTATE_FLOORS[pkg], REPO_FLOORS ? REPO_FLOORS[pkg] : null);
+}
+
+/** Which of the three sources the enforced floor came from -- for the report. */
+function floorSource(pkg, since) {
+    const eff = effectiveFloor(pkg, since);
+    if (REPO_FLOORS && REPO_FLOORS[pkg] === eff) return `${DATA_REL}`;
+    if (ESTATE_FLOORS[pkg] === eff) return 'ESTATE_FLOORS';
+    return 'since';
+}
 
 /** Builders that return a RequestInit carrying a proxy dispatcher. */
 const PROXY_OPTION_BUILDERS = ['buildFetchOptions', 'buildProxyFetchOptions', 'buildAdoFetchOptions'];
@@ -103,19 +258,20 @@ const DELEGATED_FETCH_SINKS = ['createHttpClient'];
  */
 const PACKAGE_DELEGATED_SINKS = {
     createAdoHttpClient: {
+        capability: 'the proxy decision',
+        provides: 'proxy dispatch and secret registration',
         pkg: '@4cloudguru/pipeline-task-ado',
-        // First carried in ado 0.3.0; the floor tracks the fleet (see
-        // staleFloors below), so it moves up with the estate rather than
-        // staying at a historical value it can no longer fire on.
-        min: '0.11.0',
+        // First carried in ado 0.3.0. `since` is history and never moves; the
+        // bar actually enforced is max(since, the repo's fleet floor).
+        since: '0.3.0',
         // The package delegates onward to core, so the direct floor above only
         // vouches for the wiring - not for which implementation it wires up.
         // ado@0.2.0 declared core ^0.3.1 while the tasks declared ^0.5.0, and
         // caret on a 0.x version is patch-only, so the ranges were disjoint,
         // npm nested a second copy, and the delegated client ran the older one.
         // Both floors passed throughout. Hence the resolved check below.
-        // First carried in core 0.5.0; floor tracks the fleet.
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.3' },
+        // First carried in core 0.5.0.
+        carries: { pkg: '@4cloudguru/pipeline-task-core', since: '0.5.0' },
     },
     // generateIdToken (#46 extraction): the OIDC token exchange's fetch(), and
     // the proxy decision that wraps it (buildAdoFetchOptions), both moved into
@@ -125,12 +281,15 @@ const PACKAGE_DELEGATED_SINKS = {
     // pipeline-task-core, so a stale nested copy of THAT package would run old
     // proxy logic even with a fresh ado floor.
     generateIdToken: {
+        capability: 'the proxy decision',
+        provides: 'proxy dispatch and secret registration',
         pkg: '@4cloudguru/pipeline-task-ado',
-        // First carried in ado 0.5.0 / core 0.6.0; floors track the fleet.
-        min: '0.11.0',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.3' },
+        // First carried in ado 0.5.0 / core 0.6.0.
+        since: '0.5.0',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', since: '0.6.0' },
     },
-    // exchangeOidcForUpst (#1074): the OCI WIF flow's SECOND hop. This one was
+    // exchangeOidcForUpst (sethbacon/azure-pipelines-terraform#1074): the OCI WIF
+    // flow's SECOND hop. This one was
     // extracted in the other direction from the rest of this table -- it was
     // defined here and moved out, because azure-pipelines-packer needed the
     // same realm allowlist and redirect policy and a copy would have drifted
@@ -139,10 +298,12 @@ const PACKAGE_DELEGATED_SINKS = {
     // two above, since its fetch options come from the package's own
     // buildAdoFetchOptions.
     exchangeOidcForUpst: {
+        capability: 'the proxy decision',
+        provides: 'proxy dispatch and secret registration',
         pkg: '@4cloudguru/pipeline-task-ado',
-        // First exported in ado 0.8.0 / core 0.6.0; floors track the fleet.
-        min: '0.11.0',
-        carries: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.3' },
+        // First exported in ado 0.8.0 / core 0.6.0.
+        since: '0.8.0',
+        carries: { pkg: '@4cloudguru/pipeline-task-core', since: '0.6.0' },
     },
 };
 
@@ -198,8 +359,13 @@ const PROXY_AGENT_BUILDERS = ['buildProxyAgent', 'createProxyTunnelAgent'];
  * without one is not a weaker proxy — it is no proxy at all.
  */
 const DELEGATED_NODE_HTTP_SINKS = {
-    // First carried in core 0.6.0; floor tracks the fleet (see staleFloors).
-    httpsRequest: { pkg: '@4cloudguru/pipeline-task-core', min: '0.9.3' },
+    // First carried in core 0.6.0.
+    httpsRequest: {
+        capability: 'the proxy decision',
+        provides: 'proxy dispatch and secret registration',
+        pkg: '@4cloudguru/pipeline-task-core',
+        since: '0.6.0',
+    },
 };
 
 /**
@@ -210,13 +376,22 @@ const DELEGATED_NODE_HTTP_SINKS = {
 function declaredFloors() {
     const out = [];
     for (const [sink, entry] of Object.entries(PACKAGE_DELEGATED_SINKS)) {
-        out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}`, pkg: entry.pkg, min: entry.min });
-        if (entry.carries) out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}.carries`, pkg: entry.carries.pkg, min: entry.carries.min });
+        out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}`, pkg: entry.pkg, min: effectiveFloor(entry.pkg, entry.since), since: entry.since, data: DATA_REL });
+        if (entry.carries) out.push({ where: `PACKAGE_DELEGATED_SINKS.${sink}.carries`, pkg: entry.carries.pkg, min: effectiveFloor(entry.carries.pkg, entry.carries.since), since: entry.carries.since, data: DATA_REL });
     }
     for (const [sink, entry] of Object.entries(DELEGATED_NODE_HTTP_SINKS)) {
-        out.push({ where: `DELEGATED_NODE_HTTP_SINKS.${sink}`, pkg: entry.pkg, min: entry.min });
+        out.push({ where: `DELEGATED_NODE_HTTP_SINKS.${sink}`, pkg: entry.pkg, min: effectiveFloor(entry.pkg, entry.since), since: entry.since, data: DATA_REL });
     }
     return out;
+}
+
+/** A table entry as packageDelegationVerdict() wants it: floors resolved. */
+function resolvedSpec(entry) {
+    return {
+        ...entry,
+        min: effectiveFloor(entry.pkg, entry.since),
+        carries: entry.carries ? { ...entry.carries, min: effectiveFloor(entry.carries.pkg, entry.carries.since) } : undefined,
+    };
 }
 
 /** Every task manifest under ROOT/Tasks, however deep. */
@@ -284,131 +459,37 @@ function staleFloors() {
         if (!fleet) continue;
         const declared = rangeFloor(floor.min);
         if (declared && compareVersions(declared, fleet) < 0) {
-            stale.push({ ...floor, fleet: fleet.join('.') });
+            stale.push({ ...floor, fleet: fleet.join('.'), source: floorSource(floor.pkg, floor.since) });
         }
     }
     return stale;
 }
 
+/**
+ * Packages whose ESTATE floor is below what THIS repository already declares.
+ *
+ * Never a failure. Raising the ratchet needs every repository to have passed
+ * the version, and this gate only ever sees one; failing here would make the
+ * first repository to bump turn the other two red -- the estate has been bitten
+ * by exactly that shape before. It is emitted so the replay, which runs this
+ * gate against all three roots in one pass, can say "all of them report the
+ * same lag, so the ratchet is safe to raise".
+ */
+function estateFloorLag() {
+    const lag = [];
+    for (const [pkg, min] of Object.entries(ESTATE_FLOORS)) {
+        const fleet = fleetFloor(pkg);
+        if (!fleet) continue;
+        const declared = rangeFloor(min);
+        if (declared && compareVersions(declared, fleet) < 0) {
+            lag.push({ pkg, estate: min, fleet: fleet.join('.') });
+        }
+    }
+    return lag;
+}
+
 /** Proxy-aware by construction inside azure-pipelines-tool-lib (see header). */
 const TOOL_LIB_SINKS = ['downloadTool'];
-
-/** The package.json of the task that owns `file`, or null above the task roots. */
-function declaredDependency(file, pkg) {
-    let dir = path.dirname(path.resolve(file));
-    // The walk stops at the tree being ANALYSED, which is ROOT (argv), not at
-    // this file's own parent. Those are the same path while the gate lives in
-    // scripts/ of the repo it analyses, so this changes nothing today -- and it
-    // is what lets the gate be resolved from one canonical copy elsewhere. With
-    // __dirname the boundary followed the SCRIPT, so a moved gate stopped
-    // resolving declared dependencies and reported correctly-proxied call sites
-    // as findings (measured: 4 in packer, 14 in terraform, 1 in release-docs).
-    const stop = ROOT;
-    while (dir.startsWith(stop)) {
-        const manifest = path.join(dir, 'package.json');
-        if (fs.existsSync(manifest)) {
-            try {
-                const json = JSON.parse(fs.readFileSync(manifest, 'utf8'));
-                const range = (json.dependencies || {})[pkg];
-                if (range) return range;
-            } catch {
-                return null;
-            }
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir) break;
-        dir = parent;
-    }
-    return null;
-}
-
-/**
- * Deliberately narrow: only a caret or exact range pins a floor this gate can
- * reason about. `*`, `latest` or a git URL cannot be shown to include the fix,
- * so they are treated as NOT satisfying it rather than waved through.
- */
-function satisfiesFloor(range, min) {
-    const parsed = /^\^?(\d+)\.(\d+)\.(\d+)/.exec(String(range).trim());
-    if (!parsed) return false;
-    const floor = min.split('.').map(Number);
-    const actual = parsed.slice(1).map(Number);
-    for (let i = 0; i < 3; i += 1) {
-        if (actual[i] > floor[i]) return true;
-        if (actual[i] < floor[i]) return false;
-    }
-    return true;
-}
-
-/** The lockfile of the task that owns `file` — what `npm ci` actually installs. */
-function lockfileFor(file) {
-    let dir = path.dirname(path.resolve(file));
-    // The walk stops at the tree being ANALYSED, which is ROOT (argv), not at
-    // this file's own parent. Those are the same path while the gate lives in
-    // scripts/ of the repo it analyses, so this changes nothing today -- and it
-    // is what lets the gate be resolved from one canonical copy elsewhere. With
-    // __dirname the boundary followed the SCRIPT, so a moved gate stopped
-    // resolving declared dependencies and reported correctly-proxied call sites
-    // as findings (measured: 4 in packer, 14 in terraform, 1 in release-docs).
-    const stop = ROOT;
-    while (dir.startsWith(stop)) {
-        const lock = path.join(dir, 'package-lock.json');
-        if (fs.existsSync(lock)) return lock;
-        const parent = path.dirname(dir);
-        if (parent === dir) break;
-        dir = parent;
-    }
-    return null;
-}
-
-/**
- * Every copy of `dep` the owning task installs, top-level or nested. Read from
- * the lockfile rather than the manifests because two compatible-LOOKING ranges
- * can still resolve to two different copies, and only the lockfile shows it.
- * Returns null when there is nothing to read, which the caller fails closed on.
- */
-function installedCopies(file, dep) {
-    const lock = lockfileFor(file);
-    if (!lock) return null;
-    let json;
-    try {
-        json = JSON.parse(fs.readFileSync(lock, 'utf8'));
-    } catch {
-        return null;
-    }
-    const suffix = `node_modules/${dep}`;
-    return Object.entries(json.packages || {})
-        .filter(([key]) => key === suffix || key.endsWith(`/${suffix}`))
-        .map(([key, value]) => ({ path: key, version: value && value.version }));
-}
-
-/**
- * Resolves the delegated sink's verdict: the owning task must declare the
- * delegating package at or above its floor AND, when that package delegates
- * onward, the onward dependency must resolve to exactly one copy at or above
- * its own floor.
- */
-function packageDelegationVerdict(file, { pkg, min, carries }) {
-    const declared = declaredDependency(file, pkg);
-    if (declared === null || !satisfiesFloor(declared, min)) {
-        return { ok: false, why: `delegates the proxy decision to ${pkg}, but the owning task declares ${declared ?? 'no dependency on it'} (floor ${min})` };
-    }
-    if (!carries) {
-        return { ok: true, why: `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min})` };
-    }
-
-    const copies = installedCopies(file, carries.pkg);
-    if (copies === null) {
-        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}, but no lockfile was readable to show which copy is installed` };
-    }
-    if (copies.length !== 1) {
-        const seen = copies.map((c) => `${c.version} at ${c.path}`).join(', ') || 'none';
-        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}, which resolves to ${copies.length} copies (${seen}) — the delegated call runs whichever one is nested, not the one this task imports` };
-    }
-    if (!satisfiesFloor(copies[0].version, carries.min)) {
-        return { ok: false, why: `${pkg}@${declared} delegates onward to ${carries.pkg}@${copies[0].version}, below the ${carries.min} floor` };
-    }
-    return { ok: true, why: `proxy dispatch and secret registration come from ${pkg}@${declared} (floor ${min}), resolving a single ${carries.pkg}@${copies[0].version} (floor ${carries.min})` };
-}
 
 function walk(dir, out = []) {
     let entries;
@@ -668,7 +749,7 @@ for (const file of files) {
             const re = new RegExp(`(?<![.\\w$])${local}\\s*\\(`, 'g');
             let m;
             while ((m = re.exec(masked)) !== null) {
-                const { ok, why } = packageDelegationVerdict(file, spec);
+                const { ok, why } = packageDelegationVerdict(file, resolvedSpec(spec), ROOT);
                 record(m.index, local, ok ? 'PROXIED-BY-PACKAGE' : 'UNPROXIED', why);
             }
         }
@@ -688,7 +769,7 @@ for (const file of files) {
                     'no agent from a proxy-agent builder, and node:https reaches no proxy without one');
                 continue;
             }
-            const { ok, why } = packageDelegationVerdict(file, spec);
+            const { ok, why } = packageDelegationVerdict(file, resolvedSpec(spec), ROOT);
             record(m.index, sink, ok ? 'PROXIED-BY-PACKAGE' : 'UNPROXIED',
                 ok ? `supplies a CONNECT-tunnelling agent; ${why}` : why);
         }
@@ -727,9 +808,10 @@ if (sites.length === 0) {
 
 const failures = sites.filter((s) => s.verdict === 'UNPROXIED').length;
 const stale = staleFloors();
+const estateLag = estateFloorLag();
 
 if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ sites, failures, staleFloors: stale }, null, 2));
+    console.log(JSON.stringify({ sites, failures, staleFloors: stale, estateFloorLag: estateLag }, null, 2));
     process.exit(failures || stale.length ? 1 : 0);
 }
 
@@ -746,7 +828,20 @@ for (const verdict of order) {
 if (stale.length) {
     console.error(`\nSTALE FLOORS (${stale.length})`);
     for (const f of stale) {
-        console.error(`  ${f.where}: floor ${f.min} for ${f.pkg}, but every task already declares >= ${f.fleet} -- the floor cannot fire.`);
+        // `src=` is the whole point of the three-source rule being reported: the
+        // operator has to know WHICH of the three to raise, and only one of them
+        // is a file this repository owns.
+        console.error(`  ${f.where}: floor ${f.min} for ${f.pkg} (src=${f.source}), but every task already declares >= ${f.fleet} -- the floor cannot fire.`);
+    }
+}
+
+// Never a failure -- see estateFloorLag(). Printed after the stale block so the
+// two are not confused: the block above is this repository's to fix, this one
+// waits on every other repository reporting the same line.
+if (estateLag.length) {
+    console.log(`\nESTATE RATCHET LAG (${estateLag.length}) -- reported, not failed`);
+    for (const l of estateLag) {
+        console.log(`  ${l.pkg}: ESTATE_FLOORS pins ${l.estate}, this repo's fleet is at ${l.fleet}. Raise it upstream once EVERY ado-extension reports this line.`);
     }
 }
 
