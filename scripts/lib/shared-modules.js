@@ -242,12 +242,22 @@ const FAMILIES = [
     },
 ];
 
-// Nothing in this repository is a copy of a module owned by another extension:
-// this is the upstream the siblings copy FROM -- including Tests/shared-gate.ts,
-// whose canonical copy is TerraformTaskV5/Tests/shared-gate.ts and whose sibling
-// copies in azure-pipelines-packer carry the provenance header pointing here. The
-// list is empty and stated rather than absent, so adding a copied module has an
-// obvious place to go.
-const PROVENANCE = [];
+// Cross-repository copies: modules this repository copied FROM another one. A
+// row here is what lets the replay's cross-repo-copy-parity signature compare
+// the body of the copy against the upstream's live main (header stripped on
+// both sides), so a fix landed upstream that never reached here is a site
+// rather than a silent divergence. `dir` and `file` locate the copy here; the
+// upstream's own path comes from the copy's `@shared-module: copied from ...`
+// header, which scripts/check-shared-modules.js requires to name the same
+// upstream as the row.
+//
+// Tests/shared-gate.ts (the class-gate resolver) came from
+// azure-pipelines-packer, which holds the canonical copy: it landed there first
+// (sethbacon/azure-pipelines-packer#455). One row is enough -- the FAMILIES
+// entry above holds this repository's second copy byte-identical to this one
+// (sethbacon/azure-pipelines-terraform#1167).
+const PROVENANCE = [
+    { dir: 'Tasks/TerraformTask/TerraformTaskV5/Tests', file: 'shared-gate.ts', upstream: 'azure-pipelines-packer' },
+];
 
 module.exports = { FAMILIES, PROVENANCE };
