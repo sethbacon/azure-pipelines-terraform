@@ -5,6 +5,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { assertEgressHostAllowed, isHostAllowed as isRegistryHostAllowed, parseAllowedHosts, EgressHostMessages, validateUrlPathSegment } from '@4cloudguru/pipeline-task-core';
 import { downloadToFile } from '../src/http-client';
+import { sharedGate } from './shared-gate';
 
 /**
  * CLASS TEST — egress authorization (#161 / #188 / #191 / #200 / #201).
@@ -19,7 +20,9 @@ import { downloadToFile } from '../src/http-client';
  *   B. REDIRECT_ROWS  — the SAME decision re-applied on a redirect hop, driven
  *                       through the real downloadToFile + a stubbed fetch.
  *   C. SITE_ROWS      — every enumerated egress site in this repo, verdicted by
- *                       the re-runnable signature (scripts/check-egress-authorization.js).
+ *                       the re-runnable signature, which is now the shared
+ *                       check-egress-authorization composite action rather than a
+ *                       copy under scripts/ (resolved through ./shared-gate).
  *
  * Every row is mutation-provable: inverting the guard it exercises turns that
  * row RED (see the file-level note on each table).
@@ -452,22 +455,38 @@ describe('egress authorization (class test #161/#188/#191/#200/#201)', function 
     });
 
     describe('C. every enumerated egress site in this repo', () => {
+        // This repository no longer carries the gate: it is the shared composite
+        // `check-egress-authorization`, and this job `uses:` it by SHA before the suite
+        // runs, which is what makes the bytes asserted here the bytes the pin names.
+        // sharedGate() THROWS when it cannot find them — never skips.
+        //
+        // Resolved in before() and never at module scope: Tests/L0.ts imports this file
+        // among its sibling suites, and a module-level throw prints "Exception during
+        // run" and runs ZERO tests in the whole task, hiding every other suite.
+        let GATE: string;
+        before(() => {
+            GATE = sharedGate(REPO_ROOT, 'check-egress-authorization', 'check-egress-authorization.js');
+        });
+
         // The signature exits non-zero when it finds residuals, and execFileSync
         // throws on a non-zero exit — capture stdout from the error so a residual
         // fails an ASSERTION below rather than aborting the whole suite at load.
-        let stdout: string;
-        try {
-            stdout = execFileSync(
-                process.execPath,
-                [path.join(REPO_ROOT, 'scripts/check-egress-authorization.js'), REPO_ROOT, '--json'],
-                { encoding: 'utf8' },
-            );
-        } catch (err) {
-            stdout = String((err as { stdout?: string }).stdout ?? '');
-            assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
-        }
-        const raw = JSON.parse(stdout) as { sites: Array<{ rel: string; fn: string; sink: string; verdict: string }>; suspects: string[]; failures: number };
-        const report = { ...raw, sites: raw.sites.map(s => ({ file: s.rel, fn: s.fn, sink: s.sink, verdict: s.verdict, why: '' })) };
+        let report: {
+            sites: Array<{ file: string; fn: string; sink: string; verdict: string; why: string }>;
+            suspects: string[];
+            failures: number;
+        };
+        before(() => {
+            let stdout: string;
+            try {
+                stdout = execFileSync(process.execPath, [GATE, REPO_ROOT, '--json'], { encoding: 'utf8' });
+            } catch (err) {
+                stdout = String((err as { stdout?: string }).stdout ?? '');
+                assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
+            }
+            const raw = JSON.parse(stdout) as { sites: Array<{ rel: string; fn: string; sink: string; verdict: string }>; suspects: string[]; failures: number };
+            report = { ...raw, sites: raw.sites.map(s => ({ file: s.rel, fn: s.fn, sink: s.sink, verdict: s.verdict, why: '' })) };
+        });
 
         it('leaves no unauthorized or textual-only site anywhere in src/', () => {
             assert.strictEqual(report.failures, 0,

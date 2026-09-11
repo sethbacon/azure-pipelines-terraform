@@ -49,7 +49,7 @@ concurrency:
 
 jobs:
   replay:
-    uses: 4cloudguru/shared-workflows/.github/workflows/signature-replay.yml@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
+    uses: 4cloudguru/shared-workflows/.github/workflows/signature-replay.yml@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
     # Exactly one secret, named. NOT `secrets: inherit`.
     secrets:
       SUITE_READ_APP_KEY: ${{ secrets.SUITE_READ_APP_KEY }}
