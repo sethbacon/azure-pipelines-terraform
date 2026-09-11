@@ -5,7 +5,7 @@
 //
 // Finds a gate this repository no longer carries.
 //
-// The four ADO-extension class gates live in 4cloudguru/shared-workflows as composite
+// The five ADO-extension class gates live in 4cloudguru/shared-workflows as composite
 // actions. CI runs each as a STEP, pinned by SHA; the runner materialises the action
 // tree at that SHA and the composite writes its own `github.action_path` into
 // $GITHUB_ENV for the steps after it. So on a runner the gate this file returns IS the
