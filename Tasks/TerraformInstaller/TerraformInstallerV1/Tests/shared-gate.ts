@@ -1,5 +1,5 @@
-// @shared-module: copied from azure-pipelines-terraform (Tasks/TerraformTask/TerraformTaskV5/Tests/shared-gate.ts)
-// @shared-module-policy: fixes land in BOTH repositories' copies; within this repository
+// @shared-module: copied from azure-pipelines-packer (Tasks/PackerTask/PackerTaskV1/Tests/shared-gate.ts)
+// @shared-module-policy: fixes land in azure-pipelines-packer first and are copied here; within this repository
 //   scripts/check-shared-modules.js byte-compares every copy against the canonical one.
 // @shared-module-status: IN-SYNC
 //
