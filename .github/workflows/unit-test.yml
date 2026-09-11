@@ -118,7 +118,7 @@ jobs:
       # Its mutation self-test moved with it and runs in that repository's CI
       # beside the implementation, rather than here beside a fork of it.
       - name: Shared-module pins in lockstep (#1108 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-shared-module-pins@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-shared-module-pins@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
       - name: Check for unregistered near-duplicate modules
         run: node scripts/check-near-duplicate-modules.js
       - name: Validate egress authorization (SSRF class signature)
@@ -136,7 +136,7 @@ jobs:
       # "looked and found none" apart from "looked nowhere". A legitimate move
       # in the count is a one-line edit in the same PR that moved it.
       - name: Validate enforced disciplines (documented-but-unenforced class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-enforced-disciplines@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-enforced-disciplines@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
       # NO `Self-test check-proxy-parity.js` STEP HERE ANY MORE, and the absence
       # is deliberate rather than an omission. That gate has been wrong twice --
       # once reporting no call sites for a task that makes them, once
@@ -148,19 +148,19 @@ jobs:
       # against the bytes every consumer actually calls -- one place instead of
       # three hand-copies.
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
       - name: Validate artifact trust (#65/#78/#136/#198/#204 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
           #             -> sites 68, scanned 108
           min-scanned: 108
           min-sites: 68
       - name: Validate provider auth parity (#97 fail-open class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
           #             -> cells 95, scanned 89
@@ -171,7 +171,7 @@ jobs:
       # that repository's CI. Four hand-copies of this 844-line script existed
       # across the estate and had already drifted three ways.
       - name: Validate documented claims against the code
-        uses: 4cloudguru/shared-workflows/.github/actions/check-docs-claims@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-docs-claims@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
 
   build-and-test-v5:
     name: Build and Test V5 (${{ matrix.os }})
@@ -281,13 +281,13 @@ jobs:
       # NOT inherit it -- without it each gate would analyse the task directory
       # instead of the repository.
       - name: Provide the outbound proxy parity gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
       - name: Provide the provider auth parity gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
@@ -511,7 +511,7 @@ jobs:
       # explicit because a composite action's steps do not inherit this job's
       # `defaults.run.working-directory`.
       - name: Provide the artifact trust gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
@@ -1614,7 +1614,7 @@ jobs:
   # not because there was nothing to report. The shared job scans the repository.
   workflow-security:
     name: Workflow Security
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
     with:
       # release.yml calls this workflow at the commit it is about to publish;
       # the linters have to read that commit, not the run's default.
@@ -1640,5 +1640,5 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@adb01429f88e459fcc045598317b5d6c09f95647 # v1.26.1
 
