@@ -513,6 +513,17 @@ The `Check Shared Module Parity` job also runs six **shared composite actions** 
 
 `check-proxy-parity`, `check-artifact-trust` and `auth-parity-matrix` each declare a **measured floor** (`min-sites` / `min-scanned` / `min-cells`) in `.github/workflows/unit-test.yml` with the date and the producing command beside it, because each of those three exits 0 over a repository it enumerated nothing in; the floor is what tells "looked and found none" apart from "looked nowhere". The other three take no floor input: `check-enforced-disciplines` fails outright on a repository with no `Tasks/` tree, and `check-shared-module-pins` and `check-docs-claims` report their own denominators but nothing yet refuses an empty one (4cloudguru/shared-workflows#75). No new required status check was introduced — each of these is a **step inside an existing required job**, so branch protection needs no change.
 
+`check-proxy-parity` reads one more thing, and it is a file this repository owns:
+`scripts/lib/proxy-parity.data.json` declares the version of each shared `@4cloudguru` package that
+every task here has passed. The gate reads it from the tree it is ANALYSING rather than from beside
+itself, which is what lets a single upstream copy hold three repositories to three different package
+fleets. The floor it enforces is the **highest** of three terms — the release a capability first
+shipped in, the estate-wide ratchet inside the gate, and this file — so the file can only raise this
+repository's bar, never lower it, which is what makes it safe to keep here. **Bump it in the same
+change that bumps the packages**: when a task's range moves and this file does not, the gate's
+`staleFloors()` check fails naming both numbers, because a floor every task passed long ago cannot
+fire and is a green about nothing.
+
 All six used to be `scripts/` copies here. The pins gate and the documented-claims gate moved to `4cloudguru/shared-workflows` on 2026-09-09 and the four class gates followed on 2026-09-10: four hand-copies of each existed across the estate — this repository, `azure-pipelines-packer`, `azure-pipelines-release-docs`, and the canonical copy signature replay runs from `security-orchestration` — and the docs-claims copies had already drifted three ways, twice in one day with a fix landing in a hand-copy and never reaching canonical. There is consequently **no local copy to edit or to weaken**, and each gate's mutation self-test moved with it and runs in that repository's CI beside the implementation rather than here beside a fork of it (`auth-parity-matrix` gained there the self-test it never had anywhere). They are deliberately **composite actions and not reusable workflows**: a reusable workflow reports as `<caller-job-id> / <called-job-name>`, which would rename `Check Shared Module Parity`, and that name is a required status context on `main`. To run any of them before pushing, against a sibling checkout of `shared-workflows` (the estate's `reposRoot` layout):
 
 ```bash
