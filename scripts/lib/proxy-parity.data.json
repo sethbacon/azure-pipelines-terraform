@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "repo": "azure-pipelines-terraform",
+  "floors": {
+    "@4cloudguru/pipeline-task-ado": "0.11.0",
+    "@4cloudguru/pipeline-task-core": "0.9.3"
+  }
+}
