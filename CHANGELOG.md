@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.16.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.1...v1.16.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **gates:** adopt the union egress gate, the strongest of the three copies ([#1173](https://github.com/sethbacon/azure-pipelines-terraform/issues/1173)) ([d7e97b8](https://github.com/sethbacon/azure-pipelines-terraform/commit/d7e97b8602f10783c7c775e0814f82bc0f7c09f7))
+
+
+### Documentation
+
+* make CLAUDE.md's composite-action paragraph true ([#1169](https://github.com/sethbacon/azure-pipelines-terraform/issues/1169)) ([2d1c8f4](https://github.com/sethbacon/azure-pipelines-terraform/commit/2d1c8f40b031b3e4828166503d44cfdc74ecb40f))
+* **tests:** the resolver header counts five class gates, not four ([#1175](https://github.com/sethbacon/azure-pipelines-terraform/issues/1175)) ([eccff13](https://github.com/sethbacon/azure-pipelines-terraform/commit/eccff13b970f8188f02759d8df3077fb4fdc70b9))
+
 ## [1.16.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.0...v1.16.1) (2026-09-09)
 
 
