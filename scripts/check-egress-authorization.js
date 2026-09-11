@@ -375,10 +375,6 @@ for (const file of files) {
                 }
                 const expr = resolveExpression(raw, fn.text, source);
                 if (pass === 0) continue;
-                if (isConstantHost(expr)) {
-                    findings.push({ verdict: 'EXEMPT-CONSTANT-HOST', rel, line: lineOf(m.index), fn: fn.name, sink: name, expr: expr.slice(0, 70) });
-                    continue;
-                }
                 // A sink that takes a per-hop authorization CALLBACK must have the
                 // authorizer INSIDE that callback, not merely somewhere in the
                 // enclosing function. That distinction is the #191 defect exactly:
@@ -387,6 +383,16 @@ for (const file of files) {
                 // function-level test could not tell the two apart.
                 const callbackArgs = allArguments(source, m.index + m[0].length - 1)
                     .filter(a => a.includes('=>') || /^(async\s+)?function\b/.test(a));
+                // The constant-host exemption only applies to sinks with NO per-hop
+                // callback: a one-shot fetch to a hardcoded host has nowhere else to
+                // go. A sink that ALSO accepts an authorization callback (#334) can
+                // still follow redirects to an attacker-controlled host even though
+                // its INITIAL url is a compile-time constant, so it must be judged
+                // on whether that callback actually authorizes, not exempted.
+                if (isConstantHost(expr) && callbackArgs.length === 0) {
+                    findings.push({ verdict: 'EXEMPT-CONSTANT-HOST', rel, line: lineOf(m.index), fn: fn.name, sink: name, expr: expr.slice(0, 70) });
+                    continue;
+                }
                 const callbackUnauthorized = callbackArgs.length > 0
                     && !callbackArgs.every(a => a.includes(`${AUTHORIZER}(`));
                 // A call to a wrapper that authorizes internally is authorized:
