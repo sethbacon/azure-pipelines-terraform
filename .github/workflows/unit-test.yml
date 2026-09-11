@@ -123,18 +123,49 @@ jobs:
         run: node scripts/check-near-duplicate-modules.js
       - name: Validate egress authorization (SSRF class signature)
         run: node scripts/check-egress-authorization.js
+      # The four class gates below are the same move as the pins gate above: the
+      # shared composite replaces the hand-copied gate script this repository
+      # used to carry under scripts/, and each one's self-test now runs in
+      # shared-workflows' CI rather than here. The composites also export their
+      # own `github.action_path`, which is how the task L0 suites that SPAWN
+      # these gates find the exact bytes the pin names -- see build-and-test-v5
+      # and build-and-test-installer-v1 below.
+      #
+      # Every floor below is a MEASURED value, not a guess: the gate exits 0
+      # over a repository it enumerated nothing in, so a floor is what tells
+      # "looked and found none" apart from "looked nowhere". A legitimate move
+      # in the count is a one-line edit in the same PR that moved it.
       - name: Validate enforced disciplines (documented-but-unenforced class signature)
-        run: node scripts/check-enforced-disciplines.js
-      - name: Self-test check-enforced-disciplines.js
-        run: node scripts/test-check-enforced-disciplines.js
-      # check-proxy-parity has been wrong twice -- once reporting no call sites
-      # for a task that makes them, once attributing a locally defined function
-      # to a package by name alone. Both changed the inventory silently, which
-      # is the one failure a coverage gate must not have.
-      - name: Self-test check-proxy-parity.js
-        run: node scripts/test-check-proxy-parity.js
+        uses: 4cloudguru/shared-workflows/.github/actions/check-enforced-disciplines@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+      # NO `Self-test check-proxy-parity.js` STEP HERE ANY MORE, and the absence
+      # is deliberate rather than an omission. That gate has been wrong twice --
+      # once reporting no call sites for a task that makes them, once
+      # attributing a locally defined function to a package by name alone. Both
+      # changed the inventory silently, which is the one failure a coverage gate
+      # must not have, and it is why the self-test existed. The gate is now the
+      # shared `check-proxy-parity` composite action, so its self-test runs in
+      # 4cloudguru/shared-workflows' own CI, beside the script it exercises and
+      # against the bytes every consumer actually calls -- one place instead of
+      # three hand-copies.
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
-        run: node scripts/check-proxy-parity.js
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
+          min-sites: 22
+      - name: Validate artifact trust (#65/#78/#136/#198/#204 class signature)
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
+          #             -> sites 68, scanned 108
+          min-scanned: 108
+          min-sites: 68
+      - name: Validate provider auth parity (#97 fail-open class signature)
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
+          #             -> cells 95, scanned 89
+          min-scanned: 89
+          min-cells: 95
       # Same move, same reasoning as check-shared-module-pins above: the gate is
       # the shared composite action, pinned by SHA, and its self-test runs in
       # that repository's CI. Four hand-copies of this 844-line script existed
@@ -230,6 +261,39 @@ jobs:
           }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
+      # THE TWO STEPS BELOW ARE WHAT LETS `npm test` FIND ITS CLASS GATES.
+      # Tests/ProxyParityL0.ts and Tests/CredentialFailClosedMatrixL0.ts SPAWN a
+      # gate and assert its whole enumerated set. This repository no longer
+      # carries those gates -- they are composite actions in
+      # 4cloudguru/shared-workflows -- so each composite writes its own
+      # `github.action_path` into $GITHUB_ENV (SHARED_GATE_CHECK_PROXY_PARITY,
+      # SHARED_GATE_AUTH_PARITY_MATRIX) and Tests/shared-gate.ts reads it. The
+      # runner materialises the action tree at the SHA on the `uses:` line, so
+      # the bytes the suite spawns are the bytes this pin names -- by
+      # construction, not by convention. Remove either step and the suite THROWS
+      # on both operating systems naming the line to put back; it can never
+      # silently skip. One export covers BOTH test legs of this job: the Node 24
+      # `npm run test:coverage` below and the Node 20 `npm test` re-run (#720) at
+      # the end of it.
+      #
+      # `root:` is passed explicitly because this job sets
+      # `defaults.run.working-directory` and a composite action's own steps do
+      # NOT inherit it -- without it each gate would analyse the task directory
+      # instead of the repository.
+      - name: Provide the outbound proxy parity gate to the L0 suite
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          root: ${{ github.workspace }}
+          # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
+          min-sites: 22
+      - name: Provide the provider auth parity gate to the L0 suite
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          root: ${{ github.workspace }}
+          # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
+          #             -> cells 95, scanned 89
+          min-scanned: 89
+          min-cells: 95
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage
@@ -437,6 +501,23 @@ jobs:
           }
       - name: Lint
         run: npx --no-install eslint src/ Tests/
+      # As in build-and-test-v5 above: Tests/ArtifactTrustL0.ts SPAWNS this gate
+      # and asserts its whole enumerated set -- twice, once over this repository
+      # and once over a mkdtemp fixture in describe D, which is why the composite
+      # has to hand the suite a PATH to the gate rather than a report. The
+      # composite writes its own `github.action_path` into $GITHUB_ENV as
+      # SHARED_GATE_CHECK_ARTIFACT_TRUST and Tests/shared-gate.ts reads it, so
+      # the bytes the suite spawns are the bytes this pin names. `root:` is
+      # explicit because a composite action's steps do not inherit this job's
+      # `defaults.run.working-directory`.
+      - name: Provide the artifact trust gate to the L0 suite
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@6cc136d063217a077fc5183595adf26b21626a82 # v1.26.0
+        with:
+          root: ${{ github.workspace }}
+          # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
+          #             -> sites 68, scanned 108
+          min-scanned: 108
+          min-sites: 68
       - name: Compile TypeScript
         run: npm run compile
       - name: Run unit tests with coverage

@@ -78,11 +78,14 @@ directories and their per-task test commands.
    <!-- ci-jobs:begin .github/workflows/unit-test.yml -->
    - `Check Version Consistency` — validates the version fields in each `task.json`.
    - `Check Shared Module Parity` — modules with byte-identical copies across tasks
-     must stay identical, every outbound HTTP call must honour the agent proxy
-     configuration, and documented claims must match the code
-     (`scripts/check-shared-modules.js`, `scripts/check-egress-authorization.js`,
-     `scripts/check-proxy-parity.js`, and `4cloudguru/shared-workflows`' SHA-pinned
-     `check-shared-module-pins` and `check-docs-claims` composite actions).
+     must stay identical and every outbound egress must be authorized
+     (`scripts/check-shared-modules.js`, `scripts/check-egress-authorization.js`);
+     six gates run here as composite actions from `4cloudguru/shared-workflows`,
+     called by full commit SHA rather than kept as copies here —
+     `check-shared-module-pins`, `check-enforced-disciplines`, `check-proxy-parity`
+     (every outbound HTTP call must honour the agent proxy configuration),
+     `check-artifact-trust`, `auth-parity-matrix`, and `check-docs-claims`, which is
+     what checks that documented claims match the code.
    - `Build and Test V5` — lint, compile and unit tests for TerraformTaskV5.
    - `Build and Test V5 Smoke`
    - `Build and Test Installer V1`
@@ -115,6 +118,46 @@ directories and their per-task test commands.
    ```bash
    node ../shared-workflows/.github/actions/check-docs-claims/check-docs-claims.js .
    ```
+
+   **`npm test` itself now requires a sibling `shared-workflows` checkout for the tasks that
+   spawn a class gate, and that is deliberate.** Four class gates are composite actions in that
+   same repository, on the same pin, and three of them are spawned by task L0 suites as well as
+   run as CI steps: `TerraformTaskV5/Tests/ProxyParityL0.ts` and
+   `TerraformTaskV5/Tests/CredentialFailClosedMatrixL0.ts`, and
+   `TerraformInstallerV1/Tests/ArtifactTrustL0.ts`, each run the gate and assert its whole
+   enumerated set. On a runner the composite exports its own path and `Tests/shared-gate.ts`
+   reads it; on your machine that resolver looks for `../shared-workflows` beside this
+   checkout, and when it finds neither it fails the suite with the `git clone` line to run.
+   It deliberately does not skip: these assertions are the only thing enumerating their defect
+   class under `npm test`, so a could-not-run that read like a clean run would be worse than a
+   red one. (Every task's mocha invocation also passes `--forbid-pending`, so even a future
+   edit that tried to `this.skip()` around a missing gate would fail the run.) The other nine
+   tasks' suites spawn nothing and are unaffected.
+
+   ```bash
+   git clone https://github.com/4cloudguru/shared-workflows ../shared-workflows
+   ```
+
+   The four class gates and the pins gate run locally against this repository as:
+
+   ```bash
+   node ../shared-workflows/.github/actions/check-enforced-disciplines/check-enforced-disciplines.js .
+   node ../shared-workflows/.github/actions/check-proxy-parity/check-proxy-parity.js .
+   node ../shared-workflows/.github/actions/check-artifact-trust/check-artifact-trust.js .
+   node ../shared-workflows/.github/actions/auth-parity-matrix/auth-parity-matrix.cjs .
+   node ../shared-workflows/.github/actions/check-shared-module-pins/check-shared-module-pins.js .
+   ```
+
+   None of these actions has a self-test step here any more: every self-test runs in
+   `4cloudguru/shared-workflows`' own CI, beside the scripts they exercise. That is a gain
+   rather than a loss for one of them — this repository's deleted copy of the artifact-trust
+   self-test was invoked by nothing at all: not a workflow, not `package.json`, not another
+   script. It existed only to satisfy a replay signature that asks whether the file is there,
+   never whether anything runs it. Its upstream successor actually runs.
+
+   Your sibling checkout is at whatever ref you left it on, which is not necessarily the SHA CI
+   pins. Every suite prints a `[shared-gate] <file> sha256:… <- <path> (via …)` line once per
+   gate for exactly that reason: which bytes ran is answerable from the log, locally and in CI.
 
    `.github/workflows/pr-checks.yml` gates the PR as well, with the conventional
    title check, dependency review, the Release-PR Minor-bump backstop, and the

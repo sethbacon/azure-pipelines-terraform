@@ -83,7 +83,7 @@ const FAMILIES = [
         // Extracting them into one same-named module is what puts them in reach.
         //
         // writeCacheIntegrityMarker/verifyCachedTool are byte-identical across the
-        // three too, and are NOT here: check-artifact-trust.js resolves a
+        // three too, and are NOT here: the check-artifact-trust gate resolves a
         // CACHE-ADMIT verdict within a single file, so moving them out reports the
         // cache-admission sites as TRUSTS-CACHE-BLINDLY. See the note in
         // tool-integrity.ts.
@@ -216,11 +216,38 @@ const FAMILIES = [
             'path-containment.ts',
         ],
     },
+    {
+        // The resolver that finds a class gate this repository no longer carries.
+        // check-proxy-parity, check-artifact-trust, auth-parity-matrix and
+        // check-enforced-disciplines moved to 4cloudguru/shared-workflows as
+        // composite actions; the three that task L0 suites SPAWN are found through
+        // this file -- the composite's exported github.action_path on a runner, a
+        // sibling shared-workflows checkout for a developer, and a throw otherwise.
+        // It encodes no verdict: it returns a path or it fails. Copies also live in
+        // azure-pipelines-packer's two task Tests/ directories, declared there by a
+        // PROVENANCE entry naming this repository as the upstream; within THIS
+        // repository the two copies are byte-compared here, which is what stops a
+        // fix to the resolver landing in one task's suite and not the other's.
+        //
+        // A Tests/ family, unlike every src/ family above: the module is test
+        // infrastructure, so this is also the first family whose dirs the
+        // self-test's Tasks/ copy has to carry.
+        dirs: [
+            'Tasks/TerraformTask/TerraformTaskV5/Tests',
+            'Tasks/TerraformInstaller/TerraformInstallerV1/Tests',
+        ],
+        modules: [
+            'shared-gate.ts',
+        ],
+    },
 ];
 
 // Nothing in this repository is a copy of a module owned by another extension:
-// this is the upstream the siblings copy FROM. The list is empty and stated
-// rather than absent, so adding a copied module has an obvious place to go.
+// this is the upstream the siblings copy FROM -- including Tests/shared-gate.ts,
+// whose canonical copy is TerraformTaskV5/Tests/shared-gate.ts and whose sibling
+// copies in azure-pipelines-packer carry the provenance header pointing here. The
+// list is empty and stated rather than absent, so adding a copied module has an
+// obvious place to go.
 const PROVENANCE = [];
 
 module.exports = { FAMILIES, PROVENANCE };

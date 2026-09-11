@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { sharedGate } from './shared-gate';
 import tasks = require('azure-pipelines-task-lib/task');
 import idTokenGeneratorModule = require('@4cloudguru/pipeline-task-ado');
 // Same module object as idTokenGeneratorModule above -- Node caches by
@@ -25,8 +26,11 @@ import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
  * (#97 and its terraform-side siblings of packer #187/#194/#199/#197).
  *
  * Its rows ARE the cells of the (handler x auth-branch x required-field) matrix
- * that `scripts/auth-parity-matrix.cjs` enumerates -- not the individual call
- * sites named in the issues. #97 reopened in the sibling packer extension
+ * that the `auth-parity-matrix` gate enumerates -- not the individual call
+ * sites named in the issues. This repository no longer carries that gate: it is
+ * the shared `auth-parity-matrix` composite action in 4cloudguru/shared-workflows,
+ * which this job `uses:` by SHA before the suite runs, so the bytes asserted
+ * below are the bytes the pin names. #97 reopened in the sibling packer extension
  * because its first fix hardened one branch of one file and its test asserted
  * that one branch; the WIF branch of the same file stayed fail-open and stayed
  * green. When that class was re-enumerated here, THIS repo turned out to still
@@ -679,10 +683,22 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
     // in an existing one, appears as a new matrix cell and fails here until it
     // is guarded or carries a code-verified @credential-exempt marker.
 
-    it('scripts/auth-parity-matrix.cjs reports zero UNGUARDED cells', () => {
-        const script = path.resolve(__dirname, '../../../../scripts/auth-parity-matrix.cjs');
+    // This repository no longer carries the gate: it is the shared composite
+    // `auth-parity-matrix`, and this job `uses:` it by SHA before the suite runs,
+    // which is what makes the bytes asserted here the bytes the pin names.
+    // sharedGate() THROWS when it cannot find them -- never skips. Resolved in a
+    // before() rather than at module scope: Tests/L0.ts imports this file among
+    // others, and a module-level throw prints "Exception during run" and runs zero
+    // tests in the whole task, hiding every sibling suite.
+    let gate: string;
+    before(() => {
+        gate = sharedGate(path.resolve(__dirname, '../../../..'), 'auth-parity-matrix',
+            'auth-parity-matrix.cjs');
+    });
+
+    it('the auth-parity-matrix gate reports zero UNGUARDED cells', () => {
         const repoRoot = path.resolve(__dirname, '../../../..');
-        const out = execFileSync(process.execPath, [script, repoRoot, '--json'], { encoding: 'utf8' });
+        const out = execFileSync(process.execPath, [gate, repoRoot, '--json'], { encoding: 'utf8' });
         const report = JSON.parse(out) as {
             cells: Array<{ site: string; verdict: string; detail: string }>;
             unguarded: number;

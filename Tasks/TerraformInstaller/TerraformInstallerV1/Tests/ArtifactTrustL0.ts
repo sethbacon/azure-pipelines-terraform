@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { sharedGate } from './shared-gate';
 import * as ttm from 'azure-pipelines-task-lib/mock-test';
 import { verifySha256, verifyCachedTool, writeCacheIntegrityMarker } from '../src/terraform-installer';
 import { discardArtifactOnFailure } from '@4cloudguru/pipeline-task-core';
@@ -18,11 +19,14 @@ import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
  * unrecoverable or silently degraded.
  *
  * Three tables:
- *   A. SITE_ROWS — every trust site the re-runnable signature
- *      (scripts/check-artifact-trust.js) enumerates across the WHOLE repo: all three
- *      installer tasks, not just this one. A new download strategy or cache path in
- *      any of them shows up here automatically and fails the enumeration assertion
- *      until it is accounted for.
+ *   A. SITE_ROWS — every trust site the re-runnable signature enumerates across
+ *      the WHOLE repo: all three installer tasks, not just this one. A new download
+ *      strategy or cache path in any of them shows up here automatically and fails
+ *      the enumeration assertion until it is accounted for. This repository no
+ *      longer carries that signature: it is the shared `check-artifact-trust`
+ *      composite action in 4cloudguru/shared-workflows, which this job `uses:` by
+ *      SHA before the suite runs, so the bytes asserted below are the bytes the pin
+ *      names.
  *   B. the failure/edge STATES themselves, driven through the real exported helpers:
  *      a checksum mismatch (the artifact must be gone), a zero-length / truncated /
  *      non-hex cache marker, a marker that matches, a marker that does not.
@@ -267,22 +271,43 @@ const FLOW_ROWS: FlowRow[] = [
 describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
     this.timeout(30000);
 
+    // This repository no longer carries the gate: it is the shared composite
+    // `check-artifact-trust`, and this job `uses:` it by SHA before the suite runs,
+    // which is what makes the bytes asserted here the bytes the pin names.
+    // sharedGate() THROWS when it cannot find them — never skips.
+    //
+    // ONE resolution for BOTH spawn sites in this file: table A points the gate at
+    // this repository, describe D below points the SAME binary at a mkdtemp fixture
+    // it builds per test. That second spawn is exactly why the composite has to hand
+    // the suite a PATH to the gate and not a pre-computed report.
+    //
+    // Resolved in before() and never at module scope: Tests/L0.ts imports this file
+    // among fourteen sibling suites, and a module-level throw prints "Exception
+    // during run" and runs ZERO tests in the whole task, hiding every other suite.
+    let GATE: string;
+    before(() => {
+        GATE = sharedGate(REPO_ROOT, 'check-artifact-trust',
+            'check-artifact-trust.js', ['lib/package-delegation.js']);
+    });
+
     describe('A. every enumerated trust site in this repo', () => {
-        let stdout: string;
-        try {
-            stdout = execFileSync(
-                process.execPath,
-                [path.join(REPO_ROOT, 'scripts/check-artifact-trust.js'), REPO_ROOT, '--json'],
-                { encoding: 'utf8' },
-            );
-        } catch (err) {
-            stdout = String((err as { stdout?: string }).stdout ?? '');
-            assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
-        }
-        const report = JSON.parse(stdout) as {
+        // The signature exits non-zero when it finds residuals, and execFileSync
+        // throws on a non-zero exit — capture stdout from the error so a residual
+        // fails an ASSERTION below rather than aborting the whole suite at load.
+        let report: {
             sites: Array<{ rel: string; fn: string; kind: string; verdict: string; why: string; line: number }>;
             failures: number;
         };
+        before(() => {
+            let stdout: string;
+            try {
+                stdout = execFileSync(process.execPath, [GATE, REPO_ROOT, '--json'], { encoding: 'utf8' });
+            } catch (err) {
+                stdout = String((err as { stdout?: string }).stdout ?? '');
+                assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
+            }
+            report = JSON.parse(stdout);
+        });
 
         it('leaves no residual instance of the class anywhere in src/', () => {
             assert.strictEqual(
@@ -466,7 +491,7 @@ describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
     });
 
     describe('D. cross-file CACHE-ADMIT resolution is not over-widened (#998)', () => {
-        // Proves scripts/check-artifact-trust.js resolving names imported from a
+        // Proves the artifact-trust gate resolving names imported from a
         // sibling module (so writeCacheIntegrityMarker/verifyCachedTool could move
         // into tool-integrity.ts without blinding the gate) did not also make it
         // stop catching a GENUINELY blind cache admission. Two synthetic files a
@@ -527,13 +552,11 @@ describe('artifact trust (class test #65/#78/#136/#198/#204)', function () {
         afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
         function siteFor(fnName: string) {
+            // The SAME resolved gate as table A, pointed at the fixture directory
+            // instead of at this repository — a report file could not serve this.
             let stdout: string;
             try {
-                stdout = execFileSync(
-                    process.execPath,
-                    [path.join(REPO_ROOT, 'scripts/check-artifact-trust.js'), dir, '--json'],
-                    { encoding: 'utf8' },
-                );
+                stdout = execFileSync(process.execPath, [GATE, dir, '--json'], { encoding: 'utf8' });
             } catch (err) {
                 // The blind fixture is EXPECTED to fail the gate (exit 1) — that is
                 // what this test is proving still happens. Only the JSON on stdout
