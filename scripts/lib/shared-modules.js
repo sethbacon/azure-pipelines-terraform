@@ -218,16 +218,25 @@ const FAMILIES = [
     },
     {
         // The resolver that finds a class gate this repository no longer carries.
-        // check-proxy-parity, check-artifact-trust, auth-parity-matrix and
-        // check-enforced-disciplines moved to 4cloudguru/shared-workflows as
-        // composite actions; the three that task L0 suites SPAWN are found through
-        // this file -- the composite's exported github.action_path on a runner, a
-        // sibling shared-workflows checkout for a developer, and a throw otherwise.
-        // It encodes no verdict: it returns a path or it fails. Copies also live in
-        // azure-pipelines-packer's two task Tests/ directories, declared there by a
-        // PROVENANCE entry naming this repository as the upstream; within THIS
-        // repository the two copies are byte-compared here, which is what stops a
-        // fix to the resolver landing in one task's suite and not the other's.
+        // check-proxy-parity, check-artifact-trust, auth-parity-matrix,
+        // check-enforced-disciplines and now check-egress-authorization moved to
+        // 4cloudguru/shared-workflows as composite actions; the four that task L0
+        // suites SPAWN are found through this file -- the composite's exported
+        // github.action_path on a runner, a sibling shared-workflows checkout for a
+        // developer, and a throw otherwise. It encodes no verdict: it returns a
+        // path or it fails. Copies also live in azure-pipelines-packer's two task
+        // Tests/ directories, declared there by a PROVENANCE entry naming this
+        // repository as the upstream; within THIS repository the four copies are
+        // byte-compared here, which is what stops a fix to the resolver landing in
+        // one task's suite and not another's.
+        //
+        // EVERY DIRECTORY HOLDING A COPY MUST BE LISTED. This list is not a
+        // sample: check-shared-modules.js compares only what it is given, so a
+        // copy that exists on disk and not here is a file nothing is watching --
+        // which is the same failure the family exists to refuse. The last two
+        // arrived with the egress gate's move to a composite, when
+        // PolicyAgentInstallerV1 and TerraformDocsInstallerV1 stopped spawning
+        // scripts/ and started resolving through this module.
         //
         // A Tests/ family, unlike every src/ family above: the module is test
         // infrastructure, so this is also the first family whose dirs the
@@ -235,6 +244,8 @@ const FAMILIES = [
         dirs: [
             'Tasks/TerraformTask/TerraformTaskV5/Tests',
             'Tasks/TerraformInstaller/TerraformInstallerV1/Tests',
+            'Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests',
+            'Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/Tests',
         ],
         modules: [
             'shared-gate.ts',
@@ -254,8 +265,9 @@ const FAMILIES = [
 // Tests/shared-gate.ts (the class-gate resolver) came from
 // azure-pipelines-packer, which holds the canonical copy: it landed there first
 // (sethbacon/azure-pipelines-packer#455). One row is enough -- the FAMILIES
-// entry above holds this repository's second copy byte-identical to this one
-// (sethbacon/azure-pipelines-terraform#1167).
+// entry above holds this repository's other three copies byte-identical to this
+// one (sethbacon/azure-pipelines-terraform#1167), so comparing this row against
+// the upstream transitively covers all four.
 const PROVENANCE = [
     { dir: 'Tasks/TerraformTask/TerraformTaskV5/Tests', file: 'shared-gate.ts', upstream: 'azure-pipelines-packer' },
 ];

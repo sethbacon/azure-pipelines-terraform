@@ -78,14 +78,14 @@ directories and their per-task test commands.
    <!-- ci-jobs:begin .github/workflows/unit-test.yml -->
    - `Check Version Consistency` — validates the version fields in each `task.json`.
    - `Check Shared Module Parity` — modules with byte-identical copies across tasks
-     must stay identical and every outbound egress must be authorized
-     (`scripts/check-shared-modules.js`, `scripts/check-egress-authorization.js`);
-     six gates run here as composite actions from `4cloudguru/shared-workflows`,
-     called by full commit SHA rather than kept as copies here —
-     `check-shared-module-pins`, `check-enforced-disciplines`, `check-proxy-parity`
-     (every outbound HTTP call must honour the agent proxy configuration),
-     `check-artifact-trust`, `auth-parity-matrix`, and `check-docs-claims`, which is
-     what checks that documented claims match the code.
+     must stay identical (`scripts/check-shared-modules.js`); seven gates run here
+     as composite actions from `4cloudguru/shared-workflows`, called by full commit
+     SHA rather than kept as copies here — `check-shared-module-pins`,
+     `check-enforced-disciplines`, `check-proxy-parity` (every outbound HTTP call
+     must honour the agent proxy configuration), `check-artifact-trust`,
+     `auth-parity-matrix`, `check-egress-authorization` (every outbound egress must
+     be authorized against its resolved destination, on every redirect hop), and
+     `check-docs-claims`, which is what checks that documented claims match the code.
    - `Build and Test V5` — lint, compile and unit tests for TerraformTaskV5.
    - `Build and Test V5 Smoke`
    - `Build and Test Installer V1`
@@ -120,31 +120,35 @@ directories and their per-task test commands.
    ```
 
    **`npm test` itself now requires a sibling `shared-workflows` checkout for the tasks that
-   spawn a class gate, and that is deliberate.** Four class gates are composite actions in that
-   same repository, on the same pin, and three of them are spawned by task L0 suites as well as
+   spawn a class gate, and that is deliberate.** Five class gates are composite actions in that
+   same repository, on the same pin, and four of them are spawned by task L0 suites as well as
    run as CI steps: `TerraformTaskV5/Tests/ProxyParityL0.ts` and
-   `TerraformTaskV5/Tests/CredentialFailClosedMatrixL0.ts`, and
-   `TerraformInstallerV1/Tests/ArtifactTrustL0.ts`, each run the gate and assert its whole
-   enumerated set. On a runner the composite exports its own path and `Tests/shared-gate.ts`
-   reads it; on your machine that resolver looks for `../shared-workflows` beside this
-   checkout, and when it finds neither it fails the suite with the `git clone` line to run.
+   `TerraformTaskV5/Tests/CredentialFailClosedMatrixL0.ts`,
+   `TerraformInstallerV1/Tests/ArtifactTrustL0.ts`, and
+   `TerraformInstallerV1/Tests/EgressAuthorizationL0.ts` together with its byte-identical
+   copies in `PolicyAgentInstallerV1/Tests/` and `TerraformDocsInstallerV1/Tests/`, each run
+   the gate and assert its whole enumerated set. On a runner the composite exports its own path
+   and `Tests/shared-gate.ts` reads it; on your machine that resolver looks for
+   `../shared-workflows` beside this checkout, and when it finds neither it fails the suite
+   with the `git clone` line to run.
    It deliberately does not skip: these assertions are the only thing enumerating their defect
    class under `npm test`, so a could-not-run that read like a clean run would be worse than a
    red one. (Every task's mocha invocation also passes `--forbid-pending`, so even a future
-   edit that tried to `this.skip()` around a missing gate would fail the run.) The other nine
+   edit that tried to `this.skip()` around a missing gate would fail the run.) The other seven
    tasks' suites spawn nothing and are unaffected.
 
    ```bash
    git clone https://github.com/4cloudguru/shared-workflows ../shared-workflows
    ```
 
-   The four class gates and the pins gate run locally against this repository as:
+   The five class gates and the pins gate run locally against this repository as:
 
    ```bash
    node ../shared-workflows/.github/actions/check-enforced-disciplines/check-enforced-disciplines.js .
    node ../shared-workflows/.github/actions/check-proxy-parity/check-proxy-parity.js .
    node ../shared-workflows/.github/actions/check-artifact-trust/check-artifact-trust.js .
    node ../shared-workflows/.github/actions/auth-parity-matrix/auth-parity-matrix.cjs .
+   node ../shared-workflows/.github/actions/check-egress-authorization/check-egress-authorization.js .
    node ../shared-workflows/.github/actions/check-shared-module-pins/check-shared-module-pins.js .
    ```
 

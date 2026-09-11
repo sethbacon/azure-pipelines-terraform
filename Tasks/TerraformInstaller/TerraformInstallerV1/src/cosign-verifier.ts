@@ -139,7 +139,7 @@ async function resolveManagedCosign(required: boolean): Promise<string | null> {
     }
 
     // Literal host, deliberately: the destination of the verifier's own download
-    // must not be reachable from any task input (scripts/check-egress-authorization.js
+    // must not be reachable from any task input (the check-egress-authorization gate
     // reads this expression and records it as a constant host).
     const downloadUrl = `https://github.com/sigstore/cosign/releases/download/${COSIGN_PINNED_TAG}/${pin.assetName}`;
     let downloadedPath: string;
