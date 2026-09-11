@@ -131,11 +131,13 @@ export class HttpPreflightError extends Error {
  * building the proxy agent) and reclassifies any throw as HttpPreflightError.
  * Applied around each risky expression individually, INLINE within the
  * httpsRequest() options object below, rather than hoisting them into
- * intermediate variables first -- scripts/check-proxy-parity.js statically
- * verifies every raw-https call site's options object visibly builds its
- * agent via buildProxyAgent/createProxyTunnelAgent by scanning the call's own
- * source text; a variable indirection here would (and during development,
- * did) make that check blind to this site.
+ * intermediate variables first -- the check-proxy-parity gate (a shared
+ * composite action in 4cloudguru/shared-workflows, pinned by full commit SHA
+ * from this repository's workflows) statically verifies every raw-https call
+ * site's options object visibly builds its agent via
+ * buildProxyAgent/createProxyTunnelAgent by scanning the call's own source
+ * text; a variable indirection here would (and during development, did) make
+ * that check blind to this site.
  */
 function preflight<T>(fn: () => T): T {
     try {

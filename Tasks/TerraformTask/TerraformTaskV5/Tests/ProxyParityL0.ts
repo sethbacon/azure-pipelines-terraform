@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { sharedGate } from './shared-gate';
 import tasks = require('azure-pipelines-task-lib/task');
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst } from '@4cloudguru/pipeline-task-ado';
@@ -27,8 +28,12 @@ import { exchangeOidcForUpst } from '@4cloudguru/pipeline-task-ado';
  *                      asserting a dispatcher arrives when a proxy is configured
  *                      and does NOT when one is not.
  *   B. SITE_ROWS    — every outbound call site the re-runnable signature
- *                     (scripts/check-proxy-parity.js) enumerates across ALL
- *                     tasks in this repo, with its verdict.
+ *                     enumerates across ALL tasks in this repo, with its
+ *                     verdict. This repository no longer carries that
+ *                     signature: it is the shared `check-proxy-parity`
+ *                     composite action in 4cloudguru/shared-workflows, which
+ *                     this job `uses:` by SHA before the suite runs, so the
+ *                     bytes asserted below are the bytes the pin names.
  *
  * Mutation-provability: dropping `...buildAdoFetchOptions()` from either
  * fetch reddens that call's own table-A rows plus its own table-B site row and
@@ -305,24 +310,33 @@ describe('outbound proxy parity (class test, sibling packer #196)', function () 
     });
 
     describe('B. every enumerated outbound call site in this repo', () => {
+        // This repository no longer carries the gate: it is the shared composite
+        // `check-proxy-parity`, and this job `uses:` it by SHA before the suite runs,
+        // which is what makes the bytes asserted here the bytes the pin names.
+        // sharedGate() THROWS when it cannot find them — never skips.
+        //
         // The signature exits non-zero when it finds residuals, and execFileSync
         // throws on a non-zero exit — capture stdout from the error so a residual
         // fails an ASSERTION below rather than aborting the whole suite at load.
-        let stdout: string;
-        try {
-            stdout = execFileSync(
-                process.execPath,
-                [path.join(REPO_ROOT, 'scripts/check-proxy-parity.js'), REPO_ROOT, '--json'],
-                { encoding: 'utf8' },
-            );
-        } catch (err) {
-            stdout = String((err as { stdout?: string }).stdout ?? '');
-            assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
-        }
-        const report = JSON.parse(stdout) as {
+        // The resolution happens in before() rather than in this describe body: a
+        // throw here would surface as mocha's "uncaught error outside of test
+        // suite" with the message detached from the suite that needs it.
+        let report: {
             sites: Array<{ rel: string; fn: string; sink: string; verdict: string }>;
             failures: number;
         };
+        before(() => {
+            const gate = sharedGate(REPO_ROOT, 'check-proxy-parity',
+                'check-proxy-parity.js', ['lib/package-delegation.js']);
+            let stdout: string;
+            try {
+                stdout = execFileSync(process.execPath, [gate, REPO_ROOT, '--json'], { encoding: 'utf8' });
+            } catch (err) {
+                stdout = String((err as { stdout?: string }).stdout ?? '');
+                assert.ok(stdout.trim().startsWith('{'), `signature produced no JSON: ${String(err)}`);
+            }
+            report = JSON.parse(stdout);
+        });
 
         it('leaves no unproxied outbound call site anywhere in src/', () => {
             assert.strictEqual(report.failures, 0,

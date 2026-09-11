@@ -18,7 +18,7 @@
  * them into one same-named module is what brings them into reach of both.
  *
  * writeCacheIntegrityMarker and verifyCachedTool moved in last (#998):
- * scripts/check-artifact-trust.js used to classify a CACHE-ADMIT site by
+ * the check-artifact-trust gate used to classify a CACHE-ADMIT site by
  * resolving the call graph within a single file, so moving this pair out on its
  * own would have made every cache-admission site in the three callers report
  * TRUSTS-CACHE-BLINDLY even though the re-verification still happens. That gate

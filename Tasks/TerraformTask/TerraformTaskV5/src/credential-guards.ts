@@ -18,10 +18,12 @@ import { isAllowedOidcRequestHost, readSecretEndpointDataParameter } from '@4clo
  * -- the accessor keys, the injected variable families (`ARM_*`/`TF_VAR_*` here
  * vs `PKR_VAR_*` there) and the backend concept (which packer has no equivalent
  * of) differ. What must stay in lockstep is the CONTRACT, and that is enforced
- * executably rather than textually: `scripts/auth-parity-matrix.cjs` exists in
- * both repos, enumerates (handler x auth-branch x required-field) in whichever
- * repo it is run from, and fails on any cell that reads a credential field
- * without one of these helpers.
+ * executably rather than textually: the `auth-parity-matrix` gate -- a shared
+ * composite action in 4cloudguru/shared-workflows, pinned by full commit SHA
+ * from both repositories' workflows -- enumerates
+ * (handler x auth-branch x required-field) in whichever repo it is run from,
+ * and fails on any cell that reads a credential field without one of these
+ * helpers.
  *
  * Why it matters here specifically: this repo's Azure handler still carried the
  * ORIGINAL #97 defect verbatim. `mapAuthorizationScheme` treated an absent

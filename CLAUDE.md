@@ -209,8 +209,9 @@ and needed the same four Oracle realm suffixes, the same `idcs-` first-label che
 `redirect: 'manual'` refusal. It was promoted rather than copied deliberately:
 `scripts/check-shared-modules.js` verifies a provenance header exists but cannot byte-compare
 across repositories, so a second copy of a realm allowlist would have drifted invisibly. Change it
-in the package, not here. `scripts/check-proxy-parity.js` holds the call site to a version floor
-the way it already does for `generateIdToken`.
+in the package, not here. The `check-proxy-parity` gate — a shared composite action in
+`4cloudguru/shared-workflows`, pinned by full commit SHA — holds the call site to a version
+floor the way it already does for `generateIdToken`.
 
 `Tests/OciTokenExchangeL0.ts` was deliberately **kept** and repointed at the package rather than
 deleted with the implementation. The package ships its own tests, but these run from the consumer
@@ -442,7 +443,7 @@ npm test
 
 ### Test structure
 
-Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runner pattern. The mock-runner entry must be the task's **real** `src/index.ts` (`path.join(__dirname, '..', 'src', 'index.js')`), never a re-implementation of it in `Tests/`, and `src/index.js` must not be excluded from `.nycrc.json` — a declared `execution` target that no test loads and no metric measures is unverified in production (#189, sibling `azure-pipelines-packer` #189). `scripts/check-enforced-disciplines.js` fails CI if either property regresses for any task. Test files come in pairs:
+Tests are in `Tasks/TerraformTask/TerraformTaskV5/Tests/` and follow a mock-runner pattern. The mock-runner entry must be the task's **real** `src/index.ts` (`path.join(__dirname, '..', 'src', 'index.js')`), never a re-implementation of it in `Tests/`, and `src/index.js` must not be excluded from `.nycrc.json` — a declared `execution` target that no test loads and no metric measures is unverified in production (#189, sibling `azure-pipelines-packer` #189). The shared `check-enforced-disciplines` composite action fails CI if either property regresses for any task. Test files come in pairs:
 
 - `<Name>.ts` - test data/mock setup (mock runner)
 - `<Name>L0.ts` - the actual mocha test using `MockTestRunner`
@@ -501,14 +502,29 @@ npm run check:shared  # verify (this is what CI runs)
 
 Syncing is deliberately **not** wired into the build. If it ran automatically before packaging, a genuine unintended divergence would be silently repaired instead of failing CI, which is exactly what the gate exists to prevent. Syncing is an authoring step; CI only ever verifies.
 
-The `Check Shared Module Parity` job also runs the **shared composite action** `4cloudguru/shared-workflows/.github/actions/check-shared-module-pins`, pinned by full commit SHA — the #1108 class signature: every task must declare the same range of, and resolve the same version of, `@4cloudguru/pipeline-task-core` and `@4cloudguru/pipeline-task-ado`, with no nested second copy, so a fix shipped in either package reaches every task at once rather than the ones Dependabot happened to bump — and `scripts/check-enforced-disciplines.js` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. No new required status check was introduced — each of these is a **step inside an existing required job**, so branch protection needs no change.
+The `Check Shared Module Parity` job also runs five **shared composite actions** from `4cloudguru/shared-workflows`, each pinned by full commit SHA:
 
-The pins gate and the documented-claims gate below used to be `scripts/` copies here. They moved to `4cloudguru/shared-workflows` on 2026-09-09: four hand-copies of each existed across the estate — this repository, `azure-pipelines-packer`, `azure-pipelines-release-docs`, and the canonical copy signature replay runs from `security-orchestration` — and the docs-claims copies had already drifted three ways, twice in one day with a fix landing in a hand-copy and never reaching canonical. There is consequently **no local copy to edit or to weaken**, and each gate's mutation self-test moved with it and runs in that repository's CI beside the implementation rather than here beside a fork of it. Both are deliberately **composite actions and not reusable workflows**: a reusable workflow reports as `<caller-job-id> / <called-job-name>`, which would rename `Check Shared Module Parity`, and that name is a required status context on `main`. To run either before pushing, against a sibling checkout of `shared-workflows` (the estate's `reposRoot` layout):
+- `check-shared-module-pins` — the #1108 class signature: every task must declare the same range of, and resolve the same version of, `@4cloudguru/pipeline-task-core` and `@4cloudguru/pipeline-task-ado`, with no nested second copy, so a fix shipped in either package reaches every task at once rather than the ones Dependabot happened to bump.
+- `check-enforced-disciplines` — the signature for the "documented-but-unenforced discipline" class: every task's declared execution entry point must be loaded by a test and measured by its coverage config, every declared execution handler (`Node24`, `Node20_1`) must be exercised by a CI job for that task, the Minor-bump rule must be enforced in all three layers, and the Marketplace publish must retry transient failures and keep the token off argv. It also `cmp`s this repository's surviving `scripts/lib/task-dirs.js` against its own copy at the pin, because that file has four non-gate importers here and nothing else compares it.
+- `check-proxy-parity` — the outbound-proxy-parity class (sibling `azure-pipelines-packer` #196): every outbound HTTP request must be issued through a transport that consults the agent's configured proxy.
+- `check-artifact-trust` — the artifact-trust class (#65 / #78 / #136 / #198 / #204): an installed artifact must not be trusted without the verification the task advertises.
+- `auth-parity-matrix` — the provider-auth fail-open class (#97): every (handler × auth-branch × required-field) cell must read its credential field through a fail-closed guard.
+- `check-docs-claims` — the documented-claims class, described below.
+
+Each declares a **measured floor** (`min-sites` / `min-scanned` / `min-cells`) in `.github/workflows/unit-test.yml` with the date and the producing command beside it, because every one of these gates exits 0 over a repository it enumerated nothing in; the floor is what tells "looked and found none" apart from "looked nowhere". No new required status check was introduced — each of these is a **step inside an existing required job**, so branch protection needs no change.
+
+All six used to be `scripts/` copies here. The pins gate and the documented-claims gate moved to `4cloudguru/shared-workflows` on 2026-09-09 and the four class gates followed on 2026-09-10: four hand-copies of each existed across the estate — this repository, `azure-pipelines-packer`, `azure-pipelines-release-docs`, and the canonical copy signature replay runs from `security-orchestration` — and the docs-claims copies had already drifted three ways, twice in one day with a fix landing in a hand-copy and never reaching canonical. There is consequently **no local copy to edit or to weaken**, and each gate's mutation self-test moved with it and runs in that repository's CI beside the implementation rather than here beside a fork of it. They are deliberately **composite actions and not reusable workflows**: a reusable workflow reports as `<caller-job-id> / <called-job-name>`, which would rename `Check Shared Module Parity`, and that name is a required status context on `main`. To run any of them before pushing, against a sibling checkout of `shared-workflows` (the estate's `reposRoot` layout):
 
 ```bash
 node ../shared-workflows/.github/actions/check-shared-module-pins/check-shared-module-pins.js .
+node ../shared-workflows/.github/actions/check-enforced-disciplines/check-enforced-disciplines.js .
+node ../shared-workflows/.github/actions/check-proxy-parity/check-proxy-parity.js .
+node ../shared-workflows/.github/actions/check-artifact-trust/check-artifact-trust.js .
+node ../shared-workflows/.github/actions/auth-parity-matrix/auth-parity-matrix.cjs .
 node ../shared-workflows/.github/actions/check-docs-claims/check-docs-claims.js .
 ```
+
+That sibling checkout is no longer only a convenience for running a gate by hand: `npm test` for `TerraformTaskV5` and `TerraformInstallerV1` now needs it too. `Tests/ProxyParityL0.ts`, `Tests/CredentialFailClosedMatrixL0.ts` and `Tests/ArtifactTrustL0.ts` **spawn** their gate and assert its whole enumerated set, and `Tests/shared-gate.ts` (byte-identical in both tasks, gated by `scripts/check-shared-modules.js`, and copied into `azure-pipelines-packer` with a provenance header) is what finds it: the composite's exported `github.action_path` on a runner, `../shared-workflows` beside this checkout for a developer, and a throw naming the `git clone` to run otherwise. It never skips — the assertions it feeds are the only thing enumerating those classes under `npm test`, so a could-not-run that read like a clean run would be the failure this estate keeps re-learning — and every suite prints one `[shared-gate] <file> sha256:… <- <path> (via …)` line so which bytes ran is answerable from a log.
 
 ## Local Development Environment
 
@@ -545,7 +561,7 @@ the GPG/cosign/sha256 verification logic, HTTP client, or egress-allowlist code,
 inputs means the try/catch short-circuits before any of that runs. Those three jobs additionally
 run the real, input-populated `npm test` suite under Node 20 (mirroring TerraformTaskV5's
 identical `#720` step), closing the behavioral-parity gap for the tasks whose whole job is
-supply-chain trust. `scripts/check-enforced-disciplines.js`'s `verification-real-tests-under-node20`
+supply-chain trust. The `check-enforced-disciplines` gate's `verification-real-tests-under-node20`
 check enforces this split: a verifying task (matched by shipping `gpg-verifier.ts`,
 `cosign-verifier.ts`, `tool-integrity.ts`, or a `verifySha256` function) must have a real `npm test`
 step after its Node 20 setup; a non-verifying task stays load-only.

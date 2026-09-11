@@ -845,7 +845,7 @@ describe('processFrontMatterDriven', () => {
  * These two scenarios run the real entry point under the mock runner — the
  * success path (filelist mode end to end, htmlFilePath output variable set) and
  * the fail-closed path — and src/index.js is now measured like every other file.
- * scripts/check-enforced-disciplines.js fails CI if either property regresses.
+ * The check-enforced-disciplines gate fails CI if either property regresses.
  */
 describe('Markdown2Html entry point (src/index.ts)', function () {
     before(() => {
