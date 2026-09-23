@@ -5,6 +5,18 @@ import tasks = require('azure-pipelines-task-lib/task');
 /** Cloud whose credentials a managed Terraform state backend needs. */
 export type BackendCloud = 'azurerm' | 'aws' | 'gcp' | 'hcp';
 
+/** What `terraform init` recorded about the backend in use. */
+export interface BackendRecord {
+  cloud: BackendCloud;
+  /**
+   * Key NAMES from the cached `backend.config`, never values. Enough to tell
+   * whether init bound the backend to a credential of its own (`client_id`,
+   * `access_key`, ...) rather than leaving it to resolve one from the
+   * environment the provider also writes to.
+   */
+  configKeys: ReadonlySet<string>;
+}
+
 /**
  * Upper bound on the `.terraform/terraform.tfstate` file we'll read for
  * backend detection. A real Terraform/OpenTofu-written backend record is a
@@ -48,12 +60,11 @@ const BACKEND_TYPE_TO_CLOUD: ReadonlyMap<string, BackendCloud> = new Map([
  *  - the recorded `backend.type` is missing, or is not one of the backends
  *    that require injected cloud credentials.
  *
- * Only the `backend.type` string is ever read; `backend.config` — which may
- * hold cached, non-secret backend settings — is intentionally never inspected
- * or logged. Never throws: callers should let Terraform surface its own error
- * (e.g. "not initialized") when something is genuinely wrong.
+ * Of `backend.config`, only the KEY NAMES are ever read — never a value, and
+ * no part of it is logged. Never throws: callers should let Terraform surface
+ * its own error (e.g. "not initialized") when something is genuinely wrong.
  */
-export function detectBackendCloud(workingDirectory: string): BackendCloud | null {
+export function detectBackend(workingDirectory: string): BackendRecord | null {
   const tfstatePath = path.join(workingDirectory || '.', '.terraform', 'terraform.tfstate');
 
   // Opened once and stat/read via that same descriptor (not a statSync/
@@ -100,7 +111,8 @@ export function detectBackendCloud(workingDirectory: string): BackendCloud | nul
     return null;
   }
 
-  const backendType = (parsed as { backend?: { type?: unknown } } | null)?.backend?.type;
+  const backend = (parsed as { backend?: { type?: unknown; config?: unknown } } | null)?.backend;
+  const backendType = backend?.type;
   if (typeof backendType !== 'string') {
     tasks.debug(`Backend detection: ${tfstatePath} has no backend.type; skipping.`);
     return null;
@@ -112,5 +124,19 @@ export function detectBackendCloud(workingDirectory: string): BackendCloud | nul
     return null;
   }
 
-  return cloud;
+  const rawConfig = backend?.config;
+  const configKeys = new Set<string>(
+    rawConfig && typeof rawConfig === 'object' && !Array.isArray(rawConfig)
+      // Own keys only, so an inherited Object.prototype member cannot read as a
+      // cached backend setting.
+      ? Object.keys(rawConfig as Record<string, unknown>)
+      : [],
+  );
+
+  return { cloud, configKeys };
+}
+
+/** {@link detectBackend}, for callers that only need the cloud. */
+export function detectBackendCloud(workingDirectory: string): BackendCloud | null {
+  return detectBackend(workingDirectory)?.cloud ?? null;
 }
