@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.16.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.2...v1.16.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* **deps:** raise the adm-zip override floor to 0.6.1 in every task ([#1181](https://github.com/sethbacon/azure-pipelines-terraform/issues/1181)) ([cfda9aa](https://github.com/sethbacon/azure-pipelines-terraform/commit/cfda9aa1c20f53ff3ec6f4a322ffae846e05b5fc)), closes [#1178](https://github.com/sethbacon/azure-pipelines-terraform/issues/1178) [#1179](https://github.com/sethbacon/azure-pipelines-terraform/issues/1179)
+* **v5:** honour backendServiceArm when backend and provider are the same cloud ([#1182](https://github.com/sethbacon/azure-pipelines-terraform/issues/1182)) ([d4b4e9f](https://github.com/sethbacon/azure-pipelines-terraform/commit/d4b4e9fded5ca2d278fd8597bd24f3d87de17088)), closes [#1180](https://github.com/sethbacon/azure-pipelines-terraform/issues/1180)
+
 ## [1.16.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.1...v1.16.2) (2026-09-11)
 
 
