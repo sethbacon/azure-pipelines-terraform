@@ -784,6 +784,109 @@ steps:
 
 ---
 
+### Separate backend and provider service connections (same cloud)
+
+A common least-privilege split is one service connection with rights on the state
+storage only, and a second with rights on the target subscription/account only —
+both on the *same* cloud.
+
+**This does not work the way the cross-cloud examples above do.** The `azurerm`
+backend and the `azurerm` provider read the *same* `ARM_*` environment variables
+(and likewise `s3`/`aws` share `AWS_*`), so a single `terraform` run can only
+carry one identity in those variables — and it would be the provider's. Rather
+than silently authenticating to your state storage as the wrong principal, the
+task now fails the step with an error naming the inputs involved.
+
+There are three ways to get the split you want.
+
+#### Option 1 — bind the backend at `init` (azurerm, workload identity federation)
+
+`backendAzureRmUseCliFlagsForAuthentication: true` makes `init` persist the
+backend's own `client_id`/`use_oidc` into the backend config, so later commands
+stop resolving the backend's identity from `ARM_*`:
+
+```yaml
+  - task: PipelineTerraformTask@5
+    displayName: 'Terraform Init'
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+      backendType: 'azurerm'
+      backendServiceArm: 'SC-BACKEND'
+      backendAzureRmUseCliFlagsForAuthentication: true
+      backendAzureRmUseEntraIdForAuthentication: true
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'prod.terraform.tfstate'
+
+  - task: PipelineTerraformTask@5
+    displayName: 'Terraform Plan'
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      environmentServiceNameAzureRM: 'SC-PROVIDER'
+```
+
+#### Option 2 — configure the provider from input variables (any cloud, any scheme)
+
+A `backend` block may never reference named values, but a `provider` block may —
+and explicit provider arguments out-rank `ARM_*`. Inverting the split therefore
+frees the environment variables for the backend:
+
+```hcl
+variable "provider_client_id" { type = string }
+variable "provider_tenant_id" { type = string }
+variable "provider_subscription_id" { type = string }
+
+provider "azurerm" {
+  features {}
+  use_oidc        = true
+  client_id       = var.provider_client_id
+  tenant_id       = var.provider_tenant_id
+  subscription_id = var.provider_subscription_id
+}
+```
+
+```yaml
+  - task: PipelineTerraformTask@5
+    displayName: 'Terraform Plan'
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      commandOptions: >-
+        -var=provider_client_id=$(PROVIDER_CLIENT_ID)
+        -var=provider_tenant_id=$(PROVIDER_TENANT_ID)
+        -var=provider_subscription_id=$(PROVIDER_SUBSCRIPTION_ID)
+      backendServiceArm: 'SC-BACKEND'
+      backendAzureRmUseEntraIdForAuthentication: true
+      backendAzureRmStorageAccountName: 'mytfstateaccount'
+      backendAzureRmContainerName: 'tfstate'
+      backendAzureRmKey: 'prod.terraform.tfstate'
+```
+
+> **Do not pass a client secret this way.** Terraform records input variable
+> values in the plan file, so a `-var=provider_client_secret=...` leaks into
+> `tfplan` (and into the agent's command line). Use this pattern with workload
+> identity federation or a managed identity, where the variables carry only
+> non-secret identifiers.
+
+#### Option 3 — use one service connection for both
+
+Grant a single service connection rights on both the state storage and the
+target subscription, and supply it as both `backendServiceArm` and
+`environmentServiceNameAzureRM`. Simplest, at the cost of the least-privilege
+split.
+
+#### Where this restriction does *not* apply
+
+`gcs` + `gcp` is exempt: the backend reads `GOOGLE_BACKEND_CREDENTIALS`, which
+the provider never writes, so two service connections work with no extra
+configuration — just add `backendServiceGCP` alongside `environmentServiceNameGCP`
+on each state command.
+
+---
+
 ## Policy as code
 
 The `PipelinePolicyAgentInstaller@1` and `PipelineTerraformPolicyCheck@1` tasks
