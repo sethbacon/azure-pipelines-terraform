@@ -678,21 +678,22 @@ export abstract class BaseTerraformCommandHandler {
             const commandOutput = await this.commandExecutor.execWithStdoutCapture(terraformTool, {
                 cwd: planCommand.workingDirectory,
                 ignoreReturnCode: true
-            });
+                // The capture is silent (#492), so echo the human-readable plan
+                // ourselves -- per line as it arrives (#1189), so a slow refresh
+                // reports progress instead of surfacing only once plan exits.
+                // Terraform's human plan format already prints `(sensitive value)`
+                // for values declared sensitive, which is what makes this echo safe
+                // while the `output -json` / `show -json` captures must never be
+                // echoed. Route through echoSafeConsoleLine (audit id9), same as
+                // apply()'s @message echo: plan output can carry provider/module/
+                // remote-state -controlled text, and a line beginning `##vso[...]`/
+                // `##[...]` would otherwise forge an ADO logging command (#678's fix
+                // closed this for apply; the plan echo was the sibling path it never
+                // covered).
+            }, undefined, line => this.resultsPublisher.echoSafeConsoleLine(line));
             result = commandOutput.code;
             planStdout = commandOutput.stdout;
             planStderr = commandOutput.stderr.trim() || undefined;
-            // The capture above is silent (#492), so echo the captured
-            // human-readable plan back to the console ourselves -- terraform's
-            // human plan format already prints `(sensitive value)` for values
-            // declared sensitive, which is what makes this echo safe while the
-            // `output -json` / `show -json` captures must never be echoed.
-            // Route through echoSafeConsoleLine (audit id9), same as apply()'s
-            // echoApplyMessages: plan output can carry provider/module/remote-state
-            // -controlled text, and a line beginning `##vso[...]`/`##[...]` would
-            // otherwise forge an ADO logging command (#678's fix closed this for
-            // apply; the plan echo was the sibling path it never covered).
-            this.resultsPublisher.echoSafeConsoleLine(planStdout);
         } else {
             result = await this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: planCommand.workingDirectory,
@@ -979,9 +980,9 @@ export abstract class BaseTerraformCommandHandler {
         // Structured path (design §7/D2): -json replaces terraform's
         // human-readable apply log, so the raw NDJSON must not hit the console
         // (silent) -- each event's already-human-readable @message is echoed
-        // explicitly below instead, preserving the live-log experience while the
-        // structured (secret-bearing) fields are consumed only by the redaction
-        // pipeline, never printed.
+        // per line AS IT ARRIVES below instead (#1189), preserving the live-log
+        // experience while the structured (secret-bearing) fields are consumed
+        // only by the redaction pipeline, never printed.
         this.applyAutoApprove(terraformTool, publishApplyResults ? ["-json"] : []);
         this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
         this.argumentBuilder.appendTerraformVariables(terraformTool);
@@ -999,8 +1000,7 @@ export abstract class BaseTerraformCommandHandler {
             cwd: applyCommand.workingDirectory,
             silent: true,
             ignoreReturnCode: true,
-        });
-        this.resultsPublisher.echoApplyMessages(commandOutput.stdout);
+        }, undefined, line => this.resultsPublisher.echoApplyMessageLine(line));
 
         await this.resultsPublisher.publishApplySummaryAttachment(commandOutput.stdout, applyCommand.workingDirectory, publishApplyResults);
 

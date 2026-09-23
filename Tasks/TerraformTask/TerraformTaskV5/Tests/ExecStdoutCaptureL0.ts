@@ -18,8 +18,8 @@ class TestHandler extends BaseTerraformCommandHandler {
     async handleBackend(): Promise<void> { /* no-op */ }
     async handleProvider(_command: TerraformAuthorizationCommandInitializer): Promise<void> { /* no-op */ }
     async configureBackendCredentials(): Promise<void> { /* no-op */ }
-    public capture(tool: ToolRunner, options: IExecOptions, max?: number) {
-        return this.commandExecutor.execWithStdoutCapture(tool, options, max as number);
+    public capture(tool: ToolRunner, options: IExecOptions, max?: number, onStdoutLine?: (line: string) => void) {
+        return this.commandExecutor.execWithStdoutCapture(tool, options, max as number, onStdoutLine);
     }
 }
 
@@ -173,5 +173,104 @@ describe('execWithStdoutCapture — forced-silent capture (#492) and stderr surf
             /more than 10 bytes on stdout/,
         );
         assert.strictEqual(fake.killed, true);
+    });
+});
+
+/**
+ * #1189: the capture forced `silent: true` (#492) and every caller echoed the
+ * buffer AFTER the await, so a twenty-minute apply printed nothing until the
+ * process exited. The opt-in `onStdoutLine` callback restores a live log
+ * without reopening #492 -- it is the ONLY way a captured byte reaches the
+ * console, so a caller must ask for it, and the default (omitted) capture
+ * stays exactly as silent as before.
+ */
+describe('execWithStdoutCapture — live per-line echo (#1189)', function () {
+    it('emits each complete line as it arrives, before exec resolves', async () => {
+        // Liveness is the whole point, so assert it MID-FLIGHT: the lines from
+        // the first chunk must already be echoed while the second is being
+        // written. Checking only the final array would pass just as happily
+        // against the post-await echo this replaced.
+        const seen: string[] = [];
+        let seenAtSecondChunk: string[] | undefined;
+        const live = new (class extends EventEmitter {
+            killChildProcess(): void { /* not exercised here */ }
+            async execAsync(_options: IExecOptions): Promise<number> {
+                this.emit('stdout', 'first\nsecond\n');
+                seenAtSecondChunk = [...seen];
+                this.emit('stdout', 'third\n');
+                return 0;
+            }
+        })();
+        const result = await new TestHandler().capture(
+            asTool(live as unknown as FakeTool), {} as IExecOptions, undefined, line => seen.push(line));
+        assert.deepStrictEqual(seenAtSecondChunk, ['first', 'second'],
+            'the first chunk must already be on the console while the command is still running');
+        assert.deepStrictEqual(seen, ['first', 'second', 'third']);
+        assert.strictEqual(result.stdout, 'first\nsecond\nthird\n', 'the buffer must still be captured in full');
+    });
+
+    it('reassembles a line split across chunk boundaries', async () => {
+        // A chunk boundary has nothing to do with a line boundary: an NDJSON
+        // event routinely arrives in two pieces, and echoing per-chunk would
+        // emit half-parsed JSON (apply) or a torn line (plan).
+        const seen: string[] = [];
+        const fake = new FakeTool([
+            { stream: 'stdout', data: '{"@mess' },
+            { stream: 'stdout', data: 'age":"Creating..."}\n' },
+        ], 0);
+        await new TestHandler().capture(
+            asTool(fake), {} as IExecOptions, undefined, line => seen.push(line));
+        assert.deepStrictEqual(seen, ['{"@message":"Creating..."}']);
+    });
+
+    it('flushes a trailing line that never got a newline', async () => {
+        const seen: string[] = [];
+        const fake = new FakeTool([{ stream: 'stdout', data: 'done\nno trailing newline' }], 0);
+        await new TestHandler().capture(
+            asTool(fake), {} as IExecOptions, undefined, line => seen.push(line));
+        assert.deepStrictEqual(seen, ['done', 'no trailing newline']);
+    });
+
+    it('strips CR so a CRLF agent does not echo a stray carriage return', async () => {
+        const seen: string[] = [];
+        const fake = new FakeTool([{ stream: 'stdout', data: 'alpha\r\nbeta\r\n' }], 0);
+        await new TestHandler().capture(
+            asTool(fake), {} as IExecOptions, undefined, line => seen.push(line));
+        assert.deepStrictEqual(seen, ['alpha', 'beta']);
+    });
+
+    it('flushes the trailing line before rethrowing a failed exec', async () => {
+        // A failing command's last line is often the most diagnostic one.
+        const seen: string[] = [];
+        const fake = new FakeTool(
+            [{ stream: 'stdout', data: 'last gasp' }],
+            1,
+            new Error("The process 'terraform' failed with exit code 1"),
+        );
+        await assert.rejects(() => new TestHandler().capture(
+            asTool(fake), {} as IExecOptions, undefined, line => seen.push(line)));
+        assert.deepStrictEqual(seen, ['last gasp']);
+    });
+
+    it('stops echoing once the overflow guard trips', async () => {
+        const seen: string[] = [];
+        const fake = new FakeTool([
+            { stream: 'stdout', data: 'ok\n' },     // 3 bytes — under the 10-byte cap
+            { stream: 'stdout', data: 'overflowing\n' }, // breaches
+        ], 0);
+        await assert.rejects(
+            () => new TestHandler().capture(asTool(fake), {} as IExecOptions, 10, line => seen.push(line)),
+            /more than 10 bytes on stdout/,
+        );
+        assert.deepStrictEqual(seen, ['ok'], 'nothing past the breach may be echoed');
+    });
+
+    it('echoes nothing at all when no callback is supplied (#492 default)', async () => {
+        // The silent default is what keeps `output -json` / `show -json` captures
+        // off the console; only a deliberate opt-in changes that.
+        const fake = new FakeTool([{ stream: 'stdout', data: '{"db_password":"hunter2"}\n' }], 0);
+        const result = await new TestHandler().capture(asTool(fake), {} as IExecOptions);
+        assert.strictEqual(fake.lastExecOptions?.silent, true);
+        assert.strictEqual(result.stdout, '{"db_password":"hunter2"}\n');
     });
 });
