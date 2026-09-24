@@ -184,6 +184,14 @@ export class CommandExecutor {
         // Overridable ONLY so tests can exercise the overflow guard without
         // allocating 100 MB; production callers always take the module default.
         maxStdoutBytes: number = MAX_CAPTURED_STDOUT_BYTES,
+        // Opt-in live echo (#1189). Called with each COMPLETE stdout line as it
+        // arrives, so a long apply/plan reports progress instead of printing
+        // everything at once when the process exits. Omitted by default, which
+        // keeps `output -json` / `show -json` captures silent exactly as #492
+        // requires -- the callback is the only way any captured byte reaches the
+        // console, so a caller must deliberately opt in and is responsible for
+        // redacting/neutralizing what it prints.
+        onStdoutLine?: (line: string) => void,
     ): Promise<{ code: number; stdout: string; stderr: string }> {
         let stdout = '';
         let stderr = '';
@@ -196,6 +204,25 @@ export class CommandExecutor {
         let stdoutBytes = 0;
         let stderrBytes = 0;
         let stdoutOverflow = false;
+        // Holds the trailing fragment of a chunk that ended mid-line; a stdout
+        // chunk boundary has nothing to do with a line boundary, so NDJSON events
+        // and plan lines routinely arrive split in two.
+        let pendingLine = '';
+        const emitCompleteLines = (): void => {
+            let nl: number;
+            while ((nl = pendingLine.indexOf('\n')) !== -1) {
+                const line = pendingLine.slice(0, nl);
+                pendingLine = pendingLine.slice(nl + 1);
+                onStdoutLine!(line.endsWith('\r') ? line.slice(0, -1) : line);
+            }
+        };
+        // A final line with no trailing newline would otherwise never be echoed.
+        const flushPendingLine = (): void => {
+            if (!onStdoutLine || stdoutOverflow || !pendingLine) return;
+            const line = pendingLine;
+            pendingLine = '';
+            onStdoutLine(line);
+        };
         terraformTool.on('stdout', (data: string | Buffer) => {
             if (stdoutOverflow) return;
             const chunk = data.toString();
@@ -203,10 +230,14 @@ export class CommandExecutor {
             if (stdoutBytes > maxStdoutBytes) {
                 stdoutOverflow = true;
                 stdout = '';
+                pendingLine = '';
                 try { terraformTool.killChildProcess('SIGKILL'); } catch { /* best-effort: child may already be gone */ }
                 return;
             }
             stdout += chunk;
+            if (!onStdoutLine) return;
+            pendingLine += chunk;
+            emitCompleteLines();
         });
         // #613: capture stderr too. When a caller runs with `silent: true` (the
         // structured apply path) the ToolRunner suppresses its own echo of the
@@ -237,8 +268,8 @@ export class CommandExecutor {
         // (only the human console format is redacted), and setSecret registration
         // happens only after this call resolves, so the agent's forward-only
         // masker cannot redact lines that were already echoed. A caller that
-        // wants console output must echo the captured string itself after
-        // redaction (see echoApplyMessages() and plan()'s post-capture echo).
+        // wants console output must opt into `onStdoutLine` and redact there
+        // (see apply()/plan(), whose echoed text is safe by construction).
         let code: number;
         try {
             code = await this.execWithTimeout(terraformTool, { ...options, silent: true });
@@ -249,6 +280,9 @@ export class CommandExecutor {
             if (stdoutOverflow) {
                 throw overflowError();
             }
+            // A failing command's last line is often the most diagnostic one, so
+            // flush it before the rethrow rather than losing it to the failure.
+            flushPendingLine();
             // With the echo suppressed above, terraform's diagnostics (it writes
             // CLI/config errors to STDERR) would otherwise be swallowed into a
             // bare "failed with exit code N" (#613) -- fold the captured stderr
@@ -257,6 +291,7 @@ export class CommandExecutor {
             const trimmedStderr = stderr.trim();
             throw new Error(trimmedStderr ? `${message}\n${trimmedStderr}` : message);
         }
+        flushPendingLine();
 
         if (stdoutOverflow) {
             throw overflowError();

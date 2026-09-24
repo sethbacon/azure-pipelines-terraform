@@ -147,14 +147,16 @@ export class ResultsPublisher {
     }
 
     /**
-     * Echoes each `apply -json` NDJSON event's `@message` field to the console
+     * Echoes ONE `apply -json` NDJSON line's `@message` field to the console
      * so the live log stays human-readable when `-json` replaces Terraform's
-     * normal human-readable apply output (design D2/§5.4). Never echoes raw
-     * structured event fields -- only the already-human-readable `@message`
-     * line Terraform itself produced; the structured fields are consumed only
-     * by the redaction pipeline. Malformed lines are skipped silently here --
-     * apply-digest.ts's own parser separately counts and notes them in the
-     * digest's truncationNotes.
+     * normal human-readable apply output (design D2/§5.4). Called per line as
+     * the line arrives (#1189) -- an apply that runs for twenty minutes has to
+     * report progress while it runs, not reconstruct the whole log after the
+     * process exits. Never echoes raw structured event fields -- only the
+     * already-human-readable `@message` Terraform itself produced; the
+     * structured fields are consumed only by the redaction pipeline. Malformed
+     * lines are skipped silently here -- apply-digest.ts's own parser
+     * separately counts and notes them in the digest's truncationNotes.
      *
      * `@message` is least-trusted content (provider/module/remote-state
      * controlled) reaching a raw console.log sink, unlike tasks.* calls which
@@ -163,10 +165,10 @@ export class ResultsPublisher {
      * forge an ADO logging command, so each physical line is echoed
      * separately (see #678) and neutralized via echoSafeConsoleLine().
      */
-    echoApplyMessages(ndjson: string): void {
+    echoApplyMessageLine(line: string): void {
         // Shared tolerant NDJSON parse (#781): yields only object events, silently
-        // dropping malformed lines exactly as this pass did inline before.
-        for (const event of parseNdjsonLines(ndjson).events) {
+        // dropping a malformed line exactly as the whole-buffer pass did before.
+        for (const event of parseNdjsonLines(line).events) {
             const message = (event as Record<string, unknown>)['@message'];
             if (typeof message === 'string') {
                 this.echoSafeConsoleLine(message);
