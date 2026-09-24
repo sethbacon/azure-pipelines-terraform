@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.16.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.3...v1.16.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* **v5:** stream apply/plan output live instead of replaying it after exit ([#1185](https://github.com/sethbacon/azure-pipelines-terraform/issues/1185)) ([2073975](https://github.com/sethbacon/azure-pipelines-terraform/commit/2073975bfc2d1a22da97a456ba48d510be41d420))
+
 ## [1.16.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.2...v1.16.3) (2026-09-23)
 
 
