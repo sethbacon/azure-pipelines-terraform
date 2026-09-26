@@ -218,12 +218,13 @@ describe('TerraformPlanTab', () => {
     expect(out).toContain('All plans (2)');
     expect(out).toContain('plan-a');
     expect(out).toContain('plan-b');
-    // First item selected by default.
-    expect(out).toContain('aws_instance.web');
+    // The plan that destroys something is selected by default, not the first one.
+    expect(out).toContain('data-testid="resource-row-aws_instance.other"');
+    expect(out).not.toContain('data-testid="resource-row-aws_instance.web"');
 
-    (tab as unknown as { onSelectPlan: (id: string) => void }).onSelectPlan('plan-b#0');
+    (tab as unknown as { onSelectPlan: (id: string) => void }).onSelectPlan('plan-a#0');
     out = html(tab);
-    expect(out).toContain('aws_instance.other');
+    expect(out).toContain('data-testid="resource-row-aws_instance.web"');
   });
 
   it('falls back to the legacy raw view when no structured plan attachments exist', async () => {
@@ -1049,5 +1050,221 @@ describe('TerraformPlanTab reloads (onBuildChanged firing again)', () => {
     const fetched = fetchMock.mock.calls.map(([url]) => url.split('/').pop());
     expect(fetched.sort()).toEqual(['l1', 'p1', 'q1']);
     expect(html(tab)).toContain('q1');
+  });
+});
+
+describe('TerraformPlanTab opens on what needs review', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  type ReviewHandlers = TabHandlers & {
+    onSelectAttention(pivot: Pivot, id: string): void;
+    onResourceActionFilterChange(group: string | null): void;
+    onToggleSection(key: string): void;
+  };
+  const review = (tab: TerraformPlanTab): ReviewHandlers => tab as unknown as ReviewHandlers;
+
+  const DESTROYING_PLAN = validPlanDigest({
+    resources: [OTHER_RESOURCE],
+    summary: { add: 0, change: 0, destroy: 1, replace: 0, read: 0, noChanges: false, driftDetected: false },
+  });
+  const FAILED_APPLY = validApplyDigest({
+    outcome: 'failed',
+    summary: { add: 1, change: 0, destroy: 0, durationMs: 734000 },
+    resources: [
+      { address: 'aws_instance.ok', action: 'create', status: 'complete', durationMs: 900 },
+      { address: 'aws_instance.bad', action: 'create', status: 'errored', durationMs: 1200 },
+    ],
+    diagnostics: [{ severity: 'error', summary: 'boom', address: 'aws_instance.bad' }],
+  });
+
+  it('lists what needs review above the pivots, and opens an entry on click', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      applyNames: ['apply-a'],
+      bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'plan-b': JSON.stringify(DESTROYING_PLAN), 'apply-a': JSON.stringify(FAILED_APPLY) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('Needs review (2)');
+    expect(out.indexOf('attention-strip')).toBeLessThan(out.indexOf('pivot-bar'));
+    expect(out).toContain('<span class="attention-item-reason">: apply failed with 1 error</span>');
+    expect(out).toContain('<span class="attention-item-reason">: 1 to destroy</span>');
+
+    review(tab).onSelectAttention('plan', 'plan-b#0');
+    expect(tabState(tab)).toMatchObject({ activePivot: 'plan', selectedPlanId: 'plan-b#0' });
+    review(tab).onSelectAttention('apply', 'apply-a#0');
+    expect(tabState(tab)).toMatchObject({ activePivot: 'apply', selectedApplyId: 'apply-a#0' });
+  });
+
+  it('keeps the search when an entry opens the plan that is already selected', async () => {
+    mockLoad({ planNames: ['plan-b'], bodies: { 'plan-b': JSON.stringify(DESTROYING_PLAN) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    handlers(tab).onResourceSearchChange('other');
+    review(tab).onSelectAttention('plan', 'plan-b#0');
+    expect(tabState(tab).resourceSearchText).toBe('other');
+  });
+
+  it('opens a state entry from the strip', async () => {
+    mockLoad({
+      stateNames: ['state-a', 'state-b'],
+      bodies: { 'state-a': JSON.stringify(validStateDigest()), 'state-b': JSON.stringify(validStateDigest({ truncated: true })) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('partial view (truncated)');
+    review(tab).onSelectAttention('state', 'state-b#0');
+    expect(tabState(tab)).toMatchObject({ activePivot: 'state', selectedStateId: 'state-b#0' });
+  });
+
+  it('shows no strip when nothing needs review', async () => {
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).not.toContain('attention-strip');
+  });
+
+  it('counts each pivot and marks a failed apply on its tab', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      applyNames: ['apply-a'],
+      bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'plan-b': JSON.stringify(validPlanDigest()), 'apply-a': JSON.stringify(FAILED_APPLY) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('Plan <span class="pivot-count">2</span>');
+    expect(out).toContain('Apply <span class="pivot-count">1</span><span class="pivot-status-failed"> failed</span>');
+    expect(out).toContain('State <span class="pivot-count">0</span>');
+  });
+
+  it('counts legacy CLI outputs on the Plan tab when no structured plan was published', async () => {
+    mockLoad({ legacyNames: ['a.txt', 'b.txt'], bodies: { 'a.txt': 'x', 'b.txt': 'y' } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('Plan <span class="pivot-count">2</span>');
+  });
+
+  it('opens on the Apply pivot, with the failed apply selected, when an apply failed', async () => {
+    mockLoad({
+      planNames: ['plan-a'],
+      applyNames: ['apply-a', 'apply-b'],
+      bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'apply-a': JSON.stringify(validApplyDigest()), 'apply-b': JSON.stringify(FAILED_APPLY) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(tabState(tab)).toMatchObject({ activePivot: 'apply', selectedApplyId: 'apply-b#0' });
+  });
+
+  it('leads a failed apply with its diagnostics and shows how long it took', async () => {
+    mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify(FAILED_APPLY) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out.indexOf('>Diagnostics<')).toBeLessThan(out.indexOf('>Resources<'));
+    expect(out).toContain('took 12m 14s');
+    expect(out).toContain('Errored (1)');
+  });
+
+  it('keeps Resources first for a successful apply', async () => {
+    mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify(validApplyDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out.indexOf('>Resources<')).toBeLessThan(out.indexOf('>Diagnostics<'));
+  });
+
+  it('explains a failed apply that carries no diagnostics instead of saying there are none', async () => {
+    mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify({ ...FAILED_APPLY, diagnostics: [] }) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('Diagnostics<span class="detail-section-count"> (none included)</span>');
+    expect(out).toContain('<code>includeDiagnostics</code>');
+    expect(out).not.toContain('No diagnostics.');
+  });
+
+  describe('Terraform CLI output alongside structured plans', () => {
+    it('offers the CLI output published under the same name, collapsed until opened', async () => {
+      // Both attachment types share the name, so hrefs and bodies are routed by type.
+      (getClient as jest.Mock).mockReturnValue({
+        getAttachments: jest.fn((_p: string, _id: number, type: string) => {
+          if (type === PLAN_SUMMARY_TYPE) return Promise.resolve([{ name: 'plan-a', _links: { self: { href: 'https://example.test/summary/plan-a' } } }]);
+          if (type === LEGACY_RAW_TYPE) return Promise.resolve([{ name: 'plan-a', _links: { self: { href: 'https://example.test/legacy/plan-a' } } }]);
+          return Promise.resolve([]);
+        }),
+      });
+      (global as unknown as { fetch: jest.Mock }).fetch = jest.fn((url: string) => {
+        const body = url.includes('/legacy/') ? '\x1b[32m+ create\x1b[0m' : JSON.stringify(validPlanDigest());
+        return Promise.resolve({ ok: true, text: () => Promise.resolve(body), headers: { get: () => null } });
+      });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      let out = html(tab);
+      expect(out).toContain('>Terraform CLI output<');
+      expect(out).not.toContain('ansi-green');
+
+      review(tab).onToggleSection('plan.cli');
+      out = html(tab);
+      expect(out).toContain('<span class="ansi-green">+ create</span>');
+    });
+
+    it('keeps CLI output that no structured plan claims reachable, one section each', async () => {
+      mockLoad({
+        planNames: ['plan-a'],
+        legacyNames: ['other.txt'],
+        bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'other.txt': 'raw output of other' },
+      });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      let out = html(tab);
+      expect(out).toContain('Terraform CLI output<span class="detail-section-count"> (other.txt)</span>');
+      expect(out).not.toContain('raw output of other');
+
+      review(tab).onToggleSection('cli:0:other.txt');
+      out = html(tab);
+      expect(out).toContain('raw output of other');
+    });
+  });
+
+  describe('action filter', () => {
+    const MIXED_PLAN = validPlanDigest({
+      resources: [
+        { address: 'aws_instance.web', type: 'aws_instance', name: 'web', providerName: 'p', actions: ['create'], attributeChanges: [] },
+        OTHER_RESOURCE,
+      ],
+    });
+
+    it('narrows the resource list and resets when another plan is selected', async () => {
+      mockLoad({ planNames: ['plan-a', 'plan-b'], bodies: { 'plan-a': JSON.stringify(MIXED_PLAN), 'plan-b': JSON.stringify(MIXED_PLAN) } });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      handlers(tab).onSelectPlan('plan-a#0');
+      review(tab).onResourceActionFilterChange('delete');
+      let out = html(tab);
+      expect(out).toContain('data-testid="resource-row-aws_instance.other"');
+      expect(out).not.toContain('data-testid="resource-row-aws_instance.web"');
+
+      handlers(tab).onSelectPlan('plan-b#0');
+      expect(tabState(tab).resourceActionFilter).toBeNull();
+      out = html(tab);
+      expect(out).toContain('data-testid="resource-row-aws_instance.web"');
+    });
+
+    it('survives a reload of the same build alongside its plan', async () => {
+      mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(MIXED_PLAN) } });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      review(tab).onResourceActionFilterChange('create');
+      await tab.loadAll(build);
+      expect(tabState(tab).resourceActionFilter).toBe('create');
+
+      await tab.loadAll({ project: { id: 'proj' }, id: 2 } as never);
+      expect(tabState(tab).resourceActionFilter).toBeNull();
+    });
   });
 });

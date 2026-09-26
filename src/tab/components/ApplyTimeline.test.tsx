@@ -68,4 +68,61 @@ describe("ApplyTimeline", () => {
     );
     expect(html).toMatch(/truncated to 2 of 4 addresses/i);
   });
+
+  describe("failed apply", () => {
+    const resources = [
+      res({ address: "done.one", status: "complete" }),
+      res({ address: "broke.one", status: "errored" }),
+      res({ address: "hung.one", status: "started" }),
+      res({ address: "done.two", status: "complete" }),
+    ];
+
+    it("leads with errored resources, then unfinished, then completed, each under a counted heading", () => {
+      const html = renderToStaticMarkup(<ApplyTimeline resources={resources} outcome="failed" />);
+      const at = (text: string): number => html.indexOf(text);
+      expect(html).toContain("Errored (1)");
+      expect(html).toContain("Still running when the apply stopped (1)");
+      expect(html).toContain("Completed (2)");
+      expect(at("broke.one")).toBeLessThan(at("hung.one"));
+      expect(at("hung.one")).toBeLessThan(at("done.one"));
+    });
+
+    it("spends the row budget on errored resources first", () => {
+      const html = renderToStaticMarkup(<ApplyTimeline resources={resources} outcome="failed" maxRenderedRows={1} />);
+      expect(html).toContain("broke.one");
+      expect(html).not.toContain("hung.one");
+      expect(html).not.toContain("done.one");
+      expect(html).toMatch(/truncated to 1 of 4 resources/i);
+    });
+
+    it("keeps one reported-order list for a successful apply", () => {
+      const html = renderToStaticMarkup(<ApplyTimeline resources={resources} outcome="succeeded" />);
+      expect(html).not.toContain("apply-timeline-group");
+      expect(html.indexOf("done.one")).toBeLessThan(html.indexOf("broke.one"));
+    });
+  });
+
+  describe("slowest resources", () => {
+    it("names the three slowest, slowest first, with their durations", () => {
+      const html = renderToStaticMarkup(
+        <ApplyTimeline
+          resources={[
+            res({ address: "a", durationMs: 1000 }),
+            res({ address: "b", durationMs: 89_200 }),
+            res({ address: "c", durationMs: 5000 }),
+            res({ address: "d", durationMs: 700 }),
+            res({ address: "e" }),
+          ]}
+        />
+      );
+      expect(html).toContain(
+        'Slowest: <span class="apply-timeline-address">b</span> (1m 29s), <span class="apply-timeline-address">c</span> (5.0s), <span class="apply-timeline-address">a</span> (1.0s)'
+      );
+    });
+
+    it("omits the line when fewer than two resources reported a duration", () => {
+      const html = renderToStaticMarkup(<ApplyTimeline resources={[res({ address: "a", durationMs: 1000 }), res({ address: "b" })]} />);
+      expect(html).not.toContain("Slowest");
+    });
+  });
 });

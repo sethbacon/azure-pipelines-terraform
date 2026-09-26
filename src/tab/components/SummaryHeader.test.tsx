@@ -126,4 +126,36 @@ describe("SummaryHeader", () => {
     const html = renderToStaticMarkup(<SummaryHeader title="state-main" kind="state" />);
     expect(html).not.toContain("summary-header-counts");
   });
+
+  it("shows how long an apply took", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="apply" kind="apply" counts={{ add: 1, change: 0, destroy: 0 }} durationMs={734_000} />
+    );
+    expect(html).toContain('<span class="summary-header-duration">took 12m 14s</span>');
+  });
+
+  it("marks a truncated digest as a partial view, with its notes behind a disclosure", () => {
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="p" kind="plan" counts={{ add: 1, change: 0, destroy: 0 }} truncated={true} truncationNotes={["only note"]} />
+    );
+    expect(html).toContain('role="note"><strong>Partial view.</strong>');
+    expect(html).toContain("<summary>1 note</summary>");
+  });
+
+  it("caps the listed truncation notes and counts the rest", () => {
+    const notes = Array.from({ length: 25 }, (_, i) => `note ${i}`);
+    const html = renderToStaticMarkup(
+      <SummaryHeader title="p" kind="plan" counts={{ add: 1, change: 0, destroy: 0 }} truncated={true} truncationNotes={notes} />
+    );
+    expect(html).toContain("<summary>25 notes</summary>");
+    expect(html).toContain("note 19");
+    expect(html).not.toContain("note 20<");
+    expect(html).toContain("and 5 more");
+  });
+
+  it("shows the partial-view banner without a notes disclosure when there are no notes", () => {
+    const html = renderToStaticMarkup(<SummaryHeader title="p" kind="plan" counts={{ add: 1, change: 0, destroy: 0 }} truncated={true} />);
+    expect(html).toContain("Partial view.");
+    expect(html).not.toContain("<details");
+  });
 });

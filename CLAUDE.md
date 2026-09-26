@@ -153,7 +153,9 @@ azure-pipelines-terraform/
 │       ├── caps.ts                    # Size/DoS caps — byte-identical copy of the task's src/results/caps.ts
 │       ├── ansi-to-html.ts            # SGR-to-HTML converter used only by the raw fallback view
 │       ├── memoize.ts                 # Single-entry, identity-keyed memoizer for the multi-item roll-ups
-│       ├── components/                # Presentational components (SummaryHeader, Section, ResourceList, ResourceDiff, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
+│       ├── attention.ts               # "Needs review" model: plan/apply risk ranking (default selection) and the attention list
+│       ├── format-duration.ts         # Duration formatting shared by the apply summary and timeline
+│       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
 │       ├── index.html                 # Tab HTML shell
 │       └── tsconfig.json              # Tab TypeScript config
 ├── configs/                           # Extension manifest configs
