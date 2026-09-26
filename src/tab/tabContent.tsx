@@ -33,18 +33,60 @@ import * as SDK from "azure-devops-extension-sdk";
 import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
 import { getClient } from "azure-devops-extension-api";
 import { parseDigestText } from "./digest-model";
-import { Digest, PlanResource } from "./digest-schema";
-import { TAB_MAX_RENDERED_ROWS, TAB_PARSE_CEILING_BYTES } from "./caps";
+import { Diagnostic, Digest, OutputChange } from "./digest-schema";
+import { TAB_PARSE_CEILING_BYTES } from "./caps";
+import { memoizeOne } from "./memoize";
 import { SummaryHeader, SummaryHeaderCounts, SummaryHeaderStateCounts } from "./components/SummaryHeader";
 import { OverviewList, OverviewItem } from "./components/OverviewList";
-import { ResourceList } from "./components/ResourceList";
-import { ResourceDiff } from "./components/ResourceDiff";
+import { ResourceList, countChangedResources } from "./components/ResourceList";
+import { DriftList } from "./components/DriftList";
 import { ApplyTimeline } from "./components/ApplyTimeline";
 import { OutputsPanel } from "./components/OutputsPanel";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { StateInventory } from "./components/StateInventory";
+import { Section } from "./components/Section";
 import { RawView } from "./components/RawView";
 import "./tabContent.css";
+
+// The presentational components are memoized here, at the composition site,
+// rather than in their own modules (whose unit tests call them as plain
+// functions). Their props stay referentially stable across unrelated state
+// changes — digest arrays come straight from state, the multi-item roll-ups are
+// memoized per item array, and every handler is a class-bound arrow property —
+// so typing in the resource search re-renders the resource list without
+// re-rendering the summary, overview, drift, or outputs panels.
+const MemoSummaryHeader = React.memo(SummaryHeader);
+const MemoOverviewList = React.memo(OverviewList);
+const MemoResourceList = React.memo(ResourceList);
+const MemoDriftList = React.memo(DriftList);
+const MemoApplyTimeline = React.memo(ApplyTimeline);
+const MemoDiagnosticsPanel = React.memo(DiagnosticsPanel);
+const MemoOutputsPanel = React.memo(OutputsPanel);
+const MemoStateInventory = React.memo(StateInventory);
+
+/** The collapsible sections of the three detail views. */
+type SectionKey =
+    | "plan.changes"
+    | "plan.drift"
+    | "plan.outputs"
+    | "apply.resources"
+    | "apply.diagnostics"
+    | "apply.outputs"
+    | "state.resources"
+    | "state.outputs";
+
+const DEFAULT_SECTION_OPEN: Record<SectionKey, boolean> = {
+    "plan.changes": true,
+    // Collapsed until asked for: drift can run to thousands of attribute tables,
+    // and the summary header's badge and this section's count already flag it.
+    "plan.drift": false,
+    "plan.outputs": true,
+    "apply.resources": true,
+    "apply.diagnostics": true,
+    "apply.outputs": true,
+    "state.resources": true,
+    "state.outputs": true,
+};
 
 /** New structured attachment types (§7 of the design doc), additive to the legacy raw attachment. */
 const PLAN_SUMMARY_ATTACHMENT_TYPE = "terraform-plan-summary";
@@ -91,15 +133,37 @@ interface TerraformTabState {
     stateSearchText: string;
     /** The digest item whose "View raw digest" expander is open, if any; only that one renders its raw body. */
     openRawDetails: { pivot: Pivot; id: string } | null;
+    /** Whether the plan's unchanged (no-op) resources are listed; hidden by default. */
+    showUnchangedResources: boolean;
+    /** Whether the plan's unchanged (no-op) output changes are listed; hidden by default. */
+    showUnchangedOutputs: boolean;
+    /** Sections the reviewer has opened or closed; anything absent uses DEFAULT_SECTION_OPEN. */
+    sectionOpen: Partial<Record<SectionKey, boolean>>;
 }
 
 function byNameCaseInsensitive<T extends { name: string }>(a: T, b: T): number {
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 }
 
-/** Adapts a DriftResource (no `actions`/`actionReason`/`replacePaths`) into the PlanResource shape ResourceDiff renders. */
-function driftAsPlanResource(drift: NonNullable<Extract<Digest, { kind: "plan" }>["drift"]>[number]): PlanResource {
-    return { ...drift, actions: [] };
+type OkDigestItem = Extract<DigestItem, { status: "ok" }>;
+
+function okItemsOf(items: DigestItem[]): OkDigestItem[] {
+    return items.filter((i): i is OkDigestItem => i.status === "ok");
+}
+
+/** Plan output changes that actually change something (the Output changes heading count). */
+function countChangedOutputs(outputs: OutputChange[]): number {
+    return outputs.reduce((n, output) => (output.action === "no-op" ? n : n + 1), 0);
+}
+
+/** "2 errors, 1 warning" for the Diagnostics heading; "0" when there are none. */
+function formatDiagnosticCounts(diagnostics: Diagnostic[]): string {
+    const errors = diagnostics.filter((d) => d.severity === "error").length;
+    const warnings = diagnostics.length - errors;
+    const parts: string[] = [];
+    if (errors > 0) parts.push(`${errors} ${errors === 1 ? "error" : "errors"}`);
+    if (warnings > 0) parts.push(`${warnings} ${warnings === 1 ? "warning" : "warnings"}`);
+    return parts.length > 0 ? parts.join(", ") : "0";
 }
 
 export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
@@ -110,6 +174,16 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
      * never overwrite newer results or errors.
      */
     private loadSequence = 0;
+
+    // Roll-ups and overview rows for the multi-item header, recomputed only when
+    // the item array itself changes (i.e. on load), not on every render.
+    private readonly planRollup = memoizeOne((items: DigestItem[]) => aggregatePlanRollup(okItemsOf(items)));
+    private readonly applyRollup = memoizeOne((items: DigestItem[]) => aggregateApplyRollup(okItemsOf(items)));
+    private readonly stateRollup = memoizeOne((items: DigestItem[]) => aggregateStateRollup(okItemsOf(items)));
+    private readonly planOverview = memoizeOne((items: DigestItem[]) => items.map(toPlanOverviewItem));
+    private readonly applyOverview = memoizeOne((items: DigestItem[]) => items.map(toApplyOverviewItem));
+    private readonly stateOverview = memoizeOne((items: DigestItem[]) => items.map(toStateOverviewItem));
+    private readonly sectionToggles = new Map<SectionKey, () => void>();
 
     constructor(props: {}) {
         super(props);
@@ -131,6 +205,9 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             selectedStateAddress: null,
             stateSearchText: "",
             openRawDetails: null,
+            showUnchangedResources: false,
+            showUnchangedOutputs: false,
+            sectionOpen: {},
         };
     }
 
@@ -152,8 +229,9 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     No terraform plans, applies, or state have been published for this pipeline run.
                     <br />
                     <br />
-                    Set <code>publishPlanResults</code>, <code>publishPlanSummary</code>, or{" "}
-                    <code>publishApplyResults</code> on the terraform task to publish results here.
+                    Set <code>publishPlanResults</code>, <code>publishPlanSummary</code>,{" "}
+                    <code>publishApplyResults</code>, or <code>publishStateResults</code> on the terraform task to
+                    publish results here.
                 </div>
             );
         }
@@ -203,15 +281,14 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             return this.renderLegacyRawFallback();
         }
 
-        const okItems = planItems.filter((i): i is Extract<DigestItem, { status: "ok" }> => i.status === "ok");
-        const rollup = aggregatePlanRollup(okItems);
-        const overviewItems: OverviewItem[] = planItems.map(toPlanOverviewItem);
+        const rollup = this.planRollup(planItems);
+        const overviewItems: OverviewItem[] = this.planOverview(planItems);
         const selected = planItems.find((i) => i.id === selectedPlanId) ?? planItems[0];
 
         return (
             <div className="pivot-panel">
                 {planItems.length > 1 && (
-                    <SummaryHeader
+                    <MemoSummaryHeader
                         title={`All plans (${planItems.length})`}
                         kind="plan"
                         counts={rollup.counts}
@@ -220,7 +297,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     />
                 )}
                 {planItems.length > 1 && (
-                    <OverviewList items={overviewItems} selectedId={selectedPlanId} onSelect={this.onSelectPlan} />
+                    <MemoOverviewList items={overviewItems} selectedId={selectedPlanId} onSelect={this.onSelectPlan} />
                 )}
                 {selected && this.renderPlanDetail(selected)}
             </div>
@@ -235,13 +312,13 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             return this.renderDigestError({ message: "Unexpected digest kind.", raw: item.raw, name: item.name });
         }
         const digest = item.digest;
-        const { selectedResourceAddress, resourceSearchText } = this.state;
-        const selectedResource = digest.resources.find((r) => r.address === selectedResourceAddress) ?? null;
+        const drift = digest.drift;
+        const { selectedResourceAddress, resourceSearchText, showUnchangedResources, showUnchangedOutputs } = this.state;
 
         return (
             <div className="digest-detail">
                 {item.unknownVersion && <div className="unknown-version-banner">{item.notes.join(" ")}</div>}
-                <SummaryHeader
+                <MemoSummaryHeader
                     title={item.name}
                     kind="plan"
                     counts={digest.summary}
@@ -252,28 +329,49 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
                 />
-                <ResourceList
-                    resources={digest.resources}
-                    selectedAddress={selectedResourceAddress}
-                    onSelect={this.onSelectResource}
-                    searchText={resourceSearchText}
-                    onSearchTextChange={this.onResourceSearchChange}
-                />
-                {selectedResource && <ResourceDiff resource={selectedResource} />}
-                {digest.drift && digest.drift.length > 0 && (
-                    <div className="drift-section">
-                        <h3>Drift detected</h3>
-                        {digest.drift.length > TAB_MAX_RENDERED_ROWS && (
-                            <div className="drift-section-truncated-banner">
-                                List truncated to {TAB_MAX_RENDERED_ROWS} of {digest.drift.length} drifted resources.
-                            </div>
-                        )}
-                        {digest.drift.slice(0, TAB_MAX_RENDERED_ROWS).map((d) => (
-                            <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} />
-                        ))}
-                    </div>
+                <Section
+                    title="Resource changes"
+                    count={countChangedResources(digest.resources)}
+                    open={this.isSectionOpen("plan.changes")}
+                    onToggle={this.sectionToggle("plan.changes")}
+                >
+                    {() => (
+                        <MemoResourceList
+                            resources={digest.resources}
+                            selectedAddress={selectedResourceAddress}
+                            onSelect={this.onSelectResource}
+                            searchText={resourceSearchText}
+                            onSearchTextChange={this.onResourceSearchChange}
+                            showUnchanged={showUnchangedResources}
+                            onToggleUnchanged={this.onToggleUnchangedResources}
+                        />
+                    )}
+                </Section>
+                {drift && drift.length > 0 && (
+                    <Section
+                        title="Drift"
+                        count={drift.length}
+                        className="drift-section"
+                        open={this.isSectionOpen("plan.drift")}
+                        onToggle={this.sectionToggle("plan.drift")}
+                    >
+                        {() => <MemoDriftList drift={drift} />}
+                    </Section>
                 )}
-                <OutputsPanel outputs={digest.outputChanges} />
+                <Section
+                    title="Output changes"
+                    count={countChangedOutputs(digest.outputChanges)}
+                    open={this.isSectionOpen("plan.outputs")}
+                    onToggle={this.sectionToggle("plan.outputs")}
+                >
+                    {() => (
+                        <MemoOutputsPanel
+                            outputs={digest.outputChanges}
+                            showUnchanged={showUnchangedOutputs}
+                            onToggleUnchanged={this.onToggleUnchangedOutputs}
+                        />
+                    )}
+                </Section>
                 {this.renderRawDetails("plan", item)}
             </div>
         );
@@ -288,18 +386,17 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             );
         }
 
-        const okItems = applyItems.filter((i): i is Extract<DigestItem, { status: "ok" }> => i.status === "ok");
-        const rollup = aggregateApplyRollup(okItems);
-        const overviewItems: OverviewItem[] = applyItems.map(toApplyOverviewItem);
+        const rollup = this.applyRollup(applyItems);
+        const overviewItems: OverviewItem[] = this.applyOverview(applyItems);
         const selected = applyItems.find((i) => i.id === selectedApplyId) ?? applyItems[0];
 
         return (
             <div className="pivot-panel">
                 {applyItems.length > 1 && (
-                    <SummaryHeader title={`All applies (${applyItems.length})`} kind="apply" counts={rollup.counts} />
+                    <MemoSummaryHeader title={`All applies (${applyItems.length})`} kind="apply" counts={rollup.counts} />
                 )}
                 {applyItems.length > 1 && (
-                    <OverviewList items={overviewItems} selectedId={selectedApplyId} onSelect={this.onSelectApply} />
+                    <MemoOverviewList items={overviewItems} selectedId={selectedApplyId} onSelect={this.onSelectApply} />
                 )}
                 {selected && this.renderApplyDetail(selected)}
             </div>
@@ -318,7 +415,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return (
             <div className="digest-detail">
                 {item.unknownVersion && <div className="unknown-version-banner">{item.notes.join(" ")}</div>}
-                <SummaryHeader
+                <MemoSummaryHeader
                     title={item.name}
                     kind="apply"
                     counts={digest.summary}
@@ -327,9 +424,32 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
                 />
-                <ApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} />
-                <DiagnosticsPanel diagnostics={digest.diagnostics} />
-                <OutputsPanel outputs={digest.outputs} />
+                <Section
+                    title="Resources"
+                    count={digest.resources.length}
+                    open={this.isSectionOpen("apply.resources")}
+                    onToggle={this.sectionToggle("apply.resources")}
+                >
+                    {() => (
+                        <MemoApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} />
+                    )}
+                </Section>
+                <Section
+                    title="Diagnostics"
+                    count={formatDiagnosticCounts(digest.diagnostics)}
+                    open={this.isSectionOpen("apply.diagnostics")}
+                    onToggle={this.sectionToggle("apply.diagnostics")}
+                >
+                    {() => <MemoDiagnosticsPanel diagnostics={digest.diagnostics} />}
+                </Section>
+                <Section
+                    title="Outputs"
+                    count={digest.outputs.length}
+                    open={this.isSectionOpen("apply.outputs")}
+                    onToggle={this.sectionToggle("apply.outputs")}
+                >
+                    {() => <MemoOutputsPanel outputs={digest.outputs} />}
+                </Section>
                 {this.renderRawDetails("apply", item)}
             </div>
         );
@@ -342,18 +462,17 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             return <div className="plan-empty">No terraform state has been published for this pipeline run.</div>;
         }
 
-        const okItems = stateItems.filter((i): i is Extract<DigestItem, { status: "ok" }> => i.status === "ok");
-        const rollup = aggregateStateRollup(okItems);
-        const overviewItems: OverviewItem[] = stateItems.map(toStateOverviewItem);
+        const rollup = this.stateRollup(stateItems);
+        const overviewItems: OverviewItem[] = this.stateOverview(stateItems);
         const selected = stateItems.find((i) => i.id === selectedStateId) ?? stateItems[0];
 
         return (
             <div className="pivot-panel">
                 {stateItems.length > 1 && (
-                    <SummaryHeader title={`All state (${stateItems.length})`} kind="state" stateCounts={rollup} />
+                    <MemoSummaryHeader title={`All state (${stateItems.length})`} kind="state" stateCounts={rollup} />
                 )}
                 {stateItems.length > 1 && (
-                    <OverviewList items={overviewItems} selectedId={selectedStateId} onSelect={this.onSelectState} />
+                    <MemoOverviewList items={overviewItems} selectedId={selectedStateId} onSelect={this.onSelectState} />
                 )}
                 {selected && this.renderStateDetail(selected)}
             </div>
@@ -373,7 +492,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return (
             <div className="digest-detail">
                 {item.unknownVersion && <div className="unknown-version-banner">{item.notes.join(" ")}</div>}
-                <SummaryHeader
+                <MemoSummaryHeader
                     title={item.name}
                     kind="state"
                     stateCounts={digest.summary}
@@ -381,14 +500,30 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
                 />
-                <StateInventory
-                    resources={digest.resources}
-                    selectedAddress={selectedStateAddress}
-                    onSelect={this.onSelectStateResource}
-                    searchText={stateSearchText}
-                    onSearchTextChange={this.onStateSearchTextChange}
-                />
-                <OutputsPanel outputs={digest.outputs} />
+                <Section
+                    title="Resources"
+                    count={digest.resources.length}
+                    open={this.isSectionOpen("state.resources")}
+                    onToggle={this.sectionToggle("state.resources")}
+                >
+                    {() => (
+                        <MemoStateInventory
+                            resources={digest.resources}
+                            selectedAddress={selectedStateAddress}
+                            onSelect={this.onSelectStateResource}
+                            searchText={stateSearchText}
+                            onSearchTextChange={this.onStateSearchTextChange}
+                        />
+                    )}
+                </Section>
+                <Section
+                    title="Outputs"
+                    count={digest.outputs.length}
+                    open={this.isSectionOpen("state.outputs")}
+                    onToggle={this.sectionToggle("state.outputs")}
+                >
+                    {() => <MemoOutputsPanel outputs={digest.outputs} />}
+                </Section>
                 {this.renderRawDetails("state", item)}
             </div>
         );
@@ -507,6 +642,34 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     private onStateSearchTextChange = (text: string): void => {
         this.setState({ stateSearchText: text });
     };
+
+    private onToggleUnchangedResources = (): void => {
+        this.setState((prev: TerraformTabState) => ({ showUnchangedResources: !prev.showUnchangedResources }));
+    };
+
+    private onToggleUnchangedOutputs = (): void => {
+        this.setState((prev: TerraformTabState) => ({ showUnchangedOutputs: !prev.showUnchangedOutputs }));
+    };
+
+    private isSectionOpen(key: SectionKey): boolean {
+        return this.state.sectionOpen[key] ?? DEFAULT_SECTION_OPEN[key];
+    }
+
+    private onToggleSection = (key: SectionKey): void => {
+        this.setState((prev: TerraformTabState) => ({
+            sectionOpen: { ...prev.sectionOpen, [key]: !(prev.sectionOpen[key] ?? DEFAULT_SECTION_OPEN[key]) },
+        }));
+    };
+
+    /** One stable toggle callback per section, so a Section's props don't change identity on every render. */
+    private sectionToggle(key: SectionKey): () => void {
+        let toggle = this.sectionToggles.get(key);
+        if (!toggle) {
+            toggle = () => this.onToggleSection(key);
+            this.sectionToggles.set(key, toggle);
+        }
+        return toggle;
+    }
 
     private onSelectLegacy = (event: React.ChangeEvent<HTMLSelectElement>): void => {
         this.setState({ selectedLegacyIndex: parseInt(event.target.value, 10) });

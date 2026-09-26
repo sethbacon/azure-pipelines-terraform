@@ -166,11 +166,15 @@ describe('TerraformPlanTab', () => {
     expect(html(tab)).toContain('Error: attachments API unavailable');
   });
 
-  it('renders an empty state when nothing has been published', async () => {
+  it('renders an empty state naming every publish input when nothing has been published', async () => {
     mockLoad({ bodies: {} });
     const tab = makeTestableTab();
     await tab.loadAll(build);
-    expect(html(tab)).toContain('No terraform plans, applies, or state have been published');
+    const out = html(tab);
+    expect(out).toContain('No terraform plans, applies, or state have been published');
+    for (const input of ['publishPlanResults', 'publishPlanSummary', 'publishApplyResults', 'publishStateResults']) {
+      expect(out).toContain(`<code>${input}</code>`);
+    }
   });
 
   it('renders a single plan digest: summary header + resource list, no overview list for one item', async () => {
@@ -383,10 +387,190 @@ describe('TerraformPlanTab', () => {
     let out = html(tab);
     expect(out).toContain('instance_type');
     expect(out).toContain('t3.micro');
+    // The diff opens inline, directly under the selected row — not after the whole list.
+    expect(out.indexOf('resource-diff-inline')).toBeGreaterThan(out.indexOf('data-testid="resource-row-aws_instance.web"'));
+    expect(out.indexOf('resource-diff-inline')).toBeLessThan(out.indexOf('</ul>'));
 
     (tab as unknown as { onSelectResource: (a: string) => void }).onSelectResource('aws_instance.web');
     out = html(tab);
     expect(out).not.toContain('resource-diff-table');
+  });
+
+  describe('review layout', () => {
+    type Handlers = {
+      onToggleSection: (key: string) => void;
+      onToggleUnchangedResources: () => void;
+      onToggleUnchangedOutputs: () => void;
+      planRollup: (items: unknown[]) => unknown;
+      state: { planItems: unknown[] };
+    };
+    const handlers = (tab: TerraformPlanTab): Handlers => tab as unknown as Handlers;
+
+    function reviewPlan(): Record<string, unknown> {
+      return validPlanDigest({
+        summary: { add: 1, change: 0, destroy: 0, replace: 0, read: 0, noChanges: false, driftDetected: true },
+        resources: [
+          {
+            address: 'aws_instance.web',
+            type: 'aws_instance',
+            name: 'web',
+            providerName: 'registry.terraform.io/hashicorp/aws',
+            actions: ['create'],
+            attributeChanges: [],
+          },
+          {
+            address: 'aws_instance.untouched',
+            type: 'aws_instance',
+            name: 'untouched',
+            providerName: 'registry.terraform.io/hashicorp/aws',
+            actions: ['no-op'],
+            attributeChanges: [],
+          },
+        ],
+        drift: [
+          {
+            address: 'aws_subnet.drifted',
+            type: 'aws_subnet',
+            name: 'drifted',
+            providerName: 'registry.terraform.io/hashicorp/aws',
+            attributeChanges: [{ path: 'tags', before: { kind: 'value', json: '{}' }, after: { kind: 'value', json: '{"owner":"portal"}' } }],
+          },
+        ],
+        outputChanges: [
+          { name: 'url', action: 'create', value: { kind: 'unknown' } },
+          { name: 'region', action: 'no-op', value: { kind: 'value', json: '"eastus"' } },
+        ],
+      });
+    }
+
+    async function loadReviewPlan(): Promise<TerraformPlanTab> {
+      mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(reviewPlan()) } });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      return tab;
+    }
+
+    it('heads each plan section with its count', async () => {
+      const out = html(await loadReviewPlan());
+      expect(out).toContain('Resource changes<span class="detail-section-count"> (1)</span>');
+      expect(out).toContain('Drift<span class="detail-section-count"> (1)</span>');
+      expect(out).toContain('Output changes<span class="detail-section-count"> (1)</span>');
+    });
+
+    // Assertions below match rendered structure, not bare digest text: the raw
+    // digest JSON (under "View raw digest") contains every address and value.
+    it('keeps drift collapsed until its section is opened', async () => {
+      const tab = await loadReviewPlan();
+      let out = html(tab);
+      expect(out).toContain('class="detail-section-toggle" aria-expanded="false"');
+      expect(out).not.toContain('class="drift-list"');
+
+      handlers(tab).onToggleSection('plan.drift');
+      out = html(tab);
+      expect(out).toContain('class="drift-list"');
+      expect(out).toContain('<span class="resource-diff-address">aws_subnet.drifted</span>');
+    });
+
+    it('closes an open section and reopens it', async () => {
+      const tab = await loadReviewPlan();
+      handlers(tab).onToggleSection('plan.changes');
+      expect(html(tab)).not.toContain('data-testid="resource-row-aws_instance.web"');
+
+      handlers(tab).onToggleSection('plan.changes');
+      expect(html(tab)).toContain('data-testid="resource-row-aws_instance.web"');
+    });
+
+    it('hides unchanged resources until the reviewer asks for them', async () => {
+      const tab = await loadReviewPlan();
+      let out = html(tab);
+      expect(out).toContain('Unchanged (1)');
+      expect(out).not.toContain('data-testid="resource-row-aws_instance.untouched"');
+
+      handlers(tab).onToggleUnchangedResources();
+      out = html(tab);
+      expect(out).toContain('data-testid="resource-row-aws_instance.untouched"');
+    });
+
+    it('hides unchanged output changes until the reviewer asks for them', async () => {
+      const tab = await loadReviewPlan();
+      let out = html(tab);
+      expect(out).toContain('Show 1 unchanged output');
+      expect(out).not.toContain('>region<');
+
+      handlers(tab).onToggleUnchangedOutputs();
+      out = html(tab);
+      expect(out).toContain('>region<');
+    });
+
+    it('omits the Drift section for a plan without drift', async () => {
+      mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      expect(html(tab)).not.toContain('drift-section');
+    });
+
+    it('heads the apply sections, summarising diagnostics by severity', async () => {
+      mockLoad({
+        applyNames: ['apply-a'],
+        bodies: {
+          'apply-a': JSON.stringify(
+            validApplyDigest({
+              outcome: 'failed',
+              diagnostics: [
+                { severity: 'error', summary: 'boom' },
+                { severity: 'error', summary: 'bang' },
+                { severity: 'warning', summary: 'deprecated' },
+              ],
+            })
+          ),
+        },
+      });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      const out = html(tab);
+      expect(out).toContain('Resources<span class="detail-section-count"> (1)</span>');
+      expect(out).toContain('Diagnostics<span class="detail-section-count"> (2 errors, 1 warning)</span>');
+      expect(out).toContain('Outputs<span class="detail-section-count"> (1)</span>');
+
+      expect(out).toContain('class="diagnostics-panel"');
+
+      handlers(tab).onToggleSection('apply.diagnostics');
+      expect(html(tab)).not.toContain('class="diagnostics-panel"');
+    });
+
+    it('counts a single error or warning in the singular, and none as 0', async () => {
+      for (const [diagnostics, label] of [
+        [[{ severity: 'error', summary: 'boom' }], '1 error'],
+        [[{ severity: 'warning', summary: 'hm' }], '1 warning'],
+        [[], '0'],
+      ] as const) {
+        mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify(validApplyDigest({ diagnostics })) } });
+        const tab = makeTestableTab();
+        await tab.loadAll(build);
+        expect(html(tab)).toContain(`Diagnostics<span class="detail-section-count"> (${label})</span>`);
+      }
+    });
+
+    it('heads the state sections with their counts', async () => {
+      mockLoad({ stateNames: ['state-a'], bodies: { 'state-a': JSON.stringify(validStateDigest()) } });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      const out = html(tab);
+      expect(out).toContain('Resources<span class="detail-section-count"> (1)</span>');
+      expect(out).toContain('Outputs<span class="detail-section-count"> (1)</span>');
+    });
+
+    it('reuses the multi-plan roll-up across renders instead of recomputing it', async () => {
+      mockLoad({
+        planNames: ['plan-a', 'plan-b'],
+        bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'plan-b': JSON.stringify(validPlanDigest()) },
+      });
+      const tab = makeTestableTab();
+      await tab.loadAll(build);
+      const items = handlers(tab).state.planItems;
+      expect(handlers(tab).planRollup(items)).toBe(handlers(tab).planRollup(items));
+      expect(html(tab)).toContain('All plans (2)');
+    });
   });
 
   it('refuses an over-ceiling attachment by its Content-Length WITHOUT buffering the body (pre-read guard)', async () => {

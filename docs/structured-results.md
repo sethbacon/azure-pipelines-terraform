@@ -62,12 +62,17 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
 - **Summary header** — the counts, `No changes` / `Drift detected` badges, the tool and
   version, and a **`This digest was truncated.`** notice with per-note reasons when any
   size cap was hit (see [Size caps](#size-caps--truncation)).
-- **Resource list** — grouped by action (replace / delete / create / update / read / no-op)
-  and filterable by address.
-- **Resource diff** — for the selected resource, a before → after table of only the
-  changed attributes.
+- **Resource changes** — the resources the plan touches, grouped by action (import /
+  replace / destroy / add / change / read / forget) and filterable by address. Select a
+  resource to expand, directly under its row, a before → after table of only the changed
+  attributes. Unchanged resources are collapsed into a single **Unchanged (N)** line;
+  select it to list them.
 - **Drift** — drifted resources (from `resource_drift`), rendered as before → after diffs.
-- **Outputs** — masked output changes.
+  Collapsed until you open it; its heading shows how many resources drifted.
+- **Output changes** — masked output changes. Unchanged outputs stay behind a
+  **Show N unchanged outputs** link.
+
+Every section heading shows a count, and selecting it collapses or expands the section.
 
 ### Destroy plans
 
@@ -83,10 +88,11 @@ and still fails the task on a non-zero exit; publishing the summary does not cha
   and success / failed outcome.
 - **Summary header** — counts, the `Succeeded` / `Failed` outcome badge, tool/version,
   and the truncation notice when applicable.
-- **Apply timeline** — per-resource action, status (`started` / `complete` / `errored`),
-  and duration, in the order Terraform reported them. On a failed apply, a
+- **Resources** — the apply timeline: per-resource action, status (`started` / `complete` /
+  `errored`), and duration, in the order Terraform reported them. On a failed apply, a
   **Completed before the apply errored** list shows the addresses that finished first.
-- **Diagnostics** — errors first, then warnings; freeform text is scrubbed before display.
+- **Diagnostics** — errors first, then warnings, with the heading counting each (for
+  example `2 errors, 1 warning`); freeform text is scrubbed before display.
 - **Outputs** — masked final outputs.
 
 ## Reading the State pivot
@@ -99,7 +105,7 @@ change set: no action, no before/after, no known-after-apply. Enable it with
   name with resource / data-source counts; select one to open its detail.
 - **Summary header** — the resource and data-source counts, the tool and version, and the
   truncation notice when applicable.
-- **State inventory list** — grouped by resource type and filterable by address or type;
+- **Resources** — the state inventory, grouped by resource type and filterable by address or type;
   each row expands to an attribute table of that resource's **current** values (address,
   type, provider, and — for a resource inside a module — its module path).
 - **Outputs** — masked current output values (no action, since state is not a change set).

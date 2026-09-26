@@ -368,6 +368,8 @@
 
 .overview-item-name {
     font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .overview-item-badges,
@@ -418,11 +420,21 @@
     padding: 0;
 }
 
-.resource-row {
+/* Each row is a <button aria-expanded> (keyboard- and screen-reader-operable),
+   so the native button chrome is reset. The container-qualified selector is
+   needed to outrank `.terraform-container button { font-family: inherit }`. */
+.terraform-container .resource-row {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    width: 100%;
     padding: 4px 8px;
+    border: none;
     border-left: 3px solid transparent;
+    background: none;
+    color: inherit;
+    text-align: left;
     cursor: pointer;
     font-family: var(--tf-mono);
     font-size: 13px;
@@ -437,21 +449,58 @@
     border-left-color: var(--tf-accent);
 }
 
+.resource-row-address {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .resource-row-type,
 .resource-row-reason {
     color: var(--tf-text-secondary);
 }
 
+/* The Unchanged group's heading doubles as its show/hide toggle. Plain inline
+   flow rather than flex, so the space before "Show"/"Hide" is real text and
+   the button's accessible name reads "Unchanged (N) Show". */
+.resource-group-toggle {
+    display: inline-block;
+    margin: 12px 0 4px 0;
+    padding: 2px 4px 2px 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--tf-text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.resource-group-toggle-hint {
+    color: var(--tf-accent-text);
+    font-weight: 400;
+}
+
+/* Off-screen diff cards skip layout and paint until they scroll near the
+   viewport (drift alone can list thousands). Unlike windowing, the content
+   stays in the DOM, so find-in-page and the accessibility tree still see it. */
 .resource-diff {
     margin-top: 12px;
     border: 1px solid var(--tf-border);
     border-radius: 4px;
     background: var(--tf-surface-raised);
     padding: 8px 12px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
+}
+
+/* A diff expanded under its own row: indented to hang off the row's accent bar. */
+.resource-row-item > .resource-diff-inline {
+    margin: 2px 0 8px 11px;
 }
 
 .resource-diff-header {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: center;
     font-family: var(--tf-mono);
@@ -459,6 +508,7 @@
 
 .resource-diff-address {
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
 .resource-diff-type,
@@ -467,12 +517,28 @@
     color: var(--tf-text-secondary);
 }
 
+/* Fixed layout: column widths come from the header row instead of measuring
+   every cell, so a long table of JSON values lays out in one pass. */
 .resource-diff-table,
 .outputs-panel {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     margin-top: 8px;
     font-size: 13px;
+}
+
+.resource-diff-table th:first-child {
+    width: 26%;
+}
+
+.outputs-panel th:first-child {
+    width: 30%;
+}
+
+/* The Action column, when there is one (it is never the last column). */
+.outputs-panel th:nth-child(2):not(:last-child) {
+    width: 80px;
 }
 
 .resource-diff-table th,
@@ -498,18 +564,15 @@
     font-family: var(--tf-mono);
 }
 
-/* Only the value columns wrap; otherwise the browser collapses the narrow
-   name column to make room for long JSON values. */
+/* With fixed column widths every cell wraps rather than pushing its
+   neighbours; a long unbroken path or JSON token may break mid-word. */
 .resource-diff-path,
 .outputs-panel-name,
-.outputs-panel-action {
-    white-space: nowrap;
-}
-
+.outputs-panel-action,
 .resource-diff-before,
 .resource-diff-after,
 .outputs-panel-value {
-    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .resource-diff-before {
@@ -528,11 +591,17 @@
 
 .apply-timeline-item {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
     padding: 4px 8px;
     font-family: var(--tf-mono);
     font-size: 13px;
     border-bottom: 1px solid var(--tf-border);
+}
+
+.apply-timeline-address {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .apply-timeline-status,
@@ -595,8 +664,70 @@
     white-space: pre-wrap;
 }
 
-.drift-section {
+/* --- Collapsible detail sections (Section.tsx) --- */
+
+.detail-section {
     margin-top: 16px;
+}
+
+.detail-section-heading {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.detail-section-toggle {
+    display: inline-block;
+    padding: 2px 4px 2px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tf-text);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.detail-section-count {
+    color: var(--tf-text-secondary);
+    font-weight: 400;
+}
+
+/* A CSS-drawn triangle (no glyph for a screen reader to announce) that
+   points right when collapsed and down when expanded. */
+.disclosure-chevron {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--tf-text-secondary);
+    margin-right: 6px;
+    vertical-align: 1px;
+    transition: transform 0.1s ease-out;
+}
+
+[aria-expanded="true"] > .disclosure-chevron {
+    transform: rotate(90deg);
+}
+
+.drift-list-intro {
+    margin: 0 0 8px 0;
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+}
+
+.outputs-panel-toggle {
+    margin-top: 6px;
+    padding: 2px 0;
+    font-size: 12px;
+    color: var(--tf-accent-text);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.outputs-panel-toggle:hover {
+    text-decoration: underline;
 }
 
 .raw-details {
@@ -625,9 +756,9 @@
     font-size: 13px;
 }
 
+/* Headings are resource type names (azurerm_subnet), shown verbatim. */
 .state-inventory-group-heading {
     font-weight: 600;
-    text-transform: capitalize;
     color: var(--tf-text-secondary);
     letter-spacing: 0.02em;
     margin: 12px 0 4px 0;
@@ -642,7 +773,8 @@
 
 .state-inventory-row {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
     padding: 4px 8px;
     border-left: 3px solid transparent;
     cursor: pointer;
@@ -674,10 +806,20 @@
     margin-bottom: 8px;
 }
 
+.state-inventory-address {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .state-inventory-attrs-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
+}
+
+.state-inventory-attrs-table th:first-child {
+    width: 30%;
 }
 
 .state-inventory-attrs-table th,
@@ -699,10 +841,7 @@
     font-family: var(--tf-mono);
 }
 
-.state-inventory-attr-name {
-    white-space: nowrap;
-}
-
+.state-inventory-attr-name,
 .state-inventory-attr-value {
-    word-break: break-word;
+    overflow-wrap: anywhere;
 }

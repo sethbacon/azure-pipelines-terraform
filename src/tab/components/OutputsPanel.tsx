@@ -19,19 +19,31 @@ export interface OutputsPanelProps {
      */
     outputs: OutputValue[];
     maxRenderedRows?: number;
+    /**
+     * Plan output changes only. When set, outputs whose action is `no-op` are
+     * collapsed behind a "Show N unchanged" toggle (open while `showUnchanged`),
+     * so the panel leads with what the plan changes. Leave it unset for apply and
+     * state outputs, which are current values rather than a change set.
+     */
+    onToggleUnchanged?: () => void;
+    showUnchanged?: boolean;
 }
 
 /** Masked outputs list (plan `outputChanges`, apply `outputs`, or state `outputs`). */
-export function OutputsPanel({ outputs, maxRenderedRows }: OutputsPanelProps): JSX.Element {
+export function OutputsPanel({ outputs, maxRenderedRows, onToggleUnchanged, showUnchanged = false }: OutputsPanelProps): JSX.Element {
     if (outputs.length === 0) {
         return <div className="outputs-panel-empty">No outputs.</div>;
     }
 
+    const collapsible = onToggleUnchanged !== undefined;
+    const unchangedCount = collapsible ? outputs.filter((output) => outputAction(output) === "no-op").length : 0;
+    const listed = collapsible && !showUnchanged ? outputs.filter((output) => outputAction(output) !== "no-op") : outputs;
+
     // Bounded rendering (§5.5): hard-cap the DOM rows so a digest that claims a
     // huge output list can't emit one element per row.
     const maxRows = maxRenderedRows ?? TAB_MAX_RENDERED_ROWS;
-    const truncated = outputs.length > maxRows;
-    const shown = truncated ? outputs.slice(0, maxRows) : outputs;
+    const truncated = listed.length > maxRows;
+    const shown = truncated ? listed.slice(0, maxRows) : listed;
 
     // Plan/apply outputs (OutputChange) carry an `action`; state outputs
     // (OutputValue, digest spec §7.3) do not, since state is a point-in-time
@@ -43,27 +55,36 @@ export function OutputsPanel({ outputs, maxRenderedRows }: OutputsPanelProps): J
         <div className="outputs-panel-wrap">
             {truncated && (
                 <div className="outputs-panel-truncated-banner">
-                    List truncated to {maxRows} of {outputs.length} outputs.
+                    List truncated to {maxRows} of {listed.length} outputs.
                 </div>
             )}
-            <table className="outputs-panel">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        {hasActions && <th>Action</th>}
-                        <th>Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {shown.map((output) => (
-                        <tr key={output.name}>
-                            <td className="outputs-panel-name">{output.name}</td>
-                            {hasActions && <td className="outputs-panel-action">{outputAction(output) ?? ""}</td>}
-                            <td className="outputs-panel-value">{formatRedactedValue(output.value)}</td>
+            {shown.length === 0 ? (
+                <div className="outputs-panel-empty">No output changes.</div>
+            ) : (
+                <table className="outputs-panel">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            {hasActions && <th>Action</th>}
+                            <th>Value</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {shown.map((output) => (
+                            <tr key={output.name}>
+                                <td className="outputs-panel-name">{output.name}</td>
+                                {hasActions && <td className="outputs-panel-action">{outputAction(output) ?? ""}</td>}
+                                <td className="outputs-panel-value">{formatRedactedValue(output.value)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+            {unchangedCount > 0 && (
+                <button type="button" className="outputs-panel-toggle" aria-expanded={showUnchanged} onClick={onToggleUnchanged}>
+                    {showUnchanged ? "Hide" : "Show"} {unchangedCount} unchanged {unchangedCount === 1 ? "output" : "outputs"}
+                </button>
+            )}
         </div>
     );
 }

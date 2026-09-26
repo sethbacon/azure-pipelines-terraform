@@ -4,6 +4,12 @@ import { formatRedactedValue } from "./redacted-value";
 
 export interface ResourceDiffProps {
     resource: PlanResource;
+    /**
+     * `"card"` (default) repeats the address/type/actions header and the action
+     * reason, for a diff shown on its own (drift). `"inline"` drops both, for a
+     * diff expanded directly under the resource row, which already shows them.
+     */
+    variant?: "card" | "inline";
 }
 
 /**
@@ -12,15 +18,18 @@ export interface ResourceDiffProps {
  * text node — see `formatRedactedValue`, which only ever returns the
  * already-redacted `json` text or a fixed placeholder.
  */
-export function ResourceDiff({ resource }: ResourceDiffProps): JSX.Element {
+export function ResourceDiff({ resource, variant = "card" }: ResourceDiffProps): JSX.Element {
+    const inline = variant === "inline";
     return (
-        <div className="resource-diff">
-            <div className="resource-diff-header">
-                <span className="resource-diff-address">{resource.address}</span>
-                <span className="resource-diff-type">{resource.type}</span>
-                <span className="resource-diff-actions">{resource.actions.join(", ")}</span>
-            </div>
-            {resource.actionReason && (
+        <div className={`resource-diff${inline ? " resource-diff-inline" : ""}`}>
+            {!inline && (
+                <div className="resource-diff-header">
+                    <span className="resource-diff-address">{resource.address}</span>
+                    <span className="resource-diff-type">{resource.type}</span>
+                    <span className="resource-diff-actions">{resource.actions.join(", ")}</span>
+                </div>
+            )}
+            {!inline && resource.actionReason && (
                 <div className="resource-diff-reason">Reason: {resource.actionReason}</div>
             )}
             {resource.replacePaths && resource.replacePaths.length > 0 && (

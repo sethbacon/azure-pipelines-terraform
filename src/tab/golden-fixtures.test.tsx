@@ -133,12 +133,16 @@ function renderPlanDetail(digest: Extract<Digest, { kind: "plan" }>): string {
         truncationNotes={digest.truncationNotes}
         toolLabel={`${digest.tool.name} ${digest.tool.version}`}
       />
+      {/* Unchanged rows listed (the tab hides them by default) so every row
+          reaches the markup the no-leak assertions scan. */}
       <ResourceList
         resources={digest.resources}
         selectedAddress={null}
         onSelect={() => undefined}
         searchText=""
         onSearchTextChange={() => undefined}
+        showUnchanged={true}
+        onToggleUnchanged={() => undefined}
       />
       {digest.resources.map((r) => (
         <ResourceDiff key={r.address} resource={r} />
