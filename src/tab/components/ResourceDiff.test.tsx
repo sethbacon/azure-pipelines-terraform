@@ -38,6 +38,23 @@ describe("ResourceDiff", () => {
     expect(html).toContain("availability_zone");
   });
 
+  it("drops the address header and reason in the inline variant but keeps the forced-replacement paths", () => {
+    const html = renderToStaticMarkup(
+      <ResourceDiff
+        variant="inline"
+        resource={resource({
+          actions: ["delete", "create"],
+          actionReason: "replace_because_cannot_update",
+          replacePaths: ["ami"],
+        })}
+      />
+    );
+    expect(html).toContain('class="resource-diff resource-diff-inline"');
+    expect(html).not.toContain("resource-diff-header");
+    expect(html).not.toContain("replace_because_cannot_update");
+    expect(html).toContain("Forces replacement: ami");
+  });
+
   it("renders each attribute change with before/after values", () => {
     const html = renderToStaticMarkup(
       <ResourceDiff

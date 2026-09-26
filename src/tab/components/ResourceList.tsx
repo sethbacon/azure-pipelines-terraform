@@ -1,8 +1,10 @@
 import * as React from "react";
 import { PlanResource } from "../digest-schema";
 import { TAB_MAX_RENDERED_ROWS } from "../caps";
+import { ResourceDiff } from "./ResourceDiff";
 
 const GROUP_ORDER = ["import", "replace", "delete", "create", "update", "read", "forget", "no-op"] as const;
+type GroupKey = (typeof GROUP_ORDER)[number];
 
 /**
  * Headings use Terraform's own plan-summary vocabulary ("Plan: N to import, N to
@@ -10,7 +12,7 @@ const GROUP_ORDER = ["import", "replace", "delete", "create", "update", "read", 
  * `resource_changes[].change.actions` values, which are an internal JSON
  * encoding users never see in CLI output.
  */
-const GROUP_LABELS: Record<(typeof GROUP_ORDER)[number], string> = {
+const GROUP_LABELS: Record<GroupKey, string> = {
     import: "Import",
     replace: "Replace",
     delete: "Destroy",
@@ -18,7 +20,7 @@ const GROUP_LABELS: Record<(typeof GROUP_ORDER)[number], string> = {
     update: "Change",
     read: "Read",
     forget: "Forget",
-    "no-op": "No changes",
+    "no-op": "Unchanged",
 };
 
 /**
@@ -27,7 +29,7 @@ const GROUP_LABELS: Record<(typeof GROUP_ORDER)[number], string> = {
  * an import that also changes stays in its action group and is tagged instead,
  * so it is never counted or shown twice.
  */
-function groupKey(resource: PlanResource): (typeof GROUP_ORDER)[number] {
+function groupKey(resource: PlanResource): GroupKey {
     const { actions } = resource;
     if (actions.includes("replace")) return "replace";
     if (actions.includes("delete") && actions.includes("create")) return "replace";
@@ -35,26 +37,53 @@ function groupKey(resource: PlanResource): (typeof GROUP_ORDER)[number] {
     if (resource.importing && noOp) return "import";
     if (actions.length === 0) return "no-op";
     const first = actions[0];
-    return (GROUP_ORDER as readonly string[]).includes(first) ? (first as (typeof GROUP_ORDER)[number]) : "no-op";
+    return (GROUP_ORDER as readonly string[]).includes(first) ? (first as GroupKey) : "no-op";
+}
+
+const changedCounts = new WeakMap<PlanResource[], number>();
+
+/**
+ * How many resources the plan actually touches (everything outside the
+ * Unchanged group; an import-only instance counts). Cached per digest array,
+ * which is never mutated once loaded, because the detail view asks on every
+ * render for its section heading.
+ */
+export function countChangedResources(resources: PlanResource[]): number {
+    let count = changedCounts.get(resources);
+    if (count === undefined) {
+        count = resources.reduce((n, resource) => (groupKey(resource) === "no-op" ? n : n + 1), 0);
+        changedCounts.set(resources, count);
+    }
+    return count;
 }
 
 export interface ResourceListProps {
     resources: PlanResource[];
+    /** The resource whose attribute diff is expanded inline under its row. */
     selectedAddress: string | null;
     onSelect: (address: string) => void;
     /** Controlled search text — this component holds no internal state. */
     searchText: string;
     onSearchTextChange: (text: string) => void;
+    /**
+     * Whether the Unchanged group's rows are listed. `show -json` includes every
+     * resource in the configuration, so unchanged ones are usually most of the
+     * list; they stay behind a toggle unless the reviewer asks for them.
+     */
+    showUnchanged: boolean;
+    onToggleUnchanged: () => void;
     maxRenderedRows?: number;
 }
 
 /**
- * Grouped, filterable resource list. Fully controlled (search text + caller):
- * no internal component state, so it renders deterministically from props
- * alone and needs no DOM/hook-testing infrastructure to unit test.
+ * Grouped, filterable resource list. Selecting a row expands its attribute diff
+ * directly beneath it. Fully controlled (search text, selection, and the
+ * Unchanged toggle all come from the caller): no internal component state, so
+ * it renders deterministically from props alone and needs no DOM/hook-testing
+ * infrastructure to unit test.
  */
 export function ResourceList(props: ResourceListProps): JSX.Element {
-    const { resources, selectedAddress, onSelect, searchText, onSearchTextChange } = props;
+    const { resources, selectedAddress, onSelect, searchText, onSearchTextChange, showUnchanged, onToggleUnchanged } = props;
     const maxRows = props.maxRenderedRows ?? TAB_MAX_RENDERED_ROWS;
 
     if (resources.length === 0) {
@@ -64,16 +93,51 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
     const needle = searchText.trim().toLowerCase();
     const filtered = needle ? resources.filter((r) => r.address.toLowerCase().includes(needle)) : resources;
 
-    const truncated = filtered.length > maxRows;
-    const shown = truncated ? filtered.slice(0, maxRows) : filtered;
-
-    const groups = new Map<(typeof GROUP_ORDER)[number], PlanResource[]>();
-    for (const resource of shown) {
+    const groups = new Map<GroupKey, PlanResource[]>();
+    for (const resource of filtered) {
         const key = groupKey(resource);
         const bucket = groups.get(key);
         if (bucket) bucket.push(resource);
         else groups.set(key, [resource]);
     }
+
+    // Bounded rendering (§5.5): the row budget is spent group by group in display
+    // order, so unchanged rows can never crowd out a destroy or replace, and a
+    // collapsed group spends nothing.
+    let budget = maxRows;
+    let eligible = 0;
+    const sections = GROUP_ORDER.filter((group) => groups.has(group)).map((group) => {
+        const members = groups.get(group)!;
+        const collapsed = group === "no-op" && !showUnchanged;
+        const visible = collapsed ? [] : members.slice(0, budget);
+        if (!collapsed) {
+            eligible += members.length;
+            budget -= visible.length;
+        }
+        return { group, members, collapsed, visible };
+    });
+    const truncated = eligible > maxRows;
+
+    const renderRow = (resource: PlanResource, group: GroupKey): JSX.Element => {
+        const expanded = resource.address === selectedAddress;
+        return (
+            <li key={resource.address} className="resource-row-item">
+                <button
+                    type="button"
+                    data-testid={`resource-row-${resource.address}`}
+                    className={`resource-row${expanded ? " selected" : ""}`}
+                    aria-expanded={expanded}
+                    onClick={() => onSelect(resource.address)}
+                >
+                    <span className="resource-row-address">{resource.address}</span>
+                    <span className="resource-row-type">{resource.type}</span>
+                    {resource.importing && group !== "import" && <span className="badge badge-import">Import</span>}
+                    {resource.actionReason && <span className="resource-row-reason">{resource.actionReason}</span>}
+                </button>
+                {expanded && <ResourceDiff resource={resource} variant="inline" />}
+            </li>
+        );
+    };
 
     return (
         <div className="resource-list">
@@ -81,43 +145,46 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
                 type="text"
                 className="resource-list-search"
                 placeholder="Search resources by address…"
+                aria-label="Search resources by address"
                 value={searchText}
                 onChange={(e) => onSearchTextChange(e.target.value)}
             />
             {truncated && (
                 <div className="resource-list-truncated-banner">
-                    List truncated to {maxRows} of {filtered.length} matching resources.
+                    List truncated to {maxRows} of {eligible} matching resources.
                 </div>
             )}
             {filtered.length === 0 ? (
                 <div className="resource-list-empty">No resources match "{searchText}".</div>
             ) : (
-                GROUP_ORDER.filter((g) => groups.has(g)).map((group) => (
-                    <div className="resource-group" key={group}>
-                        <div className="resource-group-heading">
-                            {GROUP_LABELS[group]} ({groups.get(group)!.length})
+                sections.map(({ group, members, collapsed, visible }) =>
+                    group === "no-op" ? (
+                        <div className="resource-group resource-group-unchanged" key={group}>
+                            <button
+                                type="button"
+                                className="resource-group-toggle"
+                                aria-expanded={!collapsed}
+                                onClick={onToggleUnchanged}
+                            >
+                                <span className="disclosure-chevron" aria-hidden="true" />
+                                {GROUP_LABELS[group]} ({members.length}){" "}
+                                <span className="resource-group-toggle-hint">{collapsed ? "Show" : "Hide"}</span>
+                            </button>
+                            {!collapsed && visible.length > 0 && (
+                                <ul className="resource-group-list">{visible.map((resource) => renderRow(resource, group))}</ul>
+                            )}
                         </div>
-                        <ul className="resource-group-list">
-                            {groups.get(group)!.map((resource) => (
-                                <li
-                                    key={resource.address}
-                                    data-testid={`resource-row-${resource.address}`}
-                                    className={`resource-row${resource.address === selectedAddress ? " selected" : ""}`}
-                                    onClick={() => onSelect(resource.address)}
-                                >
-                                    <span className="resource-row-address">{resource.address}</span>
-                                    <span className="resource-row-type">{resource.type}</span>
-                                    {resource.importing && group !== "import" && (
-                                        <span className="badge badge-import">Import</span>
-                                    )}
-                                    {resource.actionReason && (
-                                        <span className="resource-row-reason">{resource.actionReason}</span>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                ))
+                    ) : (
+                        visible.length > 0 && (
+                            <div className="resource-group" key={group}>
+                                <div className="resource-group-heading">
+                                    {GROUP_LABELS[group]} ({members.length})
+                                </div>
+                                <ul className="resource-group-list">{visible.map((resource) => renderRow(resource, group))}</ul>
+                            </div>
+                        )
+                    )
+                )
             )}
         </div>
     );

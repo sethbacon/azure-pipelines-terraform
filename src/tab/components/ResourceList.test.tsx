@@ -1,6 +1,6 @@
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ResourceList, ResourceListProps } from "./ResourceList";
+import { ResourceList, ResourceListProps, countChangedResources } from "./ResourceList";
 import { PlanResource } from "../digest-schema";
 
 function resource(overrides: Partial<PlanResource>): PlanResource {
@@ -22,6 +22,8 @@ function baseProps(overrides: Partial<ResourceListProps> = {}): ResourceListProp
     onSelect: jest.fn(),
     searchText: "",
     onSearchTextChange: jest.fn(),
+    showUnchanged: false,
+    onToggleUnchanged: jest.fn(),
     ...overrides,
   };
 }
@@ -47,7 +49,7 @@ describe("ResourceList", () => {
     expect(html).toContain(">Change (1)</div>");
     expect(html).toContain(">Read (1)</div>");
     expect(html).toContain(">Forget (1)</div>");
-    expect(html).toContain(">No changes (1)</div>");
+    expect(html).toContain("Unchanged (1)");
     // The raw JSON action names must not leak into the UI.
     expect(html).not.toMatch(/>(create|delete|update|no-op) \(/);
     expect(html).toContain("aws_instance.a");
@@ -63,14 +65,16 @@ describe("ResourceList", () => {
   });
 
   describe("import", () => {
-    it("puts an import-only resource in its own group instead of burying it under No changes", () => {
+    it("puts an import-only resource in its own group instead of burying it under Unchanged", () => {
       const resources = [
         resource({ address: "aws_instance.imported", actions: ["no-op"], importing: true }),
         resource({ address: "aws_instance.untouched", actions: ["no-op"] }),
       ];
       const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
       expect(html).toContain(">Import (1)</div>");
-      expect(html).toContain(">No changes (1)</div>");
+      expect(html).toContain("Unchanged (1)");
+      // Visible without expanding the Unchanged group.
+      expect(html).toContain('data-testid="resource-row-aws_instance.imported"');
     });
 
     it("leaves an import that also changes in its action group and tags it instead of double-listing it", () => {
@@ -132,6 +136,130 @@ describe("ResourceList", () => {
     const resources = [resource({ address: "aws_instance.web" })];
     const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, searchText: "nomatch" })} />);
     expect(html).toMatch(/no resources match/i);
+  });
+
+  describe("unchanged resources", () => {
+    const resources = [
+      resource({ address: "aws_instance.changed", actions: ["update"] }),
+      resource({ address: "aws_instance.same1", actions: ["no-op"] }),
+      resource({ address: "aws_instance.same2", actions: ["no-op"] }),
+    ];
+
+    it("hides unchanged rows behind a collapsed toggle by default", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).toContain("aws_instance.changed");
+      expect(html).toContain("Unchanged (2)");
+      expect(html).not.toContain("aws_instance.same1");
+      expect(html).toMatch(/class="resource-group-toggle" aria-expanded="false"/);
+    });
+
+    it("lists unchanged rows when showUnchanged is set", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, showUnchanged: true })} />);
+      expect(html).toContain("aws_instance.same1");
+      expect(html).toContain("aws_instance.same2");
+      expect(html).toMatch(/class="resource-group-toggle" aria-expanded="true"/);
+    });
+
+    it("calls onToggleUnchanged when the Unchanged heading is clicked", () => {
+      const onToggleUnchanged = jest.fn();
+      const el = callComponent(baseProps({ resources, onToggleUnchanged }));
+      const toggle = findNode(el, (n) => React.isValidElement(n) && (n.props as { className?: string }).className === "resource-group-toggle");
+      expect(toggle).toBeTruthy();
+      toggle!.props.onClick();
+      expect(onToggleUnchanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports search matches inside the collapsed group as a count instead of rows", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, searchText: "same1" })} />);
+      expect(html).toContain("Unchanged (1)");
+      expect(html).not.toContain('data-testid="resource-row-aws_instance.same1"');
+      expect(html).not.toMatch(/no resources match/i);
+    });
+  });
+
+  describe("inline diff", () => {
+    const resources = [
+      resource({
+        address: "aws_instance.a",
+        actions: ["update"],
+        attributeChanges: [{ path: "instance_type", before: { kind: "value", json: '"t2.micro"' }, after: { kind: "value", json: '"t3.micro"' } }],
+      }),
+      resource({ address: "aws_instance.b", actions: ["update"] }),
+    ];
+
+    it("expands the selected resource's diff directly under its own row", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, selectedAddress: "aws_instance.a" })} />);
+      const rowAt = html.indexOf('data-testid="resource-row-aws_instance.a"');
+      const diffAt = html.indexOf("resource-diff-inline");
+      const nextRowAt = html.indexOf('data-testid="resource-row-aws_instance.b"');
+      expect(rowAt).toBeGreaterThan(-1);
+      expect(diffAt).toBeGreaterThan(rowAt);
+      expect(diffAt).toBeLessThan(nextRowAt);
+      expect(html).toContain("t3.micro");
+    });
+
+    it("drops the diff's own address header, which the row already shows", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, selectedAddress: "aws_instance.a" })} />);
+      expect(html).not.toContain("resource-diff-header");
+    });
+
+    it("marks only the selected row as expanded", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, selectedAddress: "aws_instance.a" })} />);
+      expect(html).toMatch(/data-testid="resource-row-aws_instance\.a" class="resource-row selected" aria-expanded="true"/);
+      expect(html).toMatch(/data-testid="resource-row-aws_instance\.b" class="resource-row" aria-expanded="false"/);
+      expect(html.match(/resource-diff-inline/g)).toHaveLength(1);
+    });
+
+    it("renders no diff when nothing is selected", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).not.toContain("resource-diff");
+    });
+  });
+
+  describe("row budget", () => {
+    const resources = [
+      resource({ address: "aws_instance.same1", actions: ["no-op"] }),
+      resource({ address: "aws_instance.new1", actions: ["create"] }),
+      resource({ address: "aws_instance.same2", actions: ["no-op"] }),
+      resource({ address: "aws_instance.gone1", actions: ["delete"] }),
+      resource({ address: "aws_instance.same3", actions: ["no-op"] }),
+    ];
+
+    it("does not count a collapsed Unchanged group against the budget", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, maxRenderedRows: 2 })} />);
+      expect(html).toContain("aws_instance.new1");
+      expect(html).toContain("aws_instance.gone1");
+      expect(html).not.toMatch(/list truncated/i);
+    });
+
+    it("spends the budget on changed groups before unchanged rows", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, maxRenderedRows: 2, showUnchanged: true })} />);
+      expect(html).toContain("aws_instance.new1");
+      expect(html).toContain("aws_instance.gone1");
+      expect(html).not.toContain('data-testid="resource-row-aws_instance.same1"');
+      expect(html).toMatch(/list truncated to 2 of 5 matching resources/i);
+    });
+  });
+
+  describe("countChangedResources", () => {
+    it("counts everything outside the Unchanged group, including import-only instances", () => {
+      const resources = [
+        resource({ address: "a", actions: ["create"] }),
+        resource({ address: "b", actions: ["no-op"] }),
+        resource({ address: "c", actions: ["no-op"], importing: true }),
+        resource({ address: "d", actions: [] }),
+        resource({ address: "e", actions: ["delete", "create"] }),
+      ];
+      expect(countChangedResources(resources)).toBe(3);
+    });
+
+    it("returns 0 for an all-unchanged plan and caches per array without cross-talk", () => {
+      const unchanged = [resource({ address: "x", actions: ["no-op"] })];
+      const changed = [resource({ address: "y", actions: ["update"] })];
+      expect(countChangedResources(unchanged)).toBe(0);
+      expect(countChangedResources(changed)).toBe(1);
+      expect(countChangedResources(unchanged)).toBe(0);
+    });
   });
 
   it("HTML-escapes a malicious address as a text node", () => {
