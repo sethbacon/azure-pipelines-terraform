@@ -134,7 +134,7 @@ jobs:
       # build-and-test-installer-v1, build-and-test-policy-installer-v1 and
       # build-and-test-docs-installer-v1 below.
       - name: Validate egress authorization (SSRF class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
           #             -> sites 48
@@ -169,7 +169,7 @@ jobs:
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
       - name: Validate artifact trust (#65/#78/#136/#198/#204 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
           #             -> sites 68, scanned 108
@@ -532,7 +532,7 @@ jobs:
       # explicit because a composite action's steps do not inherit this job's
       # `defaults.run.working-directory`.
       - name: Provide the artifact trust gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
@@ -544,7 +544,7 @@ jobs:
       # composite hands the suite a PATH through
       # SHARED_GATE_CHECK_EGRESS_AUTHORIZATION exactly as the one above does.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
@@ -890,7 +890,7 @@ jobs:
       # inherit it -- without it the gate would analyse the task directory instead
       # of the repository.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
@@ -1236,7 +1236,7 @@ jobs:
       # inherit it -- without it the gate would analyse the task directory instead
       # of the repository.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
