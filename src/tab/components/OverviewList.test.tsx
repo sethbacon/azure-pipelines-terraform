@@ -99,4 +99,37 @@ describe("OverviewList", () => {
     expect(html).toContain("1 data sources");
     expect(html).not.toContain("count-add");
   });
+
+  describe("origin", () => {
+    it("shows where an item came from under its name", () => {
+      const html = renderToStaticMarkup(
+        <OverviewList
+          items={[{ id: "a", name: "plan-a", status: "ok", origin: { label: "Plan prod › Plan › Terraform plan", fromTerraformTask: true } }]}
+          selectedId="a"
+          onSelect={jest.fn()}
+        />
+      );
+      expect(html).toContain('<span class="overview-item-origin">Plan prod › Plan › Terraform plan</span>');
+      expect(html).not.toContain("badge-untrusted");
+    });
+
+    it("flags an item published by a step that isn't the Terraform task, error items included", () => {
+      const html = renderToStaticMarkup(
+        <OverviewList
+          items={[{ id: "a", name: "plan-a", status: "error", message: "bad", origin: { label: "S › J › Bash", fromTerraformTask: false } }]}
+          selectedId="a"
+          onSelect={jest.fn()}
+        />
+      );
+      expect(html).toContain('<span class="badge badge-untrusted">Not from the Terraform task</span>');
+    });
+
+    it("HTML-escapes an untrusted origin label", () => {
+      const html = renderToStaticMarkup(
+        <OverviewList items={[{ id: "a", name: "a", status: "ok", origin: { label: "<img src=x onerror=alert(1)>" } }]} selectedId="a" onSelect={jest.fn()} />
+      );
+      expect(html).not.toContain("<img src=x");
+      expect(html).toContain("&lt;img");
+    });
+  });
 });

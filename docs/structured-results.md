@@ -67,6 +67,23 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
   that destroys, then one that can't be read or is truncated, then drift, then any other
   change; a failed apply before a successful one.
 
+### Where each result came from
+
+Plans, applies and state inventories are listed in the order their steps ran in the
+pipeline (stage, then job, then step), and each one names that step, for example
+`Plan prod › Plan › Terraform plan`, with a **View step log** link in its detail view.
+This comes from the build's timeline: the attachment's URL names the step that published
+it, so it doesn't rely on anything the attachment says about itself. When the timeline
+can't be read, items are listed by name and show the stage and job the digest recorded.
+
+Any step in a pipeline can publish an attachment of these types with
+`##vso[task.addattachment]`, so a result that a step other than the Terraform task
+published is marked **Not from the Terraform task** and listed under **Needs review**.
+
+Results download four at a time, with a progress count while the tab first loads. A body
+without a declared size is read as a stream and dropped as soon as it passes the parse
+ceiling, rather than being read in full first.
+
 ## Reading the Plan pivot
 
 - **Overview list** (when more than one plan is published) — each plan's name with

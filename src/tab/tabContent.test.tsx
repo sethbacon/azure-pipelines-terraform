@@ -18,6 +18,7 @@ jest.mock('azure-devops-extension-api/Build', () => ({
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getClient } from 'azure-devops-extension-api';
 import { TerraformPlanTab } from './tabContent';
+import { TERRAFORM_TASK_ID } from './origin';
 import * as ansi from './ansi-to-html';
 
 const PLAN_SUMMARY_TYPE = 'terraform-plan-summary';
@@ -1016,13 +1017,15 @@ describe('TerraformPlanTab reloads (onBuildChanged firing again)', () => {
     expect(out).toContain('new-plan');
   });
 
-  it('a superseded load stops downloading the attachments it has not started yet', async () => {
+  it('a superseded load starts none of the downloads it had not already started', async () => {
     let releaseFirst!: () => void;
     const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    // Downloads run four at a time per attachment type, so the first load has
+    // p1-p4 and l1-l2 in flight and p5-p6 still waiting when it is superseded.
     (getClient as jest.Mock)
       .mockReturnValueOnce({
         getAttachments: jest.fn((_p: string, _id: number, type: string) => {
-          if (type === PLAN_SUMMARY_TYPE) return Promise.resolve(['p1', 'p2', 'p3'].map(attachment));
+          if (type === PLAN_SUMMARY_TYPE) return Promise.resolve(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].map(attachment));
           if (type === LEGACY_RAW_TYPE) return Promise.resolve(['l1', 'l2'].map(attachment));
           return Promise.resolve([]);
         }),
@@ -1034,7 +1037,7 @@ describe('TerraformPlanTab reloads (onBuildChanged firing again)', () => {
       });
     const fetchMock = jest.fn(async (url: string) => {
       const name = url.split('/').pop() as string;
-      if (name === 'p1' || name === 'l1') await gate;
+      if (name.startsWith('p') || name.startsWith('l')) await gate;
       const body = name.startsWith('l') ? `output of ${name}` : JSON.stringify(validPlanDigest());
       return { ok: true, text: async () => body, headers: { get: () => null } };
     });
@@ -1042,13 +1045,13 @@ describe('TerraformPlanTab reloads (onBuildChanged firing again)', () => {
 
     const tab = makeTestableTab();
     const first = tab.loadAll(build);
-    await flushUntil(() => fetchMock.mock.calls.length === 2); // p1 and l1 in flight
+    await flushUntil(() => fetchMock.mock.calls.length === 6); // p1-p4 and l1-l2 in flight
     await tab.loadAll(build);
     releaseFirst();
     await first;
 
     const fetched = fetchMock.mock.calls.map(([url]) => url.split('/').pop());
-    expect(fetched.sort()).toEqual(['l1', 'p1', 'q1']);
+    expect(fetched.sort()).toEqual(['l1', 'l2', 'p1', 'p2', 'p3', 'p4', 'q1']);
     expect(html(tab)).toContain('q1');
   });
 });
@@ -1266,5 +1269,179 @@ describe('TerraformPlanTab opens on what needs review', () => {
       await tab.loadAll({ project: { id: 'proj' }, id: 2 } as never);
       expect(tabState(tab).resourceActionFilter).toBeNull();
     });
+  });
+});
+
+describe('TerraformPlanTab pipeline order and loading', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  const TIMELINE = '11111111-1111-1111-1111-111111111111';
+  const BASE = 'https://dev.example.test/org/proj';
+  const guid = (n: number): string => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+
+  /** Attachments with real attachment URLs (naming their publishing record) and a timeline to resolve them against. */
+  function mockRun(
+    plans: Array<{ name: string; record: string }>,
+    records: Array<Record<string, unknown>>,
+    bodies: Record<string, string>,
+    timeline: 'ok' | 'fails' = 'ok'
+  ): void {
+    mockLoad({ bodies });
+    (getClient as jest.Mock).mockReturnValue({
+      getAttachments: jest.fn((_p: string, _id: number, type: string) =>
+        Promise.resolve(
+          type === PLAN_SUMMARY_TYPE
+            ? plans.map((p) => ({ name: p.name, _links: { self: { href: `${BASE}/_apis/build/builds/1/${TIMELINE}/${p.record}/attachments/${type}/${p.name}` } } }))
+            : []
+        )
+      ),
+      getBuildTimeline: jest.fn(() => (timeline === 'ok' ? Promise.resolve({ records }) : Promise.reject(new Error('timeline unavailable')))),
+    });
+  }
+
+  const RECORDS = [
+    { id: guid(1), type: 'Stage', name: 'Plan dev', order: 1 },
+    { id: guid(2), parentId: guid(1), type: 'Job', name: 'Plan', order: 1 },
+    { id: guid(3), parentId: guid(2), type: 'Task', name: 'Terraform plan (dev)', order: 4, task: { id: TERRAFORM_TASK_ID } },
+    { id: guid(4), type: 'Stage', name: 'Plan prod', order: 2 },
+    { id: guid(5), parentId: guid(4), type: 'Job', name: 'Plan', order: 1 },
+    { id: guid(6), parentId: guid(5), type: 'Task', name: 'Terraform plan (prod)', order: 4, task: { id: TERRAFORM_TASK_ID } },
+    { id: guid(7), parentId: guid(5), type: 'Task', name: 'Bash', order: 5, task: { id: '6c731c3c-3c68-459a-a5c9-bde6e6595b5b' } },
+  ];
+
+  it('orders plans by where they ran in the pipeline, not by name, and says where each came from', async () => {
+    mockRun(
+      [
+        { name: 'a-prod', record: guid(6) },
+        { name: 'z-dev', record: guid(3) },
+      ],
+      RECORDS,
+      { 'a-prod': JSON.stringify(validPlanDigest()), 'z-dev': JSON.stringify(validPlanDigest()) }
+    );
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out.indexOf('>z-dev<')).toBeLessThan(out.indexOf('>a-prod<'));
+    expect(out).toContain('<span class="overview-item-origin">Plan dev › Plan › Terraform plan (dev)</span>');
+    expect(out).toContain(`href="${BASE}/_build/results?buildId=1&amp;view=logs&amp;j=${guid(2)}&amp;t=${guid(3)}"`);
+  });
+
+  it('flags a digest that a step other than the Terraform task published', async () => {
+    mockRun([{ name: 'spoofed', record: guid(7) }], RECORDS, { spoofed: JSON.stringify(validPlanDigest()) });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain("published by a step that isn&#x27;t the Terraform task");
+    expect(out).toContain('<span class="badge badge-untrusted">Not from the Terraform task</span>');
+  });
+
+  it('still loads, ordered by name and without steps, when the timeline cannot be read', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { /* expected */ });
+    mockRun(
+      [
+        { name: 'b-plan', record: guid(3) },
+        { name: 'a-plan', record: guid(6) },
+      ],
+      RECORDS,
+      { 'b-plan': JSON.stringify(validPlanDigest()), 'a-plan': JSON.stringify(validPlanDigest()) },
+      'fails'
+    );
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out.indexOf('>a-plan<')).toBeLessThan(out.indexOf('>b-plan<'));
+    expect(out).not.toContain('View step log');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to read the build timeline:', expect.any(Error));
+  });
+
+  it("falls back to the stage and job the digest itself recorded, with its working directory", async () => {
+    mockLoad({
+      planNames: ['plan-a'],
+      bodies: {
+        'plan-a': JSON.stringify(
+          validPlanDigest({ meta: { name: 'plan-a', stage: 'Plan prod', job: 'Plan', workingDirectory: 'environments/prod', createdIso: 'x' } })
+        ),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const out = html(tab);
+    expect(out).toContain('<span class="summary-header-origin-label">Plan prod › Plan</span>');
+    expect(out).toContain('<span class="summary-header-workdir">environments/prod</span>');
+    expect(out).not.toContain('badge-untrusted');
+  });
+
+  it('shows download progress during the first load', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    mockLoad({ planNames: ['fast', 'slow'], bodies: { fast: JSON.stringify(validPlanDigest()), slow: JSON.stringify(validPlanDigest()) } });
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.endsWith('/slow')) await gate;
+      return { ok: true, text: async () => JSON.stringify(validPlanDigest()), headers: { get: () => null } };
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = fetchMock;
+
+    const tab = makeTestableTab();
+    const loading = tab.loadAll(build);
+    await flushUntil(() => html(tab).includes('(1 of 2)'));
+    release();
+    await loading;
+    expect(html(tab)).not.toContain('Loading terraform results');
+  });
+
+  it('downloads at most four attachments at once', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const names = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    const bodies: Record<string, string> = {};
+    for (const name of names) bodies[name] = JSON.stringify(validPlanDigest());
+    mockLoad({ planNames: names, bodies });
+    let inFlight = 0;
+    let peak = 0;
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn(async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await gate;
+      inFlight--;
+      return { ok: true, text: async () => JSON.stringify(validPlanDigest()), headers: { get: () => null } };
+    });
+
+    const tab = makeTestableTab();
+    const loading = tab.loadAll(build);
+    await flushUntil(() => inFlight === 4);
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+    expect(inFlight).toBe(4);
+    release();
+    await loading;
+    expect(peak).toBe(4);
+    expect(html(tab)).toContain('All plans (6)');
+  });
+
+  it('stops reading a body that streams past the parse ceiling, without a declared length', async () => {
+    mockLoad({ planNames: ['huge'], bodies: {} });
+    const chunk = new Uint8Array(6 * 1024 * 1024);
+    let sent = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ < 4) controller.enqueue(chunk);
+        else controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const textSpy = jest.fn();
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn(async () => ({ ok: true, body, text: textSpy, headers: { get: () => null } }));
+
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toMatch(/over the \d+-byte tab parse ceiling \(stopped reading after \d+ bytes\)/);
+    expect(cancelled).toBe(true);
+    expect(sent).toBeLessThan(5);
+    expect(textSpy).not.toHaveBeenCalled();
   });
 });

@@ -36,10 +36,13 @@ import { parseDigestText } from "./digest-model";
 import { Diagnostic, Digest, OutputChange } from "./digest-schema";
 import { TAB_PARSE_CEILING_BYTES } from "./caps";
 import { memoizeOne } from "./memoize";
+import { mapWithConcurrency } from "./concurrency";
+import { readBodyCapped } from "./read-body";
+import { AttachmentOrigin, OriginLookup, TimelineRecordLike, buildOriginLookup, compareOrigins, formatOrigin } from "./origin";
 import { Pivot, applyRisk, collectAttention, isFailedApply, planRisk, riskiestId } from "./attention";
 import { AttentionStrip } from "./components/AttentionStrip";
 import { SummaryHeader, SummaryHeaderCounts, SummaryHeaderStateCounts } from "./components/SummaryHeader";
-import { OverviewList, OverviewItem } from "./components/OverviewList";
+import { OverviewList, OverviewItem, OverviewOrigin } from "./components/OverviewList";
 import { ActionGroup, ResourceList, countChangedResources } from "./components/ResourceList";
 import { DriftList } from "./components/DriftList";
 import { ApplyTimeline } from "./components/ApplyTimeline";
@@ -123,10 +126,17 @@ interface RawAttachment {
     content: string;
 }
 
-/** A single published plan/apply digest attachment, after fetch + safe parse. `raw` is always the fetched body (used for the raw-fallback view and download). */
-type DigestItem =
+/**
+ * A single published plan/apply digest attachment, after fetch + safe parse. `raw` is always the fetched body (used for the
+ * raw-fallback view and download). `origin` is where the build timeline says it was published, when that is known.
+ */
+type DigestItem = (
     | { id: string; name: string; status: "ok"; digest: Digest; unknownVersion: boolean; notes: string[]; raw: RawAttachment }
-    | { id: string; name: string; status: "error"; message: string; raw: RawAttachment };
+    | { id: string; name: string; status: "error"; message: string; raw: RawAttachment }
+) & { origin?: AttachmentOrigin };
+
+/** Attachment bodies downloaded at once: enough to overlap round trips, few enough not to flood the connection pool. */
+const DOWNLOAD_CONCURRENCY = 4;
 
 interface TerraformTabState {
     loading: boolean;
@@ -150,6 +160,8 @@ interface TerraformTabState {
     stateSearchText: string;
     /** The digest item whose "View raw digest" expander is open, if any; only that one renders its raw body. */
     openRawDetails: { pivot: Pivot; id: string } | null;
+    /** During the first load, how many attachments have downloaded out of how many. */
+    loadingProgress: { done: number; total: number } | null;
     /** Whether the plan's unchanged (no-op) resources are listed; hidden by default. */
     showUnchangedResources: boolean;
     /** Whether the plan's unchanged (no-op) output changes are listed; hidden by default. */
@@ -230,6 +242,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             selectedStateAddress: null,
             stateSearchText: "",
             openRawDetails: null,
+            loadingProgress: null,
             showUnchangedResources: false,
             showUnchangedOutputs: false,
             sectionOpen: {},
@@ -240,7 +253,13 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         const { loading, error } = this.state;
 
         if (loading) {
-            return <div className="plan-loading">Loading terraform results...</div>;
+            const progress = this.state.loadingProgress;
+            return (
+                <div className="plan-loading">
+                    Loading terraform results...
+                    {progress && progress.total > 0 && ` (${progress.done} of ${progress.total})`}
+                </div>
+            );
         }
 
         if (error) {
@@ -382,6 +401,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncated={digest.truncated}
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+                    originLabel={originLabel(item)}
+                    workingDirectory={digest.meta.workingDirectory}
+                    logUrl={item.origin?.logUrl}
+                    notFromTerraformTask={item.origin ? !item.origin.fromTerraformTask : undefined}
                 />
                 <Section
                     title="Resource changes"
@@ -532,6 +555,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncated={digest.truncated}
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+                    originLabel={originLabel(item)}
+                    workingDirectory={digest.meta.workingDirectory}
+                    logUrl={item.origin?.logUrl}
+                    notFromTerraformTask={item.origin ? !item.origin.fromTerraformTask : undefined}
                     durationMs={digest.summary.durationMs}
                 />
                 {/* A failed apply leads with why it failed. */}
@@ -593,6 +620,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncated={digest.truncated}
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+                    originLabel={originLabel(item)}
+                    workingDirectory={digest.meta.workingDirectory}
+                    logUrl={item.origin?.logUrl}
+                    notFromTerraformTask={item.origin ? !item.origin.fromTerraformTask : undefined}
                 />
                 <Section
                     title="Resources"
@@ -790,26 +821,45 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return sequence !== this.loadSequence;
     }
 
-    /** Fetch an attachment's body, parse it as a plan/apply digest, and classify it as ok/error. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's behavior. Stops early once a newer load supersedes `sequence`, since its results will replace these. */
+    /** Counts one finished download toward the first load's progress line; reloads show their results instead. */
+    private markDownloaded = (sequence: number): void => {
+        if (this.isSuperseded(sequence)) return;
+        this.setState((prev: TerraformTabState) =>
+            prev.loading && prev.loadingProgress
+                ? { loadingProgress: { ...prev.loadingProgress, done: prev.loadingProgress.done + 1 } }
+                : null
+        );
+    };
+
+    /**
+     * Fetch each attachment's body, a few at a time, parse it as a plan/apply/state digest, and classify it as ok/error, in
+     * attachment order. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's
+     * behavior. Stops starting downloads once a newer load supersedes `sequence`, since its results will replace these.
+     */
     private async loadDigestItems(
         attachments: AttachmentRef[],
         authHeader: string,
         expectedKind: "plan" | "apply" | "state",
-        sequence: number
+        sequence: number,
+        originOf: OriginLookup | undefined
     ): Promise<DigestItem[]> {
-        const items: DigestItem[] = [];
         // The id keys the selection across reloads, so it counts only earlier
         // attachments of the same name rather than the position in the list: an
         // attachment published later in the build must not renumber the rest.
         const occurrences = new Map<string, number>();
-        for (const attachment of attachments) {
-            if (this.isSuperseded(sequence)) break;
+        const ids = attachments.map((attachment) => {
             const occurrence = occurrences.get(attachment.name) ?? 0;
             occurrences.set(attachment.name, occurrence + 1);
-            const id = `${attachment.name}#${occurrence}`;
+            return `${attachment.name}#${occurrence}`;
+        });
+
+        const loaded = await mapWithConcurrency(attachments, DOWNLOAD_CONCURRENCY, async (attachment, index) => {
+            if (this.isSuperseded(sequence)) return null;
+            const id = ids[index];
+            const origin = originOf?.(attachment._links.self.href);
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
-                if (!response.ok) continue;
+                if (!response.ok) return null;
                 const contentLengthHeader = response.headers.get("content-length");
                 const parsedLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
                 const byteLength = Number.isFinite(parsedLength) ? parsedLength : undefined;
@@ -817,66 +867,90 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 // Guard the body size BEFORE buffering it: a declared Content-Length
                 // over the parse ceiling means we refuse to read the (potentially
                 // multi-MB) body into memory at all — reading it first would be the
-                // very OOM the ceiling exists to prevent. Without a declared length we
-                // fall through and let parseDigestText enforce the ceiling post-read.
+                // very OOM the ceiling exists to prevent. Without a declared length the
+                // body is streamed, and the read stops as soon as it passes the ceiling.
                 if (byteLength !== undefined && byteLength > TAB_PARSE_CEILING_BYTES) {
-                    items.push({
+                    return errorItem(
                         id,
-                        name: attachment.name,
-                        status: "error",
-                        message: `Digest is ${byteLength} bytes, over the ${TAB_PARSE_CEILING_BYTES}-byte tab parse ceiling; not loaded. Download it from the build artifacts instead.`,
-                        raw: { name: attachment.name, content: "" },
-                    });
-                    continue;
+                        attachment.name,
+                        origin,
+                        `Digest is ${byteLength} bytes, over the ${TAB_PARSE_CEILING_BYTES}-byte tab parse ceiling; not loaded.`
+                    );
+                }
+                const body = await readBodyCapped(response, TAB_PARSE_CEILING_BYTES);
+                if (!body.ok) {
+                    return errorItem(
+                        id,
+                        attachment.name,
+                        origin,
+                        `Digest is over the ${TAB_PARSE_CEILING_BYTES}-byte tab parse ceiling (stopped reading after ${body.bytesRead} bytes); not loaded.`
+                    );
                 }
 
-                const content = await response.text();
-                const raw: RawAttachment = { name: attachment.name, content };
-
-                const parsed = parseDigestText(content, byteLength);
+                const parsed = parseDigestText(body.text, body.bytes);
                 if (parsed.ok && parsed.digest.kind === expectedKind) {
-                    items.push({
+                    const item: DigestItem = {
                         id,
                         name: attachment.name,
                         status: "ok",
                         digest: parsed.digest,
                         unknownVersion: parsed.unknownVersion,
                         notes: parsed.notes,
-                        raw,
-                    });
-                } else if (parsed.ok) {
-                    items.push({
-                        id,
-                        name: attachment.name,
-                        status: "error",
-                        message: `Digest kind "${parsed.digest.kind}" does not match the expected "${expectedKind}" attachment type.`,
-                        raw,
-                    });
-                } else {
-                    items.push({ id, name: attachment.name, status: "error", message: parsed.message, raw });
+                        raw: { name: attachment.name, content: body.text },
+                        origin,
+                    };
+                    return item;
                 }
+                const message = parsed.ok
+                    ? `Digest kind "${parsed.digest.kind}" does not match the expected "${expectedKind}" attachment type.`
+                    : parsed.message;
+                return errorItem(id, attachment.name, origin, message, body.text);
             } catch (err) {
                 console.error(`Failed to download attachment ${attachment.name}:`, err);
+                return null;
+            } finally {
+                this.markDownloaded(sequence);
             }
-        }
-        return items;
+        });
+        return loaded.filter((item): item is DigestItem => item !== null);
     }
 
+    /** Legacy CLI output attachments, a few at a time and under the same byte ceiling as digests, in attachment order. */
     private async loadRawAttachments(attachments: AttachmentRef[], authHeader: string, sequence: number): Promise<RawAttachment[]> {
-        const items: RawAttachment[] = [];
-        for (const attachment of attachments) {
-            if (this.isSuperseded(sequence)) break;
+        const loaded = await mapWithConcurrency(attachments, DOWNLOAD_CONCURRENCY, async (attachment) => {
+            if (this.isSuperseded(sequence)) return null;
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
-                if (response.ok) {
-                    const content = await response.text();
-                    items.push({ name: attachment.name, content });
+                if (!response.ok) return null;
+                const declared = Number(response.headers.get("content-length") ?? NaN);
+                if (Number.isFinite(declared) && declared > TAB_PARSE_CEILING_BYTES) {
+                    return oversizeRawAttachment(attachment.name, declared);
                 }
+                const body = await readBodyCapped(response, TAB_PARSE_CEILING_BYTES);
+                return body.ok ? { name: attachment.name, content: body.text } : oversizeRawAttachment(attachment.name, body.bytesRead);
             } catch (err) {
                 console.error(`Failed to download attachment ${attachment.name}:`, err);
+                return null;
+            } finally {
+                this.markDownloaded(sequence);
             }
+        });
+        return loaded.filter((item): item is RawAttachment => item !== null);
+    }
+
+    /**
+     * The build's timeline records, which say which step published each attachment; undefined when they can't be read,
+     * in which case items sort by name and show no step.
+     */
+    private async loadTimelineRecords(buildClient: BuildRestClient, build: Build): Promise<TimelineRecordLike[] | undefined> {
+        if (typeof buildClient.getBuildTimeline !== "function") return undefined;
+        try {
+            const timeline = await buildClient.getBuildTimeline(build.project.id, build.id);
+            return Array.isArray(timeline?.records) ? timeline.records : undefined;
+        } catch (err) {
+            console.error("Failed to read the build timeline:", err);
+            return undefined;
         }
-        return items;
     }
 
     public async loadAll(build: Build): Promise<void> {
@@ -886,25 +960,35 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             const accessToken = await SDK.getAccessToken();
             const authHeader = "Basic " + btoa(":" + accessToken);
 
-            const [planAttachments, applyAttachments, stateAttachments, legacyAttachments] = await Promise.all([
+            const [planAttachments, applyAttachments, stateAttachments, legacyAttachments, timelineRecords] = await Promise.all([
                 buildClient.getAttachments(build.project.id, build.id, PLAN_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, APPLY_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, STATE_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, LEGACY_RAW_ATTACHMENT_TYPE),
+                this.loadTimelineRecords(buildClient, build),
             ]);
             if (this.isSuperseded(sequence)) return;
+
+            const originOf = timelineRecords ? buildOriginLookup(timelineRecords, build.id) : undefined;
+            const plans = planAttachments ?? [];
+            const applies = applyAttachments ?? [];
+            const states = stateAttachments ?? [];
+            const legacy = legacyAttachments ?? [];
+            if (this.state.loading) {
+                this.setState({ loadingProgress: { done: 0, total: plans.length + applies.length + states.length + legacy.length } });
+            }
 
             const [planItems, applyItems, stateItems, legacyRaw] = await Promise.all([
-                this.loadDigestItems(planAttachments ?? [], authHeader, "plan", sequence),
-                this.loadDigestItems(applyAttachments ?? [], authHeader, "apply", sequence),
-                this.loadDigestItems(stateAttachments ?? [], authHeader, "state", sequence),
-                this.loadRawAttachments(legacyAttachments ?? [], authHeader, sequence),
+                this.loadDigestItems(plans, authHeader, "plan", sequence, originOf),
+                this.loadDigestItems(applies, authHeader, "apply", sequence, originOf),
+                this.loadDigestItems(states, authHeader, "state", sequence, originOf),
+                this.loadRawAttachments(legacy, authHeader, sequence),
             ]);
             if (this.isSuperseded(sequence)) return;
 
-            planItems.sort(byNameCaseInsensitive);
-            applyItems.sort(byNameCaseInsensitive);
-            stateItems.sort(byNameCaseInsensitive);
+            planItems.sort(byRunOrder);
+            applyItems.sort(byRunOrder);
+            stateItems.sort(byRunOrder);
             legacyRaw.sort(byNameCaseInsensitive);
 
             const loaded: LoadedResults = { planItems, applyItems, stateItems, legacyRaw };
@@ -914,13 +998,48 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 loadedBuildId: build.id,
                 error: null,
                 loading: false,
+                loadingProgress: null,
             }));
         } catch (err) {
             if (this.isSuperseded(sequence)) return;
             const message = err instanceof Error ? err.message : String(err);
-            this.setState({ error: message, loading: false });
+            this.setState({ error: message, loading: false, loadingProgress: null });
         }
     }
+}
+
+/** A digest item that couldn't be shown structurally, with whatever body was read. */
+function errorItem(id: string, name: string, origin: AttachmentOrigin | undefined, message: string, content = ""): DigestItem {
+    return { id, name, status: "error", message, raw: { name, content }, origin };
+}
+
+/** Stands in for a legacy CLI output too large to load: the raw view shows this notice instead of the output. */
+function oversizeRawAttachment(name: string, bytes: number): RawAttachment {
+    return {
+        name,
+        content: `Output not loaded: it is over the tab's ${TAB_PARSE_CEILING_BYTES}-byte limit (at least ${bytes} bytes).`,
+    };
+}
+
+/** Pipeline order (stage, job, step) when the timeline placed both items, then name. */
+function byRunOrder(a: DigestItem, b: DigestItem): number {
+    return compareOrigins(a.origin, b.origin) || byNameCaseInsensitive(a, b);
+}
+
+/**
+ * "Stage › Job › Step" from the build timeline, or, without it, the stage and
+ * job the digest itself recorded. Undefined when neither says anything.
+ */
+function originLabel(item: DigestItem): string | undefined {
+    if (item.origin) return formatOrigin(item.origin) || undefined;
+    if (item.status !== "ok") return undefined;
+    return [item.digest.meta.stage, item.digest.meta.job].filter((part): part is string => !!part).join(" › ") || undefined;
+}
+
+function overviewOrigin(item: DigestItem): OverviewOrigin | undefined {
+    const label = originLabel(item);
+    if (label === undefined && !item.origin) return undefined;
+    return { label, fromTerraformTask: item.origin?.fromTerraformTask };
 }
 
 interface LoadedResults {
@@ -1037,13 +1156,20 @@ function itemsForPivot(loaded: LoadedResults, pivot: Pivot): DigestItem[] {
 
 function toPlanOverviewItem(item: DigestItem): OverviewItem {
     if (item.status === "error" || item.digest.kind !== "plan") {
-        return { id: item.id, name: item.name, status: "error", message: item.status === "error" ? item.message : "Unexpected digest kind." };
+        return {
+            id: item.id,
+            name: item.name,
+            status: "error",
+            message: item.status === "error" ? item.message : "Unexpected digest kind.",
+            origin: overviewOrigin(item),
+        };
     }
     const s = item.digest.summary;
     return {
         id: item.id,
         name: item.name,
         status: "ok",
+        origin: overviewOrigin(item),
         counts: { add: s.add, change: s.change, destroy: s.destroy, replace: s.replace, read: s.read, import: s.import },
         noChanges: s.noChanges,
         driftDetected: s.driftDetected,
@@ -1053,13 +1179,20 @@ function toPlanOverviewItem(item: DigestItem): OverviewItem {
 
 function toApplyOverviewItem(item: DigestItem): OverviewItem {
     if (item.status === "error" || item.digest.kind !== "apply") {
-        return { id: item.id, name: item.name, status: "error", message: item.status === "error" ? item.message : "Unexpected digest kind." };
+        return {
+            id: item.id,
+            name: item.name,
+            status: "error",
+            message: item.status === "error" ? item.message : "Unexpected digest kind.",
+            origin: overviewOrigin(item),
+        };
     }
     const s = item.digest.summary;
     return {
         id: item.id,
         name: item.name,
         status: "ok",
+        origin: overviewOrigin(item),
         counts: { add: s.add, change: s.change, destroy: s.destroy },
         outcome: item.digest.outcome,
     };
@@ -1106,13 +1239,20 @@ function aggregateApplyRollup(items: Array<Extract<DigestItem, { status: "ok" }>
 
 function toStateOverviewItem(item: DigestItem): OverviewItem {
     if (item.status === "error" || item.digest.kind !== "state") {
-        return { id: item.id, name: item.name, status: "error", message: item.status === "error" ? item.message : "Unexpected digest kind." };
+        return {
+            id: item.id,
+            name: item.name,
+            status: "error",
+            message: item.status === "error" ? item.message : "Unexpected digest kind.",
+            origin: overviewOrigin(item),
+        };
     }
     const s = item.digest.summary;
     return {
         id: item.id,
         name: item.name,
         status: "ok",
+        origin: overviewOrigin(item),
         stateCounts: { resourceCount: s.resourceCount, dataSourceCount: s.dataSourceCount },
     };
 }

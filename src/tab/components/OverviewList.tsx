@@ -1,7 +1,15 @@
 import * as React from "react";
 import { SummaryHeaderCounts, SummaryHeaderStateCounts } from "./SummaryHeader";
 
-export type OverviewItem =
+/** Where an item came from, shown under its name (see origin.ts). */
+export interface OverviewOrigin {
+    /** "Stage › Job › Step" from the build timeline, or the digest's own stage/job. */
+    label?: string;
+    /** False when the timeline shows a step other than the Terraform task published it. */
+    fromTerraformTask?: boolean;
+}
+
+export type OverviewItem = (
     | {
           id: string;
           name: string;
@@ -21,7 +29,8 @@ export type OverviewItem =
           name: string;
           status: "error";
           message: string;
-      };
+      }
+) & { origin?: OverviewOrigin };
 
 export interface OverviewListProps {
     items: OverviewItem[];
@@ -50,7 +59,13 @@ export function OverviewList({ items, selectedId, onSelect }: OverviewListProps)
                     className={`overview-item${item.id === selectedId ? " selected" : ""}`}
                     onClick={() => onSelect(item.id)}
                 >
-                    <span className="overview-item-name">{item.name}</span>
+                    <span className="overview-item-label">
+                        <span className="overview-item-name">{item.name}</span>
+                        {item.origin?.label && <span className="overview-item-origin">{item.origin.label}</span>}
+                        {item.origin?.fromTerraformTask === false && (
+                            <span className="badge badge-untrusted">Not from the Terraform task</span>
+                        )}
+                    </span>
                     {item.status === "error" ? (
                         <span className="overview-item-error">
                             <span className="badge badge-error">Unparseable</span>

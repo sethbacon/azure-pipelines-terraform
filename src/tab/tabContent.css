@@ -497,6 +497,44 @@
     overflow-wrap: anywhere;
 }
 
+.overview-item-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    min-width: 0;
+}
+
+.overview-item-origin {
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+/* Published by a step that isn't the Terraform task (origin.ts). */
+.badge-untrusted {
+    background: #9a5300;
+}
+
+.summary-header-origin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    margin-top: 2px;
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+}
+
+.summary-header-workdir {
+    font-family: var(--tf-mono);
+    overflow-wrap: anywhere;
+}
+
+.summary-header-log {
+    color: var(--tf-accent-text);
+}
+
 .overview-item-badges,
 .overview-item-error {
     display: flex;
