@@ -153,6 +153,41 @@ describe("SummaryHeader", () => {
     expect(html).toContain("and 5 more");
   });
 
+  describe("origin line", () => {
+    it("shows the step, working directory and a log link that opens in a new tab", () => {
+      const html = renderToStaticMarkup(
+        <SummaryHeader
+          title="p"
+          kind="plan"
+          originLabel="Plan prod › Plan › Terraform plan"
+          workingDirectory="environments/prod"
+          logUrl="https://dev.example.test/org/proj/_build/results?buildId=1&view=logs"
+        />
+      );
+      expect(html).toContain('<span class="summary-header-origin-label">Plan prod › Plan › Terraform plan</span>');
+      expect(html).toContain('<span class="summary-header-workdir">environments/prod</span>');
+      expect(html).toContain(
+        '<a class="summary-header-log" href="https://dev.example.test/org/proj/_build/results?buildId=1&amp;view=logs" target="_blank" rel="noopener noreferrer">View step log</a>'
+      );
+    });
+
+    it("never turns a non-http(s) URL into a link", () => {
+      const html = renderToStaticMarkup(<SummaryHeader title="p" kind="plan" originLabel="x" logUrl="javascript:alert(1)" />);
+      expect(html).not.toContain("<a ");
+      expect(html).not.toContain("javascript:");
+    });
+
+    it("flags a digest a step other than the Terraform task published", () => {
+      const html = renderToStaticMarkup(<SummaryHeader title="p" kind="plan" notFromTerraformTask={true} />);
+      expect(html).toContain('<span class="badge badge-untrusted">Not from the Terraform task</span>');
+    });
+
+    it("renders no origin line when nothing is known about where the digest came from", () => {
+      const html = renderToStaticMarkup(<SummaryHeader title="p" kind="plan" notFromTerraformTask={false} />);
+      expect(html).not.toContain("summary-header-origin");
+    });
+  });
+
   it("shows the partial-view banner without a notes disclosure when there are no notes", () => {
     const html = renderToStaticMarkup(<SummaryHeader title="p" kind="plan" counts={{ add: 1, change: 0, destroy: 0 }} truncated={true} />);
     expect(html).toContain("Partial view.");

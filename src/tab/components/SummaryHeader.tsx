@@ -43,6 +43,19 @@ export interface SummaryHeaderProps {
     toolLabel?: string;
     /** Apply only: how long the whole apply took. */
     durationMs?: number;
+    /** Where the digest came from: "Stage › Job › Step" from the build timeline, or the digest's own stage/job. */
+    originLabel?: string;
+    /** The digest's working directory (relative, as the task recorded it). */
+    workingDirectory?: string;
+    /** The publishing step's log in the web UI (built by origin.ts from the attachment URL). */
+    logUrl?: string;
+    /** True when the timeline shows a step other than the Terraform task published this digest. */
+    notFromTerraformTask?: boolean;
+}
+
+/** Only an absolute http(s) URL becomes a link; anything else is dropped. */
+function safeLink(url: string | undefined): string | undefined {
+    return url !== undefined && /^https?:\/\//i.test(url) ? url : undefined;
 }
 
 /**
@@ -53,7 +66,8 @@ export interface SummaryHeaderProps {
 export function SummaryHeader(props: SummaryHeaderProps): JSX.Element {
     const { title, kind, counts, stateCounts, noChanges, driftDetected, outcome, destroyMode, truncated, truncationNotes, toolLabel } =
         props;
-    const { durationMs } = props;
+    const { durationMs, originLabel, workingDirectory, notFromTerraformTask } = props;
+    const logUrl = safeLink(props.logUrl);
     const notes = truncationNotes ?? [];
 
     return (
@@ -73,6 +87,18 @@ export function SummaryHeader(props: SummaryHeaderProps): JSX.Element {
                 {driftDetected && <span className="badge badge-drift">Drift detected</span>}
                 {noChanges && <span className="badge badge-no-changes">No changes</span>}
             </div>
+            {(originLabel || workingDirectory || logUrl || notFromTerraformTask) && (
+                <div className="summary-header-origin">
+                    {originLabel && <span className="summary-header-origin-label">{originLabel}</span>}
+                    {workingDirectory && <span className="summary-header-workdir">{workingDirectory}</span>}
+                    {logUrl && (
+                        <a className="summary-header-log" href={logUrl} target="_blank" rel="noopener noreferrer">
+                            View step log
+                        </a>
+                    )}
+                    {notFromTerraformTask && <span className="badge badge-untrusted">Not from the Terraform task</span>}
+                </div>
+            )}
             {kind === "state" ? (
                 stateCounts && (
                     <div className="summary-header-counts">

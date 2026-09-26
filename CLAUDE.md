@@ -155,6 +155,9 @@ azure-pipelines-terraform/
 │       ├── memoize.ts                 # Single-entry, identity-keyed memoizer for the multi-item roll-ups
 │       ├── attention.ts               # "Needs review" model: plan/apply risk ranking (default selection) and the attention list
 │       ├── format-duration.ts         # Duration formatting shared by the apply summary and timeline
+│       ├── origin.ts                  # Maps each attachment to its publishing step via the build timeline (run order, step-log link, not-the-Terraform-task flag)
+│       ├── concurrency.ts             # Bounded-concurrency map used for attachment downloads
+│       ├── read-body.ts               # Streams an attachment body under the parse ceiling (stops reading once over it)
 │       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
 │       ├── index.html                 # Tab HTML shell
 │       └── tsconfig.json              # Tab TypeScript config

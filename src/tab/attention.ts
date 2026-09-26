@@ -13,6 +13,8 @@ export interface AttentionSource {
     name: string;
     status: "ok" | "error";
     digest?: Digest;
+    /** Present when the build timeline identified the step that published the item. */
+    origin?: { fromTerraformTask: boolean };
 }
 
 export type AttentionSeverity = "critical" | "warning";
@@ -111,8 +113,8 @@ function stateReasons(item: AttentionSource): { severity: AttentionSeverity; rea
 /**
  * Everything across the run that deserves a look before approving: failed
  * applies, plans that destroy, digests that can't be read or are incomplete,
- * and drift. One entry per digest item, critical ones first, otherwise in
- * pivot and list order.
+ * drift, and digests a step other than the Terraform task published. One entry
+ * per digest item, critical ones first, otherwise in pivot and list order.
  */
 export function collectAttention(
     plans: AttentionSource[],
@@ -121,8 +123,10 @@ export function collectAttention(
 ): AttentionItem[] {
     const items: AttentionItem[] = [];
     const add = (pivot: Pivot, source: AttentionSource, found: { severity: AttentionSeverity; reasons: string[] }): void => {
-        if (found.reasons.length === 0) return;
-        items.push({ pivot, id: source.id, name: source.name, severity: found.severity, reason: found.reasons.join(" · ") });
+        const reasons = [...found.reasons];
+        if (source.origin && !source.origin.fromTerraformTask) reasons.push("published by a step that isn't the Terraform task");
+        if (reasons.length === 0) return;
+        items.push({ pivot, id: source.id, name: source.name, severity: found.severity, reason: reasons.join(" · ") });
     };
     for (const apply of applies) add("apply", apply, applyReasons(apply));
     for (const plan of plans) add("plan", plan, planReasons(plan));
