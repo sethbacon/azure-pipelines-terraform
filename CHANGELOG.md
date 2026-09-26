@@ -4,6 +4,27 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.17.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.4...v1.17.0) (2026-09-26)
+
+
+### Features
+
+* **tab:** compare applies with plans, add a CSP ([#1193](https://github.com/sethbacon/azure-pipelines-terraform/issues/1193)) ([544618d](https://github.com/sethbacon/azure-pipelines-terraform/commit/544618dc236fd8bb5ac505aee14001e1252d5d2e))
+* **tab:** inline diffs, hide unchanged resources ([#1189](https://github.com/sethbacon/azure-pipelines-terraform/issues/1189)) ([327698a](https://github.com/sethbacon/azure-pipelines-terraform/commit/327698ac65d296a791e030cd3b96463ecf412efc))
+* **tab:** open on what needs review ([#1190](https://github.com/sethbacon/azure-pipelines-terraform/issues/1190)) ([59e5e74](https://github.com/sethbacon/azure-pipelines-terraform/commit/59e5e749af3438a46bb91b7a97ebacff844fe062))
+* **tab:** order results by pipeline step ([#1191](https://github.com/sethbacon/azure-pipelines-terraform/issues/1191)) ([3519c1e](https://github.com/sethbacon/azure-pipelines-terraform/commit/3519c1ee6df981cc3287dbde1de1d096adcf8368))
+* **tab:** readable attribute diffs ([#1192](https://github.com/sethbacon/azure-pipelines-terraform/issues/1192)) ([b3ff3dc](https://github.com/sethbacon/azure-pipelines-terraform/commit/b3ff3dc0dba7213b6950a00b4f8a4e3d79b1ea79))
+
+
+### Bug Fixes
+
+* **tab:** blob leak, eager raw view and reloads ([#1187](https://github.com/sethbacon/azure-pipelines-terraform/issues/1187)) ([59db2e3](https://github.com/sethbacon/azure-pipelines-terraform/commit/59db2e36e2c0f8051e056e0502033805aa6eff07))
+
+
+### Performance
+
+* **tab:** minify the tab bundle ([#1194](https://github.com/sethbacon/azure-pipelines-terraform/issues/1194)) ([3370dc3](https://github.com/sethbacon/azure-pipelines-terraform/commit/3370dc3c671a2b8c294e9f287b43b514f037521b))
+
 ## [1.16.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.3...v1.16.4) (2026-09-24)
 
 
