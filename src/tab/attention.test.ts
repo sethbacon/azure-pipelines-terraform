@@ -146,6 +146,14 @@ describe("collectAttention", () => {
     ]);
   });
 
+  it("flags an apply that doesn't match its plan, raising it to critical when told to", () => {
+    const quiet = apply("quiet", "succeeded");
+    const [warning] = collectAttention([], [quiet], [], new Map([["quiet", "warning" as const]]));
+    expect(warning).toMatchObject({ severity: "warning", reason: "doesn't match its plan" });
+    const [critical] = collectAttention([], [quiet], [], new Map([["quiet", "critical" as const]]));
+    expect(critical.severity).toBe("critical");
+  });
+
   it("puts critical entries first and otherwise keeps apply, plan, state order", () => {
     const items = collectAttention(
       [plan("drifty", { driftDetected: true }), plan("destroys", { destroy: 2, noChanges: false })],

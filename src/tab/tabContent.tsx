@@ -33,14 +33,16 @@ import * as SDK from "azure-devops-extension-sdk";
 import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
 import { getClient } from "azure-devops-extension-api";
 import { parseDigestText } from "./digest-model";
-import { Diagnostic, Digest, OutputChange } from "./digest-schema";
+import { ApplyDigest, Diagnostic, Digest, OutputChange, PlanDigest } from "./digest-schema";
 import { TAB_PARSE_CEILING_BYTES } from "./caps";
 import { memoizeOne } from "./memoize";
 import { mapWithConcurrency } from "./concurrency";
 import { readBodyCapped } from "./read-body";
 import { AttachmentOrigin, OriginLookup, TimelineRecordLike, buildOriginLookup, compareOrigins, formatOrigin } from "./origin";
-import { Pivot, applyRisk, collectAttention, isFailedApply, planRisk, riskiestId } from "./attention";
+import { AttentionSeverity, Pivot, applyRisk, collectAttention, isFailedApply, planRisk, riskiestId } from "./attention";
+import { PlanMatch, isExactMatch, matchPlanToApply, pairAppliesWithPlans } from "./plan-match";
 import { AttentionStrip } from "./components/AttentionStrip";
+import { PlanMatchSummary } from "./components/PlanMatchSummary";
 import { SummaryHeader, SummaryHeaderCounts, SummaryHeaderStateCounts } from "./components/SummaryHeader";
 import { OverviewList, OverviewItem, OverviewOrigin } from "./components/OverviewList";
 import { ActionGroup, ResourceList, countChangedResources } from "./components/ResourceList";
@@ -213,6 +215,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     private readonly applyOverview = memoizeOne((items: DigestItem[]) => items.map(toApplyOverviewItem));
     private readonly stateOverview = memoizeOne((items: DigestItem[]) => items.map(toStateOverviewItem));
     private readonly attention = memoizeOne(collectAttention);
+    private readonly planMatches = memoizeOne(computePlanMatches);
     /** Legacy CLI outputs whose name matches no structured plan, with their position in `legacyRaw`. */
     private readonly unclaimedCliOutputs = memoizeOne((planItems: DigestItem[], legacyRaw: RawAttachment[]) =>
         legacyRaw
@@ -296,7 +299,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return (
             <div className="terraform-container">
                 <MemoAttentionStrip
-                    items={this.attention(planItems, applyItems, stateItems)}
+                    items={this.attention(planItems, applyItems, stateItems, this.planMatches(planItems, applyItems).mismatches)}
                     onSelect={this.onSelectAttention}
                 />
                 <div className="pivot-bar" role="tablist">
@@ -406,6 +409,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     logUrl={item.origin?.logUrl}
                     notFromTerraformTask={item.origin ? !item.origin.fromTerraformTask : undefined}
                 />
+                {this.renderPlanMatch("plan", item.id)}
                 <Section
                     title="Resource changes"
                     count={countChangedResources(digest.resources)}
@@ -561,6 +565,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     notFromTerraformTask={item.origin ? !item.origin.fromTerraformTask : undefined}
                     durationMs={digest.summary.durationMs}
                 />
+                {this.renderPlanMatch("apply", item.id)}
                 {/* A failed apply leads with why it failed. */}
                 {failed ? [diagnosticsSection, resourcesSection] : [resourcesSection, diagnosticsSection]}
                 <Section
@@ -652,6 +657,32 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 {this.renderRawDetails("state", item)}
             </div>
         );
+    }
+
+    /** How an apply compares with its same-name plan (or a plan with its apply); nothing when the item isn't paired. */
+    private renderPlanMatch(perspective: Pivot, id: string): JSX.Element | null {
+        const matches = this.planMatches(this.state.planItems, this.state.applyItems);
+        if (perspective === "apply") {
+            const paired = matches.byApply.get(id);
+            return paired ? (
+                <PlanMatchSummary
+                    perspective="apply"
+                    otherName={paired.plan.name}
+                    match={paired.match}
+                    onOpen={() => this.onSelectAttention("plan", paired.plan.id)}
+                />
+            ) : null;
+        }
+        const paired = matches.byPlan.get(id);
+        return paired ? (
+            <PlanMatchSummary
+                perspective="plan"
+                otherName={paired.apply.name}
+                match={paired.match}
+                applyOutcome={paired.apply.digest.outcome}
+                onOpen={() => this.onSelectAttention("apply", paired.apply.id)}
+            />
+        ) : null;
     }
 
     private renderDigestError(item: { message: string; raw: RawAttachment; name: string }): JSX.Element {
@@ -1006,6 +1037,34 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             this.setState({ error: message, loading: false, loadingProgress: null });
         }
     }
+}
+
+type PlanItem = OkDigestItem & { digest: PlanDigest };
+type ApplyItem = OkDigestItem & { digest: ApplyDigest };
+
+/** Each apply paired with its same-name plan in this run, compared both ways (plan-match.ts). */
+interface PlanMatches {
+    byApply: Map<string, { plan: PlanItem; match: PlanMatch }>;
+    byPlan: Map<string, { apply: ApplyItem; match: PlanMatch }>;
+    /** Applies that don't match their plan: critical when they changed something the plan didn't list. */
+    mismatches: Map<string, AttentionSeverity>;
+}
+
+function computePlanMatches(planItems: DigestItem[], applyItems: DigestItem[]): PlanMatches {
+    const plans = okItemsOf(planItems).filter((i): i is PlanItem => i.digest.kind === "plan");
+    const applies = okItemsOf(applyItems).filter((i): i is ApplyItem => i.digest.kind === "apply");
+    const result: PlanMatches = { byApply: new Map(), byPlan: new Map(), mismatches: new Map() };
+    for (const [applyId, plan] of pairAppliesWithPlans(plans, applies)) {
+        const apply = applies.find((a) => a.id === applyId);
+        if (!apply) continue;
+        const match = matchPlanToApply(plan.digest, apply.digest);
+        result.byApply.set(apply.id, { plan, match });
+        result.byPlan.set(plan.id, { apply, match });
+        if (!isExactMatch(match)) {
+            result.mismatches.set(apply.id, match.unplanned.length > 0 || match.differentAction.length > 0 ? "critical" : "warning");
+        }
+    }
+    return result;
 }
 
 /** A digest item that couldn't be shown structurally, with whatever body was read. */

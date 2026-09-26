@@ -398,6 +398,61 @@
     color: var(--tf-text-secondary);
 }
 
+/* --- Plan <-> apply comparison (PlanMatchSummary.tsx) --- */
+
+.plan-match {
+    margin: 8px 0 4px 0;
+    padding: 6px 10px;
+    border: 1px solid var(--tf-border);
+    border-left-width: 3px;
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+}
+
+.plan-match-ok {
+    border-left-color: var(--tf-success);
+}
+
+.plan-match-differs {
+    border-left-color: var(--tf-warning);
+    background: var(--tf-warning-surface);
+}
+
+.plan-match-name {
+    font-family: var(--tf-mono);
+    font-weight: 600;
+}
+
+.plan-match-open {
+    margin-left: 6px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--tf-accent-text);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.plan-match-open:hover {
+    text-decoration: underline;
+}
+
+.plan-match-group {
+    margin-top: 4px;
+}
+
+.plan-match-list {
+    margin: 2px 0 0 0;
+    padding-left: 18px;
+    font-family: var(--tf-mono);
+    overflow-wrap: anywhere;
+}
+
+.plan-match-note {
+    margin-top: 4px;
+    color: var(--tf-text-secondary);
+}
+
 .badge {
     display: inline-block;
     padding: 1px 8px;

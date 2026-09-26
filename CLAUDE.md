@@ -160,8 +160,9 @@ azure-pipelines-terraform/
 │       ├── read-body.ts               # Streams an attachment body under the parse ceiling (stops reading once over it)
 │       ├── action-reason.ts           # Terraform action_reason codes in the CLI's own wording
 │       ├── value-diff.ts              # Structural diff of a changed map/list/nested block (or JSON-in-a-string) value
-│       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, ValueDiff, ValueText, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
-│       ├── index.html                 # Tab HTML shell
+│       ├── plan-match.ts              # Same-run plan ↔ apply comparison (paired by publish name)
+│       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, ValueDiff, ValueText, PlanMatchSummary, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
+│       ├── index.html                 # Tab HTML shell, with the tab's Content-Security-Policy (pinned by security-tripwires.test.ts)
 │       └── tsconfig.json              # Tab TypeScript config
 ├── configs/                           # Extension manifest configs
 │   ├── dev.json                       # Dev publisher override

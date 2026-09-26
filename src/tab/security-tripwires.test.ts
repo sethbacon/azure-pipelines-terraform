@@ -54,6 +54,46 @@ describe("tripwire (2): dangerouslySetInnerHTML is confined to the raw-fallback 
   });
 });
 
+describe("tripwire (6): the tab page carries a strict Content-Security-Policy", () => {
+  const indexHtml = fs.readFileSync(path.join(TAB_SRC_DIR, "index.html"), "utf8");
+  const meta = /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i.exec(indexHtml);
+  const directives = new Map<string, string[]>(
+    (meta?.[1] ?? "")
+      .split(";")
+      .map((d) => d.trim().split(/\s+/))
+      .filter((parts) => parts[0])
+      .map((parts) => [parts[0].toLowerCase(), parts.slice(1)])
+  );
+
+  it("declares the policy in <head>, before the bundle's script tag", () => {
+    expect(meta).not.toBeNull();
+    expect(indexHtml.indexOf("Content-Security-Policy")).toBeLessThan(indexHtml.indexOf("<script"));
+    expect(indexHtml.indexOf("Content-Security-Policy")).toBeLessThan(indexHtml.indexOf("</head>"));
+  });
+
+  it("denies by default and runs only same-origin script: no inline script, no eval", () => {
+    expect(directives.get("default-src")).toEqual(["'none'"]);
+    expect(directives.get("script-src")).toEqual(["'self'"]);
+  });
+
+  it("blocks plugins, base-URI rewrites and form submission", () => {
+    expect(directives.get("object-src")).toEqual(["'none'"]);
+    expect(directives.get("base-uri")).toEqual(["'none'"]);
+    expect(directives.get("form-action")).toEqual(["'none'"]);
+  });
+
+  it("allows no wildcard source and no data:/blob: connections anywhere", () => {
+    for (const [name, sources] of directives) {
+      expect({ name, sources: sources.filter((s) => s === "*" || /^\*\./.test(s)) }).toEqual({ name, sources: [] });
+    }
+    expect(directives.get("connect-src")).toEqual(["https:", "http:"]);
+  });
+
+  it("the page loads no inline script", () => {
+    expect(indexHtml).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
+  });
+});
+
 describe("tripwire (4): no new network surface — fetch only ever targets the ADO attachment link", () => {
   it("tabContent.tsx has exactly the two known fetch() call sites, both using attachment._links.self.href", () => {
     const content = fs.readFileSync(path.join(TAB_SRC_DIR, "tabContent.tsx"), "utf8");

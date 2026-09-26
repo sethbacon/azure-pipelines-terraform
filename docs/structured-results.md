@@ -67,6 +67,21 @@ See [`docs/yaml-examples.md`](yaml-examples.md) for more.
   that destroys, then one that can't be read or is truncated, then drift, then any other
   change; a failed apply before a successful one.
 
+### Did the apply do what the plan said?
+
+When a plan and an apply in the same run are published under the same name, the apply's
+detail view compares the two resource by resource. It says **Matches plan** when the apply
+changed exactly what the plan listed. Otherwise it says **Differs from plan**, listing:
+- changes the plan didn't list;
+- planned changes that weren't applied (not counted when the apply failed part-way);
+- resources applied differently.
+
+The plan's detail view says which apply carried it out. An apply that doesn't match its
+plan is listed under **Needs review**, as critical when it changed something the plan
+didn't list. An apply run from the saved plan file should always match; one that planned
+again at apply time can differ. Nothing is compared across runs, and a name used by more
+than one plan or apply is left unpaired.
+
 ### Where each result came from
 
 Plans, applies and state inventories are listed in the order their steps ran in the
