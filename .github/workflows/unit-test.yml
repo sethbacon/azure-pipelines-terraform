@@ -164,7 +164,7 @@ jobs:
       # against the bytes every consumer actually calls -- one place instead of
       # three hand-copies.
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
@@ -302,7 +302,7 @@ jobs:
       # NOT inherit it -- without it each gate would analyse the task directory
       # instead of the repository.
       - name: Provide the outbound proxy parity gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
