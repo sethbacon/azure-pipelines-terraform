@@ -512,12 +512,17 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         this.setState({ selectedLegacyIndex: parseInt(event.target.value, 10) });
     };
 
-    /** Fetch an attachment's body, parse it as a plan/apply digest, and classify it as ok/error. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's behavior. Stops early once `isStale` reports a newer load, whose results will replace these. */
+    /** Whether a later loadAll has started since the one that took `sequence`. */
+    private isSuperseded(sequence: number): boolean {
+        return sequence !== this.loadSequence;
+    }
+
+    /** Fetch an attachment's body, parse it as a plan/apply digest, and classify it as ok/error. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's behavior. Stops early once a newer load supersedes `sequence`, since its results will replace these. */
     private async loadDigestItems(
         attachments: AttachmentRef[],
         authHeader: string,
         expectedKind: "plan" | "apply" | "state",
-        isStale: () => boolean
+        sequence: number
     ): Promise<DigestItem[]> {
         const items: DigestItem[] = [];
         // The id keys the selection across reloads, so it counts only earlier
@@ -525,7 +530,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         // attachment published later in the build must not renumber the rest.
         const occurrences = new Map<string, number>();
         for (const attachment of attachments) {
-            if (isStale()) break;
+            if (this.isSuperseded(sequence)) break;
             const occurrence = occurrences.get(attachment.name) ?? 0;
             occurrences.set(attachment.name, occurrence + 1);
             const id = `${attachment.name}#${occurrence}`;
@@ -584,14 +589,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return items;
     }
 
-    private async loadRawAttachments(
-        attachments: AttachmentRef[],
-        authHeader: string,
-        isStale: () => boolean
-    ): Promise<RawAttachment[]> {
+    private async loadRawAttachments(attachments: AttachmentRef[], authHeader: string, sequence: number): Promise<RawAttachment[]> {
         const items: RawAttachment[] = [];
         for (const attachment of attachments) {
-            if (isStale()) break;
+            if (this.isSuperseded(sequence)) break;
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
                 if (response.ok) {
@@ -607,7 +608,6 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
 
     public async loadAll(build: Build): Promise<void> {
         const sequence = ++this.loadSequence;
-        const isStale = (): boolean => sequence !== this.loadSequence;
         try {
             const buildClient = getClient(BuildRestClient);
             const accessToken = await SDK.getAccessToken();
@@ -619,15 +619,15 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 buildClient.getAttachments(build.project.id, build.id, STATE_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, LEGACY_RAW_ATTACHMENT_TYPE),
             ]);
-            if (isStale()) return;
+            if (this.isSuperseded(sequence)) return;
 
             const [planItems, applyItems, stateItems, legacyRaw] = await Promise.all([
-                this.loadDigestItems(planAttachments ?? [], authHeader, "plan", isStale),
-                this.loadDigestItems(applyAttachments ?? [], authHeader, "apply", isStale),
-                this.loadDigestItems(stateAttachments ?? [], authHeader, "state", isStale),
-                this.loadRawAttachments(legacyAttachments ?? [], authHeader, isStale),
+                this.loadDigestItems(planAttachments ?? [], authHeader, "plan", sequence),
+                this.loadDigestItems(applyAttachments ?? [], authHeader, "apply", sequence),
+                this.loadDigestItems(stateAttachments ?? [], authHeader, "state", sequence),
+                this.loadRawAttachments(legacyAttachments ?? [], authHeader, sequence),
             ]);
-            if (isStale()) return;
+            if (this.isSuperseded(sequence)) return;
 
             planItems.sort(byNameCaseInsensitive);
             applyItems.sort(byNameCaseInsensitive);
@@ -643,7 +643,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 loading: false,
             }));
         } catch (err) {
-            if (isStale()) return;
+            if (this.isSuperseded(sequence)) return;
             const message = err instanceof Error ? err.message : String(err);
             this.setState({ error: message, loading: false });
         }
