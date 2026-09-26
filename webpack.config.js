@@ -16,8 +16,15 @@ module.exports = {
             'azure-devops-extension-sdk': path.resolve('node_modules/azure-devops-extension-sdk')
         }
     },
+    // The results tab loads its bundle every time the tab is opened. Minified it
+    // is roughly 45% smaller (about 680 KB -> 375 KB; 140 KB -> 97 KB gzipped).
+    // The source map ships beside it so the minified code stays debuggable, and
+    // Terser extracts the bundled packages' license headers to
+    // tabContent.js.LICENSE.txt. Only the tab bundle is minified: see the Tasks
+    // copy pattern below.
+    devtool: 'source-map',
     optimization: {
-        minimize: false
+        minimize: true
     },
     performance: {
         hints: false
@@ -54,7 +61,12 @@ module.exports = {
                         gitignore: false,
                         ignore: ["**/Tests/**", "**/*.ts", "**/tsconfig*.json", "**/.eslintrc.json"],
                     },
-                    to: "Tasks"
+                    to: "Tasks",
+                    // Ship the tasks exactly as compiled. Terser processes every
+                    // .js asset in the compilation, copied ones included, so
+                    // without this it would rewrite each task's compiled code
+                    // and its node_modules.
+                    info: { minimized: true }
                 },
             ]
         })
