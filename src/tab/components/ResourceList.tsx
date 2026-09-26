@@ -1,6 +1,7 @@
 import * as React from "react";
 import { PlanResource } from "../digest-schema";
 import { TAB_MAX_RENDERED_ROWS } from "../caps";
+import { describeActionReason } from "../action-reason";
 import { ResourceDiff } from "./ResourceDiff";
 
 const GROUP_ORDER = ["import", "replace", "delete", "create", "update", "read", "forget", "no-op"] as const;
@@ -149,7 +150,13 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
                     <span className="resource-row-address">{resource.address}</span>
                     <span className="resource-row-type">{resource.type}</span>
                     {resource.importing && group !== "import" && <span className="badge badge-import">Import</span>}
-                    {resource.actionReason && <span className="resource-row-reason">{resource.actionReason}</span>}
+                    {/* Terraform lists a create-before-destroy replacement as ["create", "delete"]. */}
+                    {group === "replace" && resource.actions[0] === "create" && (
+                        <span className="resource-row-tag">create before destroy</span>
+                    )}
+                    {resource.actionReason && (
+                        <span className="resource-row-reason">{describeActionReason(resource.actionReason)}</span>
+                    )}
                 </button>
                 {expanded && <ResourceDiff resource={resource} variant="inline" />}
             </li>

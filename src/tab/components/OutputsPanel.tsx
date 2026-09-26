@@ -1,7 +1,7 @@
 import * as React from "react";
 import { OutputChange, OutputValue } from "../digest-schema";
 import { TAB_MAX_RENDERED_ROWS } from "../caps";
-import { formatRedactedValue } from "./redacted-value";
+import { RedactedValueText } from "./ValueText";
 
 /** `OutputValue` has no `action`; only its `OutputChange` extension does. Read it defensively without an unsafe cast. */
 function outputAction(output: OutputValue): OutputChange["action"] | undefined {
@@ -74,7 +74,9 @@ export function OutputsPanel({ outputs, maxRenderedRows, onToggleUnchanged, show
                             <tr key={output.name}>
                                 <td className="outputs-panel-name">{output.name}</td>
                                 {hasActions && <td className="outputs-panel-action">{outputAction(output) ?? ""}</td>}
-                                <td className="outputs-panel-value">{formatRedactedValue(output.value)}</td>
+                                <td className="outputs-panel-value">
+                                    <RedactedValueText value={output.value} />
+                                </td>
                             </tr>
                         ))}
                     </tbody>

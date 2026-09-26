@@ -1,7 +1,7 @@
 import * as React from "react";
 import { StateResource } from "../digest-schema";
 import { TAB_MAX_RENDERED_ROWS } from "../caps";
-import { formatRedactedValue } from "./redacted-value";
+import { RedactedValueText } from "./ValueText";
 
 export interface StateInventoryProps {
     resources: StateResource[];
@@ -106,7 +106,7 @@ export function StateInventory(props: StateInventoryProps): JSX.Element {
                                                                 <tr key={attr.name}>
                                                                     <td className="state-inventory-attr-name">{attr.name}</td>
                                                                     <td className="state-inventory-attr-value">
-                                                                        {formatRedactedValue(attr.value)}
+                                                                        <RedactedValueText value={attr.value} />
                                                                     </td>
                                                                 </tr>
                                                             ))}

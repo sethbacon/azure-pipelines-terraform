@@ -66,6 +66,23 @@ describe("ResourceList", () => {
     expect(html).toContain(">Replace (1)</div>");
   });
 
+  it("words the action reason the way Terraform's CLI does", () => {
+    const resources = [resource({ address: "aws_instance.gone", actions: ["delete"], actionReason: "delete_because_no_resource_config" })];
+    const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+    expect(html).toContain('<span class="resource-row-reason">no longer in configuration</span>');
+  });
+
+  it("tags a replacement that creates the new resource before destroying the old one", () => {
+    const resources = [
+      resource({ address: "aws_instance.cbd", actions: ["create", "delete"] }),
+      resource({ address: "aws_instance.dbc", actions: ["delete", "create"] }),
+    ];
+    const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+    expect(html.match(/create before destroy/g)).toHaveLength(1);
+    expect(html.indexOf("create before destroy")).toBeGreaterThan(html.indexOf("aws_instance.cbd"));
+    expect(html.indexOf("create before destroy")).toBeLessThan(html.indexOf("aws_instance.dbc"));
+  });
+
   describe("import", () => {
     it("puts an import-only resource in its own group instead of burying it under Unchanged", () => {
       const resources = [

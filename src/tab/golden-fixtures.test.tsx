@@ -150,7 +150,7 @@ function renderPlanDetail(digest: Extract<Digest, { kind: "plan" }>): string {
         <ResourceDiff key={r.address} resource={r} />
       ))}
       {(digest.drift ?? []).map((d) => (
-        <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} />
+        <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} mode="drift" />
       ))}
       <OutputsPanel outputs={digest.outputChanges} />
     </div>

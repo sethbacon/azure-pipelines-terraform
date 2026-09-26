@@ -158,7 +158,9 @@ azure-pipelines-terraform/
 │       ├── origin.ts                  # Maps each attachment to its publishing step via the build timeline (run order, step-log link, not-the-Terraform-task flag)
 │       ├── concurrency.ts             # Bounded-concurrency map used for attachment downloads
 │       ├── read-body.ts               # Streams an attachment body under the parse ceiling (stops reading once over it)
-│       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
+│       ├── action-reason.ts           # Terraform action_reason codes in the CLI's own wording
+│       ├── value-diff.ts              # Structural diff of a changed map/list/nested block (or JSON-in-a-string) value
+│       ├── components/                # Presentational components (AttentionStrip, SummaryHeader, Section, ResourceList, ResourceDiff, ValueDiff, ValueText, DriftList, ApplyTimeline, OutputsPanel, DiagnosticsPanel, OverviewList, StateInventory, RawView)
 │       ├── index.html                 # Tab HTML shell
 │       └── tsconfig.json              # Tab TypeScript config
 ├── configs/                           # Extension manifest configs
