@@ -18,6 +18,7 @@ jest.mock('azure-devops-extension-api/Build', () => ({
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getClient } from 'azure-devops-extension-api';
 import { TerraformPlanTab } from './tabContent';
+import * as ansi from './ansi-to-html';
 
 const PLAN_SUMMARY_TYPE = 'terraform-plan-summary';
 const APPLY_SUMMARY_TYPE = 'terraform-apply-summary';
@@ -216,7 +217,7 @@ describe('TerraformPlanTab', () => {
     // First item selected by default.
     expect(out).toContain('aws_instance.web');
 
-    (tab as unknown as { onSelectPlan: (id: string) => void }).onSelectPlan('plan-b#1');
+    (tab as unknown as { onSelectPlan: (id: string) => void }).onSelectPlan('plan-b#0');
     out = html(tab);
     expect(out).toContain('aws_instance.other');
   });
@@ -301,7 +302,7 @@ describe('TerraformPlanTab', () => {
     // First item selected by default.
     expect(out).toContain('aws_instance.web');
 
-    (tab as unknown as { onSelectState: (id: string) => void }).onSelectState('state-b#1');
+    (tab as unknown as { onSelectState: (id: string) => void }).onSelectState('state-b#0');
     out = html(tab);
     expect(out).toContain('data.aws_ami.latest');
   });
@@ -438,5 +439,431 @@ describe('TerraformPlanTab', () => {
     expect(out).not.toContain('network-error');
     expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
+  });
+});
+
+type Pivot = 'plan' | 'apply' | 'state';
+
+/** The tab's private handlers, reached the same way the tests above reach them. */
+interface TabHandlers {
+  setActivePivot(pivot: Pivot): void;
+  onSelectPlan(id: string): void;
+  onSelectApply(id: string): void;
+  onSelectState(id: string): void;
+  onSelectResource(address: string): void;
+  onResourceSearchChange(text: string): void;
+  onSelectStateResource(address: string): void;
+  onStateSearchTextChange(text: string): void;
+  onSelectLegacy(event: { target: { value: string } }): void;
+  onRawDetailsToggle(pivot: Pivot, id: string, open: boolean): void;
+}
+
+function handlers(tab: TerraformPlanTab): TabHandlers {
+  return tab as unknown as TabHandlers;
+}
+
+function tabState(tab: TerraformPlanTab): Record<string, unknown> {
+  return (tab as unknown as { state: Record<string, unknown> }).state;
+}
+
+const SELECTION_KEYS = [
+  'activePivot',
+  'selectedPlanId',
+  'selectedApplyId',
+  'selectedStateId',
+  'selectedLegacyIndex',
+  'selectedResourceAddress',
+  'resourceSearchText',
+  'selectedStateAddress',
+  'stateSearchText',
+  'openRawDetails',
+];
+
+function selections(tab: TerraformPlanTab): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const key of SELECTION_KEYS) picked[key] = tabState(tab)[key];
+  return picked;
+}
+
+const OTHER_RESOURCE = {
+  address: 'aws_instance.other',
+  type: 'aws_instance',
+  name: 'other',
+  providerName: 'registry.terraform.io/hashicorp/aws',
+  actions: ['delete'],
+  attributeChanges: [],
+};
+
+/** Resolves once `condition` holds, flushing pending promise callbacks between checks. */
+async function flushUntil(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !condition(); i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  expect(condition()).toBe(true);
+}
+
+describe('TerraformPlanTab raw digest views', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('leaves the raw digest body out of the render entirely while its expander is closed', async () => {
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const ansiSpy = jest.spyOn(ansi, 'ansiToHtml');
+
+    const out = html(tab);
+    expect(out).toContain('<details class="raw-details"><summary>View raw digest</summary></details>');
+    expect(out).not.toContain('raw-view');
+    expect(ansiSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders the open expander as plain text, for that one digest item only', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest({ meta: { name: 'plan-a', createdIso: 'x' } })),
+        'plan-b': JSON.stringify(validPlanDigest({ meta: { name: 'plan-b', createdIso: 'x' } })),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const ansiSpy = jest.spyOn(ansi, 'ansiToHtml');
+
+    handlers(tab).onRawDetailsToggle('plan', 'plan-a#0', true);
+    let out = html(tab);
+    expect(out).toContain('<details class="raw-details" open="">');
+    expect(out).toContain('&quot;name&quot;:&quot;plan-a&quot;');
+    expect(ansiSpy).not.toHaveBeenCalled();
+
+    // A close reported by a different item's expander (React closing a reused
+    // <details> after the selection moved) does not close this one.
+    handlers(tab).onRawDetailsToggle('plan', 'plan-b#0', false);
+    expect(tabState(tab).openRawDetails).toEqual({ pivot: 'plan', id: 'plan-a#0' });
+
+    handlers(tab).onSelectPlan('plan-b#0');
+    expect(html(tab)).not.toContain('raw-view');
+    handlers(tab).onSelectPlan('plan-a#0');
+    expect(html(tab)).toContain('&quot;name&quot;:&quot;plan-a&quot;');
+
+    handlers(tab).onRawDetailsToggle('plan', 'plan-a#0', false);
+    out = html(tab);
+    expect(out).not.toContain('raw-view');
+    expect(tabState(tab).openRawDetails).toBeNull();
+  });
+
+  it('shows a digest that fails to parse as plain text, never through ansiToHtml', async () => {
+    mockLoad({ planNames: ['broken-plan'], bodies: { 'broken-plan': '\x1b[31m<b>not json</b>\x1b[0m' } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const ansiSpy = jest.spyOn(ansi, 'ansiToHtml');
+
+    const out = html(tab);
+    expect(out).toContain('Could not render structured results');
+    expect(out).toContain('&lt;b&gt;not json&lt;/b&gt;');
+    expect(out).not.toContain('class="ansi-');
+    expect(ansiSpy).not.toHaveBeenCalled();
+  });
+
+  it('still renders legacy terraform-plan-results output through ansiToHtml', async () => {
+    mockLoad({ legacyNames: ['legacy-plan.txt'], bodies: { 'legacy-plan.txt': '\x1b[32m+ create\x1b[0m' } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+
+    expect(html(tab)).toContain('<span class="ansi-green">+ create</span>');
+  });
+});
+
+describe('TerraformPlanTab reloads (onBuildChanged firing again)', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  it('clears the error screen once a later load succeeds', async () => {
+    (getClient as jest.Mock).mockReturnValueOnce({
+      getAttachments: jest.fn().mockRejectedValue(new Error('attachments API unavailable')),
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('Error: attachments API unavailable');
+
+    mockLoad({ planNames: ['plan-a'], bodies: { 'plan-a': JSON.stringify(validPlanDigest()) } });
+    await tab.loadAll(build);
+
+    const out = html(tab);
+    expect(out).not.toContain('Error:');
+    expect(out).toContain('aws_instance.web');
+  });
+
+  it('a reload of the same build keeps every selection that still exists', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      applyNames: ['apply-a', 'apply-b'],
+      stateNames: ['state-a', 'state-b'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest()),
+        'plan-b': JSON.stringify(validPlanDigest({ resources: [OTHER_RESOURCE] })),
+        'apply-a': JSON.stringify(validApplyDigest()),
+        'apply-b': JSON.stringify(validApplyDigest()),
+        'state-a': JSON.stringify(validStateDigest()),
+        'state-b': JSON.stringify(validStateDigest()),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const h = handlers(tab);
+    h.onSelectPlan('plan-b#0');
+    h.onSelectResource('aws_instance.other');
+    h.onResourceSearchChange('other');
+    h.onSelectApply('apply-b#0');
+    h.onSelectState('state-b#0');
+    h.onSelectStateResource('aws_instance.web');
+    h.onStateSearchTextChange('web');
+    h.onRawDetailsToggle('state', 'state-b#0', true);
+    h.setActivePivot('state');
+    const before = selections(tab);
+
+    await tab.loadAll(build);
+
+    expect(selections(tab)).toEqual(before);
+    expect(before).toEqual({
+      activePivot: 'state',
+      selectedPlanId: 'plan-b#0',
+      selectedApplyId: 'apply-b#0',
+      selectedStateId: 'state-b#0',
+      selectedLegacyIndex: 0,
+      selectedResourceAddress: 'aws_instance.other',
+      resourceSearchText: 'other',
+      selectedStateAddress: 'aws_instance.web',
+      stateSearchText: 'web',
+      openRawDetails: { pivot: 'state', id: 'state-b#0' },
+    });
+  });
+
+  it('falls back only for the selections whose target is gone', async () => {
+    const stateWithout = validStateDigest({ summary: { resourceCount: 0, dataSourceCount: 0 }, resources: [] });
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      stateNames: ['state-a'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest()),
+        'plan-b': JSON.stringify(validPlanDigest({ resources: [OTHER_RESOURCE] })),
+        'state-a': JSON.stringify(validStateDigest()),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    const h = handlers(tab);
+    h.onSelectPlan('plan-b#0');
+    h.onSelectResource('aws_instance.other');
+    h.onResourceSearchChange('other');
+    h.onRawDetailsToggle('plan', 'plan-b#0', true);
+    h.onSelectStateResource('aws_instance.web');
+    h.onStateSearchTextChange('web');
+    h.setActivePivot('state');
+
+    // plan-b was removed, and state-a no longer holds aws_instance.web.
+    mockLoad({
+      planNames: ['plan-a'],
+      stateNames: ['state-a'],
+      bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'state-a': JSON.stringify(stateWithout) },
+    });
+    await tab.loadAll(build);
+
+    expect(selections(tab)).toEqual({
+      activePivot: 'state',
+      selectedPlanId: 'plan-a#0',
+      selectedApplyId: null,
+      selectedStateId: 'state-a#0',
+      selectedLegacyIndex: 0,
+      selectedResourceAddress: null,
+      resourceSearchText: '',
+      selectedStateAddress: null,
+      stateSearchText: 'web',
+      openRawDetails: null,
+    });
+  });
+
+  it('keeps the selection when a newly published attachment is listed before it', async () => {
+    mockLoad({ planNames: ['plan-b'], bodies: { 'plan-b': JSON.stringify(validPlanDigest({ resources: [OTHER_RESOURCE] })) } });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    handlers(tab).onSelectResource('aws_instance.other');
+
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest()),
+        'plan-b': JSON.stringify(validPlanDigest({ resources: [OTHER_RESOURCE] })),
+      },
+    });
+    await tab.loadAll(build);
+
+    expect(tabState(tab).selectedPlanId).toBe('plan-b#0');
+    expect(tabState(tab).selectedResourceAddress).toBe('aws_instance.other');
+    expect(html(tab)).toContain('All plans (2)');
+  });
+
+  it('follows the selected legacy attachment by name as the list changes', async () => {
+    const legacy = (names: string[]): void => {
+      const bodies: Record<string, string> = {};
+      for (const name of names) bodies[name] = `output of ${name}`;
+      mockLoad({ legacyNames: names, bodies });
+    };
+    legacy(['a.txt', 'b.txt']);
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    handlers(tab).onSelectLegacy({ target: { value: '1' } });
+
+    await tab.loadAll(build);
+    expect(tabState(tab).selectedLegacyIndex).toBe(1);
+
+    legacy(['0.txt', 'a.txt', 'b.txt']);
+    await tab.loadAll(build);
+    expect(tabState(tab).selectedLegacyIndex).toBe(2);
+    expect(html(tab)).toContain('output of b.txt');
+
+    legacy(['a.txt']);
+    await tab.loadAll(build);
+    expect(tabState(tab).selectedLegacyIndex).toBe(0);
+  });
+
+  it('opens on the default pivot when the previous load had shown nothing', async () => {
+    mockLoad({ bodies: {} });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).toContain('No terraform plans, applies, or state have been published');
+
+    mockLoad({ applyNames: ['apply-a'], bodies: { 'apply-a': JSON.stringify(validApplyDigest()) } });
+    await tab.loadAll(build);
+
+    expect(tabState(tab).activePivot).toBe('apply');
+  });
+
+  it('a load for a different build starts from the default view', async () => {
+    mockLoad({
+      planNames: ['plan-a', 'plan-b'],
+      bodies: {
+        'plan-a': JSON.stringify(validPlanDigest()),
+        'plan-b': JSON.stringify(validPlanDigest({ resources: [OTHER_RESOURCE] })),
+      },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    handlers(tab).onSelectPlan('plan-b#0');
+    handlers(tab).onResourceSearchChange('other');
+    handlers(tab).setActivePivot('apply');
+
+    await tab.loadAll({ project: { id: 'proj' }, id: 2 } as never);
+
+    expect(tabState(tab)).toMatchObject({
+      activePivot: 'plan',
+      selectedPlanId: 'plan-a#0',
+      resourceSearchText: '',
+      loadedBuildId: 2,
+    });
+  });
+
+  it('discards an older overlapping load that resolves after a newer one', async () => {
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    (getClient as jest.Mock)
+      .mockReturnValueOnce({
+        getAttachments: jest.fn(async (_p: string, _id: number, type: string) => {
+          await gate;
+          return type === PLAN_SUMMARY_TYPE ? [attachment('old-plan')] : [];
+        }),
+      })
+      .mockReturnValueOnce({
+        getAttachments: jest.fn(async (_p: string, _id: number, type: string) =>
+          type === PLAN_SUMMARY_TYPE ? [attachment('new-plan')] : []
+        ),
+      });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify(validPlanDigest()),
+      headers: { get: () => null },
+    }));
+
+    const tab = makeTestableTab();
+    const first = tab.loadAll(build);
+    await tab.loadAll(build);
+    releaseFirst();
+    await first;
+
+    const out = html(tab);
+    expect(out).toContain('new-plan');
+    expect(out).not.toContain('old-plan');
+  });
+
+  it('ignores a failure from a load that a newer one superseded', async () => {
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    (getClient as jest.Mock)
+      .mockReturnValueOnce({
+        getAttachments: jest.fn(async () => {
+          await gate;
+          throw new Error('stale failure');
+        }),
+      })
+      .mockReturnValueOnce({
+        getAttachments: jest.fn(async (_p: string, _id: number, type: string) =>
+          type === PLAN_SUMMARY_TYPE ? [attachment('new-plan')] : []
+        ),
+      });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify(validPlanDigest()),
+      headers: { get: () => null },
+    }));
+
+    const tab = makeTestableTab();
+    const first = tab.loadAll(build);
+    await tab.loadAll(build);
+    releaseFirst();
+    await first;
+
+    const out = html(tab);
+    expect(out).not.toContain('Error:');
+    expect(out).toContain('new-plan');
+  });
+
+  it('a superseded load stops downloading the attachments it has not started yet', async () => {
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    (getClient as jest.Mock)
+      .mockReturnValueOnce({
+        getAttachments: jest.fn((_p: string, _id: number, type: string) => {
+          if (type === PLAN_SUMMARY_TYPE) return Promise.resolve(['p1', 'p2', 'p3'].map(attachment));
+          if (type === LEGACY_RAW_TYPE) return Promise.resolve(['l1', 'l2'].map(attachment));
+          return Promise.resolve([]);
+        }),
+      })
+      .mockReturnValueOnce({
+        getAttachments: jest.fn((_p: string, _id: number, type: string) =>
+          Promise.resolve(type === PLAN_SUMMARY_TYPE ? [attachment('q1')] : [])
+        ),
+      });
+    const fetchMock = jest.fn(async (url: string) => {
+      const name = url.split('/').pop() as string;
+      if (name === 'p1' || name === 'l1') await gate;
+      const body = name.startsWith('l') ? `output of ${name}` : JSON.stringify(validPlanDigest());
+      return { ok: true, text: async () => body, headers: { get: () => null } };
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = fetchMock;
+
+    const tab = makeTestableTab();
+    const first = tab.loadAll(build);
+    await flushUntil(() => fetchMock.mock.calls.length === 2); // p1 and l1 in flight
+    await tab.loadAll(build);
+    releaseFirst();
+    await first;
+
+    const fetched = fetchMock.mock.calls.map(([url]) => url.split('/').pop());
+    expect(fetched.sort()).toEqual(['l1', 'p1', 'q1']);
+    expect(html(tab)).toContain('q1');
   });
 });

@@ -1,6 +1,9 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
     preset: 'ts-jest',
+    // Tests render with react-dom/server by default. A test that needs a live
+    // DOM (re-renders, <details> toggle events, clicks) opts into jsdom with a
+    // `@jest-environment jsdom` docblock at the top of its own file.
     testEnvironment: 'node',
     roots: ['<rootDir>/src/tab'],
     testMatch: ['**/*.test.ts', '**/*.test.tsx'],

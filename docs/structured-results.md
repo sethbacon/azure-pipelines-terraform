@@ -140,6 +140,8 @@ plan ↔ apply pairing.
 
 ## Raw fallback
 
-Legacy `publishPlanResults` attachments — and any digest the tab cannot parse — still
-render as ANSI-colored raw text, unchanged. Each structured detail view also offers a
-**View raw digest** expander.
+Legacy `publishPlanResults` attachments still render as ANSI-colored raw text, unchanged.
+A digest the tab cannot parse is shown as plain text instead, and each structured detail
+view also offers a **View raw digest** expander with the digest's JSON as plain text,
+rendered only once it is opened. Raw output over 2 MB is offered as a download rather
+than rendered inline.
