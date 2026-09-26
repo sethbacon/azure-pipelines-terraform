@@ -6,6 +6,9 @@ import { ResourceDiff } from "./ResourceDiff";
 const GROUP_ORDER = ["import", "replace", "delete", "create", "update", "read", "forget", "no-op"] as const;
 type GroupKey = (typeof GROUP_ORDER)[number];
 
+/** An action group the list can be filtered to: any group but Unchanged, which has its own toggle. */
+export type ActionGroup = Exclude<GroupKey, "no-op">;
+
 /**
  * Headings use Terraform's own plan-summary vocabulary ("Plan: N to import, N to
  * add, N to change, N to destroy") rather than the raw
@@ -72,18 +75,23 @@ export interface ResourceListProps {
      */
     showUnchanged: boolean;
     onToggleUnchanged: () => void;
+    /** Show only this action group (e.g. just the destroys); null shows every group. */
+    actionFilter: ActionGroup | null;
+    onActionFilterChange: (group: ActionGroup | null) => void;
     maxRenderedRows?: number;
 }
 
 /**
  * Grouped, filterable resource list. Selecting a row expands its attribute diff
- * directly beneath it. Fully controlled (search text, selection, and the
- * Unchanged toggle all come from the caller): no internal component state, so
- * it renders deterministically from props alone and needs no DOM/hook-testing
+ * directly beneath it; action chips narrow the list to one group (just the
+ * destroys, say). Fully controlled (search text, selection, action filter and
+ * the Unchanged toggle all come from the caller): no internal component state,
+ * so it renders deterministically from props alone and needs no DOM/hook-testing
  * infrastructure to unit test.
  */
 export function ResourceList(props: ResourceListProps): JSX.Element {
     const { resources, selectedAddress, onSelect, searchText, onSearchTextChange, showUnchanged, onToggleUnchanged } = props;
+    const { actionFilter, onActionFilterChange } = props;
     const maxRows = props.maxRenderedRows ?? TAB_MAX_RENDERED_ROWS;
 
     if (resources.length === 0) {
@@ -101,12 +109,21 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
         else groups.set(key, [resource]);
     }
 
+    // One filter chip per changed group the search matched, counting its matches.
+    // The active filter keeps its chip even at zero matches, so it's clear why the
+    // list is empty.
+    const chipGroups = GROUP_ORDER.filter(
+        (group): group is ActionGroup => group !== "no-op" && (groups.has(group) || group === actionFilter)
+    );
+    const showChips = chipGroups.length > 1 || actionFilter !== null;
+    const inFilter = (group: GroupKey): boolean => actionFilter === null || group === actionFilter;
+
     // Bounded rendering (§5.5): the row budget is spent group by group in display
     // order, so unchanged rows can never crowd out a destroy or replace, and a
     // collapsed group spends nothing.
     let budget = maxRows;
     let eligible = 0;
-    const sections = GROUP_ORDER.filter((group) => groups.has(group)).map((group) => {
+    const sections = GROUP_ORDER.filter((group) => groups.has(group) && inFilter(group)).map((group) => {
         const members = groups.get(group)!;
         const collapsed = group === "no-op" && !showUnchanged;
         const visible = collapsed ? [] : members.slice(0, budget);
@@ -149,6 +166,29 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
                 value={searchText}
                 onChange={(e) => onSearchTextChange(e.target.value)}
             />
+            {showChips && (
+                <div className="action-filter" role="group" aria-label="Show only one action">
+                    <button
+                        type="button"
+                        className="action-chip"
+                        aria-pressed={actionFilter === null}
+                        onClick={() => onActionFilterChange(null)}
+                    >
+                        All
+                    </button>
+                    {chipGroups.map((group) => (
+                        <button
+                            key={group}
+                            type="button"
+                            className={`action-chip action-chip-${group}`}
+                            aria-pressed={actionFilter === group}
+                            onClick={() => onActionFilterChange(actionFilter === group ? null : group)}
+                        >
+                            {GROUP_LABELS[group]} {groups.get(group)?.length ?? 0}
+                        </button>
+                    ))}
+                </div>
+            )}
             {truncated && (
                 <div className="resource-list-truncated-banner">
                     List truncated to {maxRows} of {eligible} matching resources.
@@ -156,6 +196,8 @@ export function ResourceList(props: ResourceListProps): JSX.Element {
             )}
             {filtered.length === 0 ? (
                 <div className="resource-list-empty">No resources match "{searchText}".</div>
+            ) : sections.length === 0 ? (
+                <div className="resource-list-empty">No resources match this filter.</div>
             ) : (
                 sections.map(({ group, members, collapsed, visible }) =>
                     group === "no-op" ? (

@@ -54,23 +54,39 @@ Example (`azure-pipelines.yml`):
 
 See [`docs/yaml-examples.md`](yaml-examples.md) for more.
 
+## What the tab opens on
+
+- **Needs review** — above the pivots, a list of everything in the run worth a look before
+  approving: failed applies (with their error count), plans that destroy (Terraform's own
+  count, noting replacements), destroy plans, drift, and any digest that couldn't be read or
+  was truncated. Select an entry to open it.
+- **Pivot tabs** show how many plans, applies, and state inventories were published, and
+  the Apply tab says **failed** when any apply failed.
+- **Default view** — the tab opens on the Apply pivot when an apply failed, otherwise on
+  the Plan pivot. In each pivot the item that most needs review is selected first: a plan
+  that destroys, then one that can't be read or is truncated, then drift, then any other
+  change; a failed apply before a successful one.
+
 ## Reading the Plan pivot
 
 - **Overview list** (when more than one plan is published) — each plan's name with
   add / change / destroy / replace counts and a drift badge; select one to open its detail.
   A destroy plan additionally shows a **Destroy** badge.
 - **Summary header** — the counts, `No changes` / `Drift detected` badges, the tool and
-  version, and a **`This digest was truncated.`** notice with per-note reasons when any
-  size cap was hit (see [Size caps](#size-caps--truncation)).
+  version, and a **Partial view** banner when any size cap was hit, with the reasons behind
+  a disclosure (see [Size caps](#size-caps--truncation)).
 - **Resource changes** — the resources the plan touches, grouped by action (import /
-  replace / destroy / add / change / read / forget) and filterable by address. Select a
-  resource to expand, directly under its row, a before → after table of only the changed
-  attributes. Unchanged resources are collapsed into a single **Unchanged (N)** line;
-  select it to list them.
+  replace / destroy / add / change / read / forget) and filterable by address. Action chips
+  (Destroy, Add, Change, …) narrow the list to one group. Select a resource to expand,
+  directly under its row, a before → after table of only the changed attributes. Unchanged
+  resources are collapsed into a single **Unchanged (N)** line; select it to list them.
 - **Drift** — drifted resources (from `resource_drift`), rendered as before → after diffs.
   Collapsed until you open it; its heading shows how many resources drifted.
 - **Output changes** — masked output changes. Unchanged outputs stay behind a
   **Show N unchanged outputs** link.
+- **Terraform CLI output** — when the same step also set `publishPlanResults` under the
+  same name, its colored CLI output, collapsed until you open it. CLI output published
+  under a name no structured plan uses gets its own section at the end of the pivot.
 
 Every section heading shows a count, and selecting it collapses or expands the section.
 
@@ -87,12 +103,16 @@ and still fails the task on a non-zero exit; publishing the summary does not cha
 - **Overview list** (when more than one apply is published) — each apply's name, counts,
   and success / failed outcome.
 - **Summary header** — counts, the `Succeeded` / `Failed` outcome badge, tool/version,
-  and the truncation notice when applicable.
+  how long the apply took, and the partial-view banner when applicable.
 - **Resources** — the apply timeline: per-resource action, status (`started` / `complete` /
-  `errored`), and duration, in the order Terraform reported them. On a failed apply, a
+  `errored`), and duration, with the three slowest resources named above it. A successful
+  apply lists resources in the order Terraform reported them; a failed apply groups them
+  as **Errored**, **Still running when the apply stopped**, and **Completed**, and a
   **Completed before the apply errored** list shows the addresses that finished first.
 - **Diagnostics** — errors first, then warnings, with the heading counting each (for
-  example `2 errors, 1 warning`); freeform text is scrubbed before display.
+  example `2 errors, 1 warning`); freeform text is scrubbed before display. On a failed
+  apply this section comes first. Diagnostics are only included when the apply step sets
+  `includeDiagnostics`, so a failed apply without them says so and points to the step log.
 - **Outputs** — masked final outputs.
 
 ## Reading the State pivot

@@ -3,7 +3,11 @@ import * as React from "react";
 export interface SectionProps {
     /** Fixed heading text supplied by the tab itself — never digest content. */
     title: string;
-    /** Count or short summary shown after the title, e.g. `40` or `"2 errors, 1 warning"`. */
+    /**
+     * Count or short qualifier shown after the title in parentheses, e.g. `40`,
+     * `"2 errors, 1 warning"`, or an attachment name. May be untrusted; like
+     * everything else it is rendered as a text node.
+     */
     count?: number | string;
     open: boolean;
     onToggle: () => void;

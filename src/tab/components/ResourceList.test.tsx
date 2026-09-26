@@ -24,6 +24,8 @@ function baseProps(overrides: Partial<ResourceListProps> = {}): ResourceListProp
     onSearchTextChange: jest.fn(),
     showUnchanged: false,
     onToggleUnchanged: jest.fn(),
+    actionFilter: null,
+    onActionFilterChange: jest.fn(),
     ...overrides,
   };
 }
@@ -238,6 +240,58 @@ describe("ResourceList", () => {
       expect(html).toContain("aws_instance.gone1");
       expect(html).not.toContain('data-testid="resource-row-aws_instance.same1"');
       expect(html).toMatch(/list truncated to 2 of 5 matching resources/i);
+    });
+  });
+
+  describe("action filter", () => {
+    const resources = [
+      resource({ address: "aws_instance.gone", actions: ["delete"] }),
+      resource({ address: "aws_instance.new", actions: ["create"] }),
+      resource({ address: "aws_instance.new2", actions: ["create"] }),
+      resource({ address: "aws_instance.same", actions: ["no-op"] }),
+    ];
+
+    it("offers an All chip and one chip per changed group, with counts", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources })} />);
+      expect(html).toContain('aria-pressed="true">All</button>');
+      expect(html).toContain('class="action-chip action-chip-delete" aria-pressed="false">Destroy 1</button>');
+      expect(html).toContain('class="action-chip action-chip-create" aria-pressed="false">Add 2</button>');
+      expect(html).not.toContain("action-chip-no-op");
+    });
+
+    it("offers no chips when only one changed group is listed", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources: resources.slice(1) })} />);
+      expect(html).not.toContain("action-filter");
+    });
+
+    it("shows only the filtered group and leaves Unchanged out", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, actionFilter: "delete", showUnchanged: true })} />);
+      expect(html).toContain("aws_instance.gone");
+      expect(html).not.toContain("resource-row-aws_instance.new");
+      expect(html).not.toContain("Unchanged (");
+      expect(html).toContain('class="action-chip action-chip-delete" aria-pressed="true">Destroy 1</button>');
+    });
+
+    it("toggles a chip: selects its group, and clicking the active chip clears the filter", () => {
+      const onActionFilterChange = jest.fn();
+      const chips = (filter: ResourceListProps["actionFilter"]): React.ReactElement[] => {
+        const el = callComponent(baseProps({ resources, actionFilter: filter, onActionFilterChange }));
+        const group = findNode(el, (n) => React.isValidElement(n) && (n.props as { className?: string }).className === "action-filter")!;
+        const [all, groupChips] = (group.props as { children: [React.ReactElement, React.ReactElement[]] }).children;
+        return [all, ...groupChips];
+      };
+      chips(null)[1].props.onClick();
+      expect(onActionFilterChange).toHaveBeenLastCalledWith("delete");
+      chips("delete")[1].props.onClick();
+      expect(onActionFilterChange).toHaveBeenLastCalledWith(null);
+      chips("create")[0].props.onClick();
+      expect(onActionFilterChange).toHaveBeenLastCalledWith(null);
+    });
+
+    it("keeps the active chip at zero matches and explains the empty list", () => {
+      const html = renderToStaticMarkup(<ResourceList {...baseProps({ resources, actionFilter: "delete", searchText: "new" })} />);
+      expect(html).toContain('aria-pressed="true">Destroy 0</button>');
+      expect(html).toMatch(/no resources match this filter/i);
     });
   });
 

@@ -1,4 +1,8 @@
 import * as React from "react";
+import { formatDuration } from "../format-duration";
+
+/** Truncation notes listed before the rest collapse into "and N more". */
+const MAX_NOTES_SHOWN = 20;
 
 export interface SummaryHeaderCounts {
     add: number;
@@ -37,6 +41,8 @@ export interface SummaryHeaderProps {
     truncated?: boolean;
     truncationNotes?: string[];
     toolLabel?: string;
+    /** Apply only: how long the whole apply took. */
+    durationMs?: number;
 }
 
 /**
@@ -47,12 +53,17 @@ export interface SummaryHeaderProps {
 export function SummaryHeader(props: SummaryHeaderProps): JSX.Element {
     const { title, kind, counts, stateCounts, noChanges, driftDetected, outcome, destroyMode, truncated, truncationNotes, toolLabel } =
         props;
+    const { durationMs } = props;
+    const notes = truncationNotes ?? [];
 
     return (
         <div className="summary-header">
             <div className="summary-header-title-row">
                 <span className="summary-header-title">{title}</span>
                 {toolLabel && <span className="summary-header-tool">{toolLabel}</span>}
+                {durationMs !== undefined && (
+                    <span className="summary-header-duration">took {formatDuration(durationMs)}</span>
+                )}
                 {kind === "plan" && destroyMode && <span className="badge badge-destroy">Destroy</span>}
                 {kind === "apply" && outcome && (
                     <span className={`badge badge-outcome-${outcome}`}>
@@ -88,14 +99,22 @@ export function SummaryHeader(props: SummaryHeaderProps): JSX.Element {
                 )
             )}
             {truncated && (
-                <div className="summary-header-truncated">
-                    <span>This digest was truncated.</span>
-                    {truncationNotes && truncationNotes.length > 0 && (
-                        <ul>
-                            {truncationNotes.map((note, i) => (
-                                <li key={i}>{note}</li>
-                            ))}
-                        </ul>
+                // A reviewer approving from this view must know they are not seeing
+                // all of it, so this is a banner, with the producer's notes behind it.
+                <div className="summary-header-truncated" role="note">
+                    <strong>Partial view.</strong> This digest was truncated, so some of it isn't shown here.
+                    {notes.length > 0 && (
+                        <details className="summary-header-truncation-notes">
+                            <summary>
+                                {notes.length} {notes.length === 1 ? "note" : "notes"}
+                            </summary>
+                            <ul>
+                                {notes.slice(0, MAX_NOTES_SHOWN).map((note, i) => (
+                                    <li key={i}>{note}</li>
+                                ))}
+                                {notes.length > MAX_NOTES_SHOWN && <li>and {notes.length - MAX_NOTES_SHOWN} more</li>}
+                            </ul>
+                        </details>
                     )}
                 </div>
             )}

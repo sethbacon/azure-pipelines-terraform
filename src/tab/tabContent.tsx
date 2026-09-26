@@ -36,9 +36,11 @@ import { parseDigestText } from "./digest-model";
 import { Diagnostic, Digest, OutputChange } from "./digest-schema";
 import { TAB_PARSE_CEILING_BYTES } from "./caps";
 import { memoizeOne } from "./memoize";
+import { Pivot, applyRisk, collectAttention, isFailedApply, planRisk, riskiestId } from "./attention";
+import { AttentionStrip } from "./components/AttentionStrip";
 import { SummaryHeader, SummaryHeaderCounts, SummaryHeaderStateCounts } from "./components/SummaryHeader";
 import { OverviewList, OverviewItem } from "./components/OverviewList";
-import { ResourceList, countChangedResources } from "./components/ResourceList";
+import { ActionGroup, ResourceList, countChangedResources } from "./components/ResourceList";
 import { DriftList } from "./components/DriftList";
 import { ApplyTimeline } from "./components/ApplyTimeline";
 import { OutputsPanel } from "./components/OutputsPanel";
@@ -55,6 +57,7 @@ import "./tabContent.css";
 // memoized per item array, and every handler is a class-bound arrow property —
 // so typing in the resource search re-renders the resource list without
 // re-rendering the summary, overview, drift, or outputs panels.
+const MemoAttentionStrip = React.memo(AttentionStrip);
 const MemoSummaryHeader = React.memo(SummaryHeader);
 const MemoOverviewList = React.memo(OverviewList);
 const MemoResourceList = React.memo(ResourceList);
@@ -64,29 +67,43 @@ const MemoDiagnosticsPanel = React.memo(DiagnosticsPanel);
 const MemoOutputsPanel = React.memo(OutputsPanel);
 const MemoStateInventory = React.memo(StateInventory);
 
-/** The collapsible sections of the three detail views. */
-type SectionKey =
+/** The fixed collapsible sections of the three detail views. */
+type FixedSectionKey =
     | "plan.changes"
     | "plan.drift"
     | "plan.outputs"
+    | "plan.cli"
     | "apply.resources"
     | "apply.diagnostics"
     | "apply.outputs"
     | "state.resources"
     | "state.outputs";
 
-const DEFAULT_SECTION_OPEN: Record<SectionKey, boolean> = {
+/**
+ * Every collapsible section: the fixed ones, plus one per legacy CLI output
+ * that no structured plan claims. The `cli:` prefix also keeps an attachment
+ * name from ever being used as a bare object key (`__proto__` and friends).
+ */
+type SectionKey = FixedSectionKey | `cli:${string}`;
+
+const DEFAULT_SECTION_OPEN: Record<FixedSectionKey, boolean> = {
     "plan.changes": true,
     // Collapsed until asked for: drift can run to thousands of attribute tables,
     // and the summary header's badge and this section's count already flag it.
     "plan.drift": false,
     "plan.outputs": true,
+    // The structured view comes first; the CLI output is there for reference.
+    "plan.cli": false,
     "apply.resources": true,
     "apply.diagnostics": true,
     "apply.outputs": true,
     "state.resources": true,
     "state.outputs": true,
 };
+
+function defaultSectionOpen(key: SectionKey): boolean {
+    return key.startsWith("cli:") ? false : DEFAULT_SECTION_OPEN[key as FixedSectionKey];
+}
 
 /** New structured attachment types (§7 of the design doc), additive to the legacy raw attachment. */
 const PLAN_SUMMARY_ATTACHMENT_TYPE = "terraform-plan-summary";
@@ -111,8 +128,6 @@ type DigestItem =
     | { id: string; name: string; status: "ok"; digest: Digest; unknownVersion: boolean; notes: string[]; raw: RawAttachment }
     | { id: string; name: string; status: "error"; message: string; raw: RawAttachment };
 
-type Pivot = "plan" | "apply" | "state";
-
 interface TerraformTabState {
     loading: boolean;
     error: string | null;
@@ -129,6 +144,8 @@ interface TerraformTabState {
     selectedLegacyIndex: number;
     selectedResourceAddress: string | null;
     resourceSearchText: string;
+    /** The action group the selected plan's resource list is narrowed to, if any. */
+    resourceActionFilter: ActionGroup | null;
     selectedStateAddress: string | null;
     stateSearchText: string;
     /** The digest item whose "View raw digest" expander is open, if any; only that one renders its raw body. */
@@ -183,6 +200,13 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     private readonly planOverview = memoizeOne((items: DigestItem[]) => items.map(toPlanOverviewItem));
     private readonly applyOverview = memoizeOne((items: DigestItem[]) => items.map(toApplyOverviewItem));
     private readonly stateOverview = memoizeOne((items: DigestItem[]) => items.map(toStateOverviewItem));
+    private readonly attention = memoizeOne(collectAttention);
+    /** Legacy CLI outputs whose name matches no structured plan, with their position in `legacyRaw`. */
+    private readonly unclaimedCliOutputs = memoizeOne((planItems: DigestItem[], legacyRaw: RawAttachment[]) =>
+        legacyRaw
+            .map((raw, index) => ({ raw, index }))
+            .filter(({ raw }) => !planItems.some((plan) => plan.name === raw.name))
+    );
     private readonly sectionToggles = new Map<SectionKey, () => void>();
 
     constructor(props: {}) {
@@ -202,6 +226,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             selectedLegacyIndex: 0,
             selectedResourceAddress: null,
             resourceSearchText: "",
+            resourceActionFilter: null,
             selectedStateAddress: null,
             stateSearchText: "",
             openRawDetails: null,
@@ -236,33 +261,29 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             );
         }
 
+        const anyApplyFailed = applyItems.some(isFailedApply);
+        const pivotTab = (pivot: Pivot, label: string, count: number, failed = false): JSX.Element => (
+            <button
+                role="tab"
+                aria-selected={this.state.activePivot === pivot}
+                className={`pivot-tab${this.state.activePivot === pivot ? " active" : ""}`}
+                onClick={() => this.setActivePivot(pivot)}
+            >
+                {label} <span className="pivot-count">{count}</span>
+                {failed && <span className="pivot-status-failed"> failed</span>}
+            </button>
+        );
+
         return (
             <div className="terraform-container">
+                <MemoAttentionStrip
+                    items={this.attention(planItems, applyItems, stateItems)}
+                    onSelect={this.onSelectAttention}
+                />
                 <div className="pivot-bar" role="tablist">
-                    <button
-                        role="tab"
-                        aria-selected={this.state.activePivot === "plan"}
-                        className={`pivot-tab${this.state.activePivot === "plan" ? " active" : ""}`}
-                        onClick={() => this.setActivePivot("plan")}
-                    >
-                        Plan
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={this.state.activePivot === "apply"}
-                        className={`pivot-tab${this.state.activePivot === "apply" ? " active" : ""}`}
-                        onClick={() => this.setActivePivot("apply")}
-                    >
-                        Apply
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={this.state.activePivot === "state"}
-                        className={`pivot-tab${this.state.activePivot === "state" ? " active" : ""}`}
-                        onClick={() => this.setActivePivot("state")}
-                    >
-                        State
-                    </button>
+                    {pivotTab("plan", "Plan", planItems.length > 0 ? planItems.length : legacyRaw.length)}
+                    {pivotTab("apply", "Apply", applyItems.length, anyApplyFailed)}
+                    {pivotTab("state", "State", stateItems.length)}
                 </div>
                 {this.state.activePivot === "plan" && this.renderPlanPivot()}
                 {this.state.activePivot === "apply" && this.renderApplyPivot()}
@@ -300,7 +321,37 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     <MemoOverviewList items={overviewItems} selectedId={selectedPlanId} onSelect={this.onSelectPlan} />
                 )}
                 {selected && this.renderPlanDetail(selected)}
+                {this.renderUnclaimedCliOutputs()}
             </div>
+        );
+    }
+
+    /**
+     * Legacy CLI output (`publishPlanResults`) whose name matches no structured
+     * plan, one collapsed section each. Without these it would only be
+     * reachable when no structured plan was published at all.
+     */
+    private renderUnclaimedCliOutputs(): JSX.Element | null {
+        const unclaimed = this.unclaimedCliOutputs(this.state.planItems, this.state.legacyRaw);
+        if (unclaimed.length === 0) return null;
+        return (
+            <React.Fragment>
+                {unclaimed.map(({ raw, index }) => {
+                    const key: SectionKey = `cli:${index}:${raw.name}`;
+                    return (
+                        <Section
+                            key={key}
+                            title="Terraform CLI output"
+                            count={raw.name}
+                            className="cli-section"
+                            open={this.isSectionOpen(key)}
+                            onToggle={this.sectionToggle(key)}
+                        >
+                            {() => <RawView name={raw.name} content={raw.content} format="ansi" />}
+                        </Section>
+                    );
+                })}
+            </React.Fragment>
         );
     }
 
@@ -313,7 +364,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         }
         const digest = item.digest;
         const drift = digest.drift;
-        const { selectedResourceAddress, resourceSearchText, showUnchangedResources, showUnchangedOutputs } = this.state;
+        const { selectedResourceAddress, resourceSearchText, resourceActionFilter, showUnchangedResources, showUnchangedOutputs } =
+            this.state;
+        // The same step usually publishes both under one name.
+        const cliOutput = this.state.legacyRaw.find((raw) => raw.name === item.name);
 
         return (
             <div className="digest-detail">
@@ -344,6 +398,8 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                             onSearchTextChange={this.onResourceSearchChange}
                             showUnchanged={showUnchangedResources}
                             onToggleUnchanged={this.onToggleUnchangedResources}
+                            actionFilter={resourceActionFilter}
+                            onActionFilterChange={this.onResourceActionFilterChange}
                         />
                     )}
                 </Section>
@@ -372,6 +428,16 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                         />
                     )}
                 </Section>
+                {cliOutput && (
+                    <Section
+                        title="Terraform CLI output"
+                        className="cli-section"
+                        open={this.isSectionOpen("plan.cli")}
+                        onToggle={this.sectionToggle("plan.cli")}
+                    >
+                        {() => <RawView name={cliOutput.name} content={cliOutput.content} format="ansi" />}
+                    </Section>
+                )}
                 {this.renderRawDetails("plan", item)}
             </div>
         );
@@ -411,6 +477,49 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             return this.renderDigestError({ message: "Unexpected digest kind.", raw: item.raw, name: item.name });
         }
         const digest = item.digest;
+        const failed = digest.outcome === "failed";
+        // The task leaves diagnostics out unless includeDiagnostics is set, and the
+        // digest doesn't record which happened, so an empty list on a failed apply
+        // is explained rather than shown as "No diagnostics".
+        const diagnosticsMissing = failed && digest.diagnostics.length === 0;
+
+        const resourcesSection = (
+            <Section
+                key="resources"
+                title="Resources"
+                count={digest.resources.length}
+                open={this.isSectionOpen("apply.resources")}
+                onToggle={this.sectionToggle("apply.resources")}
+            >
+                {() => (
+                    <MemoApplyTimeline
+                        resources={digest.resources}
+                        appliedBeforeFailure={digest.appliedBeforeFailure}
+                        outcome={digest.outcome}
+                    />
+                )}
+            </Section>
+        );
+        const diagnosticsSection = (
+            <Section
+                key="diagnostics"
+                title="Diagnostics"
+                count={diagnosticsMissing ? "none included" : formatDiagnosticCounts(digest.diagnostics)}
+                open={this.isSectionOpen("apply.diagnostics")}
+                onToggle={this.sectionToggle("apply.diagnostics")}
+            >
+                {() =>
+                    diagnosticsMissing ? (
+                        <p className="diagnostics-missing">
+                            No diagnostics were included in this summary. The task leaves them out unless the apply
+                            step sets <code>includeDiagnostics</code>; the step's log has the full error output.
+                        </p>
+                    ) : (
+                        <MemoDiagnosticsPanel diagnostics={digest.diagnostics} />
+                    )
+                }
+            </Section>
+        );
 
         return (
             <div className="digest-detail">
@@ -423,25 +532,10 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     truncated={digest.truncated}
                     truncationNotes={digest.truncationNotes}
                     toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+                    durationMs={digest.summary.durationMs}
                 />
-                <Section
-                    title="Resources"
-                    count={digest.resources.length}
-                    open={this.isSectionOpen("apply.resources")}
-                    onToggle={this.sectionToggle("apply.resources")}
-                >
-                    {() => (
-                        <MemoApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} />
-                    )}
-                </Section>
-                <Section
-                    title="Diagnostics"
-                    count={formatDiagnosticCounts(digest.diagnostics)}
-                    open={this.isSectionOpen("apply.diagnostics")}
-                    onToggle={this.sectionToggle("apply.diagnostics")}
-                >
-                    {() => <MemoDiagnosticsPanel diagnostics={digest.diagnostics} />}
-                </Section>
+                {/* A failed apply leads with why it failed. */}
+                {failed ? [diagnosticsSection, resourcesSection] : [resourcesSection, diagnosticsSection]}
                 <Section
                     title="Outputs"
                     count={digest.outputs.length}
@@ -612,7 +706,23 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     };
 
     private onSelectPlan = (id: string): void => {
-        this.setState({ selectedPlanId: id, selectedResourceAddress: null, resourceSearchText: "" });
+        this.setState({ selectedPlanId: id, selectedResourceAddress: null, resourceSearchText: "", resourceActionFilter: null });
+    };
+
+    /** Opens an item from the "Needs review" strip: its pivot, then the item itself. */
+    private onSelectAttention = (pivot: Pivot, id: string): void => {
+        this.setActivePivot(pivot);
+        if (pivot === "plan") {
+            if (this.state.selectedPlanId !== id) this.onSelectPlan(id);
+        } else if (pivot === "apply") {
+            this.onSelectApply(id);
+        } else if (this.state.selectedStateId !== id) {
+            this.onSelectState(id);
+        }
+    };
+
+    private onResourceActionFilterChange = (group: ActionGroup | null): void => {
+        this.setState({ resourceActionFilter: group });
     };
 
     private onSelectApply = (id: string): void => {
@@ -652,12 +762,12 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     };
 
     private isSectionOpen(key: SectionKey): boolean {
-        return this.state.sectionOpen[key] ?? DEFAULT_SECTION_OPEN[key];
+        return this.state.sectionOpen[key] ?? defaultSectionOpen(key);
     }
 
     private onToggleSection = (key: SectionKey): void => {
         this.setState((prev: TerraformTabState) => ({
-            sectionOpen: { ...prev.sectionOpen, [key]: !(prev.sectionOpen[key] ?? DEFAULT_SECTION_OPEN[key]) },
+            sectionOpen: { ...prev.sectionOpen, [key]: !(prev.sectionOpen[key] ?? defaultSectionOpen(key)) },
         }));
     };
 
@@ -829,6 +939,7 @@ type Selections = Pick<
     | "selectedLegacyIndex"
     | "selectedResourceAddress"
     | "resourceSearchText"
+    | "resourceActionFilter"
     | "selectedStateAddress"
     | "stateSearchText"
     | "openRawDetails"
@@ -842,7 +953,7 @@ type Selections = Pick<
  */
 function reconcileSelections(prev: TerraformTabState, loaded: LoadedResults, buildId: number): Selections {
     const carryOver = prev.loadedBuildId === buildId && hasResults(prev);
-    const selectedPlanId = keepSelectedId(carryOver ? prev.selectedPlanId : null, loaded.planItems);
+    const selectedPlanId = keepSelectedId(carryOver ? prev.selectedPlanId : null, loaded.planItems, planRisk);
     const selectedStateId = keepSelectedId(carryOver ? prev.selectedStateId : null, loaded.stateItems);
     // A resource selection and its search text belong to the plan (or state
     // item) they were made in: onSelectPlan/onSelectState clear both, so they
@@ -853,7 +964,7 @@ function reconcileSelections(prev: TerraformTabState, loaded: LoadedResults, bui
     return {
         activePivot: carryOver ? prev.activePivot : defaultPivot(loaded),
         selectedPlanId,
-        selectedApplyId: keepSelectedId(carryOver ? prev.selectedApplyId : null, loaded.applyItems),
+        selectedApplyId: keepSelectedId(carryOver ? prev.selectedApplyId : null, loaded.applyItems, applyRisk),
         selectedStateId,
         selectedLegacyIndex: carryOver ? keepLegacyIndex(prev, loaded.legacyRaw) : 0,
         selectedResourceAddress:
@@ -861,6 +972,7 @@ function reconcileSelections(prev: TerraformTabState, loaded: LoadedResults, bui
                 ? prev.selectedResourceAddress
                 : null,
         resourceSearchText: planKept ? prev.resourceSearchText : "",
+        resourceActionFilter: planKept ? prev.resourceActionFilter : null,
         selectedStateAddress:
             stateKept && hasResource(loaded.stateItems, selectedStateId, prev.selectedStateAddress)
                 ? prev.selectedStateAddress
@@ -882,16 +994,26 @@ function hasResults(results: LoadedResults): boolean {
     );
 }
 
-/** The pivot a first load opens on: Plan when there is a plan (structured or legacy raw), else the first of Apply/State with results. */
+/**
+ * The pivot a first load opens on: Apply when an apply failed (why it failed
+ * is the first question), else Plan when there is a plan (structured or legacy
+ * raw), else the first of Apply/State with results.
+ */
 function defaultPivot(loaded: LoadedResults): Pivot {
+    if (loaded.applyItems.some(isFailedApply)) return "apply";
     if (loaded.planItems.length > 0 || loaded.legacyRaw.length > 0) return "plan";
     if (loaded.applyItems.length > 0) return "apply";
     return loaded.stateItems.length > 0 ? "state" : "plan";
 }
 
-/** `id` if it still names one of `items`, else the first item's id (the first-load default). */
-function keepSelectedId(id: string | null, items: DigestItem[]): string | null {
-    return id !== null && items.some((i) => i.id === id) ? id : items[0]?.id ?? null;
+/**
+ * `id` if it still names one of `items`, else the first-load default: the item
+ * that most needs review by `risk` (ties keep list order), or the first item
+ * when there is no risk ordering.
+ */
+function keepSelectedId(id: string | null, items: DigestItem[], risk?: (item: DigestItem) => number): string | null {
+    if (id !== null && items.some((i) => i.id === id)) return id;
+    return risk ? riskiestId(items, risk) : items[0]?.id ?? null;
 }
 
 /** Legacy raw attachments are selected by position; follow the selected one by name when the list changes. */

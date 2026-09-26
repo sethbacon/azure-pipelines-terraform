@@ -267,10 +267,135 @@
     font-family: var(--tf-mono);
 }
 
+/* A reviewer must not mistake a truncated digest for the whole plan. */
 .summary-header-truncated {
-    margin-top: 6px;
-    color: var(--tf-warning);
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--tf-warning-surface);
+    color: var(--tf-text);
+    border: 1px solid var(--tf-warning);
+    border-radius: 4px;
     font-size: 12px;
+}
+
+.summary-header-truncation-notes {
+    margin-top: 4px;
+}
+
+.summary-header-truncation-notes summary {
+    cursor: pointer;
+    color: var(--tf-text-secondary);
+}
+
+.summary-header-truncation-notes ul {
+    margin: 4px 0 0 0;
+    padding-left: 18px;
+}
+
+.summary-header-duration {
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+}
+
+/* --- "Needs review" strip (AttentionStrip.tsx) --- */
+
+.attention-strip {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--tf-warning);
+    border-left-width: 4px;
+    border-radius: 0 4px 4px 0;
+    background: var(--tf-warning-surface);
+}
+
+.attention-strip-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.attention-strip-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.attention-item-open {
+    display: block;
+    width: 100%;
+    padding: 2px 0;
+    text-align: left;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.attention-item-open:hover .attention-item-name {
+    text-decoration: underline;
+}
+
+.attention-item-pivot {
+    display: inline-block;
+    min-width: 40px;
+    color: var(--tf-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.attention-item-name {
+    font-family: var(--tf-mono);
+    font-weight: 600;
+}
+
+.attention-critical .attention-item-reason {
+    color: var(--tf-error);
+}
+
+.attention-strip-more {
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+}
+
+/* --- Pivot counts, action filter chips --- */
+
+.pivot-count {
+    color: var(--tf-text-secondary);
+    font-weight: 400;
+    font-size: 12px;
+}
+
+.pivot-status-failed {
+    color: var(--tf-error);
+    font-size: 12px;
+}
+
+.action-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.action-chip {
+    padding: 2px 10px;
+    font-size: 12px;
+    color: var(--tf-text);
+    background: var(--tf-surface-raised);
+    border: 1px solid var(--tf-border-strong);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.action-chip[aria-pressed="true"] {
+    color: var(--tf-on-accent);
+    background: var(--tf-accent);
+    border-color: var(--tf-accent);
+}
+
+.diagnostics-missing {
+    margin: 0;
+    color: var(--tf-text-secondary);
 }
 
 .badge {
@@ -602,6 +727,27 @@
 .apply-timeline-address {
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+.apply-timeline-group-heading {
+    margin: 10px 0 4px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tf-text-secondary);
+}
+
+.apply-timeline-group-errored .apply-timeline-group-heading {
+    color: var(--tf-error);
+}
+
+.apply-timeline-slowest {
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--tf-text-secondary);
+}
+
+.apply-timeline-slowest .apply-timeline-address {
+    font-family: var(--tf-mono);
 }
 
 .apply-timeline-status,

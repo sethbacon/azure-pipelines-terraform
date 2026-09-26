@@ -143,6 +143,8 @@ function renderPlanDetail(digest: Extract<Digest, { kind: "plan" }>): string {
         onSearchTextChange={() => undefined}
         showUnchanged={true}
         onToggleUnchanged={() => undefined}
+        actionFilter={null}
+        onActionFilterChange={() => undefined}
       />
       {digest.resources.map((r) => (
         <ResourceDiff key={r.address} resource={r} />
@@ -167,8 +169,9 @@ function renderApplyDetail(digest: Extract<Digest, { kind: "apply" }>): string {
         truncated={digest.truncated}
         truncationNotes={digest.truncationNotes}
         toolLabel={`${digest.tool.name} ${digest.tool.version}`}
+        durationMs={digest.summary.durationMs}
       />
-      <ApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} />
+      <ApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} outcome={digest.outcome} />
       <DiagnosticsPanel diagnostics={digest.diagnostics} />
       <OutputsPanel outputs={digest.outputs} />
     </div>
