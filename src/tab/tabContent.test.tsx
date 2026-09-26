@@ -1445,3 +1445,72 @@ describe('TerraformPlanTab pipeline order and loading', () => {
     expect(textSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('TerraformPlanTab compares an apply with its plan', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  type MatchHandlers = TabHandlers & { onSelectAttention(pivot: Pivot, id: string): void };
+  const h = (tab: TerraformPlanTab): MatchHandlers => tab as unknown as MatchHandlers;
+
+  /** A plan and an apply published under the same name, as the same pipeline usually does. */
+  async function loadPair(applyOverrides: Record<string, unknown> = {}): Promise<TerraformPlanTab> {
+    (getClient as jest.Mock).mockReturnValue({
+      getAttachments: jest.fn((_p: string, _id: number, type: string) => {
+        if (type === PLAN_SUMMARY_TYPE) return Promise.resolve([{ name: 'prod', _links: { self: { href: 'https://example.test/plan/prod' } } }]);
+        if (type === APPLY_SUMMARY_TYPE) return Promise.resolve([{ name: 'prod', _links: { self: { href: 'https://example.test/apply/prod' } } }]);
+        return Promise.resolve([]);
+      }),
+    });
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn((url: string) => {
+      const body = url.includes('/apply/') ? JSON.stringify(validApplyDigest(applyOverrides)) : JSON.stringify(validPlanDigest());
+      return Promise.resolve({ ok: true, text: () => Promise.resolve(body), headers: { get: () => null } });
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    return tab;
+  }
+
+  it('says an apply that did what its plan listed matches it, from both sides', async () => {
+    const tab = await loadPair();
+    h(tab).setActivePivot('apply');
+    expect(html(tab)).toContain('Matches plan <span class="plan-match-name">prod</span>');
+    h(tab).setActivePivot('plan');
+    expect(html(tab)).toContain('Applied by <span class="plan-match-name">prod</span>, as planned');
+    expect(html(tab)).not.toContain('attention-strip');
+  });
+
+  it('flags an apply that changed something its plan did not list', async () => {
+    const tab = await loadPair({
+      resources: [
+        { address: 'aws_instance.web', action: 'create', status: 'complete' },
+        { address: 'aws_instance.unplanned', action: 'delete', status: 'complete' },
+      ],
+    });
+    h(tab).setActivePivot('apply');
+    const out = html(tab);
+    expect(out).toContain('Differs from plan');
+    expect(out).toContain('aws_instance.unplanned');
+    expect(out).toContain('<li class="attention-item attention-critical">');
+    expect(out).toContain('doesn&#x27;t match its plan');
+  });
+
+  it('opens the paired plan from the apply', async () => {
+    const tab = await loadPair();
+    h(tab).onSelectAttention('plan', 'prod#0');
+    expect(tabState(tab)).toMatchObject({ activePivot: 'plan', selectedPlanId: 'prod#0' });
+  });
+
+  it('pairs nothing when the names differ', async () => {
+    mockLoad({
+      planNames: ['plan-a'],
+      applyNames: ['apply-a'],
+      bodies: { 'plan-a': JSON.stringify(validPlanDigest()), 'apply-a': JSON.stringify(validApplyDigest()) },
+    });
+    const tab = makeTestableTab();
+    await tab.loadAll(build);
+    expect(html(tab)).not.toContain('plan-match');
+  });
+});

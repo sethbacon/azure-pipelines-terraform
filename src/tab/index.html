@@ -4,6 +4,16 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <!--
+        Content-Security-Policy for the tab iframe (see security-tripwires.test.ts):
+        - script-src 'self': only the bundled tabContent.js runs; no inline script, no eval.
+        - style-src 'unsafe-inline': the extension SDK applies the host theme by injecting a
+          <style> element, and the bundle injects its own stylesheet the same way.
+        - connect-src https: http:: REST and attachment requests go to the organization's
+          Azure DevOps host, which on Azure DevOps Server can be any host, over http or https.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https: http:; img-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Terraform Plan</title>
 </head>
 

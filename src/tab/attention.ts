@@ -119,14 +119,22 @@ function stateReasons(item: AttentionSource): { severity: AttentionSeverity; rea
 export function collectAttention(
     plans: AttentionSource[],
     applies: AttentionSource[],
-    states: AttentionSource[]
+    states: AttentionSource[],
+    /** Applies that don't match their same-name plan (plan-match.ts), and how serious that is. */
+    planMismatches: ReadonlyMap<string, AttentionSeverity> = new Map()
 ): AttentionItem[] {
     const items: AttentionItem[] = [];
     const add = (pivot: Pivot, source: AttentionSource, found: { severity: AttentionSeverity; reasons: string[] }): void => {
         const reasons = [...found.reasons];
+        let severity = found.severity;
+        const mismatch = pivot === "apply" ? planMismatches.get(source.id) : undefined;
+        if (mismatch) {
+            reasons.push("doesn't match its plan");
+            if (mismatch === "critical") severity = "critical";
+        }
         if (source.origin && !source.origin.fromTerraformTask) reasons.push("published by a step that isn't the Terraform task");
         if (reasons.length === 0) return;
-        items.push({ pivot, id: source.id, name: source.name, severity: found.severity, reason: reasons.join(" · ") });
+        items.push({ pivot, id: source.id, name: source.name, severity, reason: reasons.join(" · ") });
     };
     for (const apply of applies) add("apply", apply, applyReasons(apply));
     for (const plan of plans) add("plan", plan, planReasons(plan));
