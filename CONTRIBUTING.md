@@ -391,7 +391,7 @@ npm run build:release                # clean → deps → compile tasks → prun
 2. `deps` — runs `npm install` in each task subdirectory.
 3. `compile` — `tsc -b` each task's `tsconfig.json`.
 4. `deps:prune` — removes dev dependencies from each task (trims the `.vsix`).
-5. `webpack` — bundles `src/tab/tabContent.tsx` → `build/tab/tabContent.js`, copies the manifest, images, `overview.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `Tasks/` directory (excluding Tests/TS sources) into `build/`.
+5. `webpack` — bundles and minifies `src/tab/tabContent.tsx` → `build/tab/tabContent.js` (with `tabContent.js.map` and the extracted `tabContent.js.LICENSE.txt` beside it), copies the manifest, images, `overview.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `Tasks/` directory (excluding Tests/TS sources) into `build/`. The `Tasks/` copy is not minified: every task ships exactly as compiled, `node_modules` included (see the openpgp note in `THIRD_PARTY_NOTICES.md`).
 
 ### Inspecting a dev build locally
 

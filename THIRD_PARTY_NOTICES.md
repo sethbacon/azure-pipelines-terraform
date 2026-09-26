@@ -34,14 +34,17 @@ repositories.
 > **openpgp (LGPL-3.0-or-later) relinking note:** openpgp ships as the unmodified files
 > published to npm — copied into `TerraformInstallerV1`'s and `PolicyAgentInstallerV1`'s
 > `node_modules/openpgp` as-is, not minified or otherwise transformed into a single bundle.
+> (`webpack.config.js` minifies only the tab bundle; it marks the copied `Tasks/` tree as
+> already minimized, so Terser leaves every task file as it was compiled or installed.)
 > The corresponding source for relinking/modification purposes is therefore simply the
 > package's public upstream source, https://github.com/openpgpjs/openpgpjs (also retrievable
 > from the npm registry tarball for the exact version pinned in each task's `package.json`).
 
 ## Terraform results tab dependencies (webpack-bundled)
 
-`src/tab/tabContent.tsx` and its component tree are webpack-bundled into a single
-`build/tab/tabContent.js` inside the `.vsix` (see CONTRIBUTING.md). These four packages are
+`src/tab/tabContent.tsx` and its component tree are webpack-bundled and minified into a single
+`build/tab/tabContent.js` inside the `.vsix`, with the bundled packages' license headers
+extracted to `build/tab/tabContent.js.LICENSE.txt` beside it (see CONTRIBUTING.md). These four packages are
 root `devDependencies` (not task-level runtime `dependencies`) but their compiled code is
 embedded in that bundle, so they are listed here for completeness:
 
