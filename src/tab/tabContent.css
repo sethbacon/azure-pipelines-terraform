@@ -156,17 +156,19 @@
     text-align: center;
 }
 
-.plan-oversize a {
+.plan-oversize button {
     display: inline-block;
     margin-top: 12px;
     padding: 8px 16px;
+    font-size: inherit;
     background: var(--tf-accent);
     color: var(--tf-on-accent);
-    text-decoration: none;
+    border: none;
     border-radius: 4px;
+    cursor: pointer;
 }
 
-.plan-oversize a:hover {
+.plan-oversize button:hover {
     filter: brightness(1.15);
 }
 

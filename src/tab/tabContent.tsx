@@ -18,10 +18,12 @@
  * See THIRD_PARTY_NOTICES.md for full attribution.
  * No code was copied from either project. All implementation below is original.
  *
- * SECURITY: this component (and every component it composes, other than
- * RawView) renders every digest value as a React text node — never via
- * `dangerouslySetInnerHTML` — per design §5.3/§8.1. `digest-model.ts` is the
- * only place raw fetched JSON is parsed; nothing here ever spreads an
+ * SECURITY: this component (and every component it composes) renders every
+ * digest value as a React text node — never via `dangerouslySetInnerHTML` —
+ * per design §5.3/§8.1; that includes the raw digest views, which use
+ * RawView's "text" format. RawView's "ansi" format, the tab's one HTML sink,
+ * is only ever given legacy `terraform-plan-results` output. `digest-model.ts`
+ * is the only place raw fetched JSON is parsed; nothing here ever spreads an
  * untrusted parsed object into state or props.
  */
 
@@ -67,14 +69,18 @@ type DigestItem =
     | { id: string; name: string; status: "ok"; digest: Digest; unknownVersion: boolean; notes: string[]; raw: RawAttachment }
     | { id: string; name: string; status: "error"; message: string; raw: RawAttachment };
 
+type Pivot = "plan" | "apply" | "state";
+
 interface TerraformTabState {
     loading: boolean;
     error: string | null;
-    activePivot: "plan" | "apply" | "state";
+    activePivot: Pivot;
     planItems: DigestItem[];
     applyItems: DigestItem[];
     stateItems: DigestItem[];
     legacyRaw: RawAttachment[];
+    /** The build the items above were loaded from; a reload of the same build keeps the user's selections. */
+    loadedBuildId: number | null;
     selectedPlanId: string | null;
     selectedApplyId: string | null;
     selectedStateId: string | null;
@@ -83,6 +89,8 @@ interface TerraformTabState {
     resourceSearchText: string;
     selectedStateAddress: string | null;
     stateSearchText: string;
+    /** The digest item whose "View raw digest" expander is open, if any; only that one renders its raw body. */
+    openRawDetails: { pivot: Pivot; id: string } | null;
 }
 
 function byNameCaseInsensitive<T extends { name: string }>(a: T, b: T): number {
@@ -95,6 +103,14 @@ function driftAsPlanResource(drift: NonNullable<Extract<Digest, { kind: "plan" }
 }
 
 export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
+    /**
+     * onBuildChanged fires again as the build progresses, possibly while an
+     * earlier loadAll is still downloading. Each load takes the next number;
+     * only the newest may commit, so an older load that finishes late can
+     * never overwrite newer results or errors.
+     */
+    private loadSequence = 0;
+
     constructor(props: {}) {
         super(props);
         this.state = {
@@ -105,6 +121,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             applyItems: [],
             stateItems: [],
             legacyRaw: [],
+            loadedBuildId: null,
             selectedPlanId: null,
             selectedApplyId: null,
             selectedStateId: null,
@@ -113,6 +130,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
             resourceSearchText: "",
             selectedStateAddress: null,
             stateSearchText: "",
+            openRawDetails: null,
         };
     }
 
@@ -256,7 +274,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     </div>
                 )}
                 <OutputsPanel outputs={digest.outputChanges} />
-                {this.renderRawDetails(item.raw)}
+                {this.renderRawDetails("plan", item)}
             </div>
         );
     }
@@ -312,7 +330,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 <ApplyTimeline resources={digest.resources} appliedBeforeFailure={digest.appliedBeforeFailure} />
                 <DiagnosticsPanel diagnostics={digest.diagnostics} />
                 <OutputsPanel outputs={digest.outputs} />
-                {this.renderRawDetails(item.raw)}
+                {this.renderRawDetails("apply", item)}
             </div>
         );
     }
@@ -371,7 +389,7 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                     onSearchTextChange={this.onStateSearchTextChange}
                 />
                 <OutputsPanel outputs={digest.outputs} />
-                {this.renderRawDetails(item.raw)}
+                {this.renderRawDetails("state", item)}
             </div>
         );
     }
@@ -382,16 +400,28 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 <p>
                     Could not render structured results for <strong>{item.name}</strong>: {item.message}
                 </p>
-                <RawView name={item.raw.name} content={item.raw.content} />
+                <RawView name={item.raw.name} content={item.raw.content} format="text" />
             </div>
         );
     }
 
-    private renderRawDetails(raw: RawAttachment): JSX.Element {
+    /**
+     * The collapsed "View raw digest" expander under each structured detail
+     * view. Its body is only rendered while it is open: the tab re-renders on
+     * every state change (each search keystroke), and re-rendering up to 2 MB
+     * of raw digest behind a closed expander each time is pure overhead.
+     */
+    private renderRawDetails(pivot: Pivot, item: DigestItem): JSX.Element {
+        const { openRawDetails } = this.state;
+        const open = openRawDetails !== null && openRawDetails.pivot === pivot && openRawDetails.id === item.id;
         return (
-            <details className="raw-details">
+            <details
+                className="raw-details"
+                open={open}
+                onToggle={(event) => this.onRawDetailsToggle(pivot, item.id, event.currentTarget.open)}
+            >
                 <summary>View raw digest</summary>
-                <RawView name={raw.name} content={raw.content} />
+                {open && <RawView name={item.raw.name} content={item.raw.content} format="text" />}
             </details>
         );
     }
@@ -424,13 +454,26 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                         <strong>{selected.name}</strong>
                     </div>
                 )}
-                {selected && <RawView name={selected.name} content={selected.content} />}
+                {selected && <RawView name={selected.name} content={selected.content} format="ansi" />}
             </div>
         );
     }
 
-    private setActivePivot = (pivot: "plan" | "apply" | "state"): void => {
+    private setActivePivot = (pivot: Pivot): void => {
         this.setState({ activePivot: pivot });
+    };
+
+    /**
+     * Mirrors a raw-digest expander's DOM `toggle` event into state. A close
+     * reported by any expander other than the open one is ignored: that is
+     * React closing a reused <details> element after the selection moved on.
+     */
+    private onRawDetailsToggle = (pivot: Pivot, id: string, open: boolean): void => {
+        this.setState((prev: TerraformTabState) => {
+            const isOpen = prev.openRawDetails !== null && prev.openRawDetails.pivot === pivot && prev.openRawDetails.id === id;
+            if (open === isOpen) return null;
+            return { openRawDetails: open ? { pivot, id } : null };
+        });
     };
 
     private onSelectPlan = (id: string): void => {
@@ -469,16 +512,23 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         this.setState({ selectedLegacyIndex: parseInt(event.target.value, 10) });
     };
 
-    /** Fetch an attachment's body, parse it as a plan/apply digest, and classify it as ok/error. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's behavior. */
+    /** Fetch an attachment's body, parse it as a plan/apply digest, and classify it as ok/error. Non-OK HTTP responses and network failures are skipped (logged), matching the legacy loader's behavior. Stops early once `isStale` reports a newer load, whose results will replace these. */
     private async loadDigestItems(
         attachments: AttachmentRef[],
         authHeader: string,
-        expectedKind: "plan" | "apply" | "state"
+        expectedKind: "plan" | "apply" | "state",
+        isStale: () => boolean
     ): Promise<DigestItem[]> {
         const items: DigestItem[] = [];
-        for (let i = 0; i < attachments.length; i++) {
-            const attachment = attachments[i];
-            const id = `${attachment.name}#${i}`;
+        // The id keys the selection across reloads, so it counts only earlier
+        // attachments of the same name rather than the position in the list: an
+        // attachment published later in the build must not renumber the rest.
+        const occurrences = new Map<string, number>();
+        for (const attachment of attachments) {
+            if (isStale()) break;
+            const occurrence = occurrences.get(attachment.name) ?? 0;
+            occurrences.set(attachment.name, occurrence + 1);
+            const id = `${attachment.name}#${occurrence}`;
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
                 if (!response.ok) continue;
@@ -534,9 +584,14 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
         return items;
     }
 
-    private async loadRawAttachments(attachments: AttachmentRef[], authHeader: string): Promise<RawAttachment[]> {
+    private async loadRawAttachments(
+        attachments: AttachmentRef[],
+        authHeader: string,
+        isStale: () => boolean
+    ): Promise<RawAttachment[]> {
         const items: RawAttachment[] = [];
         for (const attachment of attachments) {
+            if (isStale()) break;
             try {
                 const response = await fetch(attachment._links.self.href, { headers: { Authorization: authHeader } });
                 if (response.ok) {
@@ -551,6 +606,8 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
     }
 
     public async loadAll(build: Build): Promise<void> {
+        const sequence = ++this.loadSequence;
+        const isStale = (): boolean => sequence !== this.loadSequence;
         try {
             const buildClient = getClient(BuildRestClient);
             const accessToken = await SDK.getAccessToken();
@@ -562,47 +619,135 @@ export class TerraformPlanTab extends React.Component<{}, TerraformTabState> {
                 buildClient.getAttachments(build.project.id, build.id, STATE_SUMMARY_ATTACHMENT_TYPE),
                 buildClient.getAttachments(build.project.id, build.id, LEGACY_RAW_ATTACHMENT_TYPE),
             ]);
+            if (isStale()) return;
 
             const [planItems, applyItems, stateItems, legacyRaw] = await Promise.all([
-                this.loadDigestItems(planAttachments ?? [], authHeader, "plan"),
-                this.loadDigestItems(applyAttachments ?? [], authHeader, "apply"),
-                this.loadDigestItems(stateAttachments ?? [], authHeader, "state"),
-                this.loadRawAttachments(legacyAttachments ?? [], authHeader),
+                this.loadDigestItems(planAttachments ?? [], authHeader, "plan", isStale),
+                this.loadDigestItems(applyAttachments ?? [], authHeader, "apply", isStale),
+                this.loadDigestItems(stateAttachments ?? [], authHeader, "state", isStale),
+                this.loadRawAttachments(legacyAttachments ?? [], authHeader, isStale),
             ]);
+            if (isStale()) return;
 
             planItems.sort(byNameCaseInsensitive);
             applyItems.sort(byNameCaseInsensitive);
             stateItems.sort(byNameCaseInsensitive);
             legacyRaw.sort(byNameCaseInsensitive);
 
-            const activePivot =
-                planItems.length === 0 && legacyRaw.length === 0 && applyItems.length === 0 && stateItems.length > 0
-                    ? "state"
-                    : planItems.length === 0 && legacyRaw.length === 0 && applyItems.length > 0
-                    ? "apply"
-                    : "plan";
-
-            this.setState({
-                planItems,
-                applyItems,
-                stateItems,
-                legacyRaw,
-                selectedPlanId: planItems[0]?.id ?? null,
-                selectedApplyId: applyItems[0]?.id ?? null,
-                selectedStateId: stateItems[0]?.id ?? null,
-                selectedLegacyIndex: 0,
-                selectedResourceAddress: null,
-                resourceSearchText: "",
-                selectedStateAddress: null,
-                stateSearchText: "",
-                activePivot,
+            const loaded: LoadedResults = { planItems, applyItems, stateItems, legacyRaw };
+            this.setState((prev: TerraformTabState) => ({
+                ...loaded,
+                ...reconcileSelections(prev, loaded, build.id),
+                loadedBuildId: build.id,
+                error: null,
                 loading: false,
-            });
+            }));
         } catch (err) {
+            if (isStale()) return;
             const message = err instanceof Error ? err.message : String(err);
             this.setState({ error: message, loading: false });
         }
     }
+}
+
+interface LoadedResults {
+    planItems: DigestItem[];
+    applyItems: DigestItem[];
+    stateItems: DigestItem[];
+    legacyRaw: RawAttachment[];
+}
+
+type Selections = Pick<
+    TerraformTabState,
+    | "activePivot"
+    | "selectedPlanId"
+    | "selectedApplyId"
+    | "selectedStateId"
+    | "selectedLegacyIndex"
+    | "selectedResourceAddress"
+    | "resourceSearchText"
+    | "selectedStateAddress"
+    | "stateSearchText"
+    | "openRawDetails"
+>;
+
+/**
+ * The user's selections after a load. A reload of the same build keeps each
+ * selection whose target still exists in the new data, and only what no
+ * longer resolves falls back to its default; a first load (nothing shown
+ * yet) or a different build starts from the defaults.
+ */
+function reconcileSelections(prev: TerraformTabState, loaded: LoadedResults, buildId: number): Selections {
+    const carryOver = prev.loadedBuildId === buildId && hasResults(prev);
+    const selectedPlanId = keepSelectedId(carryOver ? prev.selectedPlanId : null, loaded.planItems);
+    const selectedStateId = keepSelectedId(carryOver ? prev.selectedStateId : null, loaded.stateItems);
+    // A resource selection and its search text belong to the plan (or state
+    // item) they were made in: onSelectPlan/onSelectState clear both, so they
+    // survive only alongside that item.
+    const planKept = carryOver && selectedPlanId !== null && selectedPlanId === prev.selectedPlanId;
+    const stateKept = carryOver && selectedStateId !== null && selectedStateId === prev.selectedStateId;
+    const openRawDetails = carryOver ? prev.openRawDetails : null;
+    return {
+        activePivot: carryOver ? prev.activePivot : defaultPivot(loaded),
+        selectedPlanId,
+        selectedApplyId: keepSelectedId(carryOver ? prev.selectedApplyId : null, loaded.applyItems),
+        selectedStateId,
+        selectedLegacyIndex: carryOver ? keepLegacyIndex(prev, loaded.legacyRaw) : 0,
+        selectedResourceAddress:
+            planKept && hasResource(loaded.planItems, selectedPlanId, prev.selectedResourceAddress)
+                ? prev.selectedResourceAddress
+                : null,
+        resourceSearchText: planKept ? prev.resourceSearchText : "",
+        selectedStateAddress:
+            stateKept && hasResource(loaded.stateItems, selectedStateId, prev.selectedStateAddress)
+                ? prev.selectedStateAddress
+                : null,
+        stateSearchText: stateKept ? prev.stateSearchText : "",
+        openRawDetails:
+            openRawDetails !== null && itemsForPivot(loaded, openRawDetails.pivot).some((i) => i.id === openRawDetails.id)
+                ? openRawDetails
+                : null,
+    };
+}
+
+function hasResults(results: LoadedResults): boolean {
+    return (
+        results.planItems.length > 0 ||
+        results.applyItems.length > 0 ||
+        results.stateItems.length > 0 ||
+        results.legacyRaw.length > 0
+    );
+}
+
+/** The pivot a first load opens on: Plan when there is a plan (structured or legacy raw), else the first of Apply/State with results. */
+function defaultPivot(loaded: LoadedResults): Pivot {
+    if (loaded.planItems.length > 0 || loaded.legacyRaw.length > 0) return "plan";
+    if (loaded.applyItems.length > 0) return "apply";
+    return loaded.stateItems.length > 0 ? "state" : "plan";
+}
+
+/** `id` if it still names one of `items`, else the first item's id (the first-load default). */
+function keepSelectedId(id: string | null, items: DigestItem[]): string | null {
+    return id !== null && items.some((i) => i.id === id) ? id : items[0]?.id ?? null;
+}
+
+/** Legacy raw attachments are selected by position; follow the selected one by name when the list changes. */
+function keepLegacyIndex(prev: TerraformTabState, legacyRaw: RawAttachment[]): number {
+    const name = prev.legacyRaw[prev.selectedLegacyIndex]?.name;
+    if (name === undefined) return 0;
+    if (legacyRaw[prev.selectedLegacyIndex]?.name === name) return prev.selectedLegacyIndex;
+    return Math.max(0, legacyRaw.findIndex((raw) => raw.name === name));
+}
+
+/** Whether the item `id` in `items` is a parsed digest that has a resource at `address`. */
+function hasResource(items: DigestItem[], id: string | null, address: string | null): boolean {
+    if (address === null) return false;
+    const item = items.find((i) => i.id === id);
+    return item !== undefined && item.status === "ok" && item.digest.resources.some((r) => r.address === address);
+}
+
+function itemsForPivot(loaded: LoadedResults, pivot: Pivot): DigestItem[] {
+    return pivot === "plan" ? loaded.planItems : pivot === "apply" ? loaded.applyItems : loaded.stateItems;
 }
 
 function toPlanOverviewItem(item: DigestItem): OverviewItem {
