@@ -97,8 +97,21 @@ ceiling, rather than being read in full first.
   (Destroy, Add, Change, …) narrow the list to one group. Select a resource to expand,
   directly under its row, a before → after table of only the changed attributes. Unchanged
   resources are collapsed into a single **Unchanged (N)** line; select it to list them.
-- **Drift** — drifted resources (from `resource_drift`), rendered as before → after diffs.
-  Collapsed until you open it; its heading shows how many resources drifted.
+  - Each row gives the reason in Terraform's own wording ("must be replaced", "no longer
+    in configuration", …) and tags a replacement that creates the new resource before
+    destroying the old one.
+  - In the attribute table, the attributes that force a replacement are tagged **forces
+    replacement**. A resource being created shows each attribute's new value, and one being
+    destroyed its current value, instead of a column of `null`s.
+  - For a changed map, list or nested block — tags, a `site_config` block, a JSON policy
+    document inside a string — the row lists only the keys and elements that changed
+    (`+` added, `-` removed, `~` changed) and how many stayed the same, with both full
+    values behind **Full values**.
+  - `(sensitive)`, `(known after apply)` and `(value omitted: too large)` are styled apart
+    from real values, including where they appear inside a map or list.
+- **Drift** — drifted resources (from `resource_drift`), each comparing what Terraform's
+  state recorded (**In state**) with what the provider found (**Actual**). Collapsed until
+  you open it; its heading shows how many resources drifted.
 - **Output changes** — masked output changes. Unchanged outputs stay behind a
   **Show N unchanged outputs** link.
 - **Terraform CLI output** — when the same step also set `publishPlanResults` under the

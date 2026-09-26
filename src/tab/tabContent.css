@@ -746,6 +746,79 @@
     color: var(--tf-success);
 }
 
+/* "(sensitive)", "(known after apply)", "(value omitted: too large)": styled
+   apart so a masked value never reads as a literal one. */
+.value-placeholder {
+    font-style: italic;
+    color: var(--tf-text-secondary);
+}
+
+.forces-replacement {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+    color: var(--tf-error);
+    border: 1px solid var(--tf-error);
+}
+
+.resource-row-tag {
+    color: var(--tf-warning);
+    font-size: 12px;
+}
+
+/* --- Structural value diff (ValueDiff.tsx) --- */
+
+.value-diff-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.value-diff-entry {
+    overflow-wrap: anywhere;
+}
+
+.value-diff-sign {
+    display: inline-block;
+    width: 1ch;
+    font-weight: 700;
+}
+
+.value-diff-added .value-diff-sign {
+    color: var(--tf-success);
+}
+
+.value-diff-removed .value-diff-sign {
+    color: var(--tf-error);
+}
+
+.value-diff-changed .value-diff-sign {
+    color: var(--tf-warning);
+}
+
+.value-diff-path {
+    font-weight: 600;
+}
+
+.value-diff-note {
+    color: var(--tf-text-secondary);
+    font-size: 12px;
+}
+
+.resource-diff-full summary {
+    cursor: pointer;
+    color: var(--tf-accent-text);
+    font-size: 12px;
+}
+
+.resource-diff-full > div {
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+}
+
 .apply-timeline-list {
     list-style: none;
     margin: 0;

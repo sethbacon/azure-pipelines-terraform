@@ -34,7 +34,7 @@ export function DriftList({ drift, maxRenderedRows }: DriftListProps): JSX.Eleme
                 </div>
             )}
             {shown.map((d) => (
-                <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} />
+                <ResourceDiff key={d.address} resource={driftAsPlanResource(d)} mode="drift" />
             ))}
         </div>
     );
