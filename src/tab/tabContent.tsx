@@ -28,6 +28,7 @@
  */
 
 import * as React from "react";
+import { flushSync } from "react-dom";
 import * as ReactDOM from "react-dom/client";
 import * as SDK from "azure-devops-extension-sdk";
 import { Build, BuildRestClient } from "azure-devops-extension-api/Build";
@@ -1327,6 +1328,24 @@ function aggregateStateRollup(items: Array<Extract<DigestItem, { status: "ok" }>
     return counts;
 }
 
+/**
+ * Renders the tab into `container` and loads each build the host announces
+ * through `onBuildChanged`. The first render is flushed synchronously, so the
+ * tab has mounted before the handler is registered: `root.render()` commits
+ * asynchronously, and a build announced before that commit used to be
+ * dropped, leaving the tab on its loading screen until the host announced the
+ * build again. Returns the root so a caller can unmount it.
+ */
+export function mountTab(container: Element, onBuildChanged: (handler: (build: Build) => void) => void): ReactDOM.Root {
+    const tabRef = React.createRef<TerraformPlanTab>();
+    const root = ReactDOM.createRoot(container);
+    flushSync(() => root.render(<TerraformPlanTab ref={tabRef} />));
+    onBuildChanged((build: Build) => {
+        tabRef.current?.loadAll(build);
+    });
+    return root;
+}
+
 // Initialize the Azure DevOps Extension SDK and render the tab
 SDK.init();
 
@@ -1340,16 +1359,7 @@ SDK.ready().then(() => {
     }
 
     if (typeof config.onBuildChanged === "function") {
-        const tabRef = React.createRef<TerraformPlanTab>();
-        const root = ReactDOM.createRoot(container);
-
-        root.render(<TerraformPlanTab ref={tabRef} />);
-
-        config.onBuildChanged((build: Build) => {
-            if (tabRef.current) {
-                tabRef.current.loadAll(build);
-            }
-        });
+        mountTab(container, (handler) => config.onBuildChanged(handler));
     } else {
         const root = ReactDOM.createRoot(container);
         root.render(
