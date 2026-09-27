@@ -24,8 +24,9 @@ module.exports = {
             // per-attachment fetch failure, top-level failure). Actual coverage is
             // ~82/81/63/83; a few points of headroom is kept below that so a small,
             // legitimate code change doesn't fail the gate. The module-level SDK
-            // bootstrap block (SDK.ready().then(...) wiring) stays uncovered by
-            // design — it needs a real DOM (jsdom), see tabContent.test.tsx.
+            // bootstrap block (SDK.ready().then(...)) stays uncovered by design;
+            // the mounting and build wiring it delegates to, mountTab(), is
+            // covered in tabContent.dom.test.tsx.
             statements: 80,
             branches: 78,
             functions: 60,

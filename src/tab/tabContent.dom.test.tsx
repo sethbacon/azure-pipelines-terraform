@@ -29,7 +29,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { getClient } from 'azure-devops-extension-api';
-import { TerraformPlanTab } from './tabContent';
+import { TerraformPlanTab, mountTab } from './tabContent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -217,5 +217,53 @@ describe('TerraformPlanTab in a live DOM', () => {
     expect(container.querySelector('.resource-row.selected')?.textContent).toContain('aws_instance.web_0');
     expect(rawDetails().open).toBe(true);
     expect(rawDetails().querySelector('.raw-view pre')?.textContent).toBe(SMALL_PLAN);
+  });
+});
+
+describe('mountTab', () => {
+  let hostContainer: HTMLDivElement;
+  let hostRoot: Root | undefined;
+
+  beforeEach(() => {
+    hostContainer = document.createElement('div');
+    document.body.appendChild(hostContainer);
+  });
+
+  afterEach(() => {
+    const mounted = hostRoot;
+    if (mounted) act(() => mounted.unmount());
+    hostRoot = undefined;
+    hostContainer.remove();
+  });
+
+  it('loads a build the host announces before the first render would have committed', async () => {
+    mockPlanAttachments({ 'plan-small': SMALL_PLAN });
+
+    await act(async () => {
+      // The earliest a host could announce the build: from inside the registration call.
+      hostRoot = mountTab(hostContainer, (handler) => handler(build));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(hostContainer.textContent).not.toContain('Loading terraform results');
+    expect(hostContainer.querySelector('[data-testid="resource-row-aws_instance.web_0"]')).not.toBeNull();
+  });
+
+  it('loads each later announcement too', async () => {
+    mockPlanAttachments({ 'plan-small': SMALL_PLAN });
+    let announce: ((b: never) => void) | undefined;
+
+    await act(async () => {
+      hostRoot = mountTab(hostContainer, (handler) => {
+        announce = handler;
+      });
+    });
+    expect(hostContainer.textContent).toContain('Loading terraform results');
+
+    await act(async () => {
+      announce?.(build);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(hostContainer.querySelector('[data-testid="resource-row-aws_instance.web_0"]')).not.toBeNull();
   });
 });
