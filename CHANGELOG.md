@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.17.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.0...v1.17.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **tab:** load a build announced before mount ([#1197](https://github.com/sethbacon/azure-pipelines-terraform/issues/1197)) ([d1cb0f2](https://github.com/sethbacon/azure-pipelines-terraform/commit/d1cb0f2ec58891d28a1e21d6c763b75c1bcd44c9))
+
 ## [1.17.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.16.4...v1.17.0) (2026-09-26)
 
 
