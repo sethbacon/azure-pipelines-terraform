@@ -43,6 +43,22 @@ function fakeClient(responses: HttpResponse[]): { client: HttpClient; calls: Cal
     return { client, calls };
 }
 
+/** A PollClock whose sleep advances a virtual clock instead of waiting, recording each requested wait. */
+function fakeClock(random: number): { clock: priv.PollClock; sleeps: number[] } {
+    let now = 0;
+    const sleeps: number[] = [];
+    const clock: priv.PollClock = {
+        now: () => now,
+        sleep: (ms) => {
+            sleeps.push(ms);
+            now += ms;
+            return Promise.resolve();
+        },
+        random: () => random,
+    };
+    return { clock, sleeps };
+}
+
 describe('http client transport', () => {
     it('refuses to send credentials over a non-HTTPS URL', async () => {
         const client = createHttpsClient(true);
@@ -670,11 +686,232 @@ describe('private-publisher', () => {
         });
 
         it('throws when sync is rejected', async () => {
-            const { client } = fakeClient([
+            const { client, calls } = fakeClient([
                 { status: 200, body: '{"id":"mod-1"}' },
                 { status: 403, body: '{"error":"nope"}' },
             ]);
             await assert.rejects(() => new priv.PrivateRegistryPublisher(client, opts, noop).publish(), /Failed to trigger sync|PrivateTriggerSyncFailed/);
+            assert.strictEqual(calls.length, 2, 'a 4xx sync rejection is a received verdict and must not be retried');
+        });
+
+        const syncUrl = 'https://r.example.com/api/v1/admin/modules/mod-1/scm/sync';
+        const rateLimited: HttpResponse = {
+            status: 429,
+            body: '{"error":"Rate limit exceeded","retry_after":60}',
+            headers: { 'retry-after': '0' },
+        };
+
+        it('retries a 429 on the sync trigger instead of failing the publish', async () => {
+            // The incident: ~30 releases approved at once against one registry API
+            // key. The backend's rate limiter rejects before the sync handler runs,
+            // so the rejected sync had no effect and repeating it is safe.
+            const { client, calls } = fakeClient([
+                { status: 200, body: '{"id":"mod-1","versions":[]}' },
+                rateLimited,
+                { status: 202, body: '' },
+            ]);
+            const result = await new priv.PrivateRegistryPublisher(client, opts, noop).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls.length, 3);
+            assert.strictEqual(calls[1].url, syncUrl);
+            assert.strictEqual(calls[2].url, syncUrl, 'the sync should have been retried after the 429');
+        });
+
+        it('fails with the 429 once the sync retry budget is exhausted', async () => {
+            const { client, calls } = fakeClient([
+                { status: 200, body: '{"id":"mod-1","versions":[]}' },
+                rateLimited,
+            ]);
+            await assert.rejects(
+                () => new priv.PrivateRegistryPublisher(client, opts, noop).publish(),
+                /(Failed to trigger sync|PrivateTriggerSyncFailed).*429/,
+            );
+            assert.strictEqual(calls.length, 5, 'GET + the initial sync + 3 retries');
+        });
+
+        it('returns without syncing when the registry already lists the requested version', async () => {
+            // Makes a re-run of a partially-failed release cheap: no admin call, no
+            // polling, and nothing for a still-exhausted rate limit to reject.
+            const { client, calls } = fakeClient([
+                { status: 200, body: '{"id":"mod-1","versions":[{"version":"0.9.0"},{"version":"1.0.0"}]}' },
+            ]);
+            const result = await new priv.PrivateRegistryPublisher(client, { ...opts, waitForPublish: true }, noop).publish();
+            assert.strictEqual(result.published, false);
+            assert.match(result.message, /already published|PrivateVersionAlreadyPublished/);
+            assert.strictEqual(calls.length, 1, 'no sync or poll should follow for a version the registry already lists');
+        });
+
+        it('still syncs when the registry lists only other versions', async () => {
+            const { client, calls } = fakeClient([
+                { status: 200, body: '{"id":"mod-1","versions":[{"version":"0.9.0"}]}' },
+                { status: 202, body: '' },
+            ]);
+            const result = await new priv.PrivateRegistryPublisher(client, opts, noop).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls.length, 2);
+            assert.strictEqual(calls[1].url, syncUrl);
+        });
+
+        describe('repairing a module created by an earlier run that failed to link it', () => {
+            const notLinked: HttpResponse = { status: 404, body: '{"error":"module is not linked to a repository"}' };
+            const existing: HttpResponse = { status: 200, body: '{"id":"mod-1","versions":[]}' };
+            const linkUrl = 'https://r.example.com/api/v1/admin/modules/mod-1/scm';
+
+            it('links the module and retries the sync once when the sync reports it is not linked', async () => {
+                const { client, calls } = fakeClient([
+                    existing,                         // GET module: exists (created by the earlier run)
+                    notLinked,                        // POST sync: never linked
+                    { status: 201, body: '{}' },      // POST SCM link
+                    { status: 202, body: '' },        // POST sync, retried
+                ]);
+                const result = await new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish();
+                assert.strictEqual(result.published, true);
+                assert.strictEqual(calls.length, 4);
+                assert.strictEqual(calls[2].method, 'POST');
+                assert.strictEqual(calls[2].url, linkUrl);
+                assert.deepStrictEqual(JSON.parse(calls[2].body as string), {
+                    provider_id: 'prov-1', repository_owner: 'Terraform', repository_name: 'terraform-aws-networking-vpc',
+                    default_branch: 'main', tag_pattern: 'v*',
+                });
+                assert.strictEqual(calls[3].url, syncUrl);
+            });
+
+            it('treats a 409 on the repair link as already linked and still retries the sync', async () => {
+                const { client, calls } = fakeClient([
+                    existing,
+                    notLinked,
+                    { status: 409, body: '{"error":"module is already linked to a repository"}' },
+                    { status: 202, body: '' },
+                ]);
+                const result = await new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish();
+                assert.strictEqual(result.published, true);
+                assert.strictEqual(calls.length, 4);
+                assert.strictEqual(calls[3].url, syncUrl);
+            });
+
+            it('retries the sync only once: a second not-linked 404 fails the publish', async () => {
+                const { client, calls } = fakeClient([
+                    existing,
+                    notLinked,
+                    { status: 201, body: '{}' },
+                    notLinked,
+                ]);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
+                    /(Failed to trigger sync|PrivateTriggerSyncFailed).*404/,
+                );
+                assert.strictEqual(calls.length, 4);
+            });
+
+            it('surfaces a failed repair link as the link error', async () => {
+                const { client, calls } = fakeClient([
+                    existing,
+                    notLinked,
+                    { status: 403, body: '{"error":"forbidden"}' },
+                ]);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
+                    /Failed to SCM-link|PrivateScmLinkFailed/,
+                );
+                assert.strictEqual(calls.length, 3);
+            });
+
+            it('does not attempt a link without the SCM inputs', async () => {
+                const { client, calls } = fakeClient([existing, notLinked]);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, opts, noop).publish(),
+                    /(Failed to trigger sync|PrivateTriggerSyncFailed).*404/,
+                );
+                assert.strictEqual(calls.length, 2);
+            });
+
+            it('does not re-link a module this same run just created and linked', async () => {
+                const { client, calls } = fakeClient([
+                    { status: 404, body: '{}' },            // GET module: absent
+                    { status: 201, body: '{"id":"mod-1"}' }, // POST create
+                    { status: 201, body: '{}' },            // POST SCM link
+                    notLinked,                              // POST sync: re-linking cannot fix this
+                ]);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, autoOpts, noop).publish(),
+                    /(Failed to trigger sync|PrivateTriggerSyncFailed).*404/,
+                );
+                assert.strictEqual(calls.length, 4);
+            });
+        });
+
+        describe('wait-for-publish polling', () => {
+            const pending: HttpResponse = { status: 200, body: '{"id":"mod-1","versions":[]}' };
+            const ready: HttpResponse = { status: 200, body: '{"id":"mod-1","versions":[{"version":"1.0.0"}]}' };
+            const accepted: HttpResponse = { status: 202, body: '' };
+            const waitOpts = { ...opts, waitForPublish: true };
+
+            it('backs the poll interval off exponentially to a 30s ceiling instead of polling every 3s', async () => {
+                // The poll shares the sync's rate-limited API key. At a fixed 3s it
+                // was 60 requests per publish over the 180s default -- the largest
+                // load on the shared bucket during a burst of releases.
+                const { client, calls } = fakeClient([pending, accepted, pending]);
+                const { clock, sleeps } = fakeClock(1);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, { ...waitOpts, timeoutSeconds: 180 }, noop, clock).publish(),
+                    /Timed out after 180s|PrivateWaitTimedOut/,
+                );
+                assert.deepStrictEqual(sleeps, [3000, 6000, 12000, 24000, 30000, 30000, 30000, 30000, 15000]);
+                assert.strictEqual(calls.length - 2, 10, 'polls issued within the 180s deadline');
+            });
+
+            it('jitters each wait within the upper half of its window so concurrent publishers do not poll in lockstep', async () => {
+                const { client } = fakeClient([pending, accepted, pending]);
+                const { clock, sleeps } = fakeClock(0);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, { ...waitOpts, timeoutSeconds: 180 }, noop, clock).publish(),
+                    /Timed out after 180s|PrivateWaitTimedOut/,
+                );
+                assert.deepStrictEqual(sleeps.slice(0, 6), [1500, 3000, 6000, 12000, 15000, 15000]);
+            });
+
+            it('clamps the last wait so the final poll lands on the deadline rather than past it', async () => {
+                const { client, calls } = fakeClient([pending, accepted, pending]);
+                const { clock, sleeps } = fakeClock(1);
+                await assert.rejects(
+                    () => new priv.PrivateRegistryPublisher(client, { ...waitOpts, timeoutSeconds: 10 }, noop, clock).publish(),
+                    /Timed out after 10s|PrivateWaitTimedOut/,
+                );
+                assert.deepStrictEqual(sleeps, [3000, 6000, 1000]);
+                assert.strictEqual(calls.length - 2, 4);
+            });
+
+            it('waits at least a 429 poll\'s Retry-After (capped at 30s), never less than its own backoff', async () => {
+                const { client, calls } = fakeClient([
+                    pending,
+                    accepted,
+                    { status: 429, body: '{}', headers: { 'retry-after': '20' } },  // backoff 3s  -> 20s
+                    { status: 429, body: '{}', headers: { 'retry-after': '120' } }, // backoff 6s  -> capped 30s
+                    { status: 429, body: '{}', headers: { 'retry-after': '1' } },   // backoff 12s -> 12s
+                    ready,
+                ]);
+                const { clock, sleeps } = fakeClock(1);
+                const result = await new priv.PrivateRegistryPublisher(client, { ...waitOpts, timeoutSeconds: 180 }, noop, clock).publish();
+                assert.strictEqual(result.published, true);
+                assert.deepStrictEqual(sleeps, [20000, 30000, 12000]);
+                assert.strictEqual(calls.length, 6);
+            });
+
+            it('logs a non-2xx poll instead of silently swallowing it', async () => {
+                const logs: string[] = [];
+                const { client } = fakeClient([
+                    pending,
+                    accepted,
+                    { status: 429, body: '{}', headers: { 'retry-after': '20' } },
+                    ready,
+                ]);
+                const { clock } = fakeClock(1);
+                await new priv.PrivateRegistryPublisher(client, { ...waitOpts, timeoutSeconds: 180 }, (m) => logs.push(m), clock).publish();
+                assert.ok(
+                    logs.some((m) => /(PrivatePollNonSuccess|Status poll returned HTTP) 429/.test(m)),
+                    `expected the 429 poll to be logged, got: ${JSON.stringify(logs)}`,
+                );
+            });
         });
 
         it('waits for the version to appear when waitForPublish is set', async () => {

@@ -290,7 +290,9 @@ Publishes a module version to HCP Terraform / Terraform Enterprise or a private 
 
 HCP VCS-backed publishing also accepts `vcsRepoIdentifier`, `vcsBranch`, `vcsOauthTokenId`, and `commitSha`.
 
-For a private registry, a brand-new module normally has to be registered and SCM-linked once before its first release. Supplying `scmProviderId`, `repositoryOwner`, and `repositoryName` makes the task do that automatically on a `404`: it creates the module record, links it to its SCM repository, then triggers the tag sync. The API key must have `modules:publish` and `modules:write` scopes. Omit these inputs to keep the pre-register-first behavior.
+For a private registry, a brand-new module normally has to be registered and SCM-linked once before its first release. Supplying `scmProviderId`, `repositoryOwner`, and `repositoryName` makes the task do that automatically on a `404`: it creates the module record, links it to its SCM repository, then triggers the tag sync. The same inputs let a re-run finish a module an earlier run created but failed to link: when the sync reports the module is not linked, the task links it and retries the sync once. The API key must have `modules:publish` and `modules:write` scopes. Omit these inputs to keep the pre-register-first behavior.
+
+Releasing many modules at once against one private-registry API key can hit the registry's rate limit. The task retries a rate-limited (`429`) sync, honoring `Retry-After` up to 30 seconds, and backs off its `waitForPublish` status poll. A version the registry already lists succeeds without triggering a sync, so re-running a partially-failed batch of releases is cheap.
 
 ---
 

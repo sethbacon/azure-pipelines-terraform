@@ -38,6 +38,12 @@ function isRetryableStatus(status: number): boolean {
     return status >= 500 || status === 429;
 }
 
+/** A response's Retry-After header in ms, capped by parseRetryAfterMs; undefined when absent or invalid. */
+export function retryAfterMs(response: HttpResponse): number | undefined {
+    const retryAfter = response.headers?.['retry-after'];
+    return parseRetryAfterMs(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter);
+}
+
 /**
  * Wraps a single HTTP call with bounded exponential-backoff retry on TRANSIENT
  * failures only — a thrown transport error (socket timeout / connection reset)
@@ -45,9 +51,10 @@ function isRetryableStatus(status: number): boolean {
  * (including 202/404/422, which the publishers handle explicitly) is returned
  * immediately and never retried. Use this only for calls that are safe to
  * repeat: idempotent GETs, or POSTs the caller has already made idempotent
- * (e.g. the 422-tolerant version create). Genuine create/sync POSTs with no
- * server-side idempotency must NOT be wrapped, to avoid duplicate resources on a
- * retry after a lost response.
+ * (e.g. the 422-tolerant version create) or the server makes idempotent (e.g.
+ * the private registry's SCM sync, which skips versions that already exist).
+ * A POST with no idempotency on either side must NOT be wrapped, to avoid
+ * duplicate resources on a retry after a lost response.
  *
  * A 429 Retry-After (#633), when present on the response, is honored (capped)
  * over the default exponential backoff -- see the delayMs override below.
@@ -74,10 +81,9 @@ export async function retryHttp(
         // to the default exponential backoff.
         delayMs: (_attempt, backoffMs, outcome) => {
             if (outcome.kind === 'result' && outcome.result.status === 429) {
-                const retryAfter = outcome.result.headers?.['retry-after'];
-                const retryAfterMs = parseRetryAfterMs(Array.isArray(retryAfter) ? retryAfter[0] : retryAfter);
-                if (retryAfterMs !== undefined) {
-                    return retryAfterMs;
+                const serverDelayMs = retryAfterMs(outcome.result);
+                if (serverDelayMs !== undefined) {
+                    return serverDelayMs;
                 }
             }
             return backoffMs;

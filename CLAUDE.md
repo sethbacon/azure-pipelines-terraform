@@ -366,7 +366,7 @@ Source: `Tasks/TerraformModulePublish/TerraformModulePublishV1/src/`. Publishes 
 | ---------------------- | ------------------------------------------------------------------------------------------------------- |
 | `index.ts`             | Entry point — reads inputs, dispatches to the chosen `registryType`                                     |
 | `hcp-publisher.ts`     | Publishes via the HCP Terraform module registry API; polls ingest status                                |
-| `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent          |
+| `private-publisher.ts` | Publishes to a private registry via its API (`apiKey` auth); auto-creates the module if absent, skips a version the registry already lists, retries a rate-limited sync, re-links a module an earlier run left unlinked, and backs off its status poll (honoring `Retry-After`) |
 | `http.ts`              | Shared HTTP client with bounded retry (`retryHttp()` — the reference implementation other tasks mirror) |
 | `https-client.ts`      | Task-side wiring over `@4cloudguru/pipeline-task-core`'s raw-https transport; byte-identical copy in TerraformDriftReportV1 |
 | `types.ts`             | Shared type definitions for both publishers                                                             |
