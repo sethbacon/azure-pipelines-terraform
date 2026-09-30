@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.17.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.1...v1.17.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **module-publish:** retry rate-limited sync ([#1203](https://github.com/sethbacon/azure-pipelines-terraform/issues/1203)) ([5c1b8d3](https://github.com/sethbacon/azure-pipelines-terraform/commit/5c1b8d308e23236188177ad88e818cbe765df8d6))
+
 ## [1.17.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.0...v1.17.1) (2026-09-27)
 
 
