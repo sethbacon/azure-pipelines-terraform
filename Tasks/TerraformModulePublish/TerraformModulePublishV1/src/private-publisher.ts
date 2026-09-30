@@ -1,5 +1,6 @@
-import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
+import { HttpClient, HttpResponse, parseJson, delay, retryAfterMs, retryHttp, truncateBody } from './http';
 import { ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
+import { RETRY_AFTER_CAP_MS } from '@4cloudguru/pipeline-task-core';
 import tasks = require('azure-pipelines-task-lib/task');
 
 /** Inputs for publishing to a private registry (terraform-registry-backend). */
@@ -96,22 +97,53 @@ export function linkBody(o: PrivateRegistryOptions): string {
     });
 }
 
+function listsVersion(module: ModuleResponse, version: string): boolean {
+    return Array.isArray(module.versions) && module.versions.some((v) => v.version === version);
+}
+
 export function hasVersion(body: string, version: string): boolean {
-    const parsed = parseJson<ModuleResponse>(body);
-    return Array.isArray(parsed.versions) && parsed.versions.some((v) => v.version === version);
+    return listsVersion(parseJson<ModuleResponse>(body), version);
+}
+
+/** Time source for the wait-for-publish poll loop, injectable so tests need not really sleep. */
+export interface PollClock {
+    now(): number;
+    sleep(ms: number): Promise<void>;
+    random(): number;
+}
+
+const systemClock: PollClock = { now: () => Date.now(), sleep: delay, random: Math.random };
+
+/** First wait-for-publish poll interval; each later one doubles, up to POLL_MAX_MS. */
+const POLL_INITIAL_MS = 3000;
+/** Poll interval ceiling -- the same cap applied to a server-supplied Retry-After. */
+const POLL_MAX_MS = RETRY_AFTER_CAP_MS;
+
+/**
+ * The wait after poll `pollIndex`: capped exponential backoff with equal jitter,
+ * i.e. a value in the upper half of min(POLL_MAX_MS, POLL_INITIAL_MS * 2^pollIndex).
+ * The status poll shares the sync's rate-limited API key, so a fixed 3s interval
+ * across a burst of concurrent publishes was the largest load on that bucket;
+ * the jitter keeps publishers started together from polling in lockstep.
+ */
+function pollBackoffMs(pollIndex: number, random: number): number {
+    const ceiling = Math.min(POLL_MAX_MS, POLL_INITIAL_MS * 2 ** pollIndex);
+    return Math.round(ceiling / 2 + random * (ceiling / 2));
 }
 
 /**
  * Publishes by triggering the registry's SCM tag-sync; the registry imports the freshly-pushed
  * git tag as a new version. When the module does not yet exist and the SCM registration inputs
  * (scmProviderId, repositoryOwner, repositoryName) are provided, it is created and SCM-linked
- * first; otherwise a missing module is a hard error.
+ * first; otherwise a missing module is a hard error. A version the registry already lists is
+ * reported as already published without triggering a sync.
  */
 export class PrivateRegistryPublisher implements RegistryPublisher {
     constructor(
         private readonly http: HttpClient,
         private readonly options: PrivateRegistryOptions,
         private readonly log: (message: string) => void = console.log,
+        private readonly clock: PollClock = systemClock,
     ) { }
 
     async publish(): Promise<PublishResult> {
@@ -121,14 +153,25 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
 
         const moduleResp = await retryHttp(() => this.http('GET', modUrl, authHeader), { log: this.log });
         let moduleId: string | undefined;
+        let linkedThisRun = false;
         if (moduleResp.status === 404) {
             // Brand-new module: auto-create + SCM-link when the caller supplied the
             // registration inputs; otherwise preserve the original hard error.
             moduleId = await this.createAndLinkModule(authHeader);
+            linkedThisRun = true;
         } else if (moduleResp.status < 200 || moduleResp.status >= 300) {
             throw new Error(tasks.loc('PrivateResolveModuleFailed', moduleResp.status, truncateBody(moduleResp.body)));
         } else {
-            moduleId = parseJson<ModuleResponse>(moduleResp.body).id;
+            const moduleRecord = parseJson<ModuleResponse>(moduleResp.body);
+            if (listsVersion(moduleRecord, version)) {
+                // Nothing to import, so no admin call and no polling: a re-run after a
+                // partially-failed burst of releases costs one GET per module.
+                return {
+                    published: false,
+                    message: tasks.loc('PrivateVersionAlreadyPublished', version, namespace, name, provider),
+                };
+            }
+            moduleId = moduleRecord.id;
         }
         if (!moduleId) {
             throw new Error(tasks.loc('PrivateNoModuleId'));
@@ -137,7 +180,17 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
             throw new Error(tasks.loc('PrivateModuleIdInvalid', moduleId));
         }
 
-        const syncResp = await this.http('POST', syncUrl(registryUrl, moduleId), authHeader);
+        let syncResp = await this.triggerSync(moduleId, authHeader);
+        if (syncResp.status === 404 && !linkedThisRun && this.hasScmInputs()) {
+            // The sync endpoint's only 404 (no `tag` is sent) is "module is not linked
+            // to a repository": an earlier run created the record but its link call
+            // failed. Link it now (409 = already linked) and retry the sync once. A
+            // module this run just linked is excluded -- re-linking could not change
+            // the answer.
+            this.log(tasks.loc('PrivateSyncModuleNotLinked', namespace, name, provider));
+            await this.linkModule(moduleId, authHeader);
+            syncResp = await this.triggerSync(moduleId, authHeader);
+        }
         if (syncResp.status !== 202) {
             throw new Error(tasks.loc('PrivateTriggerSyncFailed', syncResp.status, truncateBody(syncResp.body)));
         }
@@ -154,6 +207,26 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
     }
 
     /**
+     * Triggers the registry's SCM tag-sync. Wrapped in retryHttp (429 honoring a
+     * capped Retry-After, 5xx, transport errors) because a repeated sync cannot
+     * duplicate anything: terraform-registry-backend's rate limiter rejects a 429
+     * before the handler runs, and a sync that did run skips every version that
+     * already exists and guards a tag being imported concurrently
+     * (services/scm_publisher.go).
+     */
+    private triggerSync(moduleId: string, authHeader: Record<string, string>): Promise<HttpResponse> {
+        return retryHttp(
+            () => this.http('POST', syncUrl(this.options.registryUrl, moduleId), authHeader),
+            { log: this.log },
+        );
+    }
+
+    private hasScmInputs(): boolean {
+        const { scmProviderId, repositoryOwner, repositoryName } = this.options;
+        return Boolean(scmProviderId && repositoryOwner && repositoryName);
+    }
+
+    /**
      * Creates and SCM-links a module that does not yet exist, returning its id.
      * Requires scmProviderId, repositoryOwner, and repositoryName; without them a
      * missing module is a hard error, exactly as before. The create call is a
@@ -161,8 +234,8 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
      * so both are safe to wrap in retryHttp against a transient 5xx / lost response.
      */
     private async createAndLinkModule(authHeader: Record<string, string>): Promise<string> {
-        const { registryUrl, namespace, name, provider, scmProviderId, repositoryOwner, repositoryName } = this.options;
-        if (!scmProviderId || !repositoryOwner || !repositoryName) {
+        const { registryUrl, namespace, name, provider } = this.options;
+        if (!this.hasScmInputs()) {
             throw new Error(tasks.loc('PrivateModuleNotFoundNoScmInputs', namespace, name, provider));
         }
         const jsonHeaders = { ...authHeader, 'Content-Type': 'application/json' };
@@ -184,7 +257,14 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
         }
         this.log(tasks.loc('PrivateModuleRecordCreated', namespace, name, provider));
 
-        // Link it to its SCM repository. A 409 means it is already linked — treat as success.
+        await this.linkModule(moduleId, authHeader);
+        return moduleId;
+    }
+
+    /** Links a module to its SCM repository. A 409 means it is already linked — treat as success. */
+    private async linkModule(moduleId: string, authHeader: Record<string, string>): Promise<void> {
+        const { registryUrl, namespace, name, provider, repositoryOwner, repositoryName } = this.options;
+        const jsonHeaders = { ...authHeader, 'Content-Type': 'application/json' };
         const linkResp = await retryHttp(
             () => this.http('POST', linkUrl(registryUrl, moduleId), jsonHeaders, linkBody(this.options)),
             { log: this.log },
@@ -196,26 +276,41 @@ export class PrivateRegistryPublisher implements RegistryPublisher {
         } else {
             this.log(tasks.loc('PrivateScmLinked', namespace, name, provider, repositoryOwner, repositoryName));
         }
-        return moduleId;
     }
 
+    /**
+     * Polls until the version appears or timeoutSeconds elapses. Every poll spends
+     * the same rate-limited API key as the sync, so the interval backs off
+     * (pollBackoffMs) and a 429's Retry-After is honored; the last wait is clamped
+     * so the final poll lands on the deadline instead of overshooting it.
+     */
     private async waitForVersion(modUrl: string, authHeader: Record<string, string>): Promise<boolean> {
-        const deadline = Date.now() + this.options.timeoutSeconds * 1000;
-        for (; ;) {
+        const deadline = this.clock.now() + this.options.timeoutSeconds * 1000;
+        for (let pollIndex = 0; ; pollIndex++) {
+            let resp: HttpResponse | undefined;
             // A single poll failing (e.g. a per-request timeout or transient 5xx)
             // must not abort the wait; keep polling until the wall-clock deadline.
             try {
-                const resp = await this.http('GET', modUrl, authHeader);
+                resp = await this.http('GET', modUrl, authHeader);
                 if (resp.status >= 200 && resp.status < 300 && hasVersion(resp.body, this.options.version)) {
                     return true;
                 }
             } catch (err) {
                 this.log(tasks.loc('PrivatePollingFailed', err instanceof Error ? err.message : String(err)));
             }
-            if (Date.now() >= deadline) {
+            const remainingMs = deadline - this.clock.now();
+            if (remainingMs <= 0) {
                 return false;
             }
-            await delay(3000);
+            let waitMs = pollBackoffMs(pollIndex, this.clock.random());
+            if (resp?.status === 429) {
+                waitMs = Math.max(waitMs, retryAfterMs(resp) ?? 0);
+            }
+            waitMs = Math.min(waitMs, remainingMs);
+            if (resp && (resp.status < 200 || resp.status >= 300)) {
+                this.log(tasks.loc('PrivatePollNonSuccess', resp.status, Math.ceil(waitMs / 1000)));
+            }
+            await this.clock.sleep(waitMs);
         }
     }
 }

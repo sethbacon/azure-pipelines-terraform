@@ -1249,6 +1249,12 @@ published version is available, failing if it is not ready within
 `timeoutSeconds`. Set `waitForPublish: false` to return as soon as the publish
 request is accepted.
 
+For a private registry the poll interval starts at about 3 seconds and doubles
+up to 30 seconds (jittered), and a rate-limited poll waits at least the
+registry's `Retry-After`, because every poll spends the same API-key rate limit
+as the publish itself. The final poll lands on the `timeoutSeconds` deadline
+rather than after it.
+
 ---
 
 ## PipelineTerraformDocsInstaller@1

@@ -39,5 +39,8 @@
   "loc.messages.PrivateModuleAlreadyLinked": "Module %s/%s/%s is already SCM-linked.",
   "loc.messages.PrivateScmLinkFailed": "Failed to SCM-link module (HTTP %s): %s",
   "loc.messages.PrivateScmLinked": "SCM-linked %s/%s/%s to %s/%s.",
-  "loc.messages.PrivatePollingFailed": "Polling registry failed, will retry: %s"
+  "loc.messages.PrivatePollingFailed": "Polling registry failed, will retry: %s",
+  "loc.messages.PrivateVersionAlreadyPublished": "Version %s of %s/%s/%s is already published in the registry; nothing to sync.",
+  "loc.messages.PrivateSyncModuleNotLinked": "Module %s/%s/%s exists but is not SCM-linked (an earlier run may have created it without linking it); linking it and retrying the sync.",
+  "loc.messages.PrivatePollNonSuccess": "Status poll returned HTTP %s; polling again in %ss."
 }
