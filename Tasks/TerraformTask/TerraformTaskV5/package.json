@@ -25,7 +25,7 @@
     "azure-pipelines-task-lib": "^5.2.10",
     "azure-pipelines-tasks-artifacts-common": "^2.225.0",
     "azure-pipelines-tasks-securefiles-common": "^2.272.0",
-    "undici": "^6.28.0"
+    "undici": "^6.28.1"
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
@@ -34,7 +34,7 @@
     "js-yaml": "^4.3.2",
     "adm-zip": "^0.6.1",
     "fast-uri": "^3.1.5",
-    "brace-expansion": "5.0.9"
+    "brace-expansion": "5.0.12"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
