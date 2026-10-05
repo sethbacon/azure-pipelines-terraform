@@ -10,3 +10,10 @@ Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.15.
 # its CI job independently exercises its byte-identical copy of the crypto path.
 Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS -text
 Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.15.8_SHA256SUMS.sig -text
+# A release signed BEFORE HashiCorp re-certified the key (2026-02-18), replayed
+# beside the one above so both generations of the key's self-signature stay
+# embedded. Same byte-exactness requirement, in both installers' suites.
+Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS -text
+Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS.sig -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS.sig -text
