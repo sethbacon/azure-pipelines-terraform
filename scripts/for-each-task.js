@@ -65,9 +65,9 @@ const ACTIONS = {
   // resolves the tree it audits from the working directory, and a --prefix that
   // it quietly ignores would audit the ROOT tree while reporting a task's name —
   // a per-task gate that examines the wrong package is worse than none.
-  // --audit-level=high matches the root job; no --omit, because a task's
+  // --audit-level=moderate matches the root job; no --omit, because a task's
   // devDependencies build the code that ships (#20, #54).
-  audit: (dir) => npm(['audit', '--audit-level=high', '--no-update-notifier', '--no-progress'], { cwd: path.join(root, dir) }),
+  audit: (dir) => npm(['audit', '--audit-level=moderate', '--no-update-notifier', '--no-progress'], { cwd: path.join(root, dir) }),
   // Executes the COMPILED entry point the agent runs, so a CI leg on another Node
   // major proves the shipped artefact loads there. task.json declaring a Node20_1
   // handler that only ever ran under Node 24 is the gap this closes.
