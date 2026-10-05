@@ -230,7 +230,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -261,7 +261,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -474,7 +474,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -501,7 +501,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -618,7 +618,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -645,7 +645,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -722,7 +722,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -749,7 +749,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -826,7 +826,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -853,7 +853,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -964,7 +964,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -991,7 +991,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1068,7 +1068,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1095,7 +1095,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1172,7 +1172,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1199,7 +1199,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1311,7 +1311,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1338,7 +1338,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1415,7 +1415,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1442,7 +1442,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1519,7 +1519,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-prod-$attempt.log"
-            & npm audit --omit=dev --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --omit=dev --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1546,7 +1546,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1625,7 +1625,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-tooling-$attempt.log"
-            & npm audit --audit-level=high 2>&1 | Tee-Object -FilePath $logFile
+            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
