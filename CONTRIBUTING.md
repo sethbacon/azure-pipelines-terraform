@@ -393,6 +393,8 @@ npm run build:release                # clean → deps → compile tasks → prun
 4. `deps:prune` — removes dev dependencies from each task (trims the `.vsix`).
 5. `webpack` — bundles and minifies `src/tab/tabContent.tsx` → `build/tab/tabContent.js` (with `tabContent.js.map` and the extracted `tabContent.js.LICENSE.txt` beside it), copies the manifest, images, `overview.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `Tasks/` directory (excluding Tests/TS sources) into `build/`. The `Tasks/` copy is not minified: every task ships exactly as compiled, `node_modules` included (see the openpgp note in `THIRD_PARTY_NOTICES.md`).
 
+One root `devDependency` looks unused and is not: `tslib`. Nothing under `src/` imports it, and the tab's type-check and tests pass without it, but `azure-devops-extension-sdk` imports it without declaring it, so step 5 fails with `Can't resolve 'tslib'` if it is removed. Step 5 runs only in `release.yml`, so a pull request would not show that.
+
 ### Inspecting a dev build locally
 
 Webpack emits to `build/tab/`. You can open `build/tab/tabContent.js` to confirm the bundle was generated, but the tab only renders inside the Azure DevOps iframe — there is currently no static browser harness. To exercise the tab in a real ADO org:
