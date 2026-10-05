@@ -128,6 +128,66 @@ describe('gpg-verifier: HashiCorp trust-root canary (real embedded key)', functi
     });
 });
 
+// Self-signature generations: the class behind the canary above staying green
+// while every older release failed. OpenPGP asks whether a key was valid when a
+// signature was MADE, and the answer comes from the self-signature the key carried
+// at that time. HashiCorp re-certified this key on 2026-02-18 and now publishes it
+// with the new self-signature only. Embedding that publication on its own rejected
+// every release signed earlier ("Could not find valid self-signature in key
+// 34365d9472d7468f: Signature creation time is in the future"), so a pipeline
+// pinned to an older release -- terraform 1.5.7, say -- could not install it.
+//
+// One row per generation. Each replays a real SHA256SUMS and its real detached
+// signature, as served by releases.hashicorp.com, through the production
+// verifyGpgSignature() and the real embedded key. A row that starts failing after
+// the key is updated means its generation was dropped: a new publication is ADDED
+// to hashicorp-gpg-key.ts, never pasted over it (its header says how, and why the
+// obvious tools lose a generation).
+describe('gpg-verifier: embedded key verifies releases from every self-signature generation', function () {
+    this.timeout(15000);
+
+    const RECERTIFIED = Date.parse('2026-02-18T00:00:00Z');
+    const GENERATIONS: { release: string; selfSignature: string; signedBeforeRecertification: boolean }[] = [
+        { release: '1.5.7', selfSignature: '2021-04-19', signedBeforeRecertification: true },
+        { release: '1.15.8', selfSignature: '2026-02-18', signedBeforeRecertification: false },
+    ];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch shared module
+    const hc = httpClient as any;
+    const origFetchBufferAllow404 = hc.fetchBufferAllow404;
+    afterEach(() => { hc.fetchBufferAllow404 = origFetchBufferAllow404; });
+
+    for (const row of GENERATIONS) {
+        const name = `terraform_${row.release}_SHA256SUMS`;
+        const sigUrl = `https://releases.hashicorp.com/terraform/${row.release}/${name}.sig`;
+        const read = () => ({
+            sumsContent: fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'),
+            sigBytes: new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.sig`))),
+        });
+
+        it(`terraform ${row.release} is signed under the ${row.selfSignature} self-signature`, async () => {
+            // Without this the row could name a generation its fixture does not
+            // belong to, and keep passing while that generation went untested.
+            const { packets } = await openpgp.readSignature({ binarySignature: read().sigBytes });
+            const created = packets[0].created as Date;
+            assert.strictEqual(created.getTime() < RECERTIFIED, row.signedBeforeRecertification, `signed ${created.toISOString()}`);
+        });
+
+        it(`verifies the real terraform ${row.release} SHA256SUMS`, async () => {
+            const { sumsContent, sigBytes } = read();
+            hc.fetchBufferAllow404 = async () => sigBytes;
+            await verifyGpgSignature(sumsContent, sigUrl, true);
+        });
+
+        it(`still rejects terraform ${row.release} SHA256SUMS with one checksum altered`, async () => {
+            const { sumsContent, sigBytes } = read();
+            hc.fetchBufferAllow404 = async () => sigBytes;
+            const altered = (sumsContent[0] === '0' ? '1' : '0') + sumsContent.slice(1);
+            await assert.rejects(verifyGpgSignature(altered, sigUrl, true), /GPG signature verification failed/);
+        });
+    }
+});
+
 // Fingerprint pin (#652). The trust-root canary above proves the embedded key can
 // still verify a genuine HashiCorp signature; the CI byte-identity check
 // (scripts/check-shared-modules.js) proves the three bundled copies match EACH
