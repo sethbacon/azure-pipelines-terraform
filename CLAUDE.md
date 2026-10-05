@@ -689,7 +689,7 @@ checks would leave that window unguarded rather than shrink it.
 - Code scanning: enabled (CodeQL for TypeScript)
 - Secret scanning: enabled
 - Secret scanning push protection: enabled
-- `npm audit --omit=dev --audit-level=high` in CI
+- `npm audit --audit-level=moderate` in CI, over production and development dependencies
 - All GitHub Actions pinned to full commit SHAs
 
 ### Repository Topics
