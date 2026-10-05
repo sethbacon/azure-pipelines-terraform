@@ -159,6 +159,9 @@
     {
       "path": "images/oci_service_connection.png",
       "addressable": true
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md"
     }
   ],
   "repository": {
