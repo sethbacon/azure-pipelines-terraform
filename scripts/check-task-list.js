@@ -30,6 +30,12 @@
 // checkSbomAttestParity() below closes that gap by asserting the two step
 // lists name the exact same set of tasks (by their step-name suffix, since the
 // Attest step names carry no `cd Tasks/...` line to key off of).
+//
+// One pair of hand-maintained lists here is not a task list at all, and is
+// checked for the same reason: webpack.config.js's copy patterns decide what
+// is composed into build/, and azure-devops-extension.json decides what tfx
+// then packages from it. checkRootFilesArePackaged() asserts that every root
+// file the first copies is named by the second.
 
 const fs = require('fs');
 const path = require('path');
@@ -158,6 +164,63 @@ function checkSbomAttestParity() {
     return false;
 }
 
+// webpack.config.js: the CopyWebpackPlugin patterns that copy ONE root-level
+// file each -- `{ from: "./NAME", to: "..." }` with nothing else in the braces.
+// Directory patterns carry further keys (context, globOptions) and files under
+// a subdirectory have a slash in `from`, so neither matches.
+function rootFilesCopiedByWebpack() {
+    const text = readText('webpack.config.js');
+    const re = /\{\s*from:\s*"\.\/([^"/]+)",\s*to:\s*"[^"]*"\s*\}/g;
+    const files = [];
+    let m;
+    while ((m = re.exec(text))) {
+        files.push(m[1]);
+    }
+    return files.sort();
+}
+
+// azure-devops-extension.json: every path tfx packages a root file through --
+// the listing body and licence under `content`, the icons, and `files`.
+function pathsPackagedByExtensionManifest() {
+    const manifest = JSON.parse(readText('azure-devops-extension.json'));
+    const content = manifest.content || {};
+    return [
+        content.details && content.details.path,
+        content.license && content.license.path,
+        ...Object.values(manifest.icons || {}),
+        ...(manifest.files || []).map((f) => f && f.path),
+    ].filter((p) => typeof p === 'string');
+}
+
+// tfx packages what the manifest names and nothing else, so a root file that
+// webpack copies into build/ and the manifest never names is composed and then
+// left out of the .vsix. THIRD_PARTY_NOTICES.md was: the build copied it on
+// every release and no package contained it. The manifest itself is exempt --
+// tfx consumes it rather than packaging it.
+function checkRootFilesArePackaged() {
+    const copied = rootFilesCopiedByWebpack().filter((f) => f !== 'azure-devops-extension.json');
+    if (copied.length === 0) {
+        console.error(
+            'FAIL: found no root-file copy pattern in webpack.config.js -- having read none, this check ' +
+                'cannot say that every root file is packaged.',
+        );
+        return false;
+    }
+    const packaged = pathsPackagedByExtensionManifest();
+    const unpackaged = copied.filter((f) => !packaged.includes(f));
+    if (unpackaged.length === 0) {
+        console.log(
+            `OK: azure-devops-extension.json packages every root file webpack.config.js copies into build/ (${copied.length} files).`,
+        );
+        return true;
+    }
+    console.error('FAIL: azure-devops-extension.json does not package every root file webpack.config.js copies into build/.');
+    console.error(
+        `  not named by content, icons or files[]: ${JSON.stringify(unpackaged)} -- composed into build/, then left out of the .vsix`,
+    );
+    return false;
+}
+
 function setsEqual(a, b) {
     if (a.length !== b.length) return false;
     return a.every((v, i) => v === b[i]);
@@ -192,6 +255,10 @@ for (const [label, dirs] of Object.entries(sources)) {
 }
 
 if (!checkSbomAttestParity()) {
+    hasError = true;
+}
+
+if (!checkRootFilesArePackaged()) {
     hasError = true;
 }
 

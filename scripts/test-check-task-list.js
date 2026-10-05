@@ -48,6 +48,10 @@ function buildRepo(caseDir, opts = {}) {
     const dependabotTasks = opts.dependabotTasks || CANONICAL;
     const unitTestTasks = opts.unitTestTasks || CANONICAL;
     const attestNames = opts.attestNames || [...sbomTasks.map((_, i) => `T${i}`), 'tab'];
+    // Root files webpack copies into build/, and the manifest paths that package
+    // them. They agree by default; override either to model one drifting.
+    const copiedRootFiles = opts.copiedRootFiles || ['overview.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md'];
+    const packagedFiles = opts.packagedFiles || ['THIRD_PARTY_NOTICES.md'];
 
     fs.mkdirSync(path.join(caseDir, 'scripts', 'lib'), { recursive: true });
     // The script under test plus the shared task-dirs lib it requires, run from
@@ -71,7 +75,34 @@ function buildRepo(caseDir, opts = {}) {
         type: 'ms.vss-distributed-task.task',
         properties: { name: t },
     }));
-    fs.writeFileSync(path.join(caseDir, 'azure-devops-extension.json'), JSON.stringify({ contributions }, null, 2));
+    fs.writeFileSync(
+        path.join(caseDir, 'azure-devops-extension.json'),
+        JSON.stringify(
+            {
+                icons: { default: 'images/icon.png' },
+                content: { details: { path: 'overview.md' }, license: { path: 'LICENSE' } },
+                files: [{ path: 'Tasks/Alpha' }, ...packagedFiles.map((f) => ({ path: f }))],
+                contributions,
+            },
+            null,
+            2,
+        ),
+    );
+
+    // webpack.config.js — the CopyWebpackPlugin patterns in the real file's own
+    // shape: one single-file pattern per root file, the manifest itself (which tfx
+    // consumes rather than packages), and the directory and nested-file patterns
+    // that must be ignored.
+    const copyPatterns = [
+        '{ from: "./images", to: "images", context: "." },',
+        ...copiedRootFiles.map((f) => `{ from: "./${f}", to: "./" },`),
+        '{ from: "./azure-devops-extension.json", to: "azure-devops-extension.json" },',
+        '{ from: "./src/tab/index.html", to: "tab/index.html" },',
+    ];
+    fs.writeFileSync(
+        path.join(caseDir, 'webpack.config.js'),
+        `module.exports = { plugins: [new CopyWebpackPlugin({ patterns: [\n${copyPatterns.map((l) => `    ${l}`).join('\n')}\n] })] };\n`,
+    );
 
     // .github/workflows/release.yml — one 'Generate SBOM for <Task>' step per
     // task (keyed off its `cd Tasks/...` line) plus a non-task 'Generate SBOM
@@ -252,6 +283,39 @@ try {
             failed = true;
         } else {
             console.log('OK: exits non-zero when release.yml has an orphaned Attest SBOM step.');
+        }
+    }
+
+    // --- Case 9: webpack.config.js copies a root file into build/ that nothing
+    // in the manifest packages -> fail, naming the file. tfx packages what
+    // content, icons and files[] name, so such a file is composed and then left
+    // out of the .vsix -- which is how THIRD_PARTY_NOTICES.md went unshipped. ---
+    {
+        const dir = buildRepo(makeCaseDir(), { packagedFiles: [] });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes('does not package') || !out.includes('"THIRD_PARTY_NOTICES.md"')) {
+            console.error('FAIL: check-task-list.js did not flag a root file webpack copies that the manifest does not package.');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: exits non-zero when webpack copies a root file the manifest does not package.');
+        }
+    }
+
+    // --- Case 10: webpack.config.js yields no root-file copy pattern at all (a
+    // rewritten config the parser no longer reads) -> fail. Zero files read is
+    // not "every file is packaged". ---
+    {
+        const dir = buildRepo(makeCaseDir(), { copiedRootFiles: [] });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes('no root-file copy pattern')) {
+            console.error('FAIL: check-task-list.js passed although it read no root-file copy pattern from webpack.config.js.');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: exits non-zero when no root-file copy pattern can be read from webpack.config.js.');
         }
     }
 } finally {
