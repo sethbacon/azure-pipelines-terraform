@@ -422,3 +422,26 @@ persist the article's `sys_id` before uploading images, so this no longer happen
 **Fix:** Update to the latest `PublishKbArticle@1`, and provide a stable
 `sourceKey` (front-matter `wiki-source`) so re-runs update the same article instead of
 creating a new one.
+
+### PublishKbArticle: every run creates a new article although `sourceKey` is set
+
+**Cause:** No article carries the key, so the lookup finds nothing and the task creates.
+Earlier versions kept the key only in the article's `meta_description` field, which a
+ServiceNow instance may regenerate from the article body on every save. On such an
+instance nothing written there survived, every lookup missed, and the miss was not
+logged; a pipeline went unaffected only while a `KB*.json` file or an explicit
+`articleId` identified the article instead.
+
+**Fix:** Update to the latest `PublishKbArticle@1`. It keeps the key as a
+`wiki-source: <key>` line in the article's **Meta** field, logs the outcome of the lookup
+(`Source key '<key>' matched article <sys_id>.` or `No article carries source key
+'<key>'.`), and warns when a write comes back without the key.
+
+An article created before the update is not marked. Give its `sys_id` as `articleId` for
+one run, which marks it, or add the `wiki-source: <key>` line to its Meta field by hand.
+Without either, the next run creates one more article, marked this time, and later runs
+update that one.
+
+If the task warns that ServiceNow did not keep the key, the integration user cannot
+write the Meta field, or something on the instance rewrites it: see
+[the setup guide](setup/servicenow-setup.md).

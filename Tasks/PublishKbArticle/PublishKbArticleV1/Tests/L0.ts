@@ -145,7 +145,8 @@ describe('servicenow-client sysparm_query injection guard', () => {
     });
 
     it('allows clean values through the guard (mocked HTTP returns no match)', async () => {
-        nock(BASE_URL).get('/api/now/table/kb_knowledge').query(true).reply(200, { result: [] });
+        // Twice: the key is looked up in Meta and in meta_description.
+        nock(BASE_URL).get('/api/now/table/kb_knowledge').query(true).times(2).reply(200, { result: [] });
         const res = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'clean-source-key');
         assert.strictEqual(res, null);
     });
@@ -438,7 +439,29 @@ describe('client.createKnowledgeArticle', () => {
         assert.strictEqual(article.number, 'KB0001');
     });
 
-    it('includes wiki-source sentinel in meta_description when sourceKey is given', async () => {
+    it('includes wiki-source sentinel in Meta and meta_description when sourceKey is given', async () => {
+        let capturedBody: Record<string, unknown> = {};
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge', (body: Record<string, unknown>) => {
+                capturedBody = body;
+                return true;
+            })
+            .reply(201, { result: { sys_id: 's1', number: 'KB0002', workflow_state: 'draft', meta: 'wiki-source: my-source-key' } });
+
+        await client.createKnowledgeArticle(
+            INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author',
+            undefined, undefined, 'draft', 'my-source-key',
+        );
+        // Meta is where the key is relied on; meta_description is still written
+        // for whatever reads only that (see SOURCE_KEY_FIELDS).
+        assert.strictEqual(capturedBody['meta'], 'wiki-source: my-source-key');
+        assert.strictEqual(
+            capturedBody['meta_description'],
+            'wiki-source: my-source-key',
+        );
+    });
+
+    it('writes neither field when no sourceKey is given', async () => {
         let capturedBody: Record<string, unknown> = {};
         nock(BASE_URL)
             .post('/api/now/table/kb_knowledge', (body: Record<string, unknown>) => {
@@ -447,14 +470,9 @@ describe('client.createKnowledgeArticle', () => {
             })
             .reply(201, { result: { sys_id: 's1', number: 'KB0002', workflow_state: 'draft' } });
 
-        await client.createKnowledgeArticle(
-            INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author',
-            undefined, undefined, 'draft', 'my-source-key',
-        );
-        assert.strictEqual(
-            capturedBody['meta_description'],
-            'wiki-source: my-source-key',
-        );
+        await client.createKnowledgeArticle(INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author');
+        assert.ok(!('meta' in capturedBody) && !('meta_description' in capturedBody), JSON.stringify(capturedBody));
+        assert.deepStrictEqual(capturedWarnings, [], 'an article published without a key has no key to lose');
     });
 
     it('maps workflowState=publish to workflow_state=published', async () => {
@@ -666,13 +684,22 @@ describe('client.updateArticleBody', () => {
 // ===========================================================================
 // servicenow-client — findArticleBySourceKey
 // ===========================================================================
+//
+// Canned replies, each given twice: the key is looked up in Meta and then in
+// meta_description, and a row counts only when the field it was selected on
+// comes back holding the key. The round-trip describe below runs the same
+// lookups against rows that were actually written.
 describe('client.findArticleBySourceKey', () => {
     it('returns sys_id when exactly one article matches', async () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true) // match any query params
+            .times(2)
             .reply(200, {
-                result: [{ sys_id: 'match_id', number: 'KB0020', short_description: 'Found' }],
+                result: [{
+                    sys_id: 'match_id', number: 'KB0020', short_description: 'Found',
+                    meta: 'wiki-source: my-key', meta_description: 'wiki-source: my-key',
+                }],
             });
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
@@ -683,6 +710,7 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, { result: [] });
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'missing-key');
@@ -693,10 +721,11 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, {
                 result: [
-                    { sys_id: 'id1', number: 'KB0021' },
-                    { sys_id: 'id2', number: 'KB0022' },
+                    { sys_id: 'id1', number: 'KB0021', meta: 'wiki-source: dup-key', meta_description: 'wiki-source: dup-key' },
+                    { sys_id: 'id2', number: 'KB0022', meta: 'wiki-source: dup-key', meta_description: 'wiki-source: dup-key' },
                 ],
             });
 
@@ -713,6 +742,7 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, '<html>Not the ServiceNow API you expected</html>');
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
@@ -803,6 +833,30 @@ describe('servicenow-client source key round trip', () => {
         await create('Net VPC endpoints', 'net-vpc-endpoints');
 
         assert.strictEqual(await find('net-vpc'), exact.sys_id);
+    });
+
+    it('does not match an article whose key only ends with this key', async () => {
+        fakeKbInstance(BASE_URL);
+        await create('Net VPC', 'net-vpc');
+
+        assert.strictEqual(await find('vpc'), null);
+    });
+
+    it('still finds the key when its line has been joined onto the search terms before it', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        const edited = kb.seed({ kb_knowledge_base: KB, short_description: 'Module F', meta: 'vpc, networking wiki-source: module-f' });
+
+        assert.strictEqual(await find('module-f'), edited.sys_id);
+    });
+
+    it('does not match a key that has had text added after it on its line', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        kb.seed({ kb_knowledge_base: KB, short_description: 'Module G', meta: 'wiki-source: module-g, vpc' });
+
+        // Nothing marks where a key ends except the end of its line, so this
+        // reads as the key 'module-g, vpc' and not as 'module-g'. The price of
+        // telling 'net-vpc' from 'net-vpc-peering'.
+        assert.strictEqual(await find('module-g'), null);
     });
 
     it('treats a key as the same whatever its case, as the instance query always has', async () => {

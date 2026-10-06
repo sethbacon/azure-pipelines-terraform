@@ -162,7 +162,7 @@
             "label": "Source Key",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "Stable correlation key for idempotent create/update (e.g. 'aws-connect-to-servers'). Stored as 'wiki-source: <key>' in meta_description."
+            "helpMarkDown": "Stable correlation key for idempotent create/update (e.g. 'aws-connect-to-servers'). Stored as a 'wiki-source: <key>' line in the article's Meta field. An article marked in meta_description by an earlier version is still found."
         },
         {
             "name": "readKeyFrom",
@@ -280,6 +280,11 @@
         "NoFieldsForUpdate": "No fields provided for update.",
         "InvalidQueryValue": "Invalid %s: values used in a ServiceNow query must not contain '^' or newline characters.",
         "SourceKeyCollision": "Key collision: multiple articles found for source key '%s' (sys_ids: %s).",
+        "SourceKeyTooManyCandidates": "Cannot resolve source key '%s': too many articles contain it (%s or more in field '%s'), so an exact match may lie beyond the rows returned. Use a key that fewer other keys contain.",
+        "SourceKeyMatchUnconfirmed": "A match for source key '%s' cannot be confirmed: ServiceNow selected on field '%s' without returning that field's value (sys_ids: %s). These are not treated as this key's article. Check that the API user can read the field.",
+        "SourceKeyNotStored": "ServiceNow did not keep source key '%s' on article %s: after the write, neither its Meta nor its meta_description field holds the line '%s'. A later run will not find this article by sourceKey and will create a duplicate unless articleId or a KB*.json file identifies it. Check that the API user can write the article's Meta field and that no business rule rewrites it.",
+        "SourceKeyMatched": "Source key '%s' matched article %s.",
+        "SourceKeyNotMatched": "No article carries source key '%s'.",
         "ManifestCorruptBackedUp": "Warning: kb-manifest '%s' exists but could not be parsed (%s); preserved the unreadable file as '%s' and starting a fresh manifest.",
         "ManifestCorruptNoBackup": "Warning: kb-manifest '%s' exists but could not be parsed (%s) and could not be backed up; a fresh manifest will overwrite it.",
         "ManifestUpdated": "Manifest updated: %s",
