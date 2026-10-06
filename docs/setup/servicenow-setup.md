@@ -17,6 +17,14 @@ This guide covers scoping the ServiceNow integration used by `PublishKbArticle@1
 
 The task never issues a DELETE against `kb_knowledge` or `kb_category`, and never touches any table other than the four above.
 
+### The `sourceKey` marker needs the Meta field
+
+When `sourceKey` (or `readKeyFrom`) is set, the task keeps the key on the article as a `wiki-source: <key>` line in its **Meta** field (`kb_knowledge.meta`), and finds the article on the next run by querying that field. The integration user therefore needs to **read and write `meta`** as well as the article body. The Table API answers 2xx even when a field-level ACL drops a value, so the task checks the returned record and warns when the key was not kept.
+
+The line has to stay intact for the article to be found: leave it on a line that ends with the key, and add search terms on other lines.
+
+`meta_description` is still written on a create and still read, for articles marked there by earlier versions. It is not relied on, because an instance may regenerate that field from the article body on every save.
+
 ## Recommended least-privilege configuration
 
 1. **Create a dedicated integration user** for this pipeline — not a shared human account, not `admin`.
@@ -55,6 +63,7 @@ Set `instance`, `authType` (`oauth` or `basic`), and the matching `clientId`/`cl
 
 - Run with `dryRun: true` first — this validates auth and logs the planned create/update action without writing to ServiceNow.
 - Confirm the scoped integration user can create/update an article and, if `uploadImages: true`, upload and delete an attachment, against a **test** knowledge base before pointing the pipeline at production.
+- If the pipeline relies on `sourceKey`, publish the same key twice against the test knowledge base. The second run should log `Source key '<key>' matched article <sys_id>.` and update the first article. A second article, or a warning that ServiceNow did not keep the key, means the Meta field is not being stored for this user.
 
 ## Security notes
 

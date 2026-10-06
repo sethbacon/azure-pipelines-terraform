@@ -23,6 +23,7 @@ import { processArticleImages, syncImageAttachment, contentTypeFor, isRefusedIma
 import * as manifest from '../src/manifest';
 import { snRequest, withRetry } from '../src/servicenow-http';
 import { migrationNotice, MIGRATION_URL } from '../src/deprecation-notice';
+import { fakeKbInstance, FakeKbInstance } from './fake-kb-instance';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
 // Direct unit tests for the shared html-sanitizer.ts allowlist policy and
@@ -144,7 +145,8 @@ describe('servicenow-client sysparm_query injection guard', () => {
     });
 
     it('allows clean values through the guard (mocked HTTP returns no match)', async () => {
-        nock(BASE_URL).get('/api/now/table/kb_knowledge').query(true).reply(200, { result: [] });
+        // Twice: the key is looked up in Meta and in meta_description.
+        nock(BASE_URL).get('/api/now/table/kb_knowledge').query(true).times(2).reply(200, { result: [] });
         const res = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'clean-source-key');
         assert.strictEqual(res, null);
     });
@@ -437,7 +439,29 @@ describe('client.createKnowledgeArticle', () => {
         assert.strictEqual(article.number, 'KB0001');
     });
 
-    it('includes wiki-source sentinel in meta_description when sourceKey is given', async () => {
+    it('includes wiki-source sentinel in Meta and meta_description when sourceKey is given', async () => {
+        let capturedBody: Record<string, unknown> = {};
+        nock(BASE_URL)
+            .post('/api/now/table/kb_knowledge', (body: Record<string, unknown>) => {
+                capturedBody = body;
+                return true;
+            })
+            .reply(201, { result: { sys_id: 's1', number: 'KB0002', workflow_state: 'draft', meta: 'wiki-source: my-source-key' } });
+
+        await client.createKnowledgeArticle(
+            INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author',
+            undefined, undefined, 'draft', 'my-source-key',
+        );
+        // Meta is where the key is relied on; meta_description is still written
+        // for whatever reads only that (see SOURCE_KEY_FIELDS).
+        assert.strictEqual(capturedBody['meta'], 'wiki-source: my-source-key');
+        assert.strictEqual(
+            capturedBody['meta_description'],
+            'wiki-source: my-source-key',
+        );
+    });
+
+    it('writes neither field when no sourceKey is given', async () => {
         let capturedBody: Record<string, unknown> = {};
         nock(BASE_URL)
             .post('/api/now/table/kb_knowledge', (body: Record<string, unknown>) => {
@@ -446,14 +470,9 @@ describe('client.createKnowledgeArticle', () => {
             })
             .reply(201, { result: { sys_id: 's1', number: 'KB0002', workflow_state: 'draft' } });
 
-        await client.createKnowledgeArticle(
-            INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author',
-            undefined, undefined, 'draft', 'my-source-key',
-        );
-        assert.strictEqual(
-            capturedBody['meta_description'],
-            'wiki-source: my-source-key',
-        );
+        await client.createKnowledgeArticle(INSTANCE, HEADERS, 'kb123', 'Title', '<p>HTML</p>', 'author');
+        assert.ok(!('meta' in capturedBody) && !('meta_description' in capturedBody), JSON.stringify(capturedBody));
+        assert.deepStrictEqual(capturedWarnings, [], 'an article published without a key has no key to lose');
     });
 
     it('maps workflowState=publish to workflow_state=published', async () => {
@@ -665,13 +684,22 @@ describe('client.updateArticleBody', () => {
 // ===========================================================================
 // servicenow-client — findArticleBySourceKey
 // ===========================================================================
+//
+// Canned replies, each given twice: the key is looked up in Meta and then in
+// meta_description, and a row counts only when the field it was selected on
+// comes back holding the key. The round-trip describe below runs the same
+// lookups against rows that were actually written.
 describe('client.findArticleBySourceKey', () => {
     it('returns sys_id when exactly one article matches', async () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true) // match any query params
+            .times(2)
             .reply(200, {
-                result: [{ sys_id: 'match_id', number: 'KB0020', short_description: 'Found' }],
+                result: [{
+                    sys_id: 'match_id', number: 'KB0020', short_description: 'Found',
+                    meta: 'wiki-source: my-key', meta_description: 'wiki-source: my-key',
+                }],
             });
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
@@ -682,6 +710,7 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, { result: [] });
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'missing-key');
@@ -692,10 +721,11 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, {
                 result: [
-                    { sys_id: 'id1', number: 'KB0021' },
-                    { sys_id: 'id2', number: 'KB0022' },
+                    { sys_id: 'id1', number: 'KB0021', meta: 'wiki-source: dup-key', meta_description: 'wiki-source: dup-key' },
+                    { sys_id: 'id2', number: 'KB0022', meta: 'wiki-source: dup-key', meta_description: 'wiki-source: dup-key' },
                 ],
             });
 
@@ -712,10 +742,257 @@ describe('client.findArticleBySourceKey', () => {
         nock(BASE_URL)
             .get('/api/now/table/kb_knowledge')
             .query(true)
+            .times(2)
             .reply(200, '<html>Not the ServiceNow API you expected</html>');
 
         const id = await client.findArticleBySourceKey(INSTANCE, HEADERS, 'my-key');
         assert.strictEqual(id, null);
+    });
+});
+
+// ===========================================================================
+// servicenow-client — the source key has to survive a round trip
+//
+// The describe above answers every lookup with a canned reply, so none of it
+// can notice whether an article this client marked is one this client can find
+// again. On an instance that rewrites meta_description from the article body it
+// never could: the lookup missed on every run, and a publish with no KB*.json
+// to fall back on created another article each time. These run the real
+// create -> lookup -> update sequence against a stateful stand-in for the table.
+// ===========================================================================
+describe('servicenow-client source key round trip', () => {
+    const KB = 'kb123';
+    const BODY = '<h1>Module</h1><p>What the module does.</p>';
+    const NOT_STORED = /SourceKeyNotStored|did not keep source key/;
+    const UNCONFIRMED = /SourceKeyMatchUnconfirmed|cannot be confirmed/;
+
+    const create = (title: string, sourceKey: string, kbId: string = KB) =>
+        client.createKnowledgeArticle(INSTANCE, HEADERS, kbId, title, BODY, 'author', undefined, undefined, 'publish', sourceKey);
+    const find = (sourceKey: string) => client.findArticleBySourceKey(INSTANCE, HEADERS, sourceKey, KB);
+    const findInAnyKb = (sourceKey: string) => client.findArticleBySourceKey(INSTANCE, HEADERS, sourceKey);
+    const republish = (articleId: string, sourceKey: string, text: string) =>
+        client.updateKnowledgeArticle(INSTANCE, HEADERS, articleId, undefined, text, undefined, undefined, undefined, 'publish', sourceKey);
+    // What index.ts does with a source key and nothing else to go on.
+    const publish = async (title: string, sourceKey: string, text: string) => {
+        const existing = await find(sourceKey);
+        return existing ? republish(existing, sourceKey, text) : create(title, sourceKey);
+    };
+    const patchBodies = (kb: FakeKbInstance) => kb.requests.filter((r) => r.method === 'PATCH').map((r) => r.body);
+
+    it('finds the article it created on an instance that rewrites meta_description from the body', async () => {
+        const kb = fakeKbInstance(BASE_URL, { rewriteMetaDescription: true });
+        const created = await create('Module A', 'module-a');
+
+        // The instance really did discard what was written to meta_description.
+        assert.strictEqual(kb.row(created.sys_id)?.['meta_description'], 'Module What the module does.');
+        assert.strictEqual(await find('module-a'), created.sys_id);
+    });
+
+    it('publishes the same source key twice into one article, not two', async () => {
+        const kb = fakeKbInstance(BASE_URL, { rewriteMetaDescription: true });
+        const first = await publish('Module A', 'module-a', BODY);
+        const second = await publish('Module A', 'module-a', '<p>The next release.</p>');
+
+        assert.strictEqual(second.sys_id, first.sys_id, 'the second publish must update the article the first one created');
+        assert.strictEqual(kb.requests.filter((r) => r.method === 'POST').length, 1, 'only the first publish may create an article');
+    });
+
+    it('marks an unmarked article once and then leaves it alone', async () => {
+        const kb = fakeKbInstance(BASE_URL, { rewriteMetaDescription: true });
+        const legacy = kb.seed({
+            kb_knowledge_base: KB, short_description: 'Module B', text: '<p>Old</p>',
+            workflow_state: 'published', meta: 'vpc, networking',
+        });
+
+        await republish(legacy.sys_id, 'module-b', '<p>New</p>');
+        await republish(legacy.sys_id, 'module-b', '<p>Newer</p>');
+
+        const [firstPatch, secondPatch] = patchBodies(kb);
+        assert.strictEqual(firstPatch['meta'], 'vpc, networking\nwiki-source: module-b', 'the key is added to what Meta already held');
+        assert.ok(
+            !('meta' in secondPatch) && !('meta_description' in secondPatch),
+            `an article that already carries the key must not be marked again: ${JSON.stringify(secondPatch)}`,
+        );
+        assert.strictEqual(await find('module-b'), legacy.sys_id);
+    });
+
+    it('does not match an article whose key only starts with this key', async () => {
+        fakeKbInstance(BASE_URL);
+        await create('Net VPC peering', 'net-vpc-peering');
+
+        // 'wiki-source: net-vpc' is a substring of 'wiki-source: net-vpc-peering',
+        // so the instance's LIKE returns that article. Taking it would publish
+        // one document over another.
+        assert.strictEqual(await find('net-vpc'), null);
+    });
+
+    it('picks the exact key out of several that share its prefix', async () => {
+        fakeKbInstance(BASE_URL);
+        await create('Net VPC peering', 'net-vpc-peering');
+        const exact = await create('Net VPC', 'net-vpc');
+        await create('Net VPC endpoints', 'net-vpc-endpoints');
+
+        assert.strictEqual(await find('net-vpc'), exact.sys_id);
+    });
+
+    it('does not match an article whose key only ends with this key', async () => {
+        fakeKbInstance(BASE_URL);
+        await create('Net VPC', 'net-vpc');
+
+        assert.strictEqual(await find('vpc'), null);
+    });
+
+    it('still finds the key when its line has been joined onto the search terms before it', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        const edited = kb.seed({ kb_knowledge_base: KB, short_description: 'Module F', meta: 'vpc, networking wiki-source: module-f' });
+
+        assert.strictEqual(await find('module-f'), edited.sys_id);
+    });
+
+    it('does not match a key that has had text added after it on its line', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        kb.seed({ kb_knowledge_base: KB, short_description: 'Module G', meta: 'wiki-source: module-g, vpc' });
+
+        // Nothing marks where a key ends except the end of its line, so this
+        // reads as the key 'module-g, vpc' and not as 'module-g'. The price of
+        // telling 'net-vpc' from 'net-vpc-peering'.
+        assert.strictEqual(await find('module-g'), null);
+    });
+
+    it('treats a key as the same whatever its case, as the instance query always has', async () => {
+        fakeKbInstance(BASE_URL);
+        const created = await create('Module A', 'Module-A');
+
+        assert.strictEqual(await find('module-a'), created.sys_id);
+    });
+
+    it('still finds an article an earlier version marked only in meta_description', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        const old = kb.seed({
+            kb_knowledge_base: KB, short_description: 'Old', text: BODY,
+            meta_description: 'A description someone wrote\nwiki-source: old-key',
+        });
+
+        assert.strictEqual(await find('old-key'), old.sys_id);
+    });
+
+    it('adds the key to Meta for an article marked only in meta_description, and writes meta_description no further', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        const old = kb.seed({
+            kb_knowledge_base: KB, short_description: 'Old', text: BODY, meta_description: 'wiki-source: old-key',
+        });
+
+        await republish(old.sys_id, 'old-key', '<p>New</p>');
+
+        const [patch] = patchBodies(kb);
+        assert.strictEqual(patch['meta'], 'wiki-source: old-key');
+        assert.ok(!('meta_description' in patch), `meta_description already carries the key: ${JSON.stringify(patch)}`);
+    });
+
+    it('does not match the same key in another knowledge base', async () => {
+        fakeKbInstance(BASE_URL);
+        await create('Module A', 'module-a', 'another-kb');
+
+        assert.strictEqual(await find('module-a'), null);
+    });
+
+    it('matches across knowledge bases when no kbId is given', async () => {
+        fakeKbInstance(BASE_URL);
+        const created = await create('Module A', 'module-a', 'another-kb');
+
+        assert.strictEqual(await findInAnyKb('module-a'), created.sys_id);
+    });
+
+    it('reports a collision when one article carries the key in Meta and another in meta_description', async () => {
+        const kb = fakeKbInstance(BASE_URL, { rewriteMetaDescription: true });
+        const inMeta = await create('Module A', 'module-a');
+        const inLegacy = kb.seed({ kb_knowledge_base: KB, short_description: 'Module A (old)', meta_description: 'wiki-source: module-a' });
+
+        await assert.rejects(
+            () => find('module-a'),
+            (error: Error) => /Key collision|SourceKeyCollision/.test(error.message)
+                && error.message.includes(inMeta.sys_id) && error.message.includes(inLegacy.sys_id),
+        );
+    });
+
+    it('counts an article that carries the key in both fields once', async () => {
+        fakeKbInstance(BASE_URL);
+        const created = await create('Module A', 'module-a');
+
+        assert.strictEqual(await find('module-a'), created.sys_id);
+    });
+
+    it('asks for the key in Meta and in meta_description, scoped to the knowledge base', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        await find('module-a');
+        await findInAnyKb('module-a');
+
+        const lookups = kb.requests.map((r) => r.params);
+        assert.deepStrictEqual(lookups.map((params) => params['sysparm_query']), [
+            'kb_knowledge_base=kb123^metaLIKEwiki-source: module-a',
+            'kb_knowledge_base=kb123^meta_descriptionLIKEwiki-source: module-a',
+            'metaLIKEwiki-source: module-a',
+            'meta_descriptionLIKEwiki-source: module-a',
+        ]);
+        // The value has to come back, or the match could not be told from a
+        // longer key that merely contains this one.
+        assert.deepStrictEqual(lookups.map((params) => params['sysparm_fields']), [
+            'sys_id,number,workflow_state,short_description,meta',
+            'sys_id,number,workflow_state,short_description,meta_description',
+            'sys_id,number,workflow_state,short_description,meta',
+            'sys_id,number,workflow_state,short_description,meta_description',
+        ]);
+    });
+
+    it('warns on create when the instance keeps the key in neither field', async () => {
+        fakeKbInstance(BASE_URL, { readOnlyFields: ['meta', 'meta_description'] });
+        const created = await create('Module C', 'module-c');
+
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one warning: ${capturedWarnings}`);
+        assert.ok(NOT_STORED.test(capturedWarnings[0]), capturedWarnings[0]);
+        assert.ok(capturedWarnings[0].includes('module-c') && capturedWarnings[0].includes(created.number), capturedWarnings[0]);
+    });
+
+    it('warns when marking an existing article does not take', async () => {
+        const kb = fakeKbInstance(BASE_URL, { readOnlyFields: ['meta', 'meta_description'] });
+        const legacy = kb.seed({ kb_knowledge_base: KB, short_description: 'Module D', text: '<p>Old</p>', number: 'KB0000042' });
+
+        await republish(legacy.sys_id, 'module-d', '<p>New</p>');
+
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one warning: ${capturedWarnings}`);
+        assert.ok(NOT_STORED.test(capturedWarnings[0]) && capturedWarnings[0].includes('KB0000042'), capturedWarnings[0]);
+    });
+
+    it('does not warn when the key was kept', async () => {
+        const kb = fakeKbInstance(BASE_URL, { rewriteMetaDescription: true });
+        const created = await create('Module A', 'module-a');
+        await republish(created.sys_id, 'module-a', '<p>New</p>');
+        const legacy = kb.seed({ kb_knowledge_base: KB, short_description: 'Module B', text: '<p>Old</p>' });
+        await republish(legacy.sys_id, 'module-b', '<p>New</p>');
+
+        assert.deepStrictEqual(capturedWarnings, []);
+    });
+
+    it('ignores, with a warning, a match whose field value the instance does not return', async () => {
+        const kb = fakeKbInstance(BASE_URL, { hiddenFields: ['meta', 'meta_description'] });
+        const marked = kb.seed({ kb_knowledge_base: KB, short_description: 'Hidden', meta: 'wiki-source: module-e' });
+
+        // The query matched, but with the value withheld nothing shows whether
+        // the article carries this key or a longer one that contains it.
+        assert.strictEqual(await find('module-e'), null);
+        assert.strictEqual(capturedWarnings.length, 1, `expected exactly one warning: ${capturedWarnings}`);
+        assert.ok(UNCONFIRMED.test(capturedWarnings[0]) && capturedWarnings[0].includes(marked.sys_id), capturedWarnings[0]);
+    });
+
+    it('fails closed when more articles contain the key than one request returns', async () => {
+        const kb = fakeKbInstance(BASE_URL);
+        for (let page = 0; page < 500; page++) {
+            kb.seed({ kb_knowledge_base: KB, short_description: `Page ${page}`, meta: `wiki-source: page-${page}` });
+        }
+
+        // An exact match could sit beyond the rows returned; creating on that
+        // evidence could be creating a duplicate.
+        await assert.rejects(() => find('page'), /SourceKeyTooManyCandidates|too many articles/);
     });
 });
 
@@ -2593,6 +2870,36 @@ describe('PublishKbArticle full-task: instance SSRF guard', () => {
             assert.ok(tr.succeeded, 'task should have succeeded');
             assert.ok(/json-art-999/.test(tr.stdout), `plan should target the article resolved from JSON fallback: ${tr.stdout}`);
             assert.ok(!/CREATE new article/.test(tr.stdout), `a source-key miss must not plan a create when a KB*.json exists: ${tr.stdout}`);
+        }, tr);
+    });
+
+    // A miss used to leave no trace: the log went straight from the task banner
+    // to the KB*.json lookup, so nothing showed that the key had been tried.
+    it('SourceKeyMissFallsBackToJson — the log says the source key matched no article before the fallback runs', async () => {
+        const tp = nodePath.join(__dirname, 'SourceKeyMissFallsBackToJson.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            const miss = tr.stdout.search(/SourceKeyNotMatched existing-module-key|No article carries source key 'existing-module-key'/);
+            const fallback = tr.stdout.search(/LookingForKbJson|Looking for KB article JSON file/);
+            assert.ok(miss >= 0, `the miss should be logged with the key that was tried: ${tr.stdout}`);
+            assert.ok(fallback > miss, `the miss should be logged before the KB*.json fallback: ${tr.stdout}`);
+        }, tr);
+    });
+
+    it('SourceKeyHitIsLogged — the log names the article the source key matched', async () => {
+        const tp = nodePath.join(__dirname, 'SourceKeyHitIsLogged.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                /SourceKeyMatched my-module-key key-art-123|Source key 'my-module-key' matched article key-art-123/.test(tr.stdout),
+                `the hit should be logged with the key and the article it resolved to: ${tr.stdout}`,
+            );
+            assert.ok(/matched existing article key-art-123/.test(tr.stdout), `the plan should target the matched article: ${tr.stdout}`);
+            assert.ok(!/LookingForKbJson|Looking for KB article JSON file/.test(tr.stdout), `a hit must not fall through to the KB*.json lookup: ${tr.stdout}`);
         }, tr);
     });
 });

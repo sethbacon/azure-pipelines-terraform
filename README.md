@@ -469,7 +469,7 @@ Creates or updates a ServiceNow knowledge base article from an HTML file. Idempo
 | `author`            | —       | ServiceNow username of the article author. Required when creating.                                                                     |
 | `category`          | —       | Category name (auto-created if missing). Prefix with `sys_id:` for a raw sys_id.                                                       |
 | `workflowState`     | `draft` | Target state: `draft`, `review`, or `publish`.                                                                                         |
-| `sourceKey`         | —       | Stable correlation key for idempotent create/update.                                                                                   |
+| `sourceKey`         | —       | Stable correlation key for idempotent create/update. Kept as a `wiki-source: <key>` line in the article's Meta field.                  |
 | `uploadImages`      | `false` | Upload relative `<img>` images as attachments and rewrite their `src`.                                                                 |
 | `dryRun`            | `false` | Convert, validate, and log the planned action without writing to ServiceNow (useful on PR builds).                                     |
 

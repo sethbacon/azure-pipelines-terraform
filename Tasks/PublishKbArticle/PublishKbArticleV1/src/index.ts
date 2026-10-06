@@ -190,6 +190,13 @@ async function planAction(instance: string, headers: Record<string, string>, kbI
     if (!articleId && sourceKey) {
         const found = await findArticleBySourceKey(instance, headers, sourceKey, kbId);
         articleId = found || undefined;
+        // Both outcomes are logged. A miss used to leave no trace -- the log went
+        // straight on to the KB*.json lookup or to a create -- so a key that never
+        // matched looked the same as one that had never been tried. The sys_id is
+        // response-derived, hence the same single-line guard as the echoes below (#693).
+        console.log(found
+            ? tasks.loc('SourceKeyMatched', sanitizeForSingleLineEcho(sourceKey), sanitizeForSingleLineEcho(found))
+            : tasks.loc('SourceKeyNotMatched', sanitizeForSingleLineEcho(sourceKey)));
     }
 
     if (!articleId && !skipJsonLookup) {

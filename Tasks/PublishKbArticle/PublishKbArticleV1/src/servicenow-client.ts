@@ -17,6 +17,7 @@ export interface KbArticle {
     workflow_state: string;
     author?: string;
     kb_knowledge_base?: string | { value: string; link?: string };
+    meta?: string;
     meta_description?: string;
     [key: string]: unknown;
 }
@@ -65,6 +66,75 @@ function assertArticleResult(result: unknown, context: string): asserts result i
  */
 function logRetry(message: string): void {
     console.log(`[WARN] ${message}`);
+}
+
+/**
+ * The fields an article's source key is kept in, the one to rely on first.
+ *
+ * `meta` holds the search terms an author adds to an article. It is the
+ * author's field rather than one the platform derives from anything else.
+ *
+ * `meta_description` is where this task kept the key at first, and it is not a
+ * safe place for one: it is the description the platform gives to search
+ * engines, and an instance may regenerate it from the article body on every
+ * save. Where it does, a value a caller writes there does not survive: the key
+ * is gone before the following run looks for it, every lookup misses, and every
+ * publish with no KB*.json to fall back on creates another article. It is still
+ * written on a create and still read, because an instance that leaves the field
+ * alone has articles marked there, and a copy of this task not yet carrying this
+ * change looks nowhere else.
+ */
+const SOURCE_KEY_FIELDS = ['meta', 'meta_description'] as const;
+type SourceKeyField = typeof SOURCE_KEY_FIELDS[number];
+
+/**
+ * The most articles one lookup request may return. The instance's LIKE is a
+ * "contains", so a key also selects every article whose key merely contains it
+ * ('net-vpc' selects 'net-vpc-peering'), and the exact one is picked out here.
+ * A full page means there may be rows that were not returned, so the lookup
+ * fails rather than conclude from part of the answer that no article exists.
+ */
+const SOURCE_KEY_CANDIDATE_LIMIT = 500;
+
+/** The line a source key is stored as. */
+function sourceKeySentinel(sourceKey: string): string {
+    return `wiki-source: ${sourceKey}`;
+}
+
+/**
+ * Whether a field's value has a line that ends with the sentinel.
+ *
+ * The end of a line, not a substring: 'wiki-source: net-vpc' is contained in
+ * 'wiki-source: net-vpc-peering', and treating that as a match would publish one
+ * document over another. Only the end is pinned, so the key is still found when
+ * an editor has joined its line onto the search terms before it; that cannot
+ * admit another key, which would have to contain 'wiki-source: ' itself. Case is
+ * ignored because the instance's query always ignored it, so two spellings of a
+ * key have only ever meant one article.
+ */
+function hasSentinelLine(value: unknown, sentinel: string): boolean {
+    if (typeof value !== 'string') return false;
+    const wanted = sentinel.trim().toLowerCase();
+    return value.split(/\r?\n/).some((line) => line.trim().toLowerCase().endsWith(wanted));
+}
+
+/** A field's value with the sentinel added as its last line. */
+function withSentinelLine(value: unknown, sentinel: string): string {
+    return typeof value === 'string' && value !== '' ? `${value}\n${sentinel}` : sentinel;
+}
+
+/**
+ * Warn when a write that carried the source key came back without it.
+ *
+ * The Table API answers 2xx whether or not it stored a field: a field-level
+ * write ACL drops the value silently, and a business rule may replace it. Only
+ * the returned record shows which happened, and without this check the first
+ * sign was a second article on the next run.
+ */
+function warnIfSourceKeyNotStored(article: KbArticle, sourceKey: string): void {
+    const sentinel = sourceKeySentinel(sourceKey);
+    if (SOURCE_KEY_FIELDS.some((field) => hasSentinelLine(article[field], sentinel))) return;
+    tasks.warning(tasks.loc('SourceKeyNotStored', sourceKey, article.number || article.sys_id, sentinel));
 }
 
 /** Retrieve all knowledge bases. */
@@ -142,7 +212,9 @@ export async function createKnowledgeArticle(
     };
 
     if (sourceKey) {
-        payload['meta_description'] = `wiki-source: ${sourceKey}`;
+        for (const field of SOURCE_KEY_FIELDS) {
+            payload[field] = sourceKeySentinel(sourceKey);
+        }
     }
 
     const kbCategoryId = await resolveKbCategory(instance, headers, kbId, category, subcategory);
@@ -158,6 +230,7 @@ export async function createKnowledgeArticle(
         retryError: nonIdempotentCreateRetryError,
     });
     assertArticleResult(response.data.result, title);
+    if (sourceKey) warnIfSourceKeyNotStored(response.data.result, sourceKey);
     return response.data.result;
 }
 
@@ -187,12 +260,20 @@ export async function updateKnowledgeArticle(
 
     const payload: Record<string, unknown> = {};
 
-    // Self-heal: stamp the wiki-source sentinel if missing
+    // Self-heal: an article reached by articleId or a KB*.json file may not
+    // carry the source key yet. Mark it in Meta, so the key alone finds it next
+    // time. meta_description is written only for an article marked nowhere: one
+    // already found through it needs no second write to a field the instance
+    // may own.
+    let marking = false;
     if (sourceKey) {
-        const existingMeta = (existing.meta_description as string) || '';
-        const sentinel = `wiki-source: ${sourceKey}`;
-        if (!existingMeta.includes(sentinel)) {
-            payload['meta_description'] = existingMeta ? `${existingMeta}\n${sentinel}` : sentinel;
+        const sentinel = sourceKeySentinel(sourceKey);
+        if (!hasSentinelLine(existing.meta, sentinel)) {
+            payload['meta'] = withSentinelLine(existing.meta, sentinel);
+            if (!hasSentinelLine(existing.meta_description, sentinel)) {
+                payload['meta_description'] = withSentinelLine(existing.meta_description, sentinel);
+            }
+            marking = true;
             console.log(`[INFO] Stamping wiki-source sentinel on article ${articleId}`);
         }
     }
@@ -221,6 +302,7 @@ export async function updateKnowledgeArticle(
         log: (message) => console.log(`[WARN] ${message}`),
     });
     assertArticleResult(response.data.result, articleId);
+    if (marking && sourceKey) warnIfSourceKeyNotStored(response.data.result, sourceKey);
     return response.data.result;
 }
 
@@ -422,7 +504,31 @@ export function findCategoryByName(
 }
 
 /**
- * Find a KB article whose meta_description contains the wiki-source sentinel.
+ * The rows of one lookup request that really carry the source key.
+ *
+ * The query selects on a "contains", so its rows are candidates: each is kept
+ * only if the field's returned value has a line ending with the sentinel.
+ */
+function confirmedSourceKeyMatches(candidates: KbArticle[], field: SourceKeyField, sourceKey: string): KbArticle[] {
+    if (candidates.length >= SOURCE_KEY_CANDIDATE_LIMIT) {
+        throw new Error(tasks.loc('SourceKeyTooManyCandidates', sourceKey, SOURCE_KEY_CANDIDATE_LIMIT, field));
+    }
+
+    // A row with no value for the field cannot be told apart from one marked
+    // with a longer key, so it is not taken as a match. It is reported, because
+    // the article it may be is about to be duplicated.
+    const unconfirmed = candidates.filter((candidate) => typeof candidate[field] !== 'string');
+    if (unconfirmed.length > 0) {
+        tasks.warning(tasks.loc('SourceKeyMatchUnconfirmed', sourceKey, field, unconfirmed.map((candidate) => candidate.sys_id).join(', ')));
+    }
+
+    const sentinel = sourceKeySentinel(sourceKey);
+    return candidates.filter((candidate) => hasSentinelLine(candidate[field], sentinel));
+}
+
+/**
+ * Find the KB article that carries the source key, in Meta or in
+ * meta_description (see SOURCE_KEY_FIELDS).
  * Returns the sys_id, null if not found, or throws on key collision (>1 match).
  */
 export async function findArticleBySourceKey(
@@ -434,30 +540,41 @@ export async function findArticleBySourceKey(
     const url = `${baseUrl(instance)}/api/now/table/kb_knowledge`;
     assertQueryValueSafe(sourceKey, 'source key');
     if (kbId) assertQueryValueSafe(kbId, 'knowledge base id');
-    const sentinel = `wiki-source: ${sourceKey}`;
-    let query = `meta_descriptionLIKE${sentinel}`;
-    if (kbId) query = `kb_knowledge_base=${kbId}^${query}`;
+    const sentinel = sourceKeySentinel(sourceKey);
 
-    const params = {
-        sysparm_query: query,
-        sysparm_fields: 'sys_id,number,workflow_state,short_description',
-        sysparm_limit: '2',
-    };
+    // One request per field rather than a single OR: each stands alone, so
+    // whatever an instance does with one field cannot hide a match in the other.
+    // The request stays in this function, which is the egress site the class
+    // test in the installer tasks adjudicates by name.
+    const matched = new Set<string>();
+    for (const field of SOURCE_KEY_FIELDS) {
+        let query = `${field}LIKE${sentinel}`;
+        if (kbId) query = `kb_knowledge_base=${kbId}^${query}`;
 
-    const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
-    // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
-    // documented on assertArticleResult applies here -- a malformed response's
-    // data defaults to `{}`, which is truthy, so `results || []` alone would keep
-    // the object and crash on `results[0]` (#372/#29 follow-up; matches the
-    // existing pattern in findOrCreateCategory below).
-    const results = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
+        const params = {
+            sysparm_query: query,
+            sysparm_fields: `sys_id,number,workflow_state,short_description,${field}`,
+            sysparm_limit: String(SOURCE_KEY_CANDIDATE_LIMIT),
+        };
 
-    if (results.length === 0) return null;
+        const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
+        // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
+        // documented on assertArticleResult applies here -- a malformed response's
+        // data defaults to `{}`, which is truthy, so `results || []` alone would keep
+        // the object and crash on `results[0]` (#372/#29 follow-up; matches the
+        // existing pattern in findOrCreateCategory above).
+        const candidates = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
 
-    if (results.length > 1) {
-        const ids = results.map(r => r.sys_id).join(', ');
-        throw new Error(tasks.loc('SourceKeyCollision', sourceKey, ids));
+        for (const article of confirmedSourceKeyMatches(candidates, field, sourceKey)) {
+            matched.add(article.sys_id);
+        }
     }
 
-    return results[0].sys_id;
+    if (matched.size === 0) return null;
+
+    if (matched.size > 1) {
+        throw new Error(tasks.loc('SourceKeyCollision', sourceKey, Array.from(matched).join(', ')));
+    }
+
+    return Array.from(matched)[0];
 }
