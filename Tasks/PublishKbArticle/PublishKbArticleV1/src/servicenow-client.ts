@@ -504,37 +504,12 @@ export function findCategoryByName(
 }
 
 /**
- * The articles that carry the source key in one field.
+ * The rows of one lookup request that really carry the source key.
  *
  * The query selects on a "contains", so its rows are candidates: each is kept
  * only if the field's returned value has a line ending with the sentinel.
  */
-async function findArticlesMarkedIn(
-    instance: string,
-    headers: Record<string, string>,
-    field: SourceKeyField,
-    sourceKey: string,
-    kbId?: string,
-): Promise<KbArticle[]> {
-    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge`;
-    const sentinel = sourceKeySentinel(sourceKey);
-    let query = `${field}LIKE${sentinel}`;
-    if (kbId) query = `kb_knowledge_base=${kbId}^${query}`;
-
-    const params = {
-        sysparm_query: query,
-        sysparm_fields: `sys_id,number,workflow_state,short_description,${field}`,
-        sysparm_limit: String(SOURCE_KEY_CANDIDATE_LIMIT),
-    };
-
-    const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
-    // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
-    // documented on assertArticleResult applies here -- a malformed response's
-    // data defaults to `{}`, which is truthy, so `results || []` alone would keep
-    // the object and crash on `results[0]` (#372/#29 follow-up; matches the
-    // existing pattern in findOrCreateCategory above).
-    const candidates = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
-
+function confirmedSourceKeyMatches(candidates: KbArticle[], field: SourceKeyField, sourceKey: string): KbArticle[] {
     if (candidates.length >= SOURCE_KEY_CANDIDATE_LIMIT) {
         throw new Error(tasks.loc('SourceKeyTooManyCandidates', sourceKey, SOURCE_KEY_CANDIDATE_LIMIT, field));
     }
@@ -547,6 +522,7 @@ async function findArticlesMarkedIn(
         tasks.warning(tasks.loc('SourceKeyMatchUnconfirmed', sourceKey, field, unconfirmed.map((candidate) => candidate.sys_id).join(', ')));
     }
 
+    const sentinel = sourceKeySentinel(sourceKey);
     return candidates.filter((candidate) => hasSentinelLine(candidate[field], sentinel));
 }
 
@@ -561,14 +537,35 @@ export async function findArticleBySourceKey(
     sourceKey: string,
     kbId?: string,
 ): Promise<string | null> {
+    const url = `${baseUrl(instance)}/api/now/table/kb_knowledge`;
     assertQueryValueSafe(sourceKey, 'source key');
     if (kbId) assertQueryValueSafe(kbId, 'knowledge base id');
+    const sentinel = sourceKeySentinel(sourceKey);
 
     // One request per field rather than a single OR: each stands alone, so
     // whatever an instance does with one field cannot hide a match in the other.
+    // The request stays in this function, which is the egress site the class
+    // test in the installer tasks adjudicates by name.
     const matched = new Set<string>();
     for (const field of SOURCE_KEY_FIELDS) {
-        for (const article of await findArticlesMarkedIn(instance, headers, field, sourceKey, kbId)) {
+        let query = `${field}LIKE${sentinel}`;
+        if (kbId) query = `kb_knowledge_base=${kbId}^${query}`;
+
+        const params = {
+            sysparm_query: query,
+            sysparm_fields: `sys_id,number,workflow_state,short_description,${field}`,
+            sysparm_limit: String(SOURCE_KEY_CANDIDATE_LIMIT),
+        };
+
+        const response = await withRetry(() => snRequest('GET', url, { headers, params }), { log: logRetry });
+        // Array.isArray guard (not a bare cast): the same 2xx-non-JSON-body fallback
+        // documented on assertArticleResult applies here -- a malformed response's
+        // data defaults to `{}`, which is truthy, so `results || []` alone would keep
+        // the object and crash on `results[0]` (#372/#29 follow-up; matches the
+        // existing pattern in findOrCreateCategory above).
+        const candidates = Array.isArray(response.data.result) ? (response.data.result as KbArticle[]) : [];
+
+        for (const article of confirmedSourceKeyMatches(candidates, field, sourceKey)) {
             matched.add(article.sys_id);
         }
     }
