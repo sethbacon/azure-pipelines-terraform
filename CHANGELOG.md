@@ -4,6 +4,18 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.17.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.2...v1.17.3) (2026-10-06)
+
+
+### Bug Fixes
+
+* **deps:** bump source-map-js to 1.2.2 for GHSA-68fv-2mgg-jv7q ([#1219](https://github.com/sethbacon/azure-pipelines-terraform/issues/1219)) ([94e0b10](https://github.com/sethbacon/azure-pipelines-terraform/commit/94e0b10a0e20a4ca32de1a4b1a1f8268fbf34cbd))
+* **deps:** drop unpatched braces via a shelljs 0.8.5 override ([#1206](https://github.com/sethbacon/azure-pipelines-terraform/issues/1206)) ([6d1b757](https://github.com/sethbacon/azure-pipelines-terraform/commit/6d1b75702df5a120707cb232161d2cebb72c174d))
+* **deps:** upgrade tool-lib to 2.281.0 and retire the uuid residual ([#1210](https://github.com/sethbacon/azure-pipelines-terraform/issues/1210)) ([f66f71e](https://github.com/sethbacon/azure-pipelines-terraform/commit/f66f71e50fec1661c917b8d93e1fef77ac685876))
+* **installers:** verify releases signed before the key was re-certified ([#1211](https://github.com/sethbacon/azure-pipelines-terraform/issues/1211)) ([e17fea6](https://github.com/sethbacon/azure-pipelines-terraform/commit/e17fea6168b9a7f94fb23c7cb26e5c2d750258e7))
+* keep PublishKbArticle's source key in Meta ([#1218](https://github.com/sethbacon/azure-pipelines-terraform/issues/1218)) ([e06a28a](https://github.com/sethbacon/azure-pipelines-terraform/commit/e06a28a6875771958ac4211aa40e458cb617c2c8))
+* **package:** ship THIRD_PARTY_NOTICES.md in the .vsix ([#1214](https://github.com/sethbacon/azure-pipelines-terraform/issues/1214)) ([5e058fa](https://github.com/sethbacon/azure-pipelines-terraform/commit/5e058fac3364dbdcf2d43087f52c0994fab07be6))
+
 ## [1.17.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.1...v1.17.2) (2026-09-30)
 
 
