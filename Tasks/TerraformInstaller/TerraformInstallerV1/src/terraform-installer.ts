@@ -8,6 +8,8 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { fetchJson, fetchText, fetchTextAllow404, downloadToFile, DOWNLOAD_TIMEOUT_MS } from './http-client';
 import { getBoolInputDefaultTrue, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { verifyGpgSignature } from './gpg-verifier';
+import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
+import { OPENTOFU_GPG_PUBLIC_KEY } from './opentofu-gpg-key';
 import { CosignSource, verifyCosignSignature } from './cosign-verifier';
 import { retryAsync, parseAllowedHosts, assertEgressHostAllowed, EgressHostMessages, validateUrlPathSegment, assertPlainUrlBase, VerificationFailure, isVerificationFailure, discardArtifactOnFailure, extractUrlTokenSecrets, redactUrl, scrubSecretsFromMessage, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { maskOperatorUrlCredentials, resolveVersionFromRegistry } from './registry-version-resolver';
@@ -51,6 +53,71 @@ const isWindows = os.type().match(/^Win/);
  */
 const DOWNLOAD_RETRY = { retries: 2, baseDelayMs: 250, maxBackoffMs: 2000 };
 
+/**
+ * The binaries the registry and mirror strategies can install. The name is also the
+ * tool-cache name and the upstream archive prefix (`<name>_<version>_<os>_<arch>.zip`).
+ * What differs is how the SHA256SUMS is authenticated. HashiCorp signs Terraform's with
+ * GPG. OpenTofu signs its with keyless cosign and also publishes a detached GPG signature
+ * (`.gpgsig`). The registry source carries only the GPG signature, for either binary, so
+ * it verifies under the publisher's embedded key (releaseSigningKey); OpenTofu's upstream
+ * release and a mirror serving the same files carry the cosign material and use cosign.
+ */
+type BinaryName = typeof terraformToolName | typeof tofuToolName;
+
+/**
+ * The pinned public key a binary's SHA256SUMS GPG signature must verify under, chosen by
+ * the binary being installed and never by anything the registry says. A Terraform install
+ * handed OpenTofu's signature (or the reverse) therefore fails verification instead of
+ * passing as a good signature by some trusted key.
+ */
+function releaseSigningKey(binaryName: BinaryName): string {
+    return binaryName === tofuToolName ? OPENTOFU_GPG_PUBLIC_KEY : HASHICORP_GPG_PUBLIC_KEY;
+}
+
+// registryUrl and mirrorBaseUrl are bases a fixed path is appended to
+// (`${registryUrl}/terraform/binaries/...`), so a query string or fragment in
+// either silently retargets the request while the host -- and so the egress
+// allowlist -- stays the same. assertPlainUrlBase fails closed on that, and on a
+// non-https scheme, at every read (azure-pipelines-terraform#1110 finding 2, the
+// class fix). Userinfo is allowed: a basic-auth mirror is a supported pattern here
+// and is masked/redacted downstream (#586), not refused.
+function readRegistryInputs(): { registryUrl: string; mirrorName: string } {
+    return {
+        registryUrl: assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow'),
+        mirrorName: validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform"),
+    };
+}
+
+function readMirrorBaseUrl(): string {
+    return assertPlainUrlBase('mirrorBaseUrl', readUrlInput("mirrorBaseUrl", true), 'allow');
+}
+
+/**
+ * The cosign controls shared by every OpenTofu path that authenticates a SHA256SUMS
+ * with cosign: the upstream GitHub release and a mirror serving the same signed files.
+ */
+function readCosignInputs(): { requireCosign: boolean; cosignSha256: string | undefined; cosignSource: CosignSource } {
+    // Fail closed: require a verified signature unless the operator has explicitly opted out
+    // (requireCosignVerification=false). getBoolInputDefaultTrue reads the raw input so the default stays fail-closed
+    // even on an agent that does not materialize task.json input defaults.
+    const requireCosign = getBoolInputDefaultTrue("requireCosignVerification");
+    // Optional, opt-in pin (#550): verifies the resolved `cosign` binary itself
+    // against an operator-supplied hash before trusting it, closing the ambient
+    // PATH-lookup trust gap. Unset (default), behavior is unchanged.
+    const cosignSha256 = tasks.getInput("cosignSha256", false) || undefined;
+    // #1118: 'managed' (the default, and what an agent that does not materialize
+    // task.json defaults falls back to here) makes the task install and hash its own
+    // pinned cosign; 'ambient' is the explicit opt-out that keeps the historical
+    // PATH lookup for image-baked agents. Any other value is rejected rather than
+    // silently treated as one of the two -- a typo must not select the weaker mode.
+    const cosignSourceInput = (tasks.getInput("cosignSource", false) || 'managed').trim();
+    if (cosignSourceInput !== 'managed' && cosignSourceInput !== 'ambient') {
+        throw new Error(`cosignSource must be 'managed' or 'ambient', but was '${cosignSourceInput}'.`);
+    }
+    const cosignSource: CosignSource = cosignSourceInput;
+    return { requireCosign, cosignSha256, cosignSource };
+}
+
 export async function downloadTerraform(inputVersion: string): Promise<string> {
     const binary = tasks.getInput("binary") || "terraform";
 
@@ -63,22 +130,9 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
     // Step 1: Resolve version string (may require an API call for 'latest')
     let resolvedVersion: string;
     switch (downloadSource) {
-        case "registry": {
-            // registryUrl and mirrorBaseUrl are bases a fixed path is appended to
-            // (`${registryUrl}/terraform/binaries/...`), so a query string or fragment in
-            // either silently retargets the request while the host -- and so the egress
-            // allowlist -- stays the same. assertPlainUrlBase fails closed on that, and on a
-            // non-https scheme, at every read (azure-pipelines-terraform#1110 finding 2, the
-            // class fix). Userinfo is allowed: a basic-auth mirror is a supported pattern here
-            // and is masked/redacted downstream (#586), not refused.
-            const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
-            const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
-            resolvedVersion = inputVersion.toLowerCase() !== 'latest'
-                ? inputVersion
-                : await resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
-                    assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
+        case "registry":
+            resolvedVersion = await resolveVersionFromConfiguredRegistry(inputVersion);
             break;
-        }
         default: // "hashicorp" and "mirror" both use HashiCorp checkpoint for 'latest'
             resolvedVersion = await resolveVersionFromHashiCorp(inputVersion);
     }
@@ -98,8 +152,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
         let zipPath: string;
         switch (downloadSource) {
             case "registry": {
-                const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
-                const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
+                const { registryUrl, mirrorName } = readRegistryInputs();
                 const result = await downloadZipFromRegistry(version, registryUrl, mirrorName);
                 zipPath = result.zipPath;
                 verified = result.verified;
@@ -109,7 +162,7 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
                 break;
             }
             case "mirror": {
-                const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', readUrlInput("mirrorBaseUrl", true), 'allow');
+                const mirrorBaseUrl = readMirrorBaseUrl();
                 const result = await downloadZipFromMirror(version, mirrorBaseUrl);
                 zipPath = result.zipPath;
                 verified = result.verified;
@@ -179,6 +232,15 @@ export async function downloadTerraform(inputVersion: string): Promise<string> {
 
 // --- Version resolution ---
 
+/** 'latest' for either binary when downloadSource is the operator's registry. */
+async function resolveVersionFromConfiguredRegistry(inputVersion: string): Promise<string> {
+    const { registryUrl, mirrorName } = readRegistryInputs();
+    return inputVersion.toLowerCase() !== 'latest'
+        ? inputVersion
+        : resolveVersionFromRegistry(registryUrl, mirrorName, hostname =>
+            assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
+}
+
 async function resolveVersionFromHashiCorp(inputVersion: string): Promise<string> {
     if (inputVersion.toLowerCase() !== 'latest') {
         return inputVersion;
@@ -240,13 +302,14 @@ async function downloadZipFromHashiCorp(version: string): Promise<string> {
     return zipPath;
 }
 
-async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string): Promise<{ zipPath: string; verified: boolean }> {
+async function downloadZipFromRegistry(version: string, registryUrl: string, mirrorName: string, binaryName: BinaryName = terraformToolName): Promise<{ zipPath: string; verified: boolean }> {
     // registryUrl may embed basic-auth userinfo; mask it before it can reach a log
     // via infoUrl in any error/warning below (#586).
     maskOperatorUrlCredentials(registryUrl);
     const osPlatform = getPlatformString();
     const arch = getArchString();
     const infoUrl = `${registryUrl}/terraform/binaries/${mirrorName}/versions/${version}/${osPlatform}/${arch}`;
+    const expectedZipFileName = `${binaryName}_${version}_${osPlatform}_${arch}.zip`;
 
     // Egress authorization for the metadata call itself: previously this was only
     // ever enforced on the 'latest' resolution path (resolveVersionFromRegistry),
@@ -259,6 +322,12 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     const data = await fetchJson<{ download_url: string; sha256: string; filename?: string; shasums_url?: string; shasums_signature_url?: string }>(infoUrl);
     if (!data.download_url) {
         throw new Error(`Registry API returned invalid response: missing download_url from ${infoUrl}`);
+    }
+    // registryMirrorName defaults to 'terraform', which is the wrong mirror for binary=tofu
+    // and is not otherwise detectable until the archive has been fetched and fails to
+    // contain a tofu executable. A registry that names the file makes it checkable here.
+    if (binaryName === tofuToolName && data.filename && data.filename !== expectedZipFileName) {
+        throw new VerificationFailure(`Registry-supplied filename (${data.filename}) is not the OpenTofu archive expected for version ${version} on this platform (${expectedZipFileName}). registryMirrorName is '${mirrorName}'; set it to the name of an OpenTofu mirror configuration when binary is tofu.`);
     }
     // data.download_url = pre-signed storage URL (15-minute TTL)
     // data.sha256       = hex SHA256 of the zip (may be empty if registry verified server-side)
@@ -298,7 +367,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     // host, not a complete DNS-rebinding defense.
     await assertEgressHostAllowed(initialHost, allowedHosts, REGISTRY_EGRESS_MESSAGES);
 
-    const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    const fileName = `${binaryName}-${version}-${uuidV4()}.zip`;
     let zipPath: string;
     try {
         // tools.downloadTool() follows redirects with no way to re-validate or
@@ -330,20 +399,21 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     }
 
     // #1024: terraform-registry-backend has served shasums_url/shasums_signature_url
-    // since v1.2.5, GPG-verified by the sync job against the pinned HashiCorp key at
-    // ingest -- the SAME key this task already embeds and trusts for the hashicorp
-    // and mirror sources. Reachable here only for binary=terraform: downloadTofu
-    // never calls this function, and OpenTofu's SHA256SUMS is signed with a
-    // different key this task does not embed (its own official install path
-    // verifies via cosign instead, see downloadZipFromOpenTofu). When the registry
-    // advertises both URLs, verify the fetched SHA256SUMS' signature and derive the
-    // checksum from that VERIFIED content -- a strictly stronger guarantee than
-    // trusting data.sha256, which is only the registry's own unauthenticated
-    // assertion delivered over the same TLS session as the archive. This does not
-    // contradict the "don't fall back to shasums_url for a missing sha256" reasoning
-    // below: that is about substituting one unauthenticated value from this host for
-    // another; this authenticates shasums_url itself against an out-of-band,
-    // embedded trust root before trusting anything it says.
+    // since v1.2.5, GPG-verified by the sync job against the publisher's pinned key at
+    // ingest -- HashiCorp's for Terraform, OpenTofu's for OpenTofu (the detached
+    // `.gpgsig` over tofu_<version>_SHA256SUMS, which the backend takes from the
+    // release's assets and stores only once it verifies) -- the SAME keys this task
+    // already embeds and trusts (releaseSigningKey). A registry stores one signature
+    // per version and no cosign certificate, so unlike OpenTofu's upstream release and
+    // mirror paths (see downloadZipFromOpenTofu) there is no cosign step here.
+    // When the registry advertises both URLs, verify the fetched SHA256SUMS' signature
+    // and derive the checksum from that VERIFIED content -- a strictly stronger
+    // guarantee than trusting data.sha256, which is only the registry's own
+    // unauthenticated assertion delivered over the same TLS session as the archive.
+    // This does not contradict the "don't fall back to shasums_url for a missing
+    // sha256" reasoning below: that is about substituting one unauthenticated value
+    // from this host for another; this authenticates shasums_url itself against an
+    // out-of-band, embedded trust root before trusting anything it says.
     if (data.shasums_url && data.shasums_signature_url) {
         const shasumsUrl = data.shasums_url;
         const shasumsSignatureUrl = data.shasums_signature_url;
@@ -359,7 +429,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         await assertEgressHostAllowed(new URL(shasumsUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
         await assertEgressHostAllowed(new URL(shasumsSignatureUrl).hostname, allowedHosts, REGISTRY_EGRESS_MESSAGES);
         // shasumsUrl's own path must name the REQUESTED version -- otherwise a
-        // compromised registry could hand back a genuinely HashiCorp-signed
+        // compromised registry could hand back a genuinely publisher-signed
         // SHA256SUMS for a DIFFERENT version than the one asked for (#1104/17).
         if (!shasumsUrl.includes(version)) {
             throw new VerificationFailure(`shasums_url (${redactUrl(shasumsUrl)}) does not reference the requested version ${version}; refusing to trust it as the checksum source.`);
@@ -373,22 +443,21 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         // genuinely-signed SHA256SUMS entry naming a DIFFERENT, older artifact
         // (#1104/17). If the registry names a filename, it is compared against the
         // expected one; it is never used AS the lookup key.
-        const expectedZipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
         if (data.filename && data.filename !== expectedZipFileName) {
             throw new VerificationFailure(`Registry-supplied filename (${data.filename}) does not match the expected filename for the requested version ${version} (${expectedZipFileName}); refusing to use it as the checksum-lookup key.`);
         }
         let gpgVerified = false;
         await discardArtifactOnFailure(zipPath, async () => {
-            gpgVerified = await verifyGpgSignature(sumsContent, shasumsSignatureUrl, requireGpg);
+            gpgVerified = await verifyGpgSignature(sumsContent, shasumsSignatureUrl, requireGpg, releaseSigningKey(binaryName));
             await verifySha256(zipPath, parseSha256(sumsContent, expectedZipFileName));
         }, discardLog);
         if (!gpgVerified) {
-            // The .sig was genuinely absent and requireGpgSignature is false: the
+            // The signature was genuinely absent and requireGpgSignature is false: the
             // SHA256SUMS content was never authenticated, so this reaches the same
             // checksum-only trust level as the data.sha256 branch below and must say
             // so rather than reporting a bare success that reads identically to a
             // real GPG-anchored verification (#1024/21).
-            tasks.warning(tasks.loc("RegistryTrustAnchorIsChecksumOnly", infoUrl));
+            tasks.warning(tasks.loc(binaryName === tofuToolName ? "OpenTofuRegistryTrustAnchorIsChecksumOnly" : "RegistryTrustAnchorIsChecksumOnly", infoUrl));
         }
         return { zipPath, verified: true };
     }
@@ -400,10 +469,12 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
         // registry did not advertise shasums_url/shasums_signature_url above (an
         // older terraform-registry-backend, gpg_verify disabled on this mirror
         // config, or a version synced before either existed), so there is nothing
-        // to verify against the pinned HashiCorp key here. Say so rather than
+        // to verify against the pinned publisher key here. Say so rather than
         // reporting a bare success that reads identically to the GPG-anchored
-        // paths (#1024).
-        tasks.warning(tasks.loc("RegistryTrustAnchorIsChecksumOnly", infoUrl));
+        // paths (#1024). For OpenTofu the warning names the signature-anchored
+        // alternatives (a registry that advertises OpenTofu's signed SHA256SUMS,
+        // a cosign-verified mirror, or the upstream release).
+        tasks.warning(tasks.loc(binaryName === tofuToolName ? "OpenTofuRegistryTrustAnchorIsChecksumOnly" : "RegistryTrustAnchorIsChecksumOnly", infoUrl));
         return { zipPath, verified: true };
     } else if (getBoolInputDefaultTrue("requireChecksum")) {
         // Empty sha256 means no local integrity check is possible. Fail closed when
@@ -428,7 +499,7 @@ async function downloadZipFromRegistry(version: string, registryUrl: string, mir
     return { zipPath, verified: false };
 }
 
-async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Promise<{ zipPath: string; verified: boolean }> {
+async function downloadZipFromMirror(version: string, mirrorBaseUrl: string, binaryName: BinaryName = terraformToolName): Promise<{ zipPath: string; verified: boolean }> {
     // mirrorBaseUrl may embed basic-auth userinfo; mask it before it can reach a log
     // via the rejection message or any derived download URL below (#586).
     maskOperatorUrlCredentials(mirrorBaseUrl);
@@ -438,7 +509,9 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     const osPlatform = getPlatformString();
     const arch = getArchString();
     // Mirror must serve files at the same path structure as releases.hashicorp.com/terraform
-    const downloadUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_${osPlatform}_${arch}.zip`;
+    // (for OpenTofu, the same layout under tofu_ file names, without a 'v' on the version)
+    const zipFileName = `${binaryName}_${version}_${osPlatform}_${arch}.zip`;
+    const downloadUrl = `${mirrorBaseUrl}/${version}/${zipFileName}`;
 
     // Baseline SSRF protection (#799, follow-up to #729): mirrorBaseUrl is an
     // operator-configured input (unlike the registry path's dynamically-returned
@@ -467,7 +540,12 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // host, not a complete DNS-rebinding defense.
     await assertEgressHostAllowed(initialHost, mirrorAllowedHosts, MIRROR_EGRESS_MESSAGES);
 
-    const fileName = `${terraformToolName}-${version}-${uuidV4()}.zip`;
+    // OpenTofu authenticates its SHA256SUMS with cosign, Terraform with GPG. The cosign
+    // controls are read before the download so an invalid cosignSource fails before
+    // anything is fetched.
+    const cosign = binaryName === tofuToolName ? readCosignInputs() : null;
+
+    const fileName = `${binaryName}-${version}-${uuidV4()}.zip`;
     const destDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
     const zipPath = path.join(destDir, fileName);
     try {
@@ -485,11 +563,13 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
     // the mirror path checked only sha256 (which a compromised mirror can recompute),
     // so requireGpgSignature was silently inert here despite its help text implying it
     // applied to mirrors — now the .sig is verified against the pinned HashiCorp key.
-    const zipFileName = `terraform_${version}_${osPlatform}_${arch}.zip`;
-    const sha256SumsUrl = `${mirrorBaseUrl}/${version}/terraform_${version}_SHA256SUMS`;
+    // For OpenTofu, requireCosignVerification takes the role requireGpgSignature has
+    // for Terraform: the SHA256SUMS must carry a cosign signature (the .sig and .pem
+    // published beside it), checked against OpenTofu's release-workflow identity.
+    const sha256SumsUrl = `${mirrorBaseUrl}/${version}/${binaryName}_${version}_SHA256SUMS`;
     const sha256SumsSigUrl = `${sha256SumsUrl}.sig`;
     const requireChecksum = getBoolInputDefaultTrue("requireChecksum");
-    const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
+    const requireGpg = cosign === null && getBoolInputDefaultTrue("requireGpgSignature");
     // Only a genuine 404 (fetchTextAllow404 returns null) means "no SHA256SUMS
     // published". Any other non-2xx / network / TLS failure is fatal regardless of
     // requireChecksum, rather than being classified by matching an error string.
@@ -505,22 +585,32 @@ async function downloadZipFromMirror(version: string, mirrorBaseUrl: string): Pr
         if (requireGpg) {
             throw new VerificationFailure(`GPG signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireGpgSignature to false for mirrors that do not serve signed checksums.`);
         }
+        if (cosign?.requireCosign) {
+            throw new VerificationFailure(`cosign signature verification is required but the mirror did not publish a SHA256SUMS file to verify (${sha256SumsUrl}). Set requireCosignVerification to false for mirrors that do not serve signed checksums.`);
+        }
         tasks.warning(`SHA256 verification skipped for mirror download: no SHA256SUMS published at ${sha256SumsUrl}.`);
         return { zipPath, verified: false };
     }
 
-    // The SHA256SUMS exists: verify its GPG signature against HashiCorp's pinned
-    // key (a missing .sig is fatal only when requireGpgSignature is set), then
-    // verify the zip's hash. A missing asset entry or a hash mismatch is fatal.
+    // The SHA256SUMS exists: verify its signature (GPG against HashiCorp's pinned key
+    // for Terraform; cosign for OpenTofu -- a missing signature is fatal only when the
+    // matching require* toggle is set), then verify the zip's hash. A missing asset
+    // entry or a hash mismatch is fatal.
     let mirrorGpgVerified = false;
     await discardArtifactOnFailure(zipPath, async () => {
-        mirrorGpgVerified = await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+        if (cosign) {
+            await verifyCosignSignature(sumsBody, sha256SumsSigUrl, `${sha256SumsUrl}.pem`, version, cosign.requireCosign, cosign.cosignSha256, cosign.cosignSource);
+        } else {
+            mirrorGpgVerified = await verifyGpgSignature(sumsBody, sha256SumsSigUrl, requireGpg);
+        }
         await verifySha256(zipPath, parseSha256(sumsBody, zipFileName));
     }, discardLog);
-    if (!mirrorGpgVerified) {
+    if (!cosign && !mirrorGpgVerified) {
         // The .sig was genuinely absent and requireGpgSignature is false: disclose
         // the weaker, checksum-only trust level instead of a bare success that
-        // reads identically to a real GPG-anchored verification (#1024/21).
+        // reads identically to a real GPG-anchored verification (#1024/21). The
+        // cosign path needs no counterpart: verifyCosignSignature itself warns
+        // when it skips because the signature or certificate is unavailable.
         tasks.warning(tasks.loc("GpgVerificationSkippedChecksumOnly"));
     }
     return { zipPath, verified: true };
@@ -630,19 +720,16 @@ async function reverifyUnmarkedCacheEntry(
  * gates on requireChecksum=true, under which the registry/mirror strategies
  * either verify or throw — they never return an unverified zip.
  */
-async function downloadVerifiedZipForReverify(downloadSource: string, version: string): Promise<string> {
+async function downloadVerifiedZipForReverify(downloadSource: string, version: string, binaryName: BinaryName = terraformToolName): Promise<string> {
     switch (downloadSource) {
         case "registry": {
-            const registryUrl = assertPlainUrlBase('registryUrl', readUrlInput("registryUrl", true), 'allow');
-            const mirrorName = validateUrlPathSegment("registryMirrorName", tasks.getInput("registryMirrorName", true)! || "terraform");
-            return (await downloadZipFromRegistry(version, registryUrl, mirrorName)).zipPath;
+            const { registryUrl, mirrorName } = readRegistryInputs();
+            return (await downloadZipFromRegistry(version, registryUrl, mirrorName, binaryName)).zipPath;
         }
-        case "mirror": {
-            const mirrorBaseUrl = assertPlainUrlBase('mirrorBaseUrl', readUrlInput("mirrorBaseUrl", true), 'allow');
-            return (await downloadZipFromMirror(version, mirrorBaseUrl)).zipPath;
-        }
-        default: // "hashicorp"
-            return downloadZipFromHashiCorp(version);
+        case "mirror":
+            return (await downloadZipFromMirror(version, readMirrorBaseUrl(), binaryName)).zipPath;
+        default: // "hashicorp": the upstream release
+            return binaryName === tofuToolName ? downloadZipFromOpenTofu(version) : downloadZipFromHashiCorp(version);
     }
 }
 
@@ -681,7 +768,20 @@ function getExecutableExtension(): string {
 // --- OpenTofu ---
 
 async function downloadTofu(inputVersion: string): Promise<string> {
-    const resolvedVersion = await resolveVersionFromOpenTofu(inputVersion);
+    // binary=tofu honours downloadSource as binary=terraform does. 'hashicorp' (the
+    // default, and the only behavior before the other two applied here) is OpenTofu's
+    // GitHub release, cosign-verified; 'registry' and 'mirror' install from the
+    // operator's own source.
+    const downloadSource = tasks.getInput("downloadSource") || "hashicorp";
+
+    let resolvedVersion: string;
+    switch (downloadSource) {
+        case "registry":
+            resolvedVersion = await resolveVersionFromConfiguredRegistry(inputVersion);
+            break;
+        default: // "hashicorp" and "mirror" both use the GitHub releases API for 'latest'
+            resolvedVersion = await resolveVersionFromOpenTofu(inputVersion);
+    }
     const version = tools.cleanVersion(resolvedVersion);
     if (!version) {
         throw new Error(tasks.loc("InputVersionNotValidSemanticVersion", resolvedVersion));
@@ -695,13 +795,36 @@ async function downloadTofu(inputVersion: string): Promise<string> {
     // SHA256 unconditionally (cosign only gates the AUTHENTICITY of the SHA256SUMS
     // itself), so reaching the line below means the artifact was verified — stated
     // explicitly rather than left as an invariant a future edit could quietly break.
+    // The registry and mirror strategies report it themselves.
     let verified = false;
     if (!cachedToolPath) {
-        const zipPath = await downloadZipFromOpenTofu(version);
-        verified = true;
+        let zipPath: string;
+        switch (downloadSource) {
+            case "registry": {
+                const { registryUrl, mirrorName } = readRegistryInputs();
+                const result = await downloadZipFromRegistry(version, registryUrl, mirrorName, tofuToolName);
+                zipPath = result.zipPath;
+                verified = result.verified;
+                // Strip any embedded basic-auth userinfo before persisting the source
+                // into a downstream-readable pipeline variable (#586).
+                tasks.setVariable('terraformDownloadedFrom', `registry:${redactUrlUserInfo(registryUrl)}`);
+                break;
+            }
+            case "mirror": {
+                const mirrorBaseUrl = readMirrorBaseUrl();
+                const result = await downloadZipFromMirror(version, mirrorBaseUrl, tofuToolName);
+                zipPath = result.zipPath;
+                verified = result.verified;
+                tasks.setVariable('terraformDownloadedFrom', `mirror:${redactUrlUserInfo(mirrorBaseUrl)}`);
+                break;
+            }
+            default: // "hashicorp"
+                zipPath = await downloadZipFromOpenTofu(version);
+                verified = true;
+                tasks.setVariable('terraformDownloadedFrom', 'opentofu');
+        }
         const unzippedPath = await tools.extractZip(zipPath);
         cachedToolPath = await tools.cacheDir(unzippedPath, tofuToolName, version);
-        tasks.setVariable('terraformDownloadedFrom', 'opentofu');
     } else {
         tasks.setVariable('terraformDownloadedFrom', 'cache');
     }
@@ -724,7 +847,7 @@ async function downloadTofu(inputVersion: string): Promise<string> {
                 `tofu ${version}`,
                 cachedToolPath,
                 tofuPath,
-                () => downloadZipFromOpenTofu(version),
+                () => downloadVerifiedZipForReverify(downloadSource, version, tofuToolName),
                 (rootFolder) => findExecutable(rootFolder, tofuToolName),
                 markerVerified ? 'forced' : 'unmarked',
             );
@@ -778,30 +901,14 @@ async function downloadZipFromOpenTofu(version: string): Promise<string> {
     const sha256SumsUrl = `https://github.com/opentofu/opentofu/releases/download/v${version}/tofu_${version}_SHA256SUMS`;
     const sha256SumsContent = await fetchText(sha256SumsUrl);
 
-    // Cosign verification of SHA256SUMS. Fail closed: require a verified signature
-    // unless the operator has explicitly opted out (requireCosignVerification=false).
-    // getBoolInputDefaultTrue reads the raw input so the default stays fail-closed
-    // even on an agent that does not materialize task.json input defaults.
-    const requireCosign = getBoolInputDefaultTrue("requireCosignVerification");
+    // Cosign verification of SHA256SUMS (see readCosignInputs for the fail-closed
+    // default and the opt-outs).
+    const { requireCosign, cosignSha256, cosignSource } = readCosignInputs();
     const signatureUrl = `${sha256SumsUrl}.sig`;
     const certificateUrl = `${sha256SumsUrl}.pem`;
-    // Optional, opt-in pin (#550): verifies the resolved `cosign` binary itself
-    // against an operator-supplied hash before trusting it, closing the ambient
-    // PATH-lookup trust gap. Unset (default), behavior is unchanged.
-    const cosignSha256 = tasks.getInput("cosignSha256", false);
-    // #1118: 'managed' (the default, and what an agent that does not materialize
-    // task.json defaults falls back to here) makes the task install and hash its own
-    // pinned cosign; 'ambient' is the explicit opt-out that keeps the historical
-    // PATH lookup for image-baked agents. Any other value is rejected rather than
-    // silently treated as one of the two -- a typo must not select the weaker mode.
-    const cosignSourceInput = (tasks.getInput("cosignSource", false) || 'managed').trim();
-    if (cosignSourceInput !== 'managed' && cosignSourceInput !== 'ambient') {
-        throw new Error(`cosignSource must be 'managed' or 'ambient', but was '${cosignSourceInput}'.`);
-    }
-    const cosignSource: CosignSource = cosignSourceInput;
     // As on the hashicorp path: a failed cosign or checksum check discards the zip (#204).
     await discardArtifactOnFailure(zipPath, async () => {
-        await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256 || undefined, cosignSource);
+        await verifyCosignSignature(sha256SumsContent, signatureUrl, certificateUrl, version, requireCosign, cosignSha256, cosignSource);
         await verifySha256(zipPath, parseSha256(sha256SumsContent, zipFileName));
     }, discardLog);
 

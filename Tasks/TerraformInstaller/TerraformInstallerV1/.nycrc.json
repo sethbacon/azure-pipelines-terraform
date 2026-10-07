@@ -12,7 +12,8 @@
     "exclude": [
         "src/**/*.d.ts",
         "src/**/*.map",
-        "src/hashicorp-gpg-key.js"
+        "src/hashicorp-gpg-key.js",
+        "src/opentofu-gpg-key.js"
     ],
     "check-coverage": true,
     "lines": 80,
