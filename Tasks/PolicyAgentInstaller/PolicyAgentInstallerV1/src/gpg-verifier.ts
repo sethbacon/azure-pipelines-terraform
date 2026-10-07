@@ -7,8 +7,11 @@
 // The CRYPTOGRAPHIC decision now comes from @4cloudguru/pipeline-task-core/gpg
 // (verifyDetached), so the openpgp API surface lives in one place instead of two
 // copies. What stays here is what the package deliberately refuses to own:
-//   - the trust root (HASHICORP_GPG_PUBLIC_KEY), because vendoring a signing key
-//     through a package means a compromise of that package silently replaces it;
+//   - the trust root (HASHICORP_GPG_PUBLIC_KEY by default), because vendoring a
+//     signing key through a package means a compromise of that package silently
+//     replaces it. A caller verifying another publisher's checksums passes that
+//     publisher's key explicitly and owns it itself -- the key is a parameter here,
+//     never looked up by name or fetched from a URL;
 //   - the 404-vs-transient distinction, because only the caller knows a missing
 //     signature MAY be downgraded on operator opt-out while a 5xx never may;
 //   - the VerificationFailure typing, which is what lets the cache-hit
@@ -22,21 +25,26 @@ import { HASHICORP_GPG_PUBLIC_KEY } from './hashicorp-gpg-key';
 import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 /**
- * Verifies the GPG signature of a SHA256SUMS file against HashiCorp's public key.
- * Fetches the `.sig` file from the same base URL as the SHA256SUMS file.
+ * Verifies the GPG signature of a SHA256SUMS file against a pinned public key --
+ * HashiCorp's unless the caller passes another publisher's as `armoredPublicKey`.
+ * Fetches the signature from `signatureUrl`.
+ *
+ * The signature must verify under THAT key alone: a valid signature by some other
+ * trusted key (HashiCorp's over OpenTofu's checksums, or the reverse) is rejected,
+ * not accepted because it is a good signature by a key this task happens to embed.
  *
  * Returns whether the content was ACTUALLY authenticated: `true` once a real
  * signature verified against the pinned key, `false` when verification was
- * permitted to be skipped (the `.sig` was genuinely absent and `required` is
+ * permitted to be skipped (the signature file was genuinely absent and `required` is
  * false). Callers whose own success message would otherwise read identically
  * either way (#1024/21) must inspect this to disclose the weaker case.
  *
  * - If verification succeeds, returns true.
- * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is false, warns
+ * - If the signature file is genuinely absent (HTTP 404) and `required` is false, warns
  *   and returns false (unverified). Any OTHER fetch error (5xx / network / timeout) is
  *   transient and propagates fatally even when `required` is false -- only a
  *   confirmed absence should downgrade to a warning.
- * - If the `.sig` file is genuinely absent (HTTP 404) and `required` is true, throws
+ * - If the signature file is genuinely absent (HTTP 404) and `required` is true, throws
  *   a typed VerificationFailure (hard fail): a reachable source withholding the
  *   required signature is a deterministic policy failure, so the cache-hit
  *   re-verification path re-throws it (fail closed) instead of degrading to the
@@ -49,7 +57,7 @@ import { VerificationFailure } from '@4cloudguru/pipeline-task-core';
  * fails to compile instead of compiling clean and silently downgrading a
  * missing signature to a warning.
  */
-export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean): Promise<boolean> {
+export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl: string, required: boolean, armoredPublicKey: string = HASHICORP_GPG_PUBLIC_KEY): Promise<boolean> {
     const signatureBytes = await fetchBufferAllow404(signatureUrl);
     if (signatureBytes === null) {
         if (required) {
@@ -64,7 +72,7 @@ export async function verifyGpgSignature(sha256SumsContent: string, signatureUrl
     const result = await verifyDetached({
         message: new TextEncoder().encode(sha256SumsContent),
         signature: signatureBytes,
-        armoredPublicKeys: [HASHICORP_GPG_PUBLIC_KEY],
+        armoredPublicKeys: [armoredPublicKey],
     });
 
     // From here on the signature material was OBTAINED but does not verify —

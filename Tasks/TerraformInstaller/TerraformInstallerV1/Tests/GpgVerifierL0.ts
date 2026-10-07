@@ -7,6 +7,7 @@ import tasks = require('azure-pipelines-task-lib/task');
 import * as httpClient from '../src/http-client';
 import { verifyGpgSignature } from '../src/gpg-verifier';
 import { HASHICORP_GPG_PUBLIC_KEY } from '../src/hashicorp-gpg-key';
+import { OPENTOFU_GPG_PUBLIC_KEY } from '../src/opentofu-gpg-key';
 import { isVerificationFailure } from '@4cloudguru/pipeline-task-core';
 
 // Direct (parent-process) unit tests for the GPG signature gate. These use the
@@ -206,5 +207,140 @@ describe('hashicorp-gpg-key: embedded key is pinned to the documented HashiCorp 
         // its low 16 hex are the documented Key ID 34365D9472D7468F.
         assert.strictEqual(key.getFingerprint(), 'c874011f0ab405110d02105534365d9472d7468f');
         assert.strictEqual(key.getKeyID().toHex(), '34365d9472d7468f');
+    });
+});
+
+// OpenTofu trust root. downloadSource=registry installs OpenTofu from a registry that
+// advertises the detached `.gpgsig` OpenTofu publishes beside every
+// tofu_<version>_SHA256SUMS, and the installer verifies it under OpenTofu's own release key
+// (src/opentofu-gpg-key.ts). The registry's own ingest-time check is NOT the trust anchor --
+// a compromised registry could serve anything -- so this is the verification that matters.
+// Same shape as the HashiCorp canary above: replay REAL signed releases through the production
+// verifyGpgSignature() with the real embedded key, so a rotation of the OpenTofu release key,
+// or a change in how its SHA256SUMS is signed, fails here instead of at install time.
+//
+// Two releases bracket the signed history: 1.6.0 (the first stable release) and 1.13.1
+// (current when the fixtures were fetched, 2026-10-06). Both come straight from the
+// opentofu/opentofu GitHub releases.
+describe('gpg-verifier: OpenTofu trust-root canary (real embedded key)', function () {
+    this.timeout(15000);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch shared module
+    const hc = httpClient as any;
+    const origFetchBufferAllow404 = hc.fetchBufferAllow404;
+    afterEach(() => { hc.fetchBufferAllow404 = origFetchBufferAllow404; });
+
+    const RELEASES = ['1.6.0', '1.13.1'];
+    const readTofu = (release: string) => {
+        const name = `tofu_${release}_SHA256SUMS`;
+        return {
+            sumsContent: fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'),
+            sigBytes: new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.gpgsig`))),
+            sigUrl: `https://github.com/opentofu/opentofu/releases/download/v${release}/${name}.gpgsig`,
+        };
+    };
+    const readTerraform = () => {
+        const name = 'terraform_1.15.8_SHA256SUMS';
+        return {
+            sumsContent: fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8'),
+            sigBytes: new Uint8Array(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.sig`))),
+            sigUrl: `https://releases.hashicorp.com/terraform/1.15.8/${name}.sig`,
+        };
+    };
+
+    for (const release of RELEASES) {
+        it(`verifies the real tofu ${release} SHA256SUMS against the embedded OpenTofu key`, async () => {
+            const { sumsContent, sigBytes, sigUrl } = readTofu(release);
+            hc.fetchBufferAllow404 = async () => sigBytes;
+            assert.strictEqual(await verifyGpgSignature(sumsContent, sigUrl, true, OPENTOFU_GPG_PUBLIC_KEY), true);
+        });
+
+        it(`rejects tofu ${release} SHA256SUMS with one checksum altered`, async () => {
+            const { sumsContent, sigBytes, sigUrl } = readTofu(release);
+            hc.fetchBufferAllow404 = async () => sigBytes;
+            const altered = (sumsContent[0] === '0' ? '1' : '0') + sumsContent.slice(1);
+            await assert.rejects(
+                verifyGpgSignature(altered, sigUrl, true, OPENTOFU_GPG_PUBLIC_KEY),
+                (err: unknown) => {
+                    assert.ok(isVerificationFailure(err), 'a tampered SHA256SUMS must be a VerificationFailure');
+                    assert.match((err as Error).message, /GPG signature verification failed/);
+                    return true;
+                },
+            );
+        });
+
+        // The cross-key guard. Without the explicit key argument verifyGpgSignature falls
+        // back to HashiCorp's key, so an OpenTofu install that forgot to pass its own key
+        // would fail every verification -- and, worse, a Terraform install could be handed
+        // OpenTofu's signed material and have it accepted if the keys were ever merged
+        // into one trust set.
+        it(`rejects the real tofu ${release} signature under HashiCorp's key (the default)`, async () => {
+            const { sumsContent, sigBytes, sigUrl } = readTofu(release);
+            hc.fetchBufferAllow404 = async () => sigBytes;
+            await assert.rejects(verifyGpgSignature(sumsContent, sigUrl, true), /GPG signature verification failed/);
+            await assert.rejects(verifyGpgSignature(sumsContent, sigUrl, true, HASHICORP_GPG_PUBLIC_KEY), /GPG signature verification failed/);
+        });
+    }
+
+    it('rejects the real HashiCorp terraform 1.15.8 signature under the OpenTofu key', async () => {
+        const { sumsContent, sigBytes, sigUrl } = readTerraform();
+        hc.fetchBufferAllow404 = async () => sigBytes;
+        await assert.rejects(
+            verifyGpgSignature(sumsContent, sigUrl, true, OPENTOFU_GPG_PUBLIC_KEY),
+            (err: unknown) => {
+                assert.ok(isVerificationFailure(err), 'a signature by a different trusted publisher must be a VerificationFailure');
+                assert.match((err as Error).message, /GPG signature verification failed/);
+                return true;
+            },
+        );
+        // ...while the same pair still verifies under the key it belongs to, so the
+        // rejection above is about the key and not a broken fixture.
+        assert.strictEqual(await verifyGpgSignature(sumsContent, sigUrl, true, HASHICORP_GPG_PUBLIC_KEY), true);
+    });
+
+    it('verifies against the key it is given, and only that key', async () => {
+        const { privateKey, publicKey } = await openpgp.generateKey({
+            userIDs: [{ name: 'Other Publisher', email: 'publisher@example.com' }],
+        });
+        const sums = `${'b'.repeat(64)}  tofu_9.9.9_linux_amd64.zip\n`;
+        const message = await openpgp.createMessage({ text: sums });
+        const detached = await openpgp.sign({
+            message,
+            signingKeys: await openpgp.readPrivateKey({ armoredKey: privateKey }),
+            detached: true,
+            format: 'binary',
+        });
+        hc.fetchBufferAllow404 = async () => detached as Uint8Array;
+        const url = 'https://registry.example.com/storage/9.9.9/SHA256SUMS.opentofu.sig';
+
+        assert.strictEqual(await verifyGpgSignature(sums, url, true, publicKey), true);
+        await assert.rejects(verifyGpgSignature(sums, url, true, OPENTOFU_GPG_PUBLIC_KEY), /GPG signature verification failed/);
+        await assert.rejects(verifyGpgSignature(sums, url, true), /GPG signature verification failed/);
+    });
+});
+
+// Fingerprint pin, as for HashiCorp above (#652): the canary proves the embedded key still
+// verifies genuine OpenTofu releases, but not that it is the documented OpenTofu identity
+// rather than some other well-formed key a coordinated edit could substitute. The key is the
+// one OpenTofu publishes at https://get.opentofu.org/opentofu.asc (src/opentofu-gpg-key.ts
+// says how it was checked), so any key swap fails CI independently of the canary.
+describe('opentofu-gpg-key: embedded key is pinned to the documented OpenTofu fingerprint', function () {
+    this.timeout(15000);
+
+    it('the embedded key primary fingerprint / key-ID equal OpenTofu\'s release-signing identity', async () => {
+        const key = await openpgp.readKey({ armoredKey: OPENTOFU_GPG_PUBLIC_KEY });
+        // Full 40-hex primary fingerprint; its low 16 hex are the Key ID 0C0AF313E5FD9F80.
+        assert.strictEqual(key.getFingerprint(), 'e3e6e43d84cb852eadb0051d0c0af313e5fd9f80');
+        assert.strictEqual(key.getKeyID().toHex(), '0c0af313e5fd9f80');
+        assert.ok(
+            key.getUserIDs().some(id => id.includes('core@opentofu.org')),
+            `unexpected identity: ${key.getUserIDs().join(' | ')}`,
+        );
+    });
+
+    it('is a different key from HashiCorp\'s, so neither publisher can vouch for the other', async () => {
+        const tofu = await openpgp.readKey({ armoredKey: OPENTOFU_GPG_PUBLIC_KEY });
+        const hashicorp = await openpgp.readKey({ armoredKey: HASHICORP_GPG_PUBLIC_KEY });
+        assert.notStrictEqual(tofu.getFingerprint(), hashicorp.getFingerprint());
     });
 });

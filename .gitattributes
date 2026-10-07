@@ -17,3 +17,10 @@ Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.5.7
 Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS.sig -text
 Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS -text
 Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/terraform_1.5.7_SHA256SUMS.sig -text
+# OpenTofu's counterparts: downloadSource=registry verifies the detached .gpgsig OpenTofu
+# publishes beside each tofu_<version>_SHA256SUMS. Same byte-exactness requirement.
+# TerraformInstallerV1 only: the OpenTofu key and the registry path are not shared code.
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/tofu_1.6.0_SHA256SUMS -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/tofu_1.6.0_SHA256SUMS.gpgsig -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/tofu_1.13.1_SHA256SUMS -text
+Tasks/TerraformInstaller/TerraformInstallerV1/Tests/fixtures/tofu_1.13.1_SHA256SUMS.gpgsig -text

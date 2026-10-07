@@ -136,6 +136,10 @@ const SITE_ROWS: SiteRow[] = [
     { file: TF, fn: 'downloadZipFromMirror', kind: 'SUMS-ABSENT', verdict: 'HONORS-SIGNATURE-TOGGLE' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+    // The OpenTofu branch of the same discard closure: verifyCosignSignature takes the
+    // place verifyGpgSignature has for Terraform, so the function now carries a third
+    // verify call, still inside the one discardArtifactOnFailure().
+    { file: TF, fn: 'downloadZipFromMirror', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: TF_TI, fn: 'writeCacheIntegrityMarker', kind: 'RECORD-WRITE', verdict: 'ATOMIC-WRITE' },
     { file: TF_TI, fn: 'verifyCachedTool', kind: 'RECORD-READ', verdict: 'VALIDATES-RECORD' },
     { file: TF, fn: 'downloadTofu', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
