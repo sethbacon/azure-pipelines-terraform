@@ -44,7 +44,7 @@ Note: the marker sits next to the executable it protects; it defends against cor
 
 ### cosign for OpenTofu signature verification
 
-OpenTofu downloads are verified with [cosign](https://github.com/sigstore/cosign) (`requireCosignVerification`, default `true`). Because cosign is OpenTofu's *only* authenticity anchor here, the task treats the verifier as an artifact it must verify like any other.
+OpenTofu downloads from the GitHub release, or from a `downloadSource=mirror`, are verified with [cosign](https://github.com/sigstore/cosign) (`requireCosignVerification`, default `true`). `downloadSource=registry` has no cosign step: a registry stores a version's `SHA256SUMS` and one detached signature, not a cosign certificate. When the registry advertises that signature (terraform-registry-backend stores the `.gpgsig` OpenTofu publishes beside each `SHA256SUMS`), the task verifies it under the OpenTofu release key embedded in the task (`src/opentofu-gpg-key.ts`, fingerprint `E3E6E43D84CB852EADB0051D0C0AF313E5FD9F80`) and takes the checksum from that verified `SHA256SUMS` rather than from the registry's own `sha256` field. A signature that does not verify under OpenTofu's key fails the install, including one a mirror made under its own custom key, and a signature made by HashiCorp's key is never accepted for OpenTofu (or the reverse). `requireGpgSignature` (default `true`) also fails the install when an advertised signature cannot be fetched. When the registry advertises no signature, or `requireGpgSignature` is `false` and the advertised signature is absent, the install is checksum-only: the registry's SHA256 is the only check, and the task logs a warning. On the release and mirror paths cosign is OpenTofu's *only* authenticity anchor, so the task treats the verifier as an artifact it must verify like any other.
 
 **`cosignSource: managed` (default).** The task downloads the pinned sigstore/cosign release asset for the agent's platform from `github.com`, checks it against a SHA256 shipped inside the task (`src/cosign-pins.ts`), caches it in the agent tool cache with an integrity marker, and runs only that copy. The agent's `PATH` is never consulted, so a step or a concurrent job that can write a `PATH` directory cannot shadow `cosign` with a stub that exits 0. A digest mismatch deletes the download and fails the task; a download failure while `requireCosignVerification` is `true` fails the task as well — it never falls back to an unverified binary. No agent preparation is required, and nothing needs to be installed on the image.
 
@@ -58,16 +58,17 @@ The pin is not fire-and-forget: the `cosign pin freshness` job in `.github/workf
 
 With the default settings the installer task reaches only these hosts (an air-gapped or proxy-restricted agent needs them allowed, or needs the corresponding feature turned off):
 
-| Host | When | Why |
-| ---- | ---- | --- |
-| `releases.hashicorp.com` | `binary=terraform`, `downloadSource=hashicorp` | Terraform release archive, `SHA256SUMS` and its GPG `.sig` |
-| `checkpoint-api.hashicorp.com` | `binary=terraform` and `terraformVersion=latest` | `latest` version resolution |
-| `github.com` | `binary=tofu` | OpenTofu release archive, `SHA256SUMS`, `.sig` and `.pem` — **and the pinned `sigstore/cosign` release asset when `cosignSource=managed`** |
-| `api.github.com` | `binary=tofu` and `terraformVersion=latest` | `latest` version resolution |
-| `objects.githubusercontent.com` | any `github.com` download | GitHub's release-asset CDN, which `github.com` redirects to |
-| the host you configure | `downloadSource=registry` / `mirror` | your registry or mirror (`registryAllowedHosts` / `mirrorAllowedHosts` constrain it) |
+| Host                            | When                                                                                     | Why                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `releases.hashicorp.com`        | `binary=terraform`, `downloadSource=hashicorp`                                           | Terraform release archive, `SHA256SUMS` and its GPG `.sig`                           |
+| `checkpoint-api.hashicorp.com`  | `binary=terraform`, `terraformVersion=latest` and `downloadSource=hashicorp` or `mirror` | `latest` version resolution                                                          |
+| `github.com`                    | `binary=tofu`, `downloadSource=hashicorp`                                                | OpenTofu release archive, `SHA256SUMS`, `.sig` and `.pem`                            |
+| `github.com`                    | `binary=tofu`, `downloadSource=hashicorp` or `mirror`, and `cosignSource=managed`        | the pinned `sigstore/cosign` release asset                                           |
+| `api.github.com`                | `binary=tofu`, `terraformVersion=latest` and `downloadSource=hashicorp` or `mirror`      | `latest` version resolution                                                          |
+| `objects.githubusercontent.com` | any `github.com` download                                                                | GitHub's release-asset CDN, which `github.com` redirects to                          |
+| the host you configure          | `downloadSource=registry` / `mirror`                                                     | your registry or mirror (`registryAllowedHosts` / `mirrorAllowedHosts` constrain it) |
 
-Setting `cosignSource: ambient` removes the cosign asset download; it does not remove `github.com`, which the OpenTofu release itself comes from.
+Setting `cosignSource: ambient` removes the cosign asset download; it does not remove `github.com` for `downloadSource=hashicorp`, where the OpenTofu release itself comes from. With `downloadSource=mirror` or `registry` and a pinned `terraformVersion`, the OpenTofu archive and its checksums come only from the host you configure; the one remaining `github.com` request is the managed cosign asset, which `downloadSource=registry` never fetches.
 
 ### Output Variables
 

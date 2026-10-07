@@ -483,8 +483,8 @@ describe('TerraformInstaller Test Suite', function () {
                 'must not disclose checksum-only trust once a real signature was verified. warnings: ' + tr.warningIssues,
             );
             assert(
-                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.9.8/SHA256SUMS.terraform.sig?sig=def:required=true'),
-                'verifyGpgSignature must be called with the registry-advertised shasums_signature_url and requireGpgSignature (default true). stdout: ' + tr.stdout,
+                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.9.8/SHA256SUMS.terraform.sig?sig=def:required=true:key=hashicorp'),
+                'verifyGpgSignature must be called with the registry-advertised shasums_signature_url, requireGpgSignature (default true) and HashiCorp\'s pinned key. stdout: ' + tr.stdout,
             );
         }, tr);
     });
@@ -1060,6 +1060,274 @@ describe('TerraformInstaller Test Suite', function () {
             assert(
                 tr.stdout.includes('PREPEND_PATH_CALLED:/tmp/tofu-cached'),
                 'installed tofu directory should be prepended to PATH so PipelineTerraformTask can find it via tasks.which()',
+            );
+        }, tr);
+    });
+
+    // --- OpenTofu from a private registry or mirror: downloadSource applies to binary=tofu ---
+
+    it('opentofu registry: installs the tofu_ archive from the registry and discloses checksum-only trust when no signature is advertised', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistrySpecificVersionSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('DOWNLOADED:https://storage.example.com/signed/tofu_1.11.6_windows_amd64.zip AS tofu-1.11.6-test-uuid-1234.zip'),
+                'the registry-supplied download_url should be fetched into a tofu-named temp file',
+            );
+            assert(tr.stdout.includes('CACHE_DIR_CALLED:tofu@1.11.6'), 'the archive should be cached under the tofu tool name');
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_OpenTofuRegistryTrustAnchorIsChecksumOnly')),
+                'a registry-served OpenTofu has only the registry\'s own sha256 as a trust anchor and must say so. warnings: ' + tr.warningIssues,
+            );
+            assert(
+                !tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'the Terraform-worded disclosure must not be used for OpenTofu. warnings: ' + tr.warningIssues,
+            );
+            assert(!tr.stdout.includes('GPG_VERIFY_CALLED'), 'the registry advertised no signature, so there is nothing for the GPG verifier to check');
+            assert(!tr.stdout.includes('COSIGN_VERIFY_CALLED'), 'a registry install has no cosign material to verify');
+            assert(tr.stdout.includes('MARKER_WRITTEN:'), 'a checksum-verified install should record the cache integrity marker');
+            assert(
+                /variable=terraformDownloadedFrom[^\]]*\]registry:https:\/\/registry\.example\.com/.test(tr.stdout),
+                'terraformDownloadedFrom should record the registry as the source',
+            );
+        }, tr);
+    });
+
+    // A registry that advertises OpenTofu's signed SHA256SUMS (terraform-registry-backend
+    // stores the release's detached .gpgsig once it verifies). The installer verifies it under
+    // OpenTofu's own embedded release key -- GpgVerifierL0 proves that key verifies real
+    // releases; this row proves the install selects it, and takes the checksum from the
+    // VERIFIED SHA256SUMS rather than the registry's own (deliberately different) sha256 field.
+    it('opentofu registry: GPG-verifies the advertised SHA256SUMS under OpenTofu\'s key and does NOT warn checksum-only', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryGpgVerified.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.11.6/SHA256SUMS.opentofu.sig?sig=def:required=true:key=opentofu'),
+                'verifyGpgSignature must be called with the registry-advertised shasums_signature_url, requireGpgSignature (default true) and OpenTofu\'s pinned key, never HashiCorp\'s. stdout: ' + tr.stdout,
+            );
+            assert(
+                !tr.warningIssues.some(w => w.includes('RegistryTrustAnchorIsChecksumOnly')),
+                'must not disclose checksum-only trust (in either wording) once a real signature was verified. warnings: ' + tr.warningIssues,
+            );
+            assert(tr.stdout.includes('CACHE_DIR_CALLED:tofu@1.11.6'), 'the verified archive should be cached under the tofu tool name');
+            assert(tr.stdout.includes('MARKER_WRITTEN:'), 'a verified install should record the cache integrity marker');
+            assert(!tr.stdout.includes('COSIGN_VERIFY_CALLED'), 'a registry stores no cosign certificate, so there is no cosign step');
+        }, tr);
+    });
+
+    it('opentofu registry: fails closed when the registry-advertised signature does not verify under OpenTofu\'s key', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryGpgVerifyFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'a signature that fails verification must fail the task, not degrade to checksum-only trust');
+            assert(
+                tr.errorIssues.some(e => e.includes('signature does not match')),
+                'the failure must surface why. errors: ' + tr.errorIssues,
+            );
+            assert(
+                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.11.6/SHA256SUMS.opentofu.sig?sig=def:required=true:key=opentofu'),
+                'the signature must have been checked against OpenTofu\'s pinned key. stdout: ' + tr.stdout,
+            );
+            assert(!tr.stdout.includes('CACHE_DIR_CALLED'), 'a rejected archive must never reach the tool cache');
+        }, tr);
+    });
+
+    it('opentofu registry: discloses checksum-only trust when GPG verification of an advertised SHA256SUMS was permitted to be skipped', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryGpgOptOutDisclosesWarning.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'the install still succeeds -- this is a disclosure, not a failure. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('REGISTRY_GPG_VERIFY_CALLED:https://registry.example.com/storage/1.11.6/SHA256SUMS.opentofu.sig?sig=def:required=false:key=opentofu'),
+                'requireGpgSignature=false must reach the verifier, still with OpenTofu\'s key. stdout: ' + tr.stdout,
+            );
+            assert(
+                tr.warningIssues.some(w => w.includes('loc_mock_OpenTofuRegistryTrustAnchorIsChecksumOnly')),
+                'an OpenTofu registry install whose signed SHA256SUMS was never authenticated must disclose checksum-only trust. warnings: ' + tr.warningIssues,
+            );
+            assert(
+                !tr.warningIssues.some(w => w.includes('loc_mock_RegistryTrustAnchorIsChecksumOnly')),
+                'the Terraform-worded disclosure must not be used for OpenTofu. warnings: ' + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    it('opentofu registry latest: resolves the version through the registry, not the GitHub API', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryLatestSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(tr.stdout.includes('loc_mock_ResolvedVersionFromRegistry'), 'the version should be resolved through the registry');
+            assert(!tr.stdout.includes('loc_mock_GettingLatestOpenTofuVersion'), 'the GitHub releases API must not be consulted');
+            assert(
+                tr.stdout.includes('DOWNLOADED:https://storage.example.com/signed/tofu_1.11.6_windows_amd64.zip'),
+                'the resolved version should be downloaded from the registry',
+            );
+            assert(tr.stdout.includes('CACHE_DIR_CALLED:tofu@1.11.6'), 'the archive should be cached under the tofu tool name');
+        }, tr);
+    });
+
+    it('opentofu registry: rejects a registry that answers from a Terraform mirror, before downloading', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryWrongMirrorReject.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('is not the OpenTofu archive expected') && e.includes('registryMirrorName')),
+                'should reject up front and point at registryMirrorName. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('opentofu registry, empty sha256 with requireChecksum=false: installs unverified and records no integrity marker', async () => {
+        const tp = path.join(__dirname, 'OpenTofuRegistryEmptySha256Unverified.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(
+                tr.warningIssues.some(w => w.includes('skipping local verification')),
+                'should warn that local verification was skipped. warnings: ' + tr.warningIssues,
+            );
+            assert(
+                !tr.stdout.includes('MARKER_WRITTEN:'),
+                'an artifact nothing verified must not be recorded as verified',
+            );
+        }, tr);
+    });
+
+    it('opentofu mirror: installs the tofu_ archive from the mirror and verifies its SHA256SUMS with cosign', async () => {
+        const tp = path.join(__dirname, 'OpenTofuMirrorCosignVerifiedSuccess.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        const cosignPin = 'a'.repeat(64);
+        const sumsUrl = 'https://artifacts.example.com/opentofu/1.11.6/tofu_1.11.6_SHA256SUMS';
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('DOWNLOADED:https://artifacts.example.com/opentofu/1.11.6/tofu_1.11.6_windows_amd64.zip AS tofu-1.11.6-test-uuid-1234.zip'),
+                'the archive should come from the mirror, laid out as {mirrorBaseUrl}/{version}/tofu_{version}_{os}_{arch}.zip',
+            );
+            assert(
+                tr.stdout.includes(`COSIGN_VERIFY_CALLED:${sumsUrl}.sig|${sumsUrl}.pem|1.11.6|required=true|pin=${cosignPin}|source=ambient`),
+                'the mirror\'s .sig and .pem should be verified with the operator\'s cosign controls',
+            );
+            assert(
+                tr.stdout.includes('COSIGN_SUMS_BODY:aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233  tofu_1.11.6_windows_amd64.zip'),
+                'the SHA256SUMS the mirror served is the content that cosign authenticates',
+            );
+            assert(
+                !tr.stdout.includes('GPG_VERIFY_CALLED'),
+                'requireGpgSignature governs Terraform; the HashiCorp GPG verifier must not run for OpenTofu',
+            );
+            assert(
+                !tr.warningIssues.some(w => w.includes('loc_mock_GpgVerificationSkippedChecksumOnly')),
+                'a cosign-verified mirror install must not claim GPG verification was skipped. warnings: ' + tr.warningIssues,
+            );
+            assert(tr.stdout.includes('CACHE_DIR_CALLED:tofu@1.11.6'), 'the archive should be cached under the tofu tool name');
+            assert(tr.stdout.includes('MARKER_WRITTEN:'), 'a verified install should record the cache integrity marker');
+            assert(
+                /variable=terraformDownloadedFrom[^\]]*\]mirror:https:\/\/artifacts\.example\.com\/opentofu/.test(tr.stdout),
+                'terraformDownloadedFrom should record the mirror as the source',
+            );
+        }, tr);
+    });
+
+    it('opentofu mirror: a failed cosign verification fails the install before extraction', async () => {
+        const tp = path.join(__dirname, 'OpenTofuMirrorCosignVerifyFail.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('cosign verification of the OpenTofu SHA256SUMS failed')),
+                'failure should stem from the cosign verification. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('opentofu mirror, no SHA256SUMS with requireChecksum=false: still fails when cosign verification is required', async () => {
+        const tp = path.join(__dirname, 'OpenTofuMirrorCosignRequiredButSumsMissing.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed');
+            assert(
+                tr.errorIssues.some(e => e.includes('cosign signature verification is required')),
+                'failure should name cosign. errors: ' + tr.errorIssues,
+            );
+            assert(
+                !tr.errorIssues.some(e => e.includes('GPG signature verification is required')),
+                'requireGpgSignature must not apply to OpenTofu. errors: ' + tr.errorIssues,
+            );
+        }, tr);
+    });
+
+    it('opentofu cache hit, no marker, registry: reverify rejects a Terraform archive and fails closed (not degraded)', async () => {
+        const tp = path.join(__dirname, 'OpenTofuCacheHitReverifyRegistryWrongMirror.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        runValidations(() => {
+            assert(tr.failed, 'task should have failed closed');
+            assert(
+                tr.errorIssues.some(e => e.includes('is not the OpenTofu archive expected')),
+                'the OpenTofu archive guard should apply to the reverify download. errors: ' + tr.errorIssues,
+            );
+            assert(
+                tr.warningIssues.every(w => !w.includes('CachedToolReverificationUnavailable')),
+                'a verification failure must not be degraded to the availability warning. warnings: ' + tr.warningIssues,
+            );
+        }, tr);
+    });
+
+    it('opentofu cache hit, no marker, mirror: reverify uses the tofu_ SHA256SUMS with cosign and heals the marker', async () => {
+        const tp = path.join(__dirname, 'OpenTofuCacheHitReverifyMirrorCosign.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        const sumsUrl = 'https://artifacts.example.com/opentofu/1.11.6/tofu_1.11.6_SHA256SUMS';
+        runValidations(() => {
+            assert(tr.succeeded, 'task should have succeeded');
+            assert(tr.errorIssues.length === 0, 'should have no errors. errors: ' + tr.errorIssues);
+            assert(
+                tr.stdout.includes('REVERIFY_DOWNLOADED:https://artifacts.example.com/opentofu/1.11.6/tofu_1.11.6_windows_amd64.zip'),
+                'the reverify download should be the OpenTofu archive from the mirror',
+            );
+            assert(
+                tr.stdout.includes(`COSIGN_VERIFY_CALLED:${sumsUrl}.sig|${sumsUrl}.pem|1.11.6|required=true`),
+                'the reverify download should be authenticated with cosign',
+            );
+            assert(!tr.stdout.includes('GPG_VERIFY_CALLED'), 'the HashiCorp GPG verifier must not run for OpenTofu');
+            assert(tr.stdout.includes('MARKER_WRITTEN:'), 'a successful reverify should heal the integrity marker');
+            assert(tr.stdout.includes('loc_mock_CachedToolReverified'), 'should report that the cached tool was reverified');
+            assert(
+                tr.warningIssues.every(w => !w.includes('CachedToolReverificationUnavailable')),
+                'a successful reverify must not warn that it was unavailable. warnings: ' + tr.warningIssues,
             );
         }, tr);
     });

@@ -297,6 +297,7 @@ Source: `Tasks/TerraformInstaller/TerraformInstallerV1/src/terraform-installer.t
 - Supports `latest` (queries HashiCorp checkpoint API; fails closed with an actionable error — pin an explicit `version` instead — rather than falling back to a stale version if the checkpoint API is unreachable)
 - Supports Windows, macOS, Linux on amd64, arm64, arm, 386
 - Verifies GPG signature of SHA256SUMS using HashiCorp's embedded public key (`gpg-verifier.ts`)
+- `downloadSource=registry` with `binary=tofu` verifies a registry-advertised `.gpgsig` against OpenTofu's embedded key (`opentofu-gpg-key.ts`, TerraformInstallerV1-only, not a shared module); the key is chosen by binary (`releaseSigningKey`), never by the registry
 - Sets `terraformLocation` pipeline variable after install
 - Handles proxy configuration via `tasks.getHttpProxyConfiguration()`
 
