@@ -19,7 +19,8 @@ All inputs are optional (`required: false`) and default to today's behavior when
 | `publishPlanResults` | `plan` | string (name), unset | Legacy raw ANSI plan attachment. Independent of the summary below. |
 | `publishPlanSummary` | `plan`, `destroy` | string (name), unset | Structured, redacted **Plan** summary. Adds `-out=<tempfile>` to the plan and runs `terraform show -json` on it — unless your `commandOptions` already saves the plan with its own `-out=<path>`, in which case that path is reused (no second `-out=` is injected, so your artifact plan is still written and the summary describes the exact plan you will apply). On `destroy`, built from the destroy's own plan the same way and labeled **Destroy** in the tab; destroy still auto-approves and still fails the task on a non-zero exit. |
 | `publishApplyResults` | `apply` | string (name), unset | Structured, redacted **Apply** summary. Runs apply with `-json` (placed before any positional saved-plan file in `commandOptions`); each event's human-readable message is still echoed to the console, and on failure terraform's stderr is surfaced too. |
-| `includeDiagnosticDetail` | `apply` | boolean, `false` | Include each apply diagnostic's longer `detail` field (higher residual leak risk than `summary`); no effect unless `publishApplyResults` is set. |
+| `includeDiagnostics` | `apply` | boolean, `false` | Include each apply diagnostic's `summary` (provider-authored error/warning text, scrubbed on a best-effort basis only). Off by default, so by default no diagnostic text reaches the attachment; the outcome and per-resource status are always published and the full error text stays in the step log. No effect unless `publishApplyResults` is set. |
+| `includeDiagnosticDetail` | `apply` | boolean, `false` | Also include each diagnostic's longer `detail` field (higher residual leak risk than `summary`); no effect unless `publishApplyResults` and `includeDiagnostics` are both set. |
 | `publishStateResults` | `show` | string (name), unset | Structured, redacted **State** inventory. Runs its own `terraform show -json` of the current state, independent of this step's own `commandOptions`/output settings. Has no effect if `commandOptions` names a saved plan file (that show is a planfile show, not a state show). |
 
 Example (`azure-pipelines.yml`):
@@ -37,7 +38,8 @@ Example (`azure-pipelines.yml`):
     provider: azurerm
     command: apply
     publishApplyResults: production     # structured Apply pivot
-    # includeDiagnosticDetail: true     # optional: include diagnostic detail text
+    # includeDiagnostics: true          # optional: include each diagnostic's summary text
+    # includeDiagnosticDetail: true     # optional: also include its detail text (needs includeDiagnostics)
 
 - task: PipelineTerraformTask@5
   inputs:

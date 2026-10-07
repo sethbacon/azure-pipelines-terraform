@@ -375,10 +375,10 @@
         {
             "name": "stateAddress",
             "type": "string",
-            "label": "State address / arguments",
+            "label": "State address or file",
             "visibleRule": "command = state",
             "required": false,
-            "helpMarkDown": "Resource address(es) for the state sub-command. For mv: 'SOURCE DESTINATION'. For rm/show/list: 'ADDRESS'. For push: path to a local state file."
+            "helpMarkDown": "One address (rm, show, list) or state file path (push), passed to Terraform as a single argument after the command options. A value containing a space is not split into two, so for mv and replace-provider, which take two arguments, give both in Command options instead."
         },
         {
             "name": "fmtCheck",
@@ -500,7 +500,7 @@
             "defaultValue": "false",
             "required": false,
             "visibleRule": "command = apply",
-            "helpMarkDown": "Include the longer `detail` field of each apply diagnostic (error/warning) in the structured summary published by 'Publish structured apply summary', in addition to the shorter `summary` field that is always included. `detail` is freeform text a provider can construct from user/resource input, so it carries more residual risk of an unrecognized secret slipping through the best-effort scrub than `summary` does; defaults to off so the safer, more conservative summary-only mode is the default. Has no effect unless 'Publish structured apply summary' is also set."
+            "helpMarkDown": "Include the longer `detail` field of each apply diagnostic (error/warning) in the structured summary published by 'Publish structured apply summary', in addition to the shorter `summary` field. `detail` is freeform text a provider can construct from user/resource input, so it carries more residual risk of an unrecognized secret slipping through the best-effort scrub than `summary` does; defaults to off so that, even when diagnostics are included, only the safer `summary` is published. Has no effect unless both 'Publish structured apply summary' and 'Include diagnostics in structured apply summary' are set: with diagnostics omitted (the default), no diagnostic text of either kind is published, and the full error text always remains in the (agent-secret-masked) live job log."
         },
         {
             "name": "includeDiagnostics",
