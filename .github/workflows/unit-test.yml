@@ -57,6 +57,10 @@ jobs:
         run: node scripts/check-task-list.js
       - name: Validate WIF audience parity across the setup guides
         run: node scripts/check-wif-audience-parity.js
+      - name: Validate YAML examples documentation
+        # Fails when an example in docs/yaml-examples.md uses a task, input or
+        # option task.json no longer has, or an input task.json gained is not shown.
+        run: node scripts/check-yaml-examples.js
       - name: Self-test check-versions.js
         run: node scripts/test-check-versions.js
       - name: Self-test check-minor-bumps.js
@@ -65,6 +69,8 @@ jobs:
         run: node scripts/test-bump-minor-versions.js
       - name: Self-test check-task-list.js
         run: node scripts/test-check-task-list.js
+      - name: Self-test check-yaml-examples.js
+        run: node scripts/test-check-yaml-examples.js
       - name: Self-test check-per-file-coverage.js
         run: node scripts/test-check-per-file-coverage.js
       - name: Self-test for-each-task.js
