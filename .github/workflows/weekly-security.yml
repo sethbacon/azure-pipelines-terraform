@@ -743,13 +743,90 @@ jobs:
             })().catch(function (err) { console.error("Key-expiry check FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
           '
 
+  # ── OpenTofu GPG trust-root canary ─────────────────────
+  # downloadSource=registry installs OpenTofu from a registry that may advertise the
+  # detached `.gpgsig` OpenTofu publishes beside every tofu_<version>_SHA256SUMS, and
+  # verifies it under the OpenTofu release key embedded in opentofu-gpg-key.ts. This
+  # drives the installer's REAL verifyGpgSignature() (gpg-verifier.ts) with that key
+  # against the latest OpenTofu release's real SHA256SUMS/.gpgsig -- the GPG sibling of
+  # the opentofu-cosign-canary above (the upstream-release trust anchor) and of the
+  # hashicorp-gpg-canary above. Catches an OpenTofu release-key rotation, a change in
+  # how OpenTofu signs its releases, or an openpgp behavior change before it fails
+  # every registry-sourced OpenTofu install whose registry advertises a signature (the
+  # installer fails closed on a signature that does not verify). The embedded key and
+  # the primary key that signs carry no expiry, so unlike hashicorp-gpg-canary there is
+  # no expiry-lead step: a rotation announces itself as this verification failing.
+  # Non-required: a failure here only opens an issue via notify-on-failure below, it
+  # never blocks a PR.
+  opentofu-gpg-canary:
+    name: OpenTofu GPG trust-root canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: Tasks/TerraformInstaller/TerraformInstallerV1
+    steps:
+      # hardening-exception: egress-audit — this job installs from the npm registry
+      #   and clones this repository; harden-runner has never run in this repository,
+      #   so no endpoint baseline exists and a block policy written without one fails
+      #   closed on its first run; audit is what produces that list
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Install installer-task dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile installer task (emits the JS the canary requires)
+        run: npm run compile
+      - name: Resolve latest OpenTofu release version
+        id: version
+        run: |
+          version=$(curl -fsSL https://api.github.com/repos/opentofu/opentofu/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not resolve the latest OpenTofu release version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Download SHA256SUMS
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: curl -fsSL -o SHA256SUMS "https://github.com/opentofu/opentofu/releases/download/v${VERSION}/tofu_${VERSION}_SHA256SUMS"
+      - name: Verify SHA256SUMS with the installer's own GPG verifier + embedded OpenTofu key
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # Reuses gpg-verifier.ts's verifyGpgSignature (required=true, so a missing or
+        # bad signature hard-fails) rather than reimplementing any crypto. It fetches
+        # the .gpgsig from the same GitHub release via the task's own http-client and
+        # verifies it against OPENTOFU_GPG_PUBLIC_KEY -- the exact call a registry-sourced
+        # OpenTofu install makes (terraform-installer.ts, releaseSigningKey).
+        run: |
+          node -e '
+            const fs = require("fs");
+            const { verifyGpgSignature } = require("./src/gpg-verifier");
+            const { OPENTOFU_GPG_PUBLIC_KEY } = require("./src/opentofu-gpg-key");
+            const version = process.env.VERSION;
+            const content = fs.readFileSync("SHA256SUMS", "utf8");
+            const sigUrl = "https://github.com/opentofu/opentofu/releases/download/v" + version + "/tofu_" + version + "_SHA256SUMS.gpgsig";
+            verifyGpgSignature(content, sigUrl, true, OPENTOFU_GPG_PUBLIC_KEY)
+              .then(function () { console.log("OK: OpenTofu GPG signature verified against the embedded key for tofu " + version); })
+              .catch(function (err) { console.error("OpenTofu GPG canary FAILED: " + (err && err.message ? err.message : err)); process.exit(1); });
+          '
+
   # ── sha256-only installer drift canary ─────────────────
   # OPA and terraform-docs are the two installer paths with NO upstream signature
   # to verify -- a published sha256 is the entire trust anchor, so a silent change
   # to the release-asset naming or the checksum-file format would not break a
-  # signature check, it would break checksum verification itself. The two canaries
-  # above cover the SIGNED paths (OpenTofu/cosign, Terraform/GPG); this covers the
-  # unsigned ones (#892). It reuses each installer's own exported asset-name builder
+  # signature check, it would break checksum verification itself. The canaries
+  # above cover the SIGNED paths (OpenTofu/cosign, OpenTofu/GPG, Terraform/GPG); this
+  # covers the unsigned ones (#892). It reuses each installer's own exported asset-name builder
   # and checksum parser rather than reimplementing them, so the canary cannot drift
   # from what the shipped task actually enforces.
   sha256-only-installer-drift-canary:
@@ -857,6 +934,7 @@ jobs:
         opentofu-cosign-canary,
         cosign-pin-freshness,
         hashicorp-gpg-canary,
+        opentofu-gpg-canary,
         sha256-only-installer-drift-canary,
       ]
     if: failure() && github.event_name == 'schedule'

@@ -46,10 +46,9 @@
             "label": "Download source",
             "defaultValue": "hashicorp",
             "required": true,
-            "visibleRule": "binary = terraform",
-            "helpMarkDown": "Where to download the Terraform binary from. OpenTofu always downloads from GitHub releases.",
+            "helpMarkDown": "Where to download the binary from. **hashicorp** (default) is the upstream release: releases.hashicorp.com for Terraform, OpenTofu's GitHub releases for OpenTofu. **registry** and **mirror** download it from your own source, for either binary. With a mirror, 'latest' is still resolved from the upstream release API, so pin a version for an air-gapped agent.",
             "options": {
-                "hashicorp": "HashiCorp official releases (releases.hashicorp.com)",
+                "hashicorp": "Upstream releases (releases.hashicorp.com, or GitHub for OpenTofu)",
                 "registry": "Private registry (terraform-registry-backend)",
                 "mirror": "Custom mirror URL"
             }
@@ -70,16 +69,16 @@
             "defaultValue": "terraform",
             "required": true,
             "visibleRule": "downloadSource = registry",
-            "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/..."
+            "helpMarkDown": "The mirror configuration name in your registry backend. This is the {name} path segment in /terraform/binaries/{name}/... The default, terraform, names a Terraform mirror; for OpenTofu, set the name of an OpenTofu mirror configuration."
         },
         {
             "name": "registryAllowedHosts",
             "type": "string",
-            "label": "Allowed download_url hosts",
+            "label": "Allowed registry hosts",
             "defaultValue": "",
             "required": false,
-            "visibleRule": "binary = terraform && downloadSource = registry",
-            "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the registry's pre-signed download_url is permitted to use (e.g. storage.example.com, or *.s3.amazonaws.com to allow any subdomain). When empty (default), the download_url host is trusted as returned by the registry. Set this to pin a compromised or misbehaving registry from redirecting downloads to an arbitrary HTTPS host."
+            "visibleRule": "downloadSource = registry",
+            "helpMarkDown": "Optional comma- or newline-separated allowlist of the hostnames the registry source may contact: the registry itself (Registry URL), the host of the pre-signed download_url, the hosts of any shasums_url and shasums_signature_url the registry returns, and every redirect on the way. Entries are exact hostnames or a wildcard such as *.s3.amazonaws.com, which matches exactly one label. When set, only the listed hosts are allowed, so list the registry host as well as the storage host; a private or internal host is allowed only if listed. When empty (default), any public host is accepted as returned, but a host that is, or resolves to, a private or link-local address (for example the cloud metadata service) is refused."
         },
         {
             "name": "mirrorBaseUrl",
@@ -88,7 +87,7 @@
             "defaultValue": "",
             "required": true,
             "visibleRule": "downloadSource = mirror",
-            "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as releases.hashicorp.com/terraform. Example: https://artifacts.example.com/hashicorp/terraform"
+            "helpMarkDown": "Base URL of your binary mirror. Must use HTTPS. Must serve files at the same path structure as releases.hashicorp.com/terraform. Example: https://artifacts.example.com/hashicorp/terraform. For OpenTofu, serve {base}/{version}/tofu_{version}_{os}_{arch}.zip, plus tofu_{version}_SHA256SUMS with its cosign signature (.sig) and certificate (.pem) beside it. Example: https://artifacts.example.com/opentofu"
         },
         {
             "name": "mirrorAllowedHosts",
@@ -96,7 +95,7 @@
             "label": "Allowed mirror download hosts",
             "defaultValue": "",
             "required": false,
-            "visibleRule": "binary = terraform && downloadSource = mirror",
+            "visibleRule": "downloadSource = mirror",
             "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the mirror download is permitted to use (e.g. mirror.example.com, or *.internal.example.com to allow any subdomain). When empty (default), a mirror host that is a private/link-local address (e.g. the cloud metadata service) is refused. Set this to explicitly allow a legitimate private/internal mirror -- including one on a private IP -- for an air-gapped or otherwise network-isolated environment."
         },
         {
@@ -105,8 +104,8 @@
             "label": "Require GPG signature verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "binary = terraform",
-            "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Applies to the registry source too when the registry advertises a shasums_signature_url (terraform-registry-backend v1.2.5+ with GPG verification enabled on the mirror); a registry that does not serve one falls back to checksum-only trust regardless of this setting. Disable for mirrors that do not serve .sig files."
+            "visibleRule": "binary = terraform || downloadSource = registry",
+            "helpMarkDown": "When enabled, fail if the GPG signature file is unavailable. Defaults to true for HashiCorp downloads. Applies to the registry source too, for Terraform and for OpenTofu, when the registry advertises a shasums_signature_url (terraform-registry-backend v1.2.5+ with GPG verification enabled on the mirror): the signature is verified against the publisher's pinned release key, HashiCorp's or OpenTofu's, and a signature that does not verify always fails the install. A registry that does not serve one falls back to checksum-only trust regardless of this setting. Disable for mirrors that do not serve .sig files."
         },
         {
             "name": "requireCosignVerification",
@@ -114,8 +113,8 @@
             "label": "Require cosign signature verification",
             "defaultValue": "true",
             "required": false,
-            "visibleRule": "binary = tofu",
-            "helpMarkDown": "When enabled (default), fail the install if cosign cannot be obtained or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. With the default cosignSource (managed) the task installs its own pinned, hash-verified cosign, so no agent preparation is needed. Set to false only to fall back to checksum-only verification."
+            "visibleRule": "binary = tofu && downloadSource != registry",
+            "helpMarkDown": "When enabled (default), fail the install if cosign cannot be obtained or the OpenTofu SHA256SUMS signature cannot be verified against OpenTofu's pinned Sigstore identity. With the default cosignSource (managed) the task installs its own pinned, hash-verified cosign, so no agent preparation is needed. Set to false only to fall back to checksum-only verification. Applies to the upstream release and to a mirror, which must publish the .sig and .pem files beside its SHA256SUMS. The registry source has no cosign step: it verifies the GPG signature the registry advertises instead (see requireGpgSignature), and is checksum-only, with a warning, when the registry advertises none. The managed cosign is itself downloaded from github.com, so on an air-gapped agent use cosignSource ambient, or set this to false."
         },
         {
             "name": "cosignSource",
@@ -123,7 +122,7 @@
             "label": "cosign source",
             "defaultValue": "managed",
             "required": false,
-            "visibleRule": "binary = tofu",
+            "visibleRule": "binary = tofu && downloadSource != registry",
             "options": {
                 "managed": "Managed (task downloads and hash-verifies a pinned cosign)",
                 "ambient": "Ambient (use the cosign already on the agent's PATH)"
@@ -136,7 +135,7 @@
             "label": "Pinned cosign binary SHA256 (optional)",
             "defaultValue": "",
             "required": false,
-            "visibleRule": "binary = tofu",
+            "visibleRule": "binary = tofu && downloadSource != registry",
             "helpMarkDown": "Optional, and honoured in both cosignSource modes. Under `ambient`, cosign is discovered via a PATH lookup and is never itself integrity-verified, so a prior step that prepends a directory to PATH could shadow it with a stub that always reports success -- set this to the exact SHA256 of the cosign you provisioned and a mismatch fails the install. Under `managed` the task already verifies its own download against a shipped pin, so this is an additional operator-owned expectation rather than the only one. Leave empty (default) unless you are pinning a cosign you provisioned yourself."
         },
         {
@@ -191,7 +190,7 @@
         },
         {
             "name": "terraformDownloadedFrom",
-            "description": "The source from which terraform was downloaded: 'hashicorp', 'registry:<url>', or 'mirror:<url>'."
+            "description": "The source the binary was installed from: 'hashicorp' (Terraform from releases.hashicorp.com), 'opentofu' (OpenTofu from GitHub releases), 'registry:<url>', 'mirror:<url>', or 'cache' (reused from the agent tool cache)."
         }
     ],
     "messages": {
@@ -207,10 +206,11 @@
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
         "RegistryRequestFailed": "Registry request failed for %s. HTTP status: %s",
         "Sha256VerificationFailed": "SHA256 verification failed. Expected: %s, Got: %s",
-        "ResolvingLatestFromRegistry": "Resolving latest Terraform version from registry: %s",
+        "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
         "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
         "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). This registry did not advertise a signed SHA256SUMS for this version, so integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature was verified. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Upgrade to terraform-registry-backend v1.2.5+ with GPG verification enabled on the mirror, or use downloadSource hashicorp, if you need signature-anchored trust.",
+        "OpenTofuRegistryTrustAnchorIsChecksumOnly": "Installed OpenTofu from the private registry (%s). This registry did not advertise a signed SHA256SUMS for this version, so integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature was verified. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. If you need signature-anchored trust, use a registry that advertises OpenTofu's signed SHA256SUMS (shasums_url and shasums_signature_url, from a mirror with GPG verification enabled), which this task verifies against OpenTofu's pinned release key; or use downloadSource mirror (cosign-verified against the .sig and .pem beside the SHA256SUMS) or hashicorp (OpenTofu's GitHub release).",
         "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is, or resolves to, a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is, or resolves to, a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",

@@ -1,6 +1,8 @@
 import ma = require('azure-pipelines-task-lib/mock-answer');
 import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
+import { HASHICORP_GPG_PUBLIC_KEY } from '../src/hashicorp-gpg-key';
+import { OPENTOFU_GPG_PUBLIC_KEY } from '../src/opentofu-gpg-key';
 
 // #1024 follow-up: when the registry advertises BOTH shasums_url and
 // shasums_signature_url (terraform-registry-backend v1.2.5+ with GPG
@@ -75,9 +77,15 @@ tr.registerMock('./gpg-verifier', {
     // console.log, not a shared array: TaskMockRunner runs this fixture in a
     // separate child process from the L0 assertions, so a module-level array
     // would not be observable there. Matches the MARKER_WRITTEN/
-    // REVERIFY_DOWNLOAD_CALLED convention already used elsewhere in this suite.
-    verifyGpgSignature: async (_sha256SumsContent: string, signatureUrl: string, required: boolean) => {
-        console.log(`REGISTRY_GPG_VERIFY_CALLED:${signatureUrl}:required=${required}`);
+    // REVERIFY_DOWNLOAD_CALLED convention already used elsewhere in this suite. The
+    // key is reported BY IDENTITY so the row proves a Terraform install is handed
+    // HashiCorp's key and never OpenTofu's (OpenTofuRegistryGpgVerified.ts proves the
+    // reverse).
+    verifyGpgSignature: async (_sha256SumsContent: string, signatureUrl: string, required: boolean, armoredPublicKey?: string) => {
+        const key = armoredPublicKey === HASHICORP_GPG_PUBLIC_KEY ? 'hashicorp'
+            : armoredPublicKey === OPENTOFU_GPG_PUBLIC_KEY ? 'opentofu'
+                : armoredPublicKey === undefined ? 'default' : 'unknown';
+        console.log(`REGISTRY_GPG_VERIFY_CALLED:${signatureUrl}:required=${required}:key=${key}`);
         return true;
     }
 });

@@ -171,10 +171,10 @@ jobs:
       - name: Validate artifact trust (#65/#78/#136/#198/#204 class signature)
         uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
-          # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
-          #             -> sites 68, scanned 108
+          # 2026-10-06: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
+          #             -> sites 69, scanned 108
           min-scanned: 108
-          min-sites: 68
+          min-sites: 69
       - name: Validate provider auth parity (#97 fail-open class signature)
         uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
         with:
@@ -535,10 +535,10 @@ jobs:
         uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
         with:
           root: ${{ github.workspace }}
-          # 2026-09-10: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
-          #             -> sites 68, scanned 108
+          # 2026-10-06: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
+          #             -> sites 69, scanned 108
           min-scanned: 108
-          min-sites: 68
+          min-sites: 69
       # The same shape again, for Tests/EgressAuthorizationL0.ts: its table C
       # SPAWNS the egress gate and asserts the whole enumerated set, so the
       # composite hands the suite a PATH through
