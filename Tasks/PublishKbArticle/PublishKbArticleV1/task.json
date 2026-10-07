@@ -47,7 +47,7 @@
                 "oauth": "OAuth (Client Credentials)",
                 "basic": "Basic (Username/Password)"
             },
-            "helpMarkDown": "Authentication method to use when no service connection is provided."
+            "helpMarkDown": "Authentication method to use when no service connection is provided. With a service connection, the connection's own scheme decides and this input is ignored."
         },
         {
             "name": "clientId",
@@ -154,7 +154,7 @@
                 "review": "Review",
                 "publish": "Published"
             },
-            "helpMarkDown": "Target workflow state for the article."
+            "helpMarkDown": "Target workflow state for the article. Applied on every run, including updates to an existing article, and Draft when unset, so a run that should leave a published article published must select Published."
         },
         {
             "name": "sourceKey",

@@ -458,7 +458,7 @@ Creates or updates a ServiceNow knowledge base article from an HTML file. Idempo
 | ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `serviceConnection` | —       | A `ServiceNowKb` service connection. If unset, provide `instance` + credentials inline.                                                |
 | `instance`          | —       | ServiceNow instance name (e.g. `mycompany` for `mycompany.service-now.com`). Required when no connection is set.                       |
-| `authType`          | `oauth` | `oauth` (client credentials) or `basic`, when using inline credentials.                                                                |
+| `authType`          | `oauth` | `oauth` (client credentials) or `basic`, when using inline credentials. A service connection's scheme takes precedence.                |
 | `clientId`          | —       | OAuth client application ID. Used when `authType=oauth` and no service connection is set.                                              |
 | `clientSecret`      | —       | OAuth client application secret. Used when `authType=oauth` and no service connection is set. Treat as a secret variable.              |
 | `username`          | —       | ServiceNow username for basic authentication. Used when `authType=basic` and no service connection is set.                             |
@@ -468,7 +468,7 @@ Creates or updates a ServiceNow knowledge base article from an HTML file. Idempo
 | `htmlFile`          | —       | Path to the HTML file whose contents become the article body.                                                                          |
 | `author`            | —       | ServiceNow username of the article author. Required when creating.                                                                     |
 | `category`          | —       | Category name (auto-created if missing). Prefix with `sys_id:` for a raw sys_id.                                                       |
-| `workflowState`     | `draft` | Target state: `draft`, `review`, or `publish`.                                                                                         |
+| `workflowState`     | `draft` | Target state: `draft`, `review`, or `publish`. Applied on every run, updates included: set `publish` to keep an article published.     |
 | `sourceKey`         | —       | Stable correlation key for idempotent create/update. Kept as a `wiki-source: <key>` line in the article's Meta field.                  |
 | `uploadImages`      | `false` | Upload relative `<img>` images as attachments and rewrite their `src`.                                                                 |
 | `dryRun`            | `false` | Convert, validate, and log the planned action without writing to ServiceNow (useful on PR builds).                                     |
