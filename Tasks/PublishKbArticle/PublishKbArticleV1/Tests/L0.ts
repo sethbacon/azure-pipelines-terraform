@@ -3034,6 +3034,23 @@ describe('PublishKbArticle full-task: real (non-dry-run) execution paths', () =>
         }, tr);
     });
 
+    // The agent passes authType's task.json default ('oauth') to a run that never set
+    // it. With a Basic-scheme connection, that default must not displace the
+    // connection's scheme.
+    it('RealServiceConnectionBasicSucceeds — a Basic-scheme service connection is used as Basic even when authType carries its oauth default', async () => {
+        const tp = nodePath.join(__dirname, 'RealServiceConnectionBasicSucceeds.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            assert.ok(
+                tr.stdout.includes('##[MOCK] getAuthHeaders called with type=basic username=sc-user'),
+                `resolveAuth should have taken the Basic scheme and username from the service connection: ${tr.stdout}`,
+            );
+            assert.ok(!tr.stdout.includes('getOAuthToken called'), `no OAuth token request should be made for a Basic connection: ${tr.stdout}`);
+        }, tr);
+    });
+
     // #771: resolveAuth() masks clientSecret/password at the point of read, before
     // the instance-required/instance-format checks that can throw ahead of the
     // deferred tasks.setSecret() calls inside getOAuthToken()/basicAuthHeader().

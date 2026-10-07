@@ -77,7 +77,13 @@ async function resolveAuth(): Promise<ResolvedAuth> {
     // `instance` accepts a whole URL, so it can carry userinfo like the connection
     // URL above; read it through the silent reader too (#1105 class sweep).
     instance = readUrlInput('instance', false) || instance;
-    authType = tasks.getInput('authType', false) || authType;
+    // authType only chooses the scheme when there is no service connection (see its
+    // help text); with one, the connection's own scheme decides. The agent hands a
+    // run that never set the input its task.json default, `oauth`, and honouring
+    // that here turned a Basic-scheme connection into an OAuth attempt.
+    if (!serviceConnection) {
+        authType = tasks.getInput('authType', false) || authType;
+    }
     clientId = tasks.getInput('clientId', false) || clientId;
     clientSecret = readSecretInput('clientSecret', false) || clientSecret;
     username = tasks.getInput('username', false) || username;
