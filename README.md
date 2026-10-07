@@ -67,7 +67,7 @@ Installs a specific version of Terraform or OpenTofu on the build agent.
 | `registry`       | Private [terraform-registry-backend](https://github.com/sethbacon/terraform-registry-backend) instance. Downloads include SHA256 integrity verification. |
 | `mirror`         | Custom mirror URL that mirrors the HashiCorp release path structure. HTTPS required. For `binary=tofu`, the OpenTofu layout (cosign-verified).           |
 
-For `binary=tofu`, `registry` and `mirror` install OpenTofu from your own source: set `registryMirrorName` to the name of an OpenTofu mirror, or serve the OpenTofu release layout (no `v` on the version) from `mirrorBaseUrl`. A mirror's `SHA256SUMS` signature is verified with cosign, as for the GitHub release. A registry that advertises OpenTofu's signed `SHA256SUMS` has that GPG signature verified against OpenTofu's release key, which is embedded in the task; with no signature advertised, the registry's SHA256 is the only integrity check, and the task warns about that. See the [OpenTofu examples](docs/yaml-examples.md#download-opentofu-from-a-private-registry-backend).
+For `binary=tofu`, `registry` and `mirror` install OpenTofu from your own source: set `registryMirrorName` to the name of an OpenTofu mirror, or serve the OpenTofu release layout (no `v` on the version) from `mirrorBaseUrl`. A mirror's `SHA256SUMS` signature is verified with cosign, as for the GitHub release. A registry that advertises OpenTofu's signed `SHA256SUMS` has that GPG signature verified against OpenTofu's release key, which is embedded in the task; with no signature advertised, the registry's SHA256 is the only integrity check, and the task warns about that.
 
 ---
 
