@@ -4,6 +4,25 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.18.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.3...v1.18.0) (2026-10-07)
+
+
+### Features
+
+* **TerraformInstaller:** install OpenTofu from a private registry or mirror ([#1220](https://github.com/sethbacon/azure-pipelines-terraform/issues/1220)) ([a8f4073](https://github.com/sethbacon/azure-pipelines-terraform/commit/a8f4073917f864a53f0b871c380108b4ff69ee50))
+
+
+### Bug Fixes
+
+* describe what registryAllowedHosts allows in PolicyAgentInstaller and TerraformDocsInstaller ([#1223](https://github.com/sethbacon/azure-pipelines-terraform/issues/1223)) ([7c686af](https://github.com/sethbacon/azure-pipelines-terraform/commit/7c686afc0ead533e24aa2f85acc165f4e38be53c))
+* **PublishKbArticle:** honour a service connection's auth scheme ([#1221](https://github.com/sethbacon/azure-pipelines-terraform/issues/1221)) ([d1cc64c](https://github.com/sethbacon/azure-pipelines-terraform/commit/d1cc64c61ddcaf2fa8ca1756ca8bbf70e3b9f7b9))
+* **TerraformTaskV5:** correct stateAddress and includeDiagnosticDetail help ([#1225](https://github.com/sethbacon/azure-pipelines-terraform/issues/1225)) ([7f77334](https://github.com/sethbacon/azure-pipelines-terraform/commit/7f77334b8be076588c250e31b3cb9300b552225b))
+
+
+### Documentation
+
+* rewrite the YAML examples and check them against task.json in CI ([#1222](https://github.com/sethbacon/azure-pipelines-terraform/issues/1222)) ([868ff6b](https://github.com/sethbacon/azure-pipelines-terraform/commit/868ff6bb99e637937bbfc83045098723094111e7))
+
 ## [1.17.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.2...v1.17.3) (2026-10-06)
 
 
