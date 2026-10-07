@@ -74,11 +74,11 @@
         {
             "name": "registryAllowedHosts",
             "type": "string",
-            "label": "Allowed download_url hosts",
+            "label": "Allowed registry hosts",
             "defaultValue": "",
             "required": false,
             "visibleRule": "downloadSource = registry",
-            "helpMarkDown": "Optional comma- or newline-separated allowlist of hostnames the registry's download_url is permitted to use (e.g. storage.example.com, or *.s3.amazonaws.com to allow any subdomain). When empty (default), the download_url host is trusted as returned by the registry. Set this to pin a compromised or misbehaving registry from redirecting downloads to an arbitrary HTTPS host."
+            "helpMarkDown": "Optional comma- or newline-separated allowlist of the hostnames the registry source may contact: the registry itself (Registry URL), the host of the pre-signed download_url, and every redirect on the way. Entries are exact hostnames or a wildcard such as *.s3.amazonaws.com, which matches exactly one label. When set, only the listed hosts are allowed, so list the registry host as well as the storage host; a private or internal host is allowed only if listed. When empty (default), any public host is accepted as returned, but a host that is, or resolves to, a private or link-local address (for example the cloud metadata service) is refused."
         },
         {
             "name": "mirrorBaseUrl",
