@@ -206,7 +206,7 @@
             "groupName": "hcp",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "Used only when creating a VCS-connected module that does not exist yet. Set together with vcsOauthTokenId. Leave both empty to create a module with no VCS connection instead. Example: my-org/my-project/_git/terraform-aws-vpc."
+            "helpMarkDown": "Used only when creating a VCS-connected module that does not exist yet. Set together with the VCS OAuth connection ID. Leave both empty to create a module with no VCS connection instead. Example: my-org/my-project/_git/terraform-aws-vpc."
         },
         {
             "name": "vcsBranch",

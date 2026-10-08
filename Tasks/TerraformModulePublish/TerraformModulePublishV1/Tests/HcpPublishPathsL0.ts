@@ -185,7 +185,7 @@ describe('hcp publish paths', () => {
             } finally {
                 (tasks as unknown as { setSecret: typeof original }).setSecret = original;
             }
-            assert.ok(secrets.includes(UPLOAD), 'the capability URL must be masked');
+            assert.ok(secrets.some((s) => s === UPLOAD), 'the capability URL must be masked');
         });
 
         it('scrubs the upload link from a failed-upload error', async () => {
