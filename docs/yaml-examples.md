@@ -2330,6 +2330,63 @@ set it to the base URL of the Terraform Enterprise host to publish there instead
 yet exist** and HCP should create a VCS-connected module for it; for modules that
 already exist they are ignored. `commitSha` defaults to `$(Build.SourceVersion)`.
 
+HCP names a VCS-connected module from its repository (`terraform-<provider>-<name>`),
+so `name` and `provider` must match the repository name or the task fails before
+creating anything.
+
+### Choose the HCP publish path with hcpPublishMode
+
+HCP Terraform has three kinds of private module. `hcpPublishMode` defaults to
+`auto`, which publishes to whichever kind the module already is, so existing
+pipelines need no change. Set it explicitly to require a kind: the task then
+fails before changing anything if the existing module is a different one.
+
+| `hcpPublishMode` | Module kind            | Behaviour                                                       |
+| ---------------- | ---------------------- | --------------------------------------------------------------- |
+| `auto`           | any                    | Follows the existing module; creates it if missing (see below). |
+| `vcsBranch`      | VCS-connected, branch  | Creates the version from `commitSha`.                           |
+| `vcsTag`         | VCS-connected, git tag | Observe only: HCP imports versions from git tags.               |
+| `upload`         | no VCS connection      | Archives `moduleDirectory` and uploads it.                      |
+
+```yaml
+# Module with no VCS connection: the task archives the directory and uploads it.
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Publish module to HCP Terraform (upload)'
+  inputs:
+    registryType: 'hcp'
+    hcpPublishMode: 'upload'
+    namespace: 'my-org'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'
+    moduleDirectory: '$(Build.SourcesDirectory)/modules/vpc'   # default '.'
+```
+
+```yaml
+# Module versioned from git tags: the tag must already be pushed. The task
+# creates nothing and waits for HCP to import the version.
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Wait for HCP to import the tag'
+  inputs:
+    registryType: 'hcp'
+    hcpPublishMode: 'vcsTag'
+    namespace: 'my-org'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'
+```
+
+In `auto` mode a module that does not exist yet is created VCS-connected
+(branch) when both `vcsRepoIdentifier` and `vcsOauthTokenId` are set, and with no
+VCS connection when neither is set; setting only one fails the task. Upload mode
+requires `.tf` or `.tf.json` files at the root of `moduleDirectory`, excludes
+`.git` and `.terraform`, refuses symbolic links that point outside the directory,
+and limits the archive to 64 MiB uncompressed. If a run fails after the version
+was created, a re-run deletes the failed or stuck version and creates it again;
+a version HCP already reports as available is skipped.
+
 ### Wait behaviour
 
 ```yaml
