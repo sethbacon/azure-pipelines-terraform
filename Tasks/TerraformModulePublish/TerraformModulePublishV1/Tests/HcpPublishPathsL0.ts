@@ -540,15 +540,27 @@ describe('hcp publish paths', () => {
         const writes = (calls: Recorded[]): string[] => calls.map((c) => c.method).filter((m) => m !== 'GET');
 
         it('missing module: reports it would create one and writes nothing', async () => {
-            const { client, calls } = script([NOT_FOUND]);
+            const { client, calls } = script([NOT_FOUND, OK_EMPTY]);
             const result = await new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, archiveOk).publish();
             assert.strictEqual(result.published, false);
             assert.match(result.message, /does not exist|HcpCheckOnlyModuleMissing/);
             assert.deepStrictEqual(writes(calls), []);
+            assert.match(calls[1].url, /\/organizations\/[^/]+\/registry-modules\?/);
+        });
+
+        it('missing module in an unreadable organisation fails instead of reporting a create', async () => {
+            for (const status of [404, 401, 403]) {
+                const { client, calls } = script([NOT_FOUND, { status, body: '{}' }]);
+                await assert.rejects(
+                    () => new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, archiveOk).publish(),
+                    /HcpCheckOnlyRegistryUnreadable|registry of organization/,
+                );
+                assert.deepStrictEqual(writes(calls), []);
+            }
         });
 
         it('missing module: still validates the module directory so a bad one fails the check', async () => {
-            const { client } = script([NOT_FOUND]);
+            const { client } = script([NOT_FOUND, OK_EMPTY]);
             const bad = (): Promise<Uint8Array> => Promise.reject(new Error('no .tf files'));
             await assert.rejects(
                 () => new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, bad).publish(),
@@ -557,7 +569,7 @@ describe('hcp publish paths', () => {
         });
 
         it('missing module: still rejects incomplete VCS inputs', async () => {
-            const { client, calls } = script([NOT_FOUND]);
+            const { client, calls } = script([NOT_FOUND, OK_EMPTY]);
             await assert.rejects(
                 () => new hcp.HcpPublisher(client, { ...base, checkOnly: true, vcsRepoIdentifier: 'a/b/_git/terraform-aws-vpc' }, noop, archiveOk).publish(),
                 /HcpVcsInputsIncomplete|only one of/,

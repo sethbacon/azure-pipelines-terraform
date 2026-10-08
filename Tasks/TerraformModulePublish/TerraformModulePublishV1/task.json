@@ -318,6 +318,7 @@
         "HcpCheckOnlyModuleMissing": "Check only: module %s/%s/%s does not exist; a publish would create it as a '%s' module. Nothing was changed.",
         "HcpCheckOnlyVersionAbsent": "Check only: version %s is not ready; a publish would create it on this '%s' module. Nothing was changed.",
         "HcpCheckOnlyFailed": "Check only: could not read the module (HTTP %s), so nothing can be reported. Check the token and address.",
+        "HcpCheckOnlyRegistryUnreadable": "Check only: the module was not found and the registry of organization '%s' could not be read (HTTP %s). Check namespace, the token and the address.",
         "HcpUnsupportedPublishMode": "Unsupported hcpPublishMode '%s'. Expected one of: %s.",
         "HcpPublishModeMismatch": "hcpPublishMode is '%s' but module %s/%s/%s is a '%s' module. Set hcpPublishMode to match it, or to 'auto'.",
         "HcpVcsRepoNameMismatch": "HCP names a VCS-connected module from its repository, so '%s' would create the module '%s' for provider '%s', not '%s' for provider '%s'. Set name and provider to match the repository (terraform-<provider>-<name>), or use a repository with the intended name.",
