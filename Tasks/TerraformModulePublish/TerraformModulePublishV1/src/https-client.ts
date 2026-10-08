@@ -55,7 +55,7 @@ export type HttpClient = (
     method: string,
     url: string,
     headers: Record<string, string>,
-    body?: string,
+    body?: string | Uint8Array,
 ) => Promise<HttpResponse>;
 
 /**
@@ -162,9 +162,11 @@ export function createHttpsClient(rejectUnauthorized = true, timeoutMs = DEFAULT
             method,
             url: preflight(() => new URL(url)),
             headers,
-            // Only a truthy body is sent, preserving the previous behaviour
+            // Only a non-empty body is sent, preserving the previous behaviour
             // exactly: an empty string sets no Content-Length and writes nothing.
-            body: body ? Buffer.from(body, 'utf8') : undefined,
+            // A string is UTF-8 encoded; a Uint8Array (e.g. a gzipped module archive)
+            // is sent byte-for-byte, never round-tripped through a string.
+            body: !body ? undefined : typeof body === 'string' ? Buffer.from(body, 'utf8') : Buffer.from(body.buffer, body.byteOffset, body.byteLength),
             timeoutMs,
             rejectUnauthorized,
             agent: preflight(() => buildProxyAgent(timeoutMs)),

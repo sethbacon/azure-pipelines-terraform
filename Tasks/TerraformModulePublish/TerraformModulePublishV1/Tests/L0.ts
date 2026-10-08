@@ -12,6 +12,10 @@ import { TLS_CERT, TLS_KEY } from './loopback-tls';
 import { startConnectProxy, startRefusingConnectProxy, startHangingConnectProxy } from './proxy-connect-server';
 // Direct unit tests for the shared retry.ts module (retryAsync + parseRetryAfterMs).
 import './RetryL0';
+// Module archive builder used by the HCP no-VCS upload path.
+import './ArchiveL0';
+// HCP publish paths: mode detection, no-VCS create + upload, branch, tag, recovery.
+import './HcpPublishPathsL0';
 // Contract test pinning the shared https-client's no-destination-host-restriction design (#785).
 import './HttpsClientHostHandlingByDesignL0';
 // End-to-end coverage for index.ts's SIGTERM/SIGINT/uncaughtException/
@@ -27,7 +31,7 @@ const noop = (): void => {
 interface Call {
     method: string;
     url: string;
-    body?: string;
+    body?: string | Uint8Array;
 }
 
 /** Builds a fake HttpClient that returns the given responses in order (repeating the last). */
@@ -982,6 +986,7 @@ describe('hcp-publisher', () => {
     const base: hcp.HcpOptions = {
         namespace: 'acme', name: 'vpc', provider: 'aws', version: '1.0.0',
         address: 'https://app.terraform.io', token: 't',
+        publishMode: 'auto', moduleDirectory: '.',
         vcsRepoIdentifier: '', vcsBranch: 'main', vcsOauthTokenId: '', commitSha: 'sha',
         waitForPublish: false, timeoutSeconds: 5,
     };
@@ -1022,8 +1027,9 @@ describe('hcp-publisher', () => {
         });
 
         it('creates a version when the module exists but the version does not', async () => {
+            // A branch-based module: its version is created from the commit, no archive upload.
             const { client, calls } = fakeClient([
-                { status: 200, body: '{"data":{"attributes":{"version-statuses":[]}}}' },
+                { status: 200, body: '{"data":{"attributes":{"version-statuses":[],"vcs-repo":{"branch":"main"}}}}' },
                 { status: 201, body: '{}' },
             ]);
             const result = await new hcp.HcpPublisher(client, base, noop).publish();
@@ -1060,25 +1066,38 @@ describe('hcp-publisher', () => {
             assert.strictEqual(calls[2].url, hcp.vcsUrl(base.address, base.namespace), 'the VCS create should have been retried after the 503');
         });
 
-        it('throws on 404 when VCS details are missing', async () => {
-            const { client } = fakeClient([{ status: 404, body: '{}' }]);
-            await assert.rejects(() => new hcp.HcpPublisher(client, base, noop).publish(), /vcsRepoIdentifier|HcpModuleNotFoundNoVcsInputs/);
+        it('creates a no-VCS module (not a failure) on 404 when no VCS details are given', async () => {
+            // Previously this threw HcpModuleNotFoundNoVcsInputs; neither VCS input set now
+            // means a module with no VCS connection, whose archive is uploaded.
+            const { client, calls } = fakeClient([
+                { status: 404, body: '{}' },
+                { status: 201, body: '{}' },
+                { status: 201, body: '{"data":{"links":{"upload":"https://archivist.terraform.io/v1/object/x"}}}' },
+                { status: 200, body: '' },
+            ]);
+            const result = await new hcp.HcpPublisher(client, base, noop, () => Promise.resolve(new Uint8Array([1]))).publish();
+            assert.strictEqual(result.published, true);
+            assert.strictEqual(calls[1].url, hcp.modulesUrl(base.address, base.namespace));
         });
 
-        it('treats a 422 version response as already-exists', async () => {
+        it('does not treat an arbitrary 422 on the version create as already-exists', async () => {
+            // 422 also means a malformed version, so it must not be reported as a success.
             const { client } = fakeClient([
-                { status: 200, body: '{"data":{"attributes":{"version-statuses":[]}}}' },
-                { status: 422, body: '{}' },
+                { status: 200, body: '{"data":{"attributes":{"version-statuses":[],"vcs-repo":{"branch":"main"}}}}' },
+                { status: 422, body: '{"errors":[{"detail":"Validation failed: Malformed version 1.0"}]}' },
+                { status: 200, body: '{"data":{"attributes":{"version-statuses":[],"vcs-repo":{"branch":"main"}}}}' },
             ]);
-            const result = await new hcp.HcpPublisher(client, base, noop).publish();
-            assert.strictEqual(result.published, true);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, base, noop).publish(),
+                /HcpCreateVersionFailed|Failed to create version/,
+            );
         });
 
         it('swallows a failing status poll and bounds by the deadline', async () => {
             let n = 0;
             const client: HttpClient = () => {
                 n += 1;
-                if (n === 1) return Promise.resolve({ status: 200, body: '{"data":{"attributes":{"version-statuses":[]}}}' });
+                if (n === 1) return Promise.resolve({ status: 200, body: '{"data":{"attributes":{"version-statuses":[],"vcs-repo":{"branch":"main"}}}}' });
                 if (n === 2) return Promise.resolve({ status: 201, body: '{}' });
                 return Promise.reject(new Error('ETIMEDOUT')); // poll fails, must not propagate
             };
@@ -1296,6 +1315,116 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             console.log('STDERR', tr.stderr);
             console.log('STDOUT', tr.stdout);
             throw error;
+        }
+    });
+
+    it('passes hcpPublishMode, moduleDirectory and an empty vcsBranch through to the HCP publisher', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpMode.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'task should have succeeded');
+            const match = tr.stdout.match(/HCP_OPTIONS:(\{.*\})/);
+            assert.ok(match, 'the publisher should have logged its options');
+            const options = JSON.parse(match![1]);
+            assert.strictEqual(options.publishMode, 'vcsTag');
+            assert.strictEqual(path.normalize(options.moduleDirectory), path.normalize('modules/vpc'));
+            // vcsBranch keeps its non-breaking `main` default even when blank; a tag-based
+            // module is chosen explicitly with hcpPublishMode=vcsTag, which omits the branch
+            // from the create body regardless of this value.
+            assert.strictEqual(options.vcsBranch, 'main', 'the existing vcsBranch default is unchanged');
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('defaults hcpPublishMode to auto, moduleDirectory to ".", and vcsBranch to main when unset', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpModeDefaults.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.succeeded, 'a pipeline that predates the new inputs must keep working');
+            const match = tr.stdout.match(/HCP_OPTIONS:(\{.*\})/);
+            assert.ok(match, 'the publisher should have logged its options');
+            const options = JSON.parse(match![1]);
+            assert.strictEqual(options.publishMode, 'auto');
+            assert.strictEqual(options.moduleDirectory, '.');
+            assert.strictEqual(options.vcsBranch, 'main');
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('rejects an unknown hcpPublishMode before constructing a publisher or touching the network', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpModeInvalid.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                /HcpUnsupportedPublishMode|Unsupported hcpPublishMode/.test(tr.stdout),
+                'should fail with the unsupported-mode error. stdout: ' + tr.stdout,
+            );
+            assert.ok(!tr.stdout.includes('PUBLISHER_CONSTRUCTED'), 'must fail before a publisher exists');
+            assert.ok(!tr.stdout.includes('NETWORK_TOUCHED'), 'must fail before any request');
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('sends a binary request body byte-for-byte over the shared HTTPS client', async () => {
+        // The module archive is gzip: forcing it through a UTF-8 string would corrupt
+        // it, so the transport must pass a Uint8Array through untouched.
+        const archive = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0xfe, 0x80, 0x00, 0x01]);
+        let received: Buffer | undefined;
+        let contentLength: string | undefined;
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (c: Buffer) => chunks.push(c));
+            req.on('end', () => {
+                received = Buffer.concat(chunks);
+                contentLength = req.headers['content-length'];
+                res.statusCode = 200;
+                res.end('');
+            });
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            const resp = await client('PUT', `https://127.0.0.1:${port}/v1/object/x`, { 'Content-Type': 'application/octet-stream' }, new Uint8Array(archive));
+            assert.strictEqual(resp.status, 200);
+            assert.ok(received && received.equals(archive), 'bytes must arrive unchanged');
+            assert.strictEqual(contentLength, String(archive.length));
+        } finally {
+            server.close();
+        }
+    });
+
+    it('still sends a string body as UTF-8 and sends nothing for an empty string', async () => {
+        const bodies: Buffer[] = [];
+        const server = https.createServer({ cert: TLS_CERT, key: TLS_KEY }, (req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (c: Buffer) => chunks.push(c));
+            req.on('end', () => {
+                bodies.push(Buffer.concat(chunks));
+                res.statusCode = 200;
+                res.end('');
+            });
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as net.AddressInfo).port;
+        try {
+            const client = createHttpsClient(false);
+            await client('POST', `https://127.0.0.1:${port}/a`, {}, 'h\u00e9llo');
+            await client('POST', `https://127.0.0.1:${port}/b`, {}, '');
+            assert.strictEqual(bodies[0].toString('utf8'), 'h\u00e9llo');
+            assert.strictEqual(bodies[1].length, 0);
+        } finally {
+            server.close();
         }
     });
 

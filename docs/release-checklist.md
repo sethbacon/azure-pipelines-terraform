@@ -67,6 +67,10 @@ npm run package:release   # or package:self for a private test extension
 
 - [ ] `PipelineTerraformModulePublish@1` with `registryType: private` — publishes a version to a terraform-registry-backend instance
 - [ ] `PipelineTerraformModulePublish@1` with `registryType: hcp` — publishes a version to HCP Terraform / TFE
+- [ ] `registryType: hcp` with `hcpPublishMode: upload` against a throwaway module with no VCS connection — creates the module, uploads the archive, version reaches `ok`; a re-run skips it
+- [ ] `registryType: hcp` with `hcpPublishMode: vcsBranch` against a throwaway VCS-connected module — version reaches `ok`
+- [ ] `registryType: hcp` with `hcpPublishMode: vcsTag` against a tag-based module — waits for the pushed tag's version
+- [ ] An explicit `hcpPublishMode` against a module of a different kind fails before changing anything
 - [ ] `waitForPublish: true` blocks until the version is available (bounded by `timeoutSeconds`)
 
 ## 4g. terraform-docs installer smoke test

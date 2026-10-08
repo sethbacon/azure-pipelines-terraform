@@ -176,13 +176,37 @@
             "helpMarkDown": "HCP Terraform team or user API token. Pass a secret pipeline variable."
         },
         {
+            "name": "hcpPublishMode",
+            "type": "pickList",
+            "label": "Publish mode",
+            "groupName": "hcp",
+            "defaultValue": "auto",
+            "required": false,
+            "helpMarkDown": "How the version reaches HCP Terraform. 'auto' (default) follows the existing module: a module with no VCS connection receives an uploaded archive, a branch-based module has its version created from the commit, and a tag-based module is only observed (its versions come from git tags). When the module does not exist yet, 'auto' creates a VCS-connected branch module if both vcsRepoIdentifier and vcsOauthTokenId are set, a module with no VCS connection if neither is set, and fails if only one is set. Choose an explicit mode to require that kind of module; the task fails if the existing module is a different kind.",
+            "options": {
+                "auto": "Auto (follow the module)",
+                "vcsBranch": "VCS branch (create version from a commit)",
+                "vcsTag": "VCS tag (versions come from git tags)",
+                "upload": "Upload (no VCS; upload module archive)"
+            }
+        },
+        {
+            "name": "moduleDirectory",
+            "type": "filePath",
+            "label": "Module directory",
+            "groupName": "hcp",
+            "defaultValue": ".",
+            "required": false,
+            "helpMarkDown": "Directory archived and uploaded when the module has no VCS connection (upload mode). It must contain .tf or .tf.json files at its root. The .git and .terraform directories are excluded and symbolic links pointing outside the directory are refused. Not used for VCS modules."
+        },
+        {
             "name": "vcsRepoIdentifier",
             "type": "string",
             "label": "VCS repo identifier",
             "groupName": "hcp",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "Used only when the module does not yet exist, to create a VCS-connected module. Example: my-org/my-project/_git/terraform-aws-vpc."
+            "helpMarkDown": "Used only when creating a VCS-connected module that does not exist yet. Set together with the VCS OAuth connection ID. Leave both empty to create a module with no VCS connection instead. Example: my-org/my-project/_git/terraform-aws-vpc."
         },
         {
             "name": "vcsBranch",
@@ -191,7 +215,7 @@
             "groupName": "hcp",
             "defaultValue": "main",
             "required": false,
-            "helpMarkDown": "Branch for the VCS-connected module."
+            "helpMarkDown": "Branch for a VCS-connected module created in 'auto' or 'VCS branch' mode. Not used in 'VCS tag' mode, where the module follows git tags instead of a branch."
         },
         {
             "name": "vcsOauthTokenId",
@@ -200,7 +224,7 @@
             "groupName": "hcp",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "HCP VCS OAuth token ID (ot-xxxxxxxx). Required only when creating a new VCS-connected module."
+            "helpMarkDown": "HCP VCS OAuth token ID (ot-xxxxxxxx). Required only when creating a new VCS-connected module; set together with vcsRepoIdentifier."
         },
         {
             "name": "commitSha",
@@ -258,7 +282,27 @@
         "ResponseTooLarge": "Response from %s exceeded %s bytes.",
         "RequestTimedOut": "Request to %s timed out after %sms.",
         "HcpVersionAlreadyReady": "Version %s already exists and is ready.",
-        "HcpModuleNotFoundNoVcsInputs": "Module does not exist and vcsRepoIdentifier / vcsOauthTokenId were not provided to create it.",
+        "HcpUnsupportedPublishMode": "Unsupported hcpPublishMode '%s'. Expected one of: %s.",
+        "HcpPublishModeMismatch": "hcpPublishMode is '%s' but module %s/%s/%s is a '%s' module. Set hcpPublishMode to match it, or to 'auto'.",
+        "HcpVcsRepoNameMismatch": "HCP names a VCS-connected module from its repository, so '%s' would create the module '%s' for provider '%s', not '%s' for provider '%s'. Set name and provider to match the repository (terraform-<provider>-<name>), or use a repository with the intended name.",
+        "HcpVcsInputsIncomplete": "Module does not exist and only one of vcsRepoIdentifier / vcsOauthTokenId is set; %s is missing. Set both to create a VCS-connected module, or neither to create a module with no VCS connection.",
+        "HcpVcsModeNeedsInputs": "hcpPublishMode '%s' needs both vcsRepoIdentifier and vcsOauthTokenId to create the module, which does not exist yet.",
+        "HcpVcsBranchRequired": "hcpPublishMode 'vcsBranch' needs vcsBranch to be set. Use 'vcsTag' for a tag-based module.",
+        "HcpVcsInputsIgnored": "hcpPublishMode is 'upload', so vcsRepoIdentifier / vcsOauthTokenId are ignored and the module is created with no VCS connection.",
+        "HcpCreatingNoVcsModule": "Module not found; creating module %s/%s/%s with no VCS connection.",
+        "HcpModuleCreatedConcurrently": "Module create returned HTTP %s, but the module now exists with the expected publishing mode; continuing.",
+        "HcpTagBasedObserveOnly": "Module %s/%s/%s is tag-based: versions are created by pushing a git tag, not through the API. Checking for version %s.",
+        "HcpTagVersionNotPresent": "Version %s is not present yet. Push the git tag to create it, or enable waitForPublish to wait for it.",
+        "HcpRecreatingVersion": "Version %s exists with status '%s' and can never become ready as it is; deleting and recreating it.",
+        "HcpVersionInProgress": "Version %s already exists with status '%s'; waiting for it instead of creating it again.",
+        "HcpDeleteVersionFailed": "Failed to delete the stuck version (HTTP %s): %s",
+        "HcpNoUploadLink": "HCP did not return an upload link for version %s of a module with no VCS connection.",
+        "HcpNoUploadLinkWaiting": "Version %s of a VCS-connected module is created from the commit, so no archive is uploaded.",
+        "HcpUploadUrlInvalid": "HCP returned an upload link that is not a valid https:// URL; refusing to upload to it.",
+        "HcpUploadingArchive": "Uploading module archive (%s bytes) for version %s.",
+        "HcpUploadRequestFailed": "Module archive upload failed: %s",
+        "HcpUploadFailed": "Module archive upload failed (HTTP %s): %s",
+        "HcpVersionIngestFailed": "HCP failed to process version %s (status '%s'). Check that the archive is a valid gzipped tar of the module.",
         "HcpCreatingVcsModule": "Module not found; creating VCS-connected module %s/%s/%s.",
         "HcpCreateModuleFailed": "Failed to create HCP module (HTTP %s): %s",
         "HcpCheckModuleFailed": "Could not check existing module (HTTP %s); attempting to publish version.",

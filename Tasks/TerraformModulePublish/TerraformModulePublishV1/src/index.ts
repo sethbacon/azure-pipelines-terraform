@@ -3,7 +3,7 @@ import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { assertPlainUrlBase, assertTlsOptOutDestinationIsPrivate, TlsOptOutDestinationError } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
-import { RegistryPublisher, RegistryType } from './types';
+import { HCP_PUBLISH_MODES, HcpPublishMode, RegistryPublisher, RegistryType } from './types';
 import { PrivateRegistryPublisher } from './private-publisher';
 import { HcpPublisher } from './hcp-publisher';
 
@@ -124,12 +124,18 @@ async function buildPublisher(): Promise<RegistryPublisher> {
         tasks.setSecret(token);
         const hcpAddress = readUrlInput('hcpAddress') || 'https://app.terraform.io';
         assertPlainUrlBase('hcpAddress', hcpAddress, 'reject');
+        const publishMode = (tasks.getInput('hcpPublishMode', false) || 'auto') as HcpPublishMode;
+        if (!HCP_PUBLISH_MODES.includes(publishMode)) {
+            throw new Error(tasks.loc('HcpUnsupportedPublishMode', publishMode, HCP_PUBLISH_MODES.join(', ')));
+        }
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).
         return new HcpPublisher(createHttpsClient(true), {
             ...coordinates,
             address: hcpAddress,
             token,
+            publishMode,
+            moduleDirectory: tasks.getPathInput('moduleDirectory', false, false) || '.',
             vcsRepoIdentifier: tasks.getInput('vcsRepoIdentifier', false) || '',
             vcsBranch: tasks.getInput('vcsBranch', false) || 'main',
             vcsOauthTokenId: tasks.getInput('vcsOauthTokenId', false) || '',
