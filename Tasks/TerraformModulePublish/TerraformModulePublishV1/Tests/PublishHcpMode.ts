@@ -16,6 +16,9 @@ tr.setInput('hcpAddress', 'https://app.terraform.io');
 tr.setInput('hcpToken', 'super-secret-hcp-token');
 tr.setInput('hcpPublishMode', 'vcsTag');
 tr.setInput('moduleDirectory', 'modules/vpc');
+tr.setInput('moduleExclude', 'pipeline.yml\n*.tfvars');
+tr.setInput('existingVersion', 'fail');
+tr.setInput('checkOnly', 'true');
 tr.setInput('vcsRepoIdentifier', 'acme/proj/_git/terraform-aws-vpc');
 tr.setInput('vcsBranch', '');
 tr.setInput('vcsOauthTokenId', 'ot-abc');
@@ -33,6 +36,9 @@ tr.registerMock('./hcp-publisher', {
             console.log('HCP_OPTIONS:' + JSON.stringify({
                 publishMode: options.publishMode,
                 moduleDirectory: options.moduleDirectory,
+                moduleExclude: options.moduleExclude,
+                existingVersion: options.existingVersion,
+                checkOnly: options.checkOnly,
                 vcsBranch: options.vcsBranch,
             }));
         }

@@ -2393,7 +2393,61 @@ requires `.tf` or `.tf.json` files at the root of `moduleDirectory`, excludes
 `.git` and `.terraform`, refuses symbolic links that point outside the directory,
 and limits the archive to 64 MiB uncompressed. If a run fails after the version
 was created, a re-run deletes the failed or stuck version and creates it again;
-a version HCP already reports as available is skipped.
+a version HCP already reports as available is skipped, unless `existingVersion` is
+`fail`.
+
+### Gate a release on HCP before tagging
+
+`checkOnly: true` reads the module and reports what a publish would do, without
+creating a module or version, deleting anything, or uploading. It still fails on
+invalid inputs, an unreadable module (for example a rejected API token), or a
+`moduleDirectory` that is not a module. With `existingVersion: fail` it also fails
+when the version is already available, so the pipeline stops before it tags a
+release whose number is taken.
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  displayName: 'Check HCP before tagging'
+  inputs:
+    registryType: 'hcp'
+    namespace: 'my-org'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'
+    checkOnly: true
+    existingVersion: 'fail'
+```
+
+On the publish step itself, `existingVersion: fail` makes the first run of a
+release fail when the number is already used; leave it at the default `skip` where
+the step is re-run after a partial failure.
+
+### Keep files out of the uploaded archive
+
+The archive holds every file under `moduleDirectory` except `.git` and
+`.terraform`, so pointing it at a checkout publishes the pipeline files and any
+`.tfvars` next to the module. Stage the module from the release tag first, or list
+what to drop in `moduleExclude`: one path per line, relative to `moduleDirectory`,
+where `*` matches within one path segment and `**` across segments. A path that
+names a directory drops everything under it.
+
+```yaml
+- task: PipelineTerraformModulePublish@1
+  inputs:
+    registryType: 'hcp'
+    hcpPublishMode: 'upload'
+    namespace: 'my-org'
+    name: 'networking-vpc'
+    provider: 'aws'
+    version: '1.2.3'
+    hcpToken: '$(hcp-team-token)'
+    moduleDirectory: '$(Build.SourcesDirectory)'
+    moduleExclude: |
+      azure-pipelines.yml
+      tests
+      **/*.tfvars
+```
 
 ### Wait behaviour
 

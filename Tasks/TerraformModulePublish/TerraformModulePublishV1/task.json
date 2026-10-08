@@ -200,6 +200,37 @@
             "helpMarkDown": "Directory archived and uploaded when the module has no VCS connection (upload mode). It must contain .tf or .tf.json files at its root. The .git and .terraform directories are excluded and symbolic links pointing outside the directory are refused. Not used for VCS modules."
         },
         {
+            "name": "moduleExclude",
+            "type": "multiLine",
+            "label": "Exclude from archive",
+            "groupName": "hcp",
+            "defaultValue": "",
+            "required": false,
+            "helpMarkDown": "One path per line, relative to the module directory, left out of the uploaded archive in addition to .git and .terraform. A path may be a file or a directory; '*' matches within one path segment and '**' across segments (for example 'pipeline.yml', 'tests', '*.tfvars'). Used only when the module has no VCS connection."
+        },
+        {
+            "name": "existingVersion",
+            "type": "pickList",
+            "label": "When the version already exists",
+            "groupName": "hcp",
+            "defaultValue": "skip",
+            "required": false,
+            "helpMarkDown": "What to do when the version is already published and ready. 'skip' (default) succeeds without changing anything, which suits a re-run of a pipeline. 'fail' stops the task, which suits the first run of a release where an existing version means the number is already taken.",
+            "options": {
+                "skip": "Skip (succeed without publishing)",
+                "fail": "Fail"
+            }
+        },
+        {
+            "name": "checkOnly",
+            "type": "boolean",
+            "label": "Check only (do not publish)",
+            "groupName": "hcp",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Read the module from HCP Terraform and report what a publish would do, without creating a module or version, deleting anything, or uploading. The inputs are still validated, and the module directory is still archived in memory to check it. Combine with 'When the version already exists: Fail' to stop a pipeline before it tags a release whose version is taken."
+        },
+        {
             "name": "vcsRepoIdentifier",
             "type": "string",
             "label": "VCS repo identifier",
@@ -282,6 +313,11 @@
         "ResponseTooLarge": "Response from %s exceeded %s bytes.",
         "RequestTimedOut": "Request to %s timed out after %sms.",
         "HcpVersionAlreadyReady": "Version %s already exists and is ready.",
+        "HcpVersionAlreadyReadyFail": "Version %s already exists and is ready, and existingVersion is 'fail'. Choose a new version, or set existingVersion to 'skip' to treat this as already published.",
+        "HcpUnsupportedExistingVersion": "Unsupported existingVersion '%s'. Expected one of: %s.",
+        "HcpCheckOnlyModuleMissing": "Check only: module %s/%s/%s does not exist; a publish would create it as a '%s' module. Nothing was changed.",
+        "HcpCheckOnlyVersionAbsent": "Check only: version %s is not ready; a publish would create it on this '%s' module. Nothing was changed.",
+        "HcpCheckOnlyFailed": "Check only: could not read the module (HTTP %s), so nothing can be reported. Check the token and address.",
         "HcpUnsupportedPublishMode": "Unsupported hcpPublishMode '%s'. Expected one of: %s.",
         "HcpPublishModeMismatch": "hcpPublishMode is '%s' but module %s/%s/%s is a '%s' module. Set hcpPublishMode to match it, or to 'auto'.",
         "HcpVcsRepoNameMismatch": "HCP names a VCS-connected module from its repository, so '%s' would create the module '%s' for provider '%s', not '%s' for provider '%s'. Set name and provider to match the repository (terraform-<provider>-<name>), or use a repository with the intended name.",

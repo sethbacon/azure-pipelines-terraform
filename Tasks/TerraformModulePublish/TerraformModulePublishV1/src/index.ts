@@ -3,7 +3,7 @@ import { readUrlInput, readSecretInput } from '@4cloudguru/pipeline-task-ado';
 import { assertPlainUrlBase, assertTlsOptOutDestinationIsPrivate, TlsOptOutDestinationError } from '@4cloudguru/pipeline-task-core';
 import path = require('path');
 import { createHttpsClient } from './http';
-import { HCP_PUBLISH_MODES, HcpPublishMode, RegistryPublisher, RegistryType } from './types';
+import { HCP_EXISTING_VERSIONS, HCP_PUBLISH_MODES, HcpExistingVersion, HcpPublishMode, RegistryPublisher, RegistryType } from './types';
 import { PrivateRegistryPublisher } from './private-publisher';
 import { HcpPublisher } from './hcp-publisher';
 
@@ -128,6 +128,10 @@ async function buildPublisher(): Promise<RegistryPublisher> {
         if (!HCP_PUBLISH_MODES.includes(publishMode)) {
             throw new Error(tasks.loc('HcpUnsupportedPublishMode', publishMode, HCP_PUBLISH_MODES.join(', ')));
         }
+        const existingVersion = (tasks.getInput('existingVersion', false) || 'skip') as HcpExistingVersion;
+        if (!HCP_EXISTING_VERSIONS.includes(existingVersion)) {
+            throw new Error(tasks.loc('HcpUnsupportedExistingVersion', existingVersion, HCP_EXISTING_VERSIONS.join(', ')));
+        }
         // See the private-registry branch above: the socket timeout is
         // intentionally decoupled from timeoutSeconds (the poll deadline).
         return new HcpPublisher(createHttpsClient(true), {
@@ -136,6 +140,9 @@ async function buildPublisher(): Promise<RegistryPublisher> {
             token,
             publishMode,
             moduleDirectory: tasks.getPathInput('moduleDirectory', false, false) || '.',
+            moduleExclude: tasks.getDelimitedInput('moduleExclude', '\n', false),
+            existingVersion,
+            checkOnly: tasks.getBoolInput('checkOnly', false),
             vcsRepoIdentifier: tasks.getInput('vcsRepoIdentifier', false) || '',
             vcsBranch: tasks.getInput('vcsBranch', false) || 'main',
             vcsOauthTokenId: tasks.getInput('vcsOauthTokenId', false) || '',

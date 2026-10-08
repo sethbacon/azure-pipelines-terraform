@@ -17,6 +17,11 @@ export type HcpPublishMode = 'auto' | HcpModuleMode;
 /** Lives here (not in hcp-publisher.ts) so index.ts can validate the input without the publisher module. */
 export const HCP_PUBLISH_MODES: readonly HcpPublishMode[] = ['auto', 'vcsBranch', 'vcsTag', 'upload'];
 
+/** What to do when the version is already ready in HCP: `skip` succeeds without publishing, `fail` stops the task. */
+export type HcpExistingVersion = 'skip' | 'fail';
+
+export const HCP_EXISTING_VERSIONS: readonly HcpExistingVersion[] = ['skip', 'fail'];
+
 /** Identifies a module version in a registry. */
 export interface ModuleCoordinates {
     namespace: string;
