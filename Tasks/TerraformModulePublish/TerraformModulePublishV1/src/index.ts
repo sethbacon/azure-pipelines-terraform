@@ -140,7 +140,7 @@ async function buildPublisher(): Promise<RegistryPublisher> {
             token,
             publishMode,
             moduleDirectory: tasks.getPathInput('moduleDirectory', false, false) || '.',
-            moduleExclude: tasks.getDelimitedInput('moduleExclude', '\n', false),
+            moduleExclude: (readUrlInput('moduleExclude') || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
             existingVersion,
             checkOnly: tasks.getBoolInput('checkOnly', false),
             vcsRepoIdentifier: tasks.getInput('vcsRepoIdentifier', false) || '',
