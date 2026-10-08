@@ -1,6 +1,12 @@
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
-import { generateProviderInstallationConfig, validateMirrorUrl, ProviderMirrorConfig } from './config-generator';
+import {
+    directIncludesServedByMirror,
+    generateProviderInstallationConfig,
+    resolveDirectBlocks,
+    validateMirrorUrl,
+    ProviderMirrorConfig,
+} from './config-generator';
 import { extractUrlUserInfoSecrets, redactUrlUserInfo } from '@4cloudguru/pipeline-task-core';
 import { replaceSecretFile, readUrlInput } from '@4cloudguru/pipeline-task-ado';
 
@@ -50,11 +56,14 @@ async function run() {
         const directIncludePatterns = parseMultiLineInput(tasks.getInput('directIncludePatterns', false));
         const mirrorExcludePatterns = parseMultiLineInput(tasks.getInput('mirrorExcludePatterns', false));
         const mirrorIncludePatterns = parseMultiLineInput(tasks.getInput('mirrorIncludePatterns', false));
+        const allowDirectForMirroredProviders = tasks.getBoolInput('allowDirectForMirroredProviders', false);
 
-        // #960: directIncludePatterns alone never bypasses the mirror -- warn when a
-        // direct-include pattern has no matching mirror exclusion, since allowDirectFallback
-        // is the only condition under which the direct block (and this override) has any effect.
-        if (allowDirectFallback && directIncludePatterns.length > 0) {
+        if (allowDirectFallback && allowDirectForMirroredProviders) {
+            // #1231: an explicit opt-in to the overlap, so say what it costs.
+            tasks.warning(tasks.loc('DirectOverlapsMirror'));
+
+            // #960: directIncludePatterns alone never bypasses the mirror -- warn when a
+            // direct-include pattern has no matching mirror exclusion.
             const notExcludedFromMirror = directIncludePatterns.filter(p => !mirrorExcludePatterns.includes(p));
             if (notExcludedFromMirror.length > 0) {
                 tasks.warning(tasks.loc('DirectIncludeNotExcludedFromMirror', notExcludedFromMirror.join(', ')));
@@ -79,7 +88,21 @@ async function run() {
             directIncludePatterns,
             mirrorExcludePatterns,
             mirrorIncludePatterns,
+            allowDirectForMirroredProviders,
         };
+
+        // #1231: direct is confined to the providers the mirror does not match, so a
+        // direct pattern can end up sending nothing there. Say so rather than leave
+        // the pipeline author to read it off the generated file.
+        if (allowDirectFallback && !allowDirectForMirroredProviders) {
+            const servedByMirror = directIncludesServedByMirror(config);
+            if (servedByMirror.length > 0) {
+                tasks.warning(tasks.loc('DirectIncludeServedByMirror', servedByMirror.join(', ')));
+            }
+            if (resolveDirectBlocks(config).length === 0) {
+                console.log(tasks.loc('DirectNotUsed'));
+            }
+        }
 
         console.log(tasks.loc('GeneratingConfig', redactUrlUserInfo(mirrorUrl)));
 

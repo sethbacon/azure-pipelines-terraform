@@ -240,51 +240,66 @@ Give the step a `name` to read its output variables. `terraformLocation` is the 
 
 Write a `.terraformrc` that routes provider downloads through a network mirror. Run this before `terraform init`.
 
-### Basic mirror (no direct fallback)
+The mirror is the only source for the providers it serves. Terraform merges the version lists of every installation method that matches a provider and then requires the first matching method to supply the newest version; a network mirror's 404 for a version it never listed stops `terraform init` rather than falling back. So the task never lets `direct` match a provider the mirror matches: `direct` covers only the providers that `mirrorExcludePatterns` and `mirrorIncludePatterns` leave outside the mirror.
+
+### Basic mirror
+
+Every provider comes from the mirror, and only the versions the mirror lists can be selected. A version the origin registry has published but the mirror has not yet synced or approved is simply not offered, so builds keep using the newest version the mirror does have.
 
 ```yaml
 - task: PipelineTerraformProviderMirror@1
   displayName: 'Configure provider mirror'
   inputs:
     mirrorUrl: 'https://registry.example.com/terraform/providers'
-    allowDirectFallback: false
 ```
 
-### Mirror with fallback to public registry
+`allowDirectFallback` defaults to `true`, but with no mirror patterns there is nothing outside the mirror for it to apply to, so the generated file is the same as with `false`. Set it to `false` anyway where the mirror enforces network isolation or an approved-provider list: a later edit that adds a mirror pattern then cannot open direct internet egress.
 
 ```yaml
 - task: PipelineTerraformProviderMirror@1
-  displayName: 'Configure provider mirror (with fallback)'
+  displayName: 'Configure provider mirror (no direct download, whatever the patterns)'
   inputs:
     mirrorUrl: 'https://registry.example.com/terraform/providers'
-    allowDirectFallback: true
+    allowDirectFallback: false
+```
+
+### Mirror with some providers installed directly
+
+List the providers the mirror should not serve. They are installed from the origin registry; everything else stays on the mirror.
+
+```yaml
+- task: PipelineTerraformProviderMirror@1
+  displayName: 'Configure provider mirror (two providers direct)'
+  inputs:
+    mirrorUrl: 'https://registry.example.com/terraform/providers'
+    mirrorExcludePatterns: |
+      registry.terraform.io/hashicorp/random
+      registry.terraform.io/hashicorp/time
 ```
 
 ### Mirror with restricted direct download
 
+`directIncludePatterns` and `directExcludePatterns` narrow what may be downloaded directly; they never take a provider away from the mirror. Here the mirror serves two namespaces, the `acme` namespace may be downloaded directly except for one provider in it, and any other provider has no source at all, so a configuration that asks for one fails at `init`.
+
 ```yaml
 - task: PipelineTerraformProviderMirror@1
-  displayName: 'Configure provider mirror (restricted fallback)'
+  displayName: 'Configure provider mirror (restricted direct download)'
   inputs:
     mirrorUrl: 'https://registry.example.com/terraform/providers'
-    allowDirectFallback: true
-    directExcludePatterns: |
+    mirrorIncludePatterns: |
       registry.terraform.io/company-internal/*
+      registry.terraform.io/hashicorp/*
     directIncludePatterns: |
-      registry.terraform.io/hashicorp/azurerm
-      registry.terraform.io/hashicorp/aws
-    # Terraform combines every installation method whose patterns match a provider
-    # and picks the newest version reported across all of them, so listing a
-    # provider in directIncludePatterns alone does not stop the mirror being
-    # consulted for it -- also exclude it from the mirror to genuinely bypass it.
-    mirrorExcludePatterns: |
-      registry.terraform.io/hashicorp/azurerm
-      registry.terraform.io/hashicorp/aws
+      registry.terraform.io/acme/*
+    directExcludePatterns: |
+      registry.terraform.io/acme/experimental
 ```
+
+A `directIncludePatterns` entry for a provider the mirror still serves has no effect, and the task warns about it: the mirror stays that provider's only source until it is also listed in `mirrorExcludePatterns`.
 
 ### Use the mirror for selected providers only
 
-`mirrorIncludePatterns` limits the mirror to the matching providers; every other provider is installed directly. That needs `allowDirectFallback: true` (the default), because with `false` the other providers would have no installation method at all.
+`mirrorIncludePatterns` limits the mirror to the matching providers; every other provider is installed directly, and the generated `direct` block excludes the mirror's providers so the two never overlap. That needs `allowDirectFallback: true` (the default), because with `false` the other providers would have no installation method at all.
 
 The task writes the CLI configuration to a `.terraformrc` in the agent temp directory (owner-only permissions), points `TF_CLI_CONFIG_FILE` at it for the rest of the job, and exposes its path as the `configFilePath` output variable. Give the step a `name` to read it.
 
@@ -300,6 +315,18 @@ The task writes the CLI configuration to a `.terraformrc` in the agent temp dire
 
 - script: echo "CLI configuration written to $(providerMirror.configFilePath)"
   displayName: 'Show the CLI configuration path'
+```
+
+### A caching mirror that fetches any version on request
+
+Some mirrors are pull-through caches: their version list lags behind the origin registry, but they fetch any upstream version when asked for it. For those, `allowDirectForMirroredProviders` writes a `direct` block that overlaps the mirror, so that Terraform learns the newest version from the origin registry and the mirror supplies it. Do not use it with a mirror that publishes versions on its own schedule or behind an approval: `terraform init` then fails whenever the origin registry is ahead of the mirror. The task warns on every run while it is set.
+
+```yaml
+- task: PipelineTerraformProviderMirror@1
+  displayName: 'Configure provider mirror (pull-through cache)'
+  inputs:
+    mirrorUrl: 'https://registry.example.com/terraform/providers'
+    allowDirectForMirroredProviders: true
 ```
 
 ---
