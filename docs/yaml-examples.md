@@ -2284,11 +2284,14 @@ option:
 ```
 
 For HCP Terraform / TFE the `namespace` is the organization name. `hcpToken` is a
-team or user API token and must be a secret variable. The task creates the version
-through the API and records `commitSha` as its commit. When HCP already reports the
-version as ready, the task finishes without creating anything, and a 422 answer to
-the create call (the version already exists) is logged rather than treated as a
-failure.
+team or user API token and must be a secret variable. With the default
+`hcpPublishMode: auto` the task publishes to whichever kind of module already
+exists (see [Choose the HCP publish path](#choose-the-hcp-publish-path-with-hcppublishmode)):
+it creates the version through the API, records `commitSha` as its commit, and for
+a module with no VCS connection also uploads the module archive. When HCP already
+reports the version as ready, the task finishes without creating anything, and a
+422 answer to the create call (the version already exists) is logged rather than
+treated as a failure.
 
 ### Publish to Terraform Enterprise
 
@@ -2379,8 +2382,13 @@ fails before changing anything if the existing module is a different one.
 ```
 
 In `auto` mode a module that does not exist yet is created VCS-connected
-(branch) when both `vcsRepoIdentifier` and `vcsOauthTokenId` are set, and with no
-VCS connection when neither is set; setting only one fails the task. Upload mode
+(branch-based) when both `vcsRepoIdentifier` and `vcsOauthTokenId` are set, and
+with no VCS connection when neither is set; setting only one fails the task. To
+create a tag-based module, set `hcpPublishMode: vcsTag` with both inputs. `vcsTag`
+mode only checks for the version unless `waitForPublish` is on, in which case it
+waits for it. A branch module's
+version is ingested from the commit, so nothing is archived or uploaded for it.
+Upload mode
 requires `.tf` or `.tf.json` files at the root of `moduleDirectory`, excludes
 `.git` and `.terraform`, refuses symbolic links that point outside the directory,
 and limits the archive to 64 MiB uncompressed. If a run fails after the version
