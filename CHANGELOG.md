@@ -4,6 +4,18 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.19.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.18.0...v1.19.0) (2026-10-08)
+
+
+### Features
+
+* **TerraformModulePublish:** publish to HCP via VCS branch, VCS tag, or archive upload ([#1226](https://github.com/sethbacon/azure-pipelines-terraform/issues/1226)) ([ef3d845](https://github.com/sethbacon/azure-pipelines-terraform/commit/ef3d8455bd4683cb746c71f07b1a4105e4735622))
+
+
+### Documentation
+
+* **TerraformModulePublish:** describe HCP publish behaviour per module kind ([#1228](https://github.com/sethbacon/azure-pipelines-terraform/issues/1228)) ([f8584a8](https://github.com/sethbacon/azure-pipelines-terraform/commit/f8584a80c824b6754dada4d51e79caeba050d893))
+
 ## [1.18.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.17.3...v1.18.0) (2026-10-07)
 
 
