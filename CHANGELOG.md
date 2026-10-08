@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.19.0...v1.20.0) (2026-10-08)
+
+
+### Features
+
+* **TerraformModulePublish:** add checkOnly, existingVersion and moduleExclude for HCP ([#1229](https://github.com/sethbacon/azure-pipelines-terraform/issues/1229)) ([0e522a3](https://github.com/sethbacon/azure-pipelines-terraform/commit/0e522a3214c59be3944fc55f460251537d16afe8))
+
 ## [1.19.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.18.0...v1.19.0) (2026-10-08)
 
 
