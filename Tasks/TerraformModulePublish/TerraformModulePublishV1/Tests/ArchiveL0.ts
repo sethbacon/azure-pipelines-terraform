@@ -95,6 +95,10 @@ describe('module archive', () => {
         assert.ok((await names(['*.tfvars'])).includes('modules/inner/dev.tfvars'));
         assert.ok(!(await names(['*.tfvars'])).includes('validation.tfvars'));
         assert.ok(!(await names(['**/*.tfvars'])).includes('modules/inner/dev.tfvars'));
+        // `**/` also matches no folder, so the root file goes too.
+        assert.ok(!(await names(['**/*.tfvars'])).includes('validation.tfvars'));
+        assert.ok(!(await names(['modules/**/dev.tfvars'])).includes('modules/inner/dev.tfvars'));
+        assert.ok((await names(['**/dev.tfvars'])).includes('validation.tfvars'));
         assert.deepStrictEqual(await names(['./modules/', '', '  ']), ['main.tf', 'pipeline.yml', 'tests/unit.tf', 'validation.tfvars']);
     });
 

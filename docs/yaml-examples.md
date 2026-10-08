@@ -2401,7 +2401,9 @@ a version HCP already reports as available is skipped, unless `existingVersion` 
 `checkOnly: true` reads the module and reports what a publish would do, without
 creating a module or version, deleting anything, or uploading. It still fails on
 invalid inputs, an unreadable module (for example a rejected API token), or a
-`moduleDirectory` that is not a module. With `existingVersion: fail` it also fails
+`moduleDirectory` that is not a module. When the module does not exist it also
+reads the organization's registry, so a wrong `namespace` or a token without access
+fails the check instead of passing it. With `existingVersion: fail` it also fails
 when the version is already available, so the pipeline stops before it tags a
 release whose number is taken.
 
@@ -2429,7 +2431,9 @@ The archive holds every file under `moduleDirectory` except `.git` and
 `.terraform`, so pointing it at a checkout publishes the pipeline files and any
 `.tfvars` next to the module. Stage the module from the release tag first, or list
 what to drop in `moduleExclude`: one path per line, relative to `moduleDirectory`,
-where `*` matches within one path segment and `**` across segments. A path that
+where `*` matches within one path segment and `**` across segments; `**/` also
+matches no folder, so `**/*.tfvars` drops a root `validation.tfvars` as well as
+nested ones. A path that
 names a directory drops everything under it.
 
 ```yaml

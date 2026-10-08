@@ -71,8 +71,8 @@ npm run package:release   # or package:self for a private test extension
 - [ ] `registryType: hcp` with `hcpPublishMode: vcsBranch` against a throwaway VCS-connected module — version reaches `ok`
 - [ ] `registryType: hcp` with `hcpPublishMode: vcsTag` against a tag-based module — waits for the pushed tag's version
 - [ ] An explicit `hcpPublishMode` against a module of a different kind fails before changing anything
-- [ ] `registryType: hcp` with `checkOnly: true` against a module that does not exist reports it and creates nothing; with `existingVersion: fail` against an available version it fails
-- [ ] `hcpPublishMode: upload` with `moduleExclude` leaves the excluded files out of the uploaded archive
+- [ ] `registryType: hcp` with `checkOnly: true` against a module that does not exist reports it and creates nothing; against a wrong organization name it fails; with `existingVersion: fail` against an available version it fails
+- [ ] `hcpPublishMode: upload` with `moduleExclude` leaves the excluded files out of the uploaded archive (including a root file matched by `**/*.tfvars`)
 - [ ] `waitForPublish: true` blocks until the version is available (bounded by `timeoutSeconds`)
 
 ## 4g. terraform-docs installer smoke test

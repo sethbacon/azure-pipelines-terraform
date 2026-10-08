@@ -210,6 +210,9 @@ export class HcpPublisher implements RegistryPublisher {
                 return this.versionAlreadyReady();
             }
         } else if (check.status === 404) {
+            if (o.checkOnly) {
+                await this.assertRegistryReadable(headers);
+            }
             mode = this.resolveCreateMode();
             if (mode === 'upload') {
                 // Built BEFORE anything is created, so a bad moduleDirectory fails the
@@ -263,6 +266,16 @@ export class HcpPublisher implements RegistryPublisher {
             await this.waitForOk(headers);
         }
         return { published: true, message: tasks.loc('HcpVersionPublished', o.version) };
+    }
+
+    /** HCP answers 404 for a wrong organisation or a token without access, so a module 404 alone proves nothing. */
+    private async assertRegistryReadable(headers: Record<string, string>): Promise<void> {
+        const o = this.options;
+        const url = `${modulesUrl(o.address, o.namespace)}?page%5Bsize%5D=1`;
+        const res = await retryHttp(() => this.http('GET', url, headers), { log: this.log });
+        if (res.status < 200 || res.status >= 300) {
+            throw new Error(tasks.loc('HcpCheckOnlyRegistryUnreadable', o.namespace, res.status));
+        }
     }
 
     /** A version that is already ready is skipped, or a failure when the pipeline asked for one. */

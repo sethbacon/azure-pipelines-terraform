@@ -30,18 +30,29 @@ export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 
 /**
  * Compiles `moduleExclude` patterns into a predicate over module-relative POSIX paths.
- * `*` matches within one path segment, `**` across segments; a pattern that matches a
- * directory drops everything under it. Anchored at the module root, case-sensitive.
+ * `*` matches within one path segment, `**` across segments; a leading or inner `**` segment
+ * also matches no folder, as in `.gitignore`. A pattern that matches a directory drops everything under
+ * it. Anchored at the module root, case-sensitive.
  */
 export function excludeMatcher(patterns: readonly string[]): (relativePath: string) => boolean {
     const regexes = patterns
         .map((pattern) => pattern.trim().replace(/^(\.?\/)+/, '').replace(/\/+$/, ''))
         .filter((pattern) => pattern !== '')
         .map((pattern) => {
-            const source = pattern
-                .split('**')
-                .map((part) => part.split('*').map((literal) => literal.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
-                .join('.*');
+            const segments = pattern.split('/');
+            const source = segments
+                .map((segment, i) => {
+                    const last = i === segments.length - 1;
+                    if (segment === '**') {
+                        return last ? '.*' : '(?:[^/]+/)*';
+                    }
+                    const body = segment
+                        .split('**')
+                        .map((part) => part.split('*').map((literal) => literal.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+                        .join('.*');
+                    return last ? body : `${body}/`;
+                })
+                .join('');
             return new RegExp(`^${source}$`);
         });
     return (relativePath) => regexes.some((regex) => regex.test(relativePath));
