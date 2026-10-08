@@ -504,5 +504,115 @@ describe('hcp publish paths', () => {
         });
     });
 
+    describe('existingVersion', () => {
+        it('skip (default): an already-ready version succeeds without publishing', async () => {
+            const { client, calls } = script([mod('none', [['1.0.0', 'ok']])]);
+            const result = await new hcp.HcpPublisher(client, base, noop, archiveOk).publish();
+            assert.strictEqual(result.published, false);
+            assert.strictEqual(calls.length, 1);
+        });
+
+        it('fail: an already-ready version stops the task before anything is written', async () => {
+            const { client, calls } = script([mod('none', [['1.0.0', 'ok']])]);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, existingVersion: 'fail' }, noop, archiveOk).publish(),
+                /HcpVersionAlreadyReadyFail|already exists and is ready/,
+            );
+            assert.deepStrictEqual(calls.map((c) => c.method), ['GET']);
+        });
+
+        it('fail: also stops when the version turns out to exist after a 422 on create', async () => {
+            const { client } = script([mod('branch'), { status: 422, body: 'taken' }, mod('branch', [['1.0.0', 'ok']])]);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, existingVersion: 'fail' }, noop, archiveOk).publish(),
+                /HcpVersionAlreadyReadyFail|already exists and is ready/,
+            );
+        });
+
+        it('fail: a failed version is still recovered, since it never became ready', async () => {
+            const { client } = script([mod('none', [['1.0.0', 'reg_ingress_failed']]), OK_EMPTY, created(UPLOAD), OK_EMPTY]);
+            const result = await new hcp.HcpPublisher(client, { ...base, existingVersion: 'fail' }, noop, archiveOk).publish();
+            assert.strictEqual(result.published, true);
+        });
+    });
+
+    describe('checkOnly', () => {
+        const writes = (calls: Recorded[]): string[] => calls.map((c) => c.method).filter((m) => m !== 'GET');
+
+        it('missing module: reports it would create one and writes nothing', async () => {
+            const { client, calls } = script([NOT_FOUND]);
+            const result = await new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, archiveOk).publish();
+            assert.strictEqual(result.published, false);
+            assert.match(result.message, /does not exist|HcpCheckOnlyModuleMissing/);
+            assert.deepStrictEqual(writes(calls), []);
+        });
+
+        it('missing module: still validates the module directory so a bad one fails the check', async () => {
+            const { client } = script([NOT_FOUND]);
+            const bad = (): Promise<Uint8Array> => Promise.reject(new Error('no .tf files'));
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, bad).publish(),
+                /no \.tf files/,
+            );
+        });
+
+        it('missing module: still rejects incomplete VCS inputs', async () => {
+            const { client, calls } = script([NOT_FOUND]);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, checkOnly: true, vcsRepoIdentifier: 'a/b/_git/terraform-aws-vpc' }, noop, archiveOk).publish(),
+                /HcpVcsInputsIncomplete|only one of/,
+            );
+            assert.deepStrictEqual(writes(calls), []);
+        });
+
+        it('existing module without the version: reports it is absent and writes nothing', async () => {
+            const { client, calls } = script([mod('none', [['0.9.0', 'ok']])]);
+            const result = await new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, archiveOk).publish();
+            assert.strictEqual(result.published, false);
+            assert.deepStrictEqual(writes(calls), []);
+        });
+
+        it('does not delete a stuck version or wait on a tag module', async () => {
+            const stuck = script([mod('none', [['1.0.0', 'reg_ingress_failed']])]);
+            await new hcp.HcpPublisher(stuck.client, { ...base, checkOnly: true }, noop, archiveOk).publish();
+            assert.deepStrictEqual(writes(stuck.calls), []);
+
+            const tag = script([mod('tag')]);
+            await new hcp.HcpPublisher(tag.client, { ...base, checkOnly: true, waitForPublish: true }, noop, archiveOk).publish();
+            assert.strictEqual(tag.calls.length, 1);
+        });
+
+        it('with existingVersion fail: an existing ready version fails the check', async () => {
+            const { client, calls } = script([mod('none', [['1.0.0', 'ok']])]);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, checkOnly: true, existingVersion: 'fail' }, noop, archiveOk).publish(),
+                /HcpVersionAlreadyReadyFail|already exists and is ready/,
+            );
+            assert.deepStrictEqual(writes(calls), []);
+        });
+
+        it('an unreadable module fails instead of falling through to a write', async () => {
+            const { client, calls } = script([{ status: 401, body: '{}' }]);
+            await assert.rejects(
+                () => new hcp.HcpPublisher(client, { ...base, checkOnly: true }, noop, archiveOk).publish(),
+                /HcpCheckOnlyFailed|could not read the module/,
+            );
+            assert.deepStrictEqual(writes(calls), []);
+        });
+    });
+
+    describe('moduleExclude', () => {
+        it('passes the patterns to the archive builder', async () => {
+            const seen: Array<string[] | undefined> = [];
+            const build = (_dir: string, exclude?: string[]): Promise<Uint8Array> => {
+                seen.push(exclude);
+                return Promise.resolve(ARCHIVE);
+            };
+            const { client } = script([mod('none'), created(UPLOAD), OK_EMPTY]);
+            await new hcp.HcpPublisher(client, { ...base, moduleExclude: ['pipeline.yml'] }, noop, build).publish();
+            assert.deepStrictEqual(seen, [['pipeline.yml']]);
+        });
+    });
+
     afterEach(() => { /* each test builds its own client; nothing shared to reset */ });
 });

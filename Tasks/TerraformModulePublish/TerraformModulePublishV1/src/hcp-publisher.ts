@@ -1,6 +1,6 @@
 import { HttpClient, parseJson, delay, retryHttp, truncateBody } from './http';
 import { createModuleArchive } from './archive';
-import { HcpModuleMode, HcpPublishMode, ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
+import { HcpExistingVersion, HcpModuleMode, HcpPublishMode, ModuleCoordinates, PublishResult, RegistryPublisher } from './types';
 import { extractUrlTokenSecrets, scrubSecretsFromMessage } from '@4cloudguru/pipeline-task-core';
 import tasks = require('azure-pipelines-task-lib/task');
 
@@ -15,6 +15,12 @@ export interface HcpOptions extends ModuleCoordinates {
     commitSha: string;
     /** Directory archived and uploaded for an `upload`-mode module. */
     moduleDirectory: string;
+    /** Paths under moduleDirectory left out of the archive, on top of `.git` and `.terraform`. */
+    moduleExclude?: string[];
+    /** `fail` stops the task when the version is already ready instead of skipping it. */
+    existingVersion?: HcpExistingVersion;
+    /** Reads the module and reports what a publish would do, without creating, deleting or uploading. */
+    checkOnly?: boolean;
     waitForPublish: boolean;
     timeoutSeconds: number;
 }
@@ -175,8 +181,12 @@ export class HcpPublisher implements RegistryPublisher {
         private readonly http: HttpClient,
         private readonly options: HcpOptions,
         private readonly log: (message: string) => void = console.log,
-        private readonly buildArchive: (directory: string) => Promise<Uint8Array> = createModuleArchive,
+        private readonly buildArchive: (directory: string, exclude?: string[]) => Promise<Uint8Array> = createModuleArchive,
     ) { }
+
+    private build(): Promise<Uint8Array> {
+        return this.buildArchive(this.options.moduleDirectory, this.options.moduleExclude);
+    }
 
     async publish(): Promise<PublishResult> {
         const o = this.options;
@@ -197,26 +207,38 @@ export class HcpPublisher implements RegistryPublisher {
             }
             status = versionStatus(check.body, o.version);
             if (status === 'ok') {
-                return { published: false, message: tasks.loc('HcpVersionAlreadyReady', o.version) };
+                return this.versionAlreadyReady();
             }
         } else if (check.status === 404) {
             mode = this.resolveCreateMode();
             if (mode === 'upload') {
                 // Built BEFORE anything is created, so a bad moduleDirectory fails the
                 // task without leaving an empty module behind.
-                archive = await this.buildArchive(o.moduleDirectory);
+                archive = await this.build();
+            }
+            if (o.checkOnly) {
+                return { published: false, message: tasks.loc('HcpCheckOnlyModuleMissing', o.namespace, o.name, o.provider, mode) };
             }
             await this.createModule(mode, headers);
         } else {
+            if (o.checkOnly) {
+                throw new Error(tasks.loc('HcpCheckOnlyFailed', check.status));
+            }
             this.log(tasks.loc('HcpCheckModuleFailed', check.status));
             mode = o.publishMode === 'auto' ? undefined : o.publishMode;
         }
 
+        if (o.checkOnly) {
+            if (mode === 'upload' && !archive) {
+                archive = await this.build();
+            }
+            return { published: false, message: tasks.loc('HcpCheckOnlyVersionAbsent', o.version, mode) };
+        }
         if (mode === 'vcsTag') {
             return this.observeTagVersion(headers);
         }
         if (mode === 'upload' && !archive) {
-            archive = await this.buildArchive(o.moduleDirectory);
+            archive = await this.build();
         }
 
         const created = await this.createVersion(headers, mode, status);
@@ -229,7 +251,7 @@ export class HcpPublisher implements RegistryPublisher {
                 // ingested from the commit; archiving moduleDirectory would be pointless.
                 this.log(tasks.loc('HcpNoUploadLinkWaiting', o.version));
             } else if (created.uploadUrl) {
-                await this.uploadArchive(created.uploadUrl, archive ?? (await this.buildArchive(o.moduleDirectory)));
+                await this.uploadArchive(created.uploadUrl, archive ?? (await this.build()));
             } else if (mode === 'upload') {
                 throw new Error(tasks.loc('HcpNoUploadLink', o.version));
             } else {
@@ -241,6 +263,15 @@ export class HcpPublisher implements RegistryPublisher {
             await this.waitForOk(headers);
         }
         return { published: true, message: tasks.loc('HcpVersionPublished', o.version) };
+    }
+
+    /** A version that is already ready is skipped, or a failure when the pipeline asked for one. */
+    private versionAlreadyReady(): PublishResult {
+        const o = this.options;
+        if (o.existingVersion === 'fail') {
+            throw new Error(tasks.loc('HcpVersionAlreadyReadyFail', o.version));
+        }
+        return { published: false, message: tasks.loc('HcpVersionAlreadyReady', o.version) };
     }
 
     /** Decides which kind of module to create when it does not exist yet. */
@@ -367,7 +398,7 @@ export class HcpPublisher implements RegistryPublisher {
             const current =
                 recheck.status >= 200 && recheck.status < 300 ? versionStatus(recheck.body, o.version) : undefined;
             if (current === 'ok') {
-                return { created: false, done: { published: false, message: tasks.loc('HcpVersionAlreadyReady', o.version) } };
+                return { created: false, done: this.versionAlreadyReady() };
             }
             if (current) {
                 this.log(tasks.loc('HcpVersionAlreadyExists', o.version));

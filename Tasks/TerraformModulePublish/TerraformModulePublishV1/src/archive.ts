@@ -28,6 +28,25 @@ const EXCLUDED_DIRECTORIES = new Set(['.git', '.terraform']);
  */
 export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 
+/**
+ * Compiles `moduleExclude` patterns into a predicate over module-relative POSIX paths.
+ * `*` matches within one path segment, `**` across segments; a pattern that matches a
+ * directory drops everything under it. Anchored at the module root, case-sensitive.
+ */
+export function excludeMatcher(patterns: readonly string[]): (relativePath: string) => boolean {
+    const regexes = patterns
+        .map((pattern) => pattern.trim().replace(/^(\.?\/)+/, '').replace(/\/+$/, ''))
+        .filter((pattern) => pattern !== '')
+        .map((pattern) => {
+            const source = pattern
+                .split('**')
+                .map((part) => part.split('*').map((literal) => literal.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+                .join('.*');
+            return new RegExp(`^${source}$`);
+        });
+    return (relativePath) => regexes.some((regex) => regex.test(relativePath));
+}
+
 /** A file destined for the archive, at its path relative to the module root. */
 interface Entry {
     path: string;
@@ -108,7 +127,13 @@ function padding(size: number): Buffer {
  * `secrets -> ~/.docker/config.json` in a checkout the pipeline did not write
  * would turn a publish step into an exfiltration primitive.
  */
-async function collect(root: string, directory: string, entries: Entry[], total: { bytes: number }): Promise<void> {
+async function collect(
+    root: string,
+    directory: string,
+    entries: Entry[],
+    total: { bytes: number },
+    isExcluded: (relativePath: string) => boolean,
+): Promise<void> {
     // Sorted, so archive contents do not depend on directory iteration order.
     const dirents = (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
         a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
@@ -116,6 +141,8 @@ async function collect(root: string, directory: string, entries: Entry[], total:
 
     for (const dirent of dirents) {
         const absolute = join(directory, dirent.name);
+        // Checked before the symlink rules: an excluded entry is never published, so it cannot leak.
+        if (isExcluded(relative(root, absolute).split(sep).join('/'))) continue;
         let isDirectory = dirent.isDirectory();
 
         if (dirent.isSymbolicLink()) {
@@ -141,7 +168,7 @@ async function collect(root: string, directory: string, entries: Entry[], total:
 
         if (isDirectory) {
             if (!EXCLUDED_DIRECTORIES.has(dirent.name)) {
-                await collect(root, absolute, entries, total);
+                await collect(root, absolute, entries, total, isExcluded);
             }
             continue;
         }
@@ -168,15 +195,16 @@ async function collect(root: string, directory: string, entries: Entry[], total:
  * not one level down under the directory's name.
  *
  * @param directory the module root, as supplied by the `moduleDirectory` input.
+ * @param exclude `moduleExclude` patterns, applied on top of the built-in exclusions.
  */
-export async function createModuleArchive(directory: string): Promise<Uint8Array> {
+export async function createModuleArchive(directory: string, exclude: readonly string[] = []): Promise<Uint8Array> {
     const root = await realpath(resolve(directory)).catch(() => null);
     if (root === null || !(await stat(root)).isDirectory()) {
         throw new Error(`moduleDirectory '${directory}' is not a directory that exists on the agent.`);
     }
 
     const entries: Entry[] = [];
-    await collect(root, root, entries, { bytes: 0 });
+    await collect(root, root, entries, { bytes: 0 }, excludeMatcher(exclude));
 
     // HCP accepts an archive with no Terraform files (or the module nested one
     // level down) and reports it `ok`, so this is the only guard against

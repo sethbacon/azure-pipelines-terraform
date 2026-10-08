@@ -1328,6 +1328,9 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             const options = JSON.parse(match![1]);
             assert.strictEqual(options.publishMode, 'vcsTag');
             assert.strictEqual(path.normalize(options.moduleDirectory), path.normalize('modules/vpc'));
+            assert.deepStrictEqual(options.moduleExclude, ['pipeline.yml', '*.tfvars']);
+            assert.strictEqual(options.existingVersion, 'fail');
+            assert.strictEqual(options.checkOnly, true);
             // vcsBranch keeps its non-breaking `main` default even when blank; a tag-based
             // module is chosen explicitly with hcpPublishMode=vcsTag, which omits the branch
             // from the create body regardless of this value.
@@ -1349,6 +1352,9 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             const options = JSON.parse(match![1]);
             assert.strictEqual(options.publishMode, 'auto');
             assert.strictEqual(options.moduleDirectory, '.');
+            assert.deepStrictEqual(options.moduleExclude, []);
+            assert.strictEqual(options.existingVersion, 'skip', 'an existing version is skipped unless asked to fail');
+            assert.strictEqual(options.checkOnly, false, 'the task publishes unless asked to only check');
             assert.strictEqual(options.vcsBranch, 'main');
         } catch (error) {
             console.log('STDERR', tr.stderr);
@@ -1365,6 +1371,24 @@ describe('index orchestrator (setSecret masking + publisher routing)', () => {
             assert.ok(
                 /HcpUnsupportedPublishMode|Unsupported hcpPublishMode/.test(tr.stdout),
                 'should fail with the unsupported-mode error. stdout: ' + tr.stdout,
+            );
+            assert.ok(!tr.stdout.includes('PUBLISHER_CONSTRUCTED'), 'must fail before a publisher exists');
+            assert.ok(!tr.stdout.includes('NETWORK_TOUCHED'), 'must fail before any request');
+        } catch (error) {
+            console.log('STDERR', tr.stderr);
+            console.log('STDOUT', tr.stdout);
+            throw error;
+        }
+    });
+
+    it('rejects an unknown existingVersion before constructing a publisher or touching the network', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'PublishHcpExistingVersionInvalid.js'));
+        await tr.runAsync();
+        try {
+            assert.ok(tr.failed, 'task should have failed');
+            assert.ok(
+                /HcpUnsupportedExistingVersion|Unsupported existingVersion/.test(tr.stdout),
+                'should fail with the unsupported-value error. stdout: ' + tr.stdout,
             );
             assert.ok(!tr.stdout.includes('PUBLISHER_CONSTRUCTED'), 'must fail before a publisher exists');
             assert.ok(!tr.stdout.includes('NETWORK_TOUCHED'), 'must fail before any request');

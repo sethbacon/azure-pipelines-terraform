@@ -77,6 +77,41 @@ describe('module archive', () => {
         assert.deepStrictEqual(readTar(await createModuleArchive(dir)).map((f) => f.name), ['main.tf']);
     });
 
+    it('drops files and directories matching exclude patterns', async () => {
+        const dir = tmp();
+        write(dir, 'main.tf');
+        write(dir, 'pipeline.yml');
+        write(dir, 'validation.tfvars');
+        write(dir, 'tests/unit.tf');
+        write(dir, 'modules/inner/main.tf');
+        write(dir, 'modules/inner/dev.tfvars');
+        const names = async (exclude: string[]): Promise<string[]> =>
+            readTar(await createModuleArchive(dir, exclude)).map((f) => f.name);
+
+        assert.deepStrictEqual(await names(['pipeline.yml', 'tests']), [
+            'main.tf', 'modules/inner/dev.tfvars', 'modules/inner/main.tf', 'validation.tfvars',
+        ]);
+        // `*` stays within one segment, so the root pattern leaves the nested file alone.
+        assert.ok((await names(['*.tfvars'])).includes('modules/inner/dev.tfvars'));
+        assert.ok(!(await names(['*.tfvars'])).includes('validation.tfvars'));
+        assert.ok(!(await names(['**/*.tfvars'])).includes('modules/inner/dev.tfvars'));
+        assert.deepStrictEqual(await names(['./modules/', '', '  ']), ['main.tf', 'pipeline.yml', 'tests/unit.tf', 'validation.tfvars']);
+    });
+
+    it('treats regex characters in an exclude pattern literally', async () => {
+        const dir = tmp();
+        write(dir, 'main.tf');
+        write(dir, 'a+b.tf');
+        write(dir, 'aab.tf');
+        assert.deepStrictEqual(readTar(await createModuleArchive(dir, ['a+b.tf'])).map((f) => f.name), ['aab.tf', 'main.tf']);
+    });
+
+    it('still reports a module with no root .tf file when the exclusions remove it', async () => {
+        const dir = tmp();
+        write(dir, 'main.tf');
+        await assert.rejects(() => createModuleArchive(dir, ['main.tf']), /no \.tf or \.tf\.json files/);
+    });
+
     it('accepts a module made only of .tf.json files', async () => {
         const dir = tmp();
         write(dir, 'main.tf.json', '{}');
