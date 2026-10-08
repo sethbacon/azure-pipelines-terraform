@@ -4,6 +4,19 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.0...v1.20.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **TerraformModulePublish:** checkOnly reads the registry on a 404; ** matches no folder ([#1235](https://github.com/sethbacon/azure-pipelines-terraform/issues/1235)) ([b8db7fb](https://github.com/sethbacon/azure-pipelines-terraform/commit/b8db7fbfff17cc18246dbd805deb794cd5f05b5a))
+* **TerraformProviderMirror:** keep direct download off providers the mirror serves ([#1232](https://github.com/sethbacon/azure-pipelines-terraform/issues/1232)) ([dc88d1e](https://github.com/sethbacon/azure-pipelines-terraform/commit/dc88d1e7f15763b9bb689a0292ed13a527bac6bc))
+
+
+### Dependencies
+
+* move handlebars to 4.7.10 for GHSA-8r5x-fm3f-whwj ([#1233](https://github.com/sethbacon/azure-pipelines-terraform/issues/1233)) ([0c5efca](https://github.com/sethbacon/azure-pipelines-terraform/commit/0c5efca66583a4bdbcfb8c920f33cbe553b40dbe))
+
 ## [1.20.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.19.0...v1.20.0) (2026-10-08)
 
 
