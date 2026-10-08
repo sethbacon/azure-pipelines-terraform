@@ -31,10 +31,10 @@
         {
             "name": "allowDirectFallback",
             "type": "boolean",
-            "label": "Allow direct registry fallback",
+            "label": "Allow direct download for providers outside the mirror",
             "defaultValue": "true",
             "required": false,
-            "helpMarkDown": "<b>Security-sensitive.</b> When enabled, Terraform can fall back to downloading providers directly from registry.terraform.io if the mirror does not have them. When disabled, the mirror is authoritative for all providers. Operators relying on this mirror for air-gapped/compliance isolation must explicitly set this to <code>false</code> -- the permissive default allows direct internet egress for any provider the mirror lacks."
+            "helpMarkDown": "<b>Security-sensitive.</b> When enabled, Terraform downloads directly from the origin registry the providers the mirror is not configured to serve: those listed in 'Exclude from mirror' or left out of 'Include for mirror'. It is not a per-version fallback -- Terraform has none for a network mirror -- so a provider the mirror serves is installed only from the mirror, and with no mirror patterns set the mirror is the only source for every provider. When disabled, no provider is ever downloaded directly. Operators relying on this mirror for air-gapped/compliance isolation should still set this to <code>false</code>, so that a later change to the mirror patterns cannot open direct internet egress."
         },
         {
             "name": "directExcludePatterns",
@@ -43,7 +43,7 @@
             "defaultValue": "",
             "required": false,
             "visibleRule": "allowDirectFallback = true",
-            "helpMarkDown": "Provider namespace patterns to exclude from direct download (one per line). These providers will only be fetched from the mirror. Example: registry.terraform.io/company-internal/*",
+            "helpMarkDown": "Provider namespace patterns to exclude from direct download (one per line). These providers are never downloaded directly, even when they are outside the mirror. Example: registry.terraform.io/company-internal/*",
             "properties": {
                 "rows": "3",
                 "resizable": "true"
@@ -56,11 +56,20 @@
             "defaultValue": "",
             "required": false,
             "visibleRule": "allowDirectFallback = true",
-            "helpMarkDown": "Provider namespace patterns to include for direct download (one per line). When specified, only these providers can use direct download; all others must use the mirror. This does not, by itself, stop the mirror being consulted for these providers -- also list them in 'Exclude from mirror' below to actually bypass it. Example: registry.terraform.io/hashicorp/*",
+            "helpMarkDown": "Provider namespace patterns to include for direct download (one per line). When specified, only these providers can use direct download. This does not, by itself, take a provider away from the mirror: one the mirror serves keeps the mirror as its only source, and the task warns about it -- also list it in 'Exclude from mirror' below to actually bypass the mirror. Example: registry.terraform.io/hashicorp/*",
             "properties": {
                 "rows": "3",
                 "resizable": "true"
             }
+        },
+        {
+            "name": "allowDirectForMirroredProviders",
+            "type": "boolean",
+            "label": "Also query the origin registry for mirrored providers",
+            "defaultValue": "false",
+            "required": false,
+            "visibleRule": "allowDirectFallback = true",
+            "helpMarkDown": "<b>Not recommended.</b> By default direct download never matches a provider the mirror serves. Terraform combines the version lists of every installation method that matches a provider and then requires the mirror to supply the newest version, so when only the origin registry has that version <code>terraform init</code> fails instead of falling back. Enable this only for a caching mirror that fetches any upstream version on request while its own version list lags behind. It writes a single direct block from the direct patterns alone, overlapping the mirror, and the task warns on every run."
         },
         {
             "name": "mirrorExcludePatterns",
@@ -68,7 +77,7 @@
             "label": "Exclude from mirror (force direct)",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "Provider namespace patterns to exclude from the network mirror (one per line). Terraform consults every installation method whose patterns match a provider and selects the newest version reported across all of them, so a provider must be excluded here -- not just included for direct download -- to stop the mirror being consulted for it. Example: registry.terraform.io/hashicorp/aws",
+            "helpMarkDown": "Provider namespace patterns to exclude from the network mirror (one per line). With direct download allowed, these providers are installed from the origin registry instead, narrowed by the direct patterns above if any are set. Terraform consults every installation method whose patterns match a provider and selects the newest version reported across all of them, so a provider must be excluded here -- not just included for direct download -- to stop the mirror being consulted for it. Example: registry.terraform.io/hashicorp/aws",
             "properties": {
                 "rows": "3",
                 "resizable": "true"
@@ -80,7 +89,7 @@
             "label": "Include for mirror",
             "defaultValue": "",
             "required": false,
-            "helpMarkDown": "Provider namespace patterns to include for the network mirror (one per line). When specified, only these providers are fetched from the mirror; every other provider bypasses it. Leave empty to let the mirror match every provider not excluded above.",
+            "helpMarkDown": "Provider namespace patterns to include for the network mirror (one per line). When specified, only these providers are fetched from the mirror; every other provider bypasses it and, with direct download allowed, is installed from the origin registry. Leave empty to let the mirror match every provider not excluded above.",
             "properties": {
                 "rows": "3",
                 "resizable": "true"
@@ -118,6 +127,9 @@
         "InsecureUrlRejected": "Insecure URL rejected: %s. Only HTTPS URLs are allowed.",
         "InvalidUrl": "Invalid mirror URL: %s",
         "AgentTempDirectoryNotSet": "Neither the Agent.TempDirectory pipeline variable nor the AGENT_TEMPDIRECTORY environment variable is set. This task requires an agent-managed temp directory to write the generated .terraformrc and refuses to fall back to a hardcoded path. This should only happen when running outside a genuine Azure DevOps agent.",
-        "DirectIncludeNotExcludedFromMirror": "The mirror will still be consulted for these direct-include provider(s) because they are not also excluded from the mirror: %s. Terraform combines every matching installation method and may still select a version only the mirror reported. Add the same pattern(s) to 'Exclude from mirror (force direct)' to actually bypass the mirror."
+        "DirectIncludeNotExcludedFromMirror": "The mirror will still be consulted for these direct-include provider(s) because they are not also excluded from the mirror: %s. Terraform combines every matching installation method and may still select a version only the mirror reported. Add the same pattern(s) to 'Exclude from mirror (force direct)' to actually bypass the mirror.",
+        "DirectIncludeServedByMirror": "These 'Include for direct' pattern(s) match only providers the mirror serves, so the mirror stays their only source and nothing is downloaded directly for them: %s. Terraform has no per-version fallback from a network mirror. Add the same pattern(s) to 'Exclude from mirror (force direct)' to install them from the origin registry instead.",
+        "DirectNotUsed": "Direct download is not used: every provider it could apply to is served by the mirror, so the mirror is the only installation source and the origin registry is not contacted. To install a provider directly, list it in 'Exclude from mirror (force direct)' or limit the mirror with 'Include for mirror'.",
+        "DirectOverlapsMirror": "'Also query the origin registry for mirrored providers' is enabled. Terraform selects the newest version reported by either the mirror or the origin registry and then requires the mirror to supply it, so 'terraform init' fails whenever the origin registry lists a version the mirror does not have. Use this only with a mirror that fetches any upstream version on request."
     }
 }

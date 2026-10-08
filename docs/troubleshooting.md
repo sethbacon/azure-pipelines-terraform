@@ -6,8 +6,9 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 ## Behaviour changes that can break a pipeline that used to work
 
-Recent hardening changes turn three previously-silent conditions into failures. If a pipeline that
-worked yesterday fails today, check here first.
+Recent hardening changes turn three previously-silent conditions into failures, and one changes
+which provider versions `terraform init` can select. If a pipeline that worked yesterday fails today,
+check here first.
 
 ### A service connection with no authorization scheme now fails instead of running as WIF
 
@@ -48,6 +49,26 @@ failed at token acquisition. Both now route through `Agent.ProxyUrl`/`Agent.Prox
 `Agent.ProxyPassword`, as the installer tasks already did, while keeping their https-only assertion
 and no-redirect policy. If you worked around this by switching a connection back to a static
 credential, you can switch it back to WIF.
+
+### The provider mirror task no longer offers direct download beside the mirror
+
+**Symptom:** The "Generated configuration" in the `PipelineTerraformProviderMirror@1` log no longer
+shows a `direct { }` block. `terraform init` installs the newest provider version the mirror lists,
+which can be older than the newest one on the origin registry, or reports that no available release
+matches the constraints where it used to find one.
+
+**Cause:** The task used to write a `direct` block matching every provider beside a
+`network_mirror` block matching every provider. Terraform does not treat that as a fallback (see
+["provider mirror does not have archive index for previously-reported ..."](#provider-mirror-does-not-have-archive-index-for-previously-reported--version-xyz)):
+it broke every build for as long as the origin registry was ahead of the mirror. `direct` is now
+confined to the providers the mirror patterns leave out, so the mirror's own version list decides
+which versions exist.
+
+**Fix:** Usually none; this is what keeps builds running while the mirror is behind. If a
+configuration needs a version the mirror does not list, publish or approve it on the mirror. To
+install a provider from the origin registry instead, list it in `mirrorExcludePatterns`. If the
+mirror is a pull-through cache that fetches any upstream version on request, set
+`allowDirectForMirroredProviders: true` to get the previous configuration back.
 
 ---
 
@@ -162,6 +183,30 @@ outlive it.
 - **Azure:** Ensure the service principal has `Storage Blob Data Contributor` role on the storage account.
 - **AWS:** Ensure the IAM role/user has `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` on the S3 bucket.
 - **GCP:** Ensure the service account has `roles/storage.objectAdmin` on the GCS bucket.
+
+### "provider mirror does not have archive index for previously-reported ... version X.Y.Z"
+
+**Symptom:** `terraform init` fails with `Error while installing <provider> vX.Y.Z: failed to query
+provider mirror <url> for <provider>: provider mirror does not have archive index for
+previously-reported <provider> version X.Y.Z`, usually just after a new version of the provider is
+released, and recovers by itself once the mirror has that version.
+
+**Cause:** More than one installation method in the CLI configuration matches the provider —
+typically a `network_mirror` block and a `direct` block — and the origin registry lists a version the
+mirror does not have. Terraform merges the version lists of every matching method, selects the newest
+version, and then asks the methods in the order they are written to supply it. The mirror answers
+404, which Terraform treats as an error rather than as "try the next method". The wording is
+misleading: the version was reported by the origin registry, not by the mirror.
+
+**Fix:**
+
+- With `PipelineTerraformProviderMirror@1`, leave `allowDirectForMirroredProviders` unset. The task
+  then never writes a `direct` block that matches a provider the mirror serves, and `init` selects
+  the newest version the mirror lists.
+- With a hand-written `.terraformrc`, make every provider match exactly one method: give `direct` an
+  `exclude` list equal to the mirror's `include` list, or remove `direct`.
+- If the mirror is the only method that matches the provider, its `index.json` really did list a
+  version whose `X.Y.Z.json` is missing. That is a fault in the mirror.
 
 ### "Error: Terraform 1.x.x does not support the -replace flag"
 

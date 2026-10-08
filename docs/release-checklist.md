@@ -41,7 +41,9 @@ npm run package:release   # or package:self for a private test extension
 ## 4b. Provider mirror task smoke test
 
 - [ ] `PipelineTerraformProviderMirror@1` with a valid mirror URL — generates `.terraformrc` and sets `TF_CLI_CONFIG_FILE`
+- [ ] `PipelineTerraformProviderMirror@1` with only `mirrorUrl` set — config contains only the `network_mirror` block, and the log says the mirror is the only installation source
 - [ ] `PipelineTerraformProviderMirror@1` with `allowDirectFallback: false` — config contains only `network_mirror` block
+- [ ] `PipelineTerraformProviderMirror@1` with `mirrorIncludePatterns` — the `direct` block excludes exactly the patterns the `network_mirror` block includes
 - [ ] `PipelineTerraformProviderMirror@1` with `directIncludePatterns` + matching `mirrorExcludePatterns` — generated `network_mirror` block excludes the provider, no warning logged
 - [ ] Subsequent `terraform init` downloads providers from the configured mirror
 

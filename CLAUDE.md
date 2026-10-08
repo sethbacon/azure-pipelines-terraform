@@ -308,6 +308,7 @@ Source: `Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/src/`
 - Generates a `.terraformrc` CLI configuration file with a `provider_installation` block for network mirroring
 - Sets `TF_CLI_CONFIG_FILE` pipeline variable so subsequent `terraform init` routes provider downloads through the mirror
 - Supports include/exclude patterns for routing specific providers to the mirror vs direct registry
+- Never writes a `direct` block that matches a provider the `network_mirror` block matches (#1231): Terraform takes the union of the versions every matching method reports and then requires the first method to serve the newest, and a mirror's 404 for a version only the origin registry has is fatal rather than a fallback (hashicorp/terraform#39104). `resolveDirectBlocks()` confines `direct` to the providers outside `mirrorIncludePatterns` or inside `mirrorExcludePatterns`, so a pipeline that sets only `mirrorUrl` gets a mirror-only file. `allowDirectForMirroredProviders` (default `false`) is the opt-out, for a pull-through cache that fetches any upstream version on request; it warns on every run
 - Pure config generation — no network calls, no credentials needed
 - Intended to run once per agent job, before `terraform init`
 
