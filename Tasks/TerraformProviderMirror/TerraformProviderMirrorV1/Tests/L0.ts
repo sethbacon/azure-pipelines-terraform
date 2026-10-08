@@ -79,7 +79,9 @@ describe('config-generator', () => {
             );
         });
 
-        it('should generate config with direct fallback (no patterns)', () => {
+        // Previously asserted an empty `direct { }` beside the mirror, pinning the
+        // defect of #1231 as if it were intended: both blocks matched every provider.
+        it('should write no direct block when the mirror serves every provider', () => {
             const config: ProviderMirrorConfig = {
                 mirrorUrl: 'https://registry.example.com',
                 allowDirectFallback: true,
@@ -94,13 +96,14 @@ describe('config-generator', () => {
                 '  network_mirror {\n' +
                 '    url = "https://registry.example.com/"\n' +
                 '  }\n' +
-                '  direct {\n' +
-                '  }\n' +
                 '}\n'
             );
         });
 
-        it('should generate config with exclude patterns', () => {
+        // #1231: directExcludePatterns only narrows direct; it never moves a provider
+        // out of the mirror, so with nothing outside the mirror there is nothing left
+        // for direct to serve.
+        it('should write no direct block for directExcludePatterns alone', () => {
             const config: ProviderMirrorConfig = {
                 mirrorUrl: 'https://registry.example.com',
                 allowDirectFallback: true,
@@ -114,9 +117,6 @@ describe('config-generator', () => {
                 'provider_installation {\n' +
                 '  network_mirror {\n' +
                 '    url = "https://registry.example.com/"\n' +
-                '  }\n' +
-                '  direct {\n' +
-                '    exclude = ["registry.terraform.io/company-internal/*"]\n' +
                 '  }\n' +
                 '}\n'
             );
@@ -138,7 +138,9 @@ describe('config-generator', () => {
             assert.ok(result.includes('exclude = ["registry.terraform.io/company-internal/*", "registry.terraform.io/partner-org/*"]'));
         });
 
-        it('should generate config with include patterns', () => {
+        // #1231 (and #960 before it): directIncludePatterns alone does not take a
+        // provider away from the mirror, so the mirror stays its only source.
+        it('should write no direct block for directIncludePatterns the mirror still serves', () => {
             const config: ProviderMirrorConfig = {
                 mirrorUrl: 'https://registry.example.com',
                 allowDirectFallback: true,
@@ -152,9 +154,6 @@ describe('config-generator', () => {
                 'provider_installation {\n' +
                 '  network_mirror {\n' +
                 '    url = "https://registry.example.com/"\n' +
-                '  }\n' +
-                '  direct {\n' +
-                '    include = ["registry.terraform.io/hashicorp/*"]\n' +
                 '  }\n' +
                 '}\n'
             );
@@ -476,6 +475,251 @@ describe('config-generator', () => {
                 '}\n'
             );
         });
+
+        // #1231: Terraform takes the union of the versions reported by every
+        // installation method that matches a provider, selects the newest, and then
+        // requires the first matching method -- the mirror -- to serve it. The
+        // mirror's 404 for a version only the origin registry has is a query error,
+        // not "not found", so init stops instead of moving on to direct. A direct
+        // block must therefore never match a provider the mirror block also matches.
+        describe('direct never matches a provider the mirror serves (#1231)', () => {
+            const generate = (patterns: Partial<ProviderMirrorConfig>): string =>
+                generateProviderInstallationConfig({
+                    mirrorUrl: 'https://registry.example.com',
+                    allowDirectFallback: true,
+                    directExcludePatterns: [],
+                    directIncludePatterns: [],
+                    ...patterns,
+                });
+            const mirrorBlock = (lines: string[]): string =>
+                'provider_installation {\n' +
+                '  network_mirror {\n' +
+                '    url = "https://registry.example.com/"\n' +
+                lines.map(line => `    ${line}\n`).join('') +
+                '  }\n';
+            const directBlock = (lines: string[]): string =>
+                '  direct {\n' + lines.map(line => `    ${line}\n`).join('') + '  }\n';
+
+            it('sends only the providers left out of mirrorIncludePatterns to direct', () => {
+                const result = generate({ mirrorIncludePatterns: ['registry.terraform.io/hashicorp/*'] });
+
+                assert.strictEqual(result,
+                    mirrorBlock(['include = ["registry.terraform.io/hashicorp/*"]']) +
+                    directBlock(['exclude = ["registry.terraform.io/hashicorp/*"]']) +
+                    '}\n'
+                );
+            });
+
+            it('sends only the providers in mirrorExcludePatterns to direct', () => {
+                const result = generate({ mirrorExcludePatterns: ['registry.terraform.io/hashicorp/aws'] });
+
+                assert.strictEqual(result,
+                    mirrorBlock(['exclude = ["registry.terraform.io/hashicorp/aws"]']) +
+                    directBlock(['include = ["registry.terraform.io/hashicorp/aws"]']) +
+                    '}\n'
+                );
+            });
+
+            // One direct block cannot say "outside the include list, or on the exclude
+            // list": exclude wins over include within a block. Terraform accepts any
+            // number of blocks of a method, so each way out of the mirror gets its own.
+            it('writes one direct block for each way a provider can be outside the mirror', () => {
+                const result = generate({
+                    mirrorIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                    mirrorExcludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                });
+
+                assert.strictEqual(result,
+                    mirrorBlock([
+                        'include = ["registry.terraform.io/hashicorp/*"]',
+                        'exclude = ["registry.terraform.io/hashicorp/aws"]',
+                    ]) +
+                    directBlock(['exclude = ["registry.terraform.io/hashicorp/*"]']) +
+                    directBlock(['include = ["registry.terraform.io/hashicorp/aws"]']) +
+                    '}\n'
+                );
+            });
+
+            it('keeps directExcludePatterns on every direct block', () => {
+                const result = generate({
+                    mirrorIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                    mirrorExcludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                    directExcludePatterns: ['registry.terraform.io/company-internal/*'],
+                });
+
+                assert.strictEqual(result,
+                    mirrorBlock([
+                        'include = ["registry.terraform.io/hashicorp/*"]',
+                        'exclude = ["registry.terraform.io/hashicorp/aws"]',
+                    ]) +
+                    directBlock(['exclude = ["registry.terraform.io/company-internal/*", "registry.terraform.io/hashicorp/*"]']) +
+                    directBlock([
+                        'include = ["registry.terraform.io/hashicorp/aws"]',
+                        'exclude = ["registry.terraform.io/company-internal/*"]',
+                    ]) +
+                    '}\n'
+                );
+            });
+
+            it('narrows direct to the part of directIncludePatterns the mirror gave up', () => {
+                const narrowerInclude = generate({
+                    mirrorExcludePatterns: ['registry.terraform.io/hashicorp/*'],
+                    directIncludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                });
+                const broaderInclude = generate({
+                    mirrorExcludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                    directIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                });
+
+                assert.strictEqual(narrowerInclude,
+                    mirrorBlock(['exclude = ["registry.terraform.io/hashicorp/*"]']) +
+                    directBlock(['include = ["registry.terraform.io/hashicorp/aws"]']) +
+                    '}\n'
+                );
+                assert.strictEqual(broaderInclude,
+                    mirrorBlock(['exclude = ["registry.terraform.io/hashicorp/aws"]']) +
+                    directBlock(['include = ["registry.terraform.io/hashicorp/aws"]']) +
+                    '}\n'
+                );
+            });
+
+            // Terraform reads a two-segment pattern as registry.terraform.io/<ns>/<type>
+            // and compares provider addresses in lower case, so these two are one pattern.
+            it('compares patterns the way Terraform does: default host, any letter case', () => {
+                const result = generate({
+                    mirrorExcludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                    directIncludePatterns: ['HashiCorp/AWS'],
+                });
+
+                assert.strictEqual(result,
+                    mirrorBlock(['exclude = ["registry.terraform.io/hashicorp/aws"]']) +
+                    directBlock(['include = ["registry.terraform.io/hashicorp/aws"]']) +
+                    '}\n'
+                );
+            });
+
+            // The trap in dropping patterns: a block left with no include list at all
+            // would match every provider. With nothing left to include there is no block.
+            it('writes no direct block when every directIncludePatterns entry is inside the mirror', () => {
+                const result = generate({
+                    mirrorIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                    directIncludePatterns: ['registry.terraform.io/hashicorp/aws'],
+                });
+
+                assert.strictEqual(result,
+                    mirrorBlock(['include = ["registry.terraform.io/hashicorp/*"]']) +
+                    '}\n'
+                );
+            });
+
+            it('keeps only the directIncludePatterns entries that reach outside the mirror', () => {
+                const result = generate({
+                    mirrorIncludePatterns: ['registry.terraform.io/hashicorp/*'],
+                    directIncludePatterns: ['registry.terraform.io/hashicorp/aws', 'example.com/acme/*'],
+                });
+
+                assert.strictEqual(result,
+                    mirrorBlock(['include = ["registry.terraform.io/hashicorp/*"]']) +
+                    directBlock([
+                        'include = ["example.com/acme/*"]',
+                        'exclude = ["registry.terraform.io/hashicorp/*"]',
+                    ]) +
+                    '}\n'
+                );
+            });
+
+            // The class, not the examples: an independent reading of Terraform's own
+            // matching rules (ParseMultiSourceMatchingPatterns and CanHandleProvider in
+            // internal/getproviders/multi_source.go) applied to the generated file, for
+            // every combination of short pattern lists.
+            it('gives each provider to the mirror or to direct, never both, for every combination of patterns', function () {
+                this.timeout(60000);
+
+                type Address = [string, string, string];
+                const parsePattern = (pattern: string): Address => {
+                    const parts = pattern.toLowerCase().split('/');
+                    return (parts.length === 2 ? ['registry.terraform.io', ...parts] : parts) as Address;
+                };
+                const matchesAny = (patterns: string[], provider: Address): boolean =>
+                    patterns.map(parsePattern).some(pattern => pattern.every((segment, i) => segment === '*' || segment === provider[i]));
+                const canHandle = (include: string[], exclude: string[], provider: Address): boolean =>
+                    !matchesAny(exclude, provider) && (include.length === 0 || matchesAny(include, provider));
+
+                interface Method { type: string; include: string[]; exclude: string[] }
+                const parseMethods = (hcl: string): Method[] => {
+                    const methods: Method[] = [];
+                    for (const line of hcl.split('\n')) {
+                        const open = /^ {2}(network_mirror|direct) \{$/.exec(line);
+                        if (open) {
+                            methods.push({ type: open[1], include: [], exclude: [] });
+                            continue;
+                        }
+                        const list = /^ {4}(include|exclude) = (\[.*\])$/.exec(line);
+                        if (list) {
+                            methods[methods.length - 1][list[1] as 'include' | 'exclude'] = JSON.parse(list[2]);
+                        }
+                    }
+                    return methods;
+                };
+
+                const pool = [
+                    '*/*/*',
+                    'registry.terraform.io/*/*',
+                    'registry.terraform.io/hashicorp/*',
+                    'registry.terraform.io/hashicorp/aws',
+                    'HashiCorp/AzureRM',
+                    'example.com/acme/*',
+                ];
+                const providers: Address[] = [
+                    ['registry.terraform.io', 'hashicorp', 'aws'],
+                    ['registry.terraform.io', 'hashicorp', 'azurerm'],
+                    ['registry.terraform.io', 'hashicorp', 'random'],
+                    ['registry.terraform.io', 'company-internal', 'widget'],
+                    ['example.com', 'acme', 'widget'],
+                    ['example.com', 'other', 'thing'],
+                ];
+                // Every list of at most two patterns from the pool.
+                const lists: string[][] = [[]];
+                pool.forEach((first, i) => {
+                    lists.push([first]);
+                    pool.slice(i + 1).forEach(second => lists.push([first, second]));
+                });
+                const shortLists: string[][] = [[], ...pool.map(pattern => [pattern])];
+
+                let checked = 0;
+                for (const mirrorIncludePatterns of lists) {
+                    for (const mirrorExcludePatterns of lists) {
+                        for (const directIncludePatterns of lists) {
+                            for (const directExcludePatterns of shortLists) {
+                                const config = { mirrorIncludePatterns, mirrorExcludePatterns, directIncludePatterns, directExcludePatterns };
+                                const methods = parseMethods(generate(config));
+                                const mirrors = methods.filter(method => method.type === 'network_mirror');
+                                const directs = methods.filter(method => method.type === 'direct');
+                                assert.strictEqual(mirrors.length, 1, `expected one network_mirror block for ${JSON.stringify(config)}`);
+
+                                for (const provider of providers) {
+                                    const inMirror = canHandle(mirrorIncludePatterns, mirrorExcludePatterns, provider);
+                                    const wantedDirect = canHandle(directIncludePatterns, directExcludePatterns, provider);
+                                    const viaMirror = canHandle(mirrors[0].include, mirrors[0].exclude, provider);
+                                    const viaDirect = directs.some(method => canHandle(method.include, method.exclude, provider));
+
+                                    if (viaMirror !== inMirror || viaDirect !== (wantedDirect && !inMirror)) {
+                                        assert.fail(
+                                            `${provider.join('/')} with ${JSON.stringify(config)}: ` +
+                                            `mirror ${viaMirror} (want ${inMirror}), direct ${viaDirect} (want ${wantedDirect && !inMirror})`
+                                        );
+                                    }
+                                    checked++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Measured, so that a pool or loop that silently shrank cannot pass as a clean run.
+                assert.strictEqual(checked, 447216);
+            });
+        });
     });
 });
 
@@ -510,6 +754,28 @@ describe('index entrypoint (mock run)', function () {
         assert.ok(
             written.includes('provider_installation {'),
             'generated config should contain a provider_installation block. got: ' + written
+        );
+    });
+
+    // #1231: a pipeline that sets only mirrorUrl. Both blocks used to match every
+    // provider, so init failed whenever the origin registry listed a version the
+    // mirror had not published yet.
+    it('writes no direct block when only mirrorUrl is set', async () => {
+        const tp = path.join(__dirname, 'MirrorConfigDefaultsMirrorOnly.js');
+        const tr: ttm.MockTestRunner = new ttm.MockTestRunner(tp);
+        await tr.runAsync();
+
+        assert.ok(tr.succeeded, 'task should have succeeded. stderr: ' + tr.stderr);
+        assert.strictEqual(tr.errorIssues.length, 0, 'should have no error issues: ' + tr.errorIssues);
+
+        const configPath = path.join(os.tmpdir(), 'tpm-defaults-mirror-only', '.terraformrc');
+        assert.ok(fs.existsSync(configPath), 'expected .terraformrc at ' + configPath);
+        assert.strictEqual(fs.readFileSync(configPath, 'utf8'),
+            'provider_installation {\n' +
+            '  network_mirror {\n' +
+            '    url = "https://registry.example.com/terraform/providers/"\n' +
+            '  }\n' +
+            '}\n'
         );
     });
 
