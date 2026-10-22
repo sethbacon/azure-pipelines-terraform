@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.2...v1.20.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* **TerraformDriftReport:** stop reporting a value-free timeouts block ([#1243](https://github.com/sethbacon/azure-pipelines-terraform/issues/1243)) ([fa032e5](https://github.com/sethbacon/azure-pipelines-terraform/commit/fa032e51cfd23141f2e4775dfe8acbe0bf39eb29))
+
 ## [1.20.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.1...v1.20.2) (2026-10-22)
 
 
