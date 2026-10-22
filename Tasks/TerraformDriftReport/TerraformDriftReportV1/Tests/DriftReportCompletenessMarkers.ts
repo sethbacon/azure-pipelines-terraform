@@ -102,6 +102,38 @@ const CASES: Record<string, unknown> = {
             { address: 'aws_instance.gone', change: { actions: ['delete'], before: {}, after: null } },
         ],
     },
+    // Contract 1.4.2: a state carrying the SDK's unconfigured `timeouts` block
+    // as an object of nulls against a plan whose `after` has null (the
+    // Brunswick fleet shape, 2026-10-21). The real change still has to travel;
+    // the value-free `timeouts` difference must not. `withValue` is the
+    // control: a configured timeout is a change and keeps being reported.
+    timeoutsNullLeaved: {
+        resource_changes: [
+            {
+                address: 'azurerm_subnet.app',
+                change: {
+                    actions: ['update'],
+                    before: {
+                        private_link_service_network_policies_enabled: true,
+                        timeouts: { create: null, delete: null, read: null, update: null },
+                    },
+                    after: { private_link_service_network_policies_enabled: false, timeouts: null },
+                    before_sensitive: {},
+                    after_sensitive: {},
+                },
+            },
+            {
+                address: 'azurerm_subnet.withValue',
+                change: {
+                    actions: ['update'],
+                    before: { timeouts: { create: '30m', delete: null, read: null, update: null } },
+                    after: { timeouts: null },
+                    before_sensitive: {},
+                    after_sensitive: {},
+                },
+            },
+        ],
+    },
 };
 
 const caseName = process.env['TDR_MARKER_CASE'] ?? 'unreadable';
