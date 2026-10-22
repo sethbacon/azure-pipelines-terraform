@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.2](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.1...v1.20.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** patch follow-redirects, sanitize-html and markdown-it in every task ([#1241](https://github.com/sethbacon/azure-pipelines-terraform/issues/1241)) ([484fbd6](https://github.com/sethbacon/azure-pipelines-terraform/commit/484fbd63862e4319f20018bdf1c41f852a652ed8))
+
 ## [1.20.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.0...v1.20.1) (2026-10-08)
 
 
