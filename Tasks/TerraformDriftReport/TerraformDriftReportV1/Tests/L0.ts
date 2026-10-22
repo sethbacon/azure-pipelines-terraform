@@ -1134,4 +1134,32 @@ describe('TerraformDriftReport completeness markers (#950)', function () {
             }
         });
     });
+
+    // Contract 1.4.2 (4cloudguru/terraform-drift-contract#107). Expected values
+    // are hardcoded for the same reason as above: against contract 1.4.0 the
+    // first assertion fails, because `timeouts` rides along in the posted attrs.
+    describe('value-free timeouts block (contract 1.4.2, #107)', function () {
+        type Row = { address: string; attrs?: { name: string; before: string | null; after: string | null }[] };
+
+        it('is not posted as a changed attribute, and a configured timeout still is', async () => {
+            const { posted, artifact } = await runCase('timeoutsNullLeaved');
+            for (const [label, body] of [['posted body', posted], ['summary artifact', artifact]] as const) {
+                const rows = body.summary as Row[];
+                const app = rows.find(r => r.address === 'azurerm_subnet.app');
+                assert.deepStrictEqual(
+                    app?.attrs,
+                    [{ name: 'private_link_service_network_policies_enabled', before: 'true', after: 'false' }],
+                    `${label}: only the real change may travel, not timeouts {nulls} -> null`,
+                );
+                const withValue = rows.find(r => r.address === 'azurerm_subnet.withValue');
+                assert.deepStrictEqual(
+                    withValue?.attrs,
+                    [{ name: 'timeouts', before: '{"create":"30m","delete":null,"read":null,"update":null}', after: null }],
+                    `${label}: a timeouts block with a value is still a change`,
+                );
+            }
+            // Rows and counts come from the actions, so both resources still drift.
+            assert.deepStrictEqual([posted.changed, posted.drifted], [2, true]);
+        });
+    });
 });
