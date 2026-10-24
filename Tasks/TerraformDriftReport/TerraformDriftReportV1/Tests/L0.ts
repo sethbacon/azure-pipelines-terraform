@@ -1162,4 +1162,34 @@ describe('TerraformDriftReport completeness markers (#950)', function () {
             assert.deepStrictEqual([posted.changed, posted.drifted], [2, true]);
         });
     });
+
+    // Contract 1.5.0. Hardcoded for the same reason as above: against contract
+    // 1.4.2 both assertions fail, because the tags map is posted as one `tags`
+    // row holding two 300-code-point prefixes of the whole map, which names no
+    // tag, and blob_properties as (sensitive) -> (sensitive).
+    describe('changed paths inside maps and nested blocks (contract 1.5.0)', function () {
+        type Row = { address: string; attrs?: { name: string; before: string | null; after: string | null }[] };
+
+        it('posts the changed tag and the retention days, and keeps the account key masked', async () => {
+            const { posted, artifact } = await runCase('nestedDrift');
+            for (const [label, body] of [['posted body', posted], ['summary artifact', artifact]] as const) {
+                const rows = body.summary as Row[];
+                assert.deepStrictEqual(
+                    rows.find(r => r.address === 'module.app_pattern.azurerm_resource_group.application')?.attrs,
+                    [{ name: 'tags.COST_CENTER', before: '100.000.1111.0000001', after: '100.000.2222.0000002' }],
+                    `${label}: a re-tag must name the tag that changed`,
+                );
+                assert.deepStrictEqual(
+                    rows.find(r => r.address === 'module.app_pattern.azurerm_storage_account.application[0]')?.attrs,
+                    [
+                        { name: 'blob_properties[0].container_delete_retention_policy[0].days', before: '7', after: '30' },
+                        { name: 'blob_properties[0].delete_retention_policy[0].days', before: '7', after: '30' },
+                        { name: 'primary_access_key', before: '(sensitive)', after: '(sensitive)' },
+                    ],
+                    `${label}: a block with no sensitive leaf is shown; a marked key is not`,
+                );
+                assert(!JSON.stringify(body).includes('FAKE-PRIMARY-KEY'), `${label}: the account key must never be posted`);
+            }
+        });
+    });
 });

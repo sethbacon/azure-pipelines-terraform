@@ -22,6 +22,43 @@ import { resolveRejectUnauthorized, resolveFailOnCallbackError, truncateBody } f
 // directions -- a body that hardcoded `unparseable: false` passes any test that
 // only ever feeds it a readable plan.
 
+// For `nestedDrift`: 13 unchanged tags, together past the contract's
+// 300-code-point value cap, so the whole map cannot show which key changed.
+const LONG_TAGS: Record<string, string> = {
+    ACCESSIBILITY: 'Not Internet Accessible',
+    AGN: '',
+    APPID: 'APP0000',
+    AUDIT: 'None',
+    CONFIDENTIALITY: 'Internal',
+    CRITICALITY: 'Supporting',
+    DIVISION: 'XYZ',
+    DYNAMIC_FIREWALL: 'SN-XYZ-APP0000-P-CUS01',
+    EXPIRATION_DATE: 'none',
+    PROJECT_COST_CENTER: '',
+    REQUESTOR: 'Requestor Name',
+    SUPPORT_GROUP: 'Cloud Engineering',
+    TIER: 'Production',
+};
+
+// azurerm 4.81.0's `blob_properties` mirror: a container for every nested
+// block, and no `true` anywhere in it.
+const BLOB_PROPERTIES_MIRROR = [
+    { container_delete_retention_policy: [{}], cors_rule: [], delete_retention_policy: [{}], restore_policy: [] },
+];
+
+function blobProperties(days: number): unknown[] {
+    return [
+        {
+            change_feed_enabled: false,
+            container_delete_retention_policy: [{ days }],
+            cors_rule: [],
+            delete_retention_policy: [{ days, permanent_delete_enabled: false }],
+            restore_policy: [],
+            versioning_enabled: false,
+        },
+    ];
+}
+
 const CASES: Record<string, unknown> = {
     // Parses as JSON but is not a plan: no `resource_changes` at all. A
     // truncated `terraform show -json`, a wrong file, an empty document. This
@@ -130,6 +167,36 @@ const CASES: Record<string, unknown> = {
                     after: { timeouts: null },
                     before_sensitive: {},
                     after_sensitive: {},
+                },
+            },
+        ],
+    },
+    // Contract 1.5.0: the Brunswick fleet shapes of 2026-10-22, values
+    // replaced. A re-tag changed one key of a map past the 300-code-point
+    // value cap (TBD3216/APP2934, build 378948), and a storage account's only
+    // real change was inside `blob_properties`, whose mirror holds no `true`
+    // (TBD4545/APP6233, builds 378968 and 379017). The account key is marked
+    // and must stay masked.
+    nestedDrift: {
+        resource_changes: [
+            {
+                address: 'module.app_pattern.azurerm_resource_group.application',
+                change: {
+                    actions: ['update'],
+                    before: { tags: { ...LONG_TAGS, COST_CENTER: '100.000.1111.0000001' } },
+                    after: { tags: { ...LONG_TAGS, COST_CENTER: '100.000.2222.0000002' } },
+                    before_sensitive: { tags: {} },
+                    after_sensitive: { tags: {} },
+                },
+            },
+            {
+                address: 'module.app_pattern.azurerm_storage_account.application[0]',
+                change: {
+                    actions: ['update'],
+                    before: { blob_properties: blobProperties(7), primary_access_key: 'FAKE-PRIMARY-KEY-1' },
+                    after: { blob_properties: blobProperties(30), primary_access_key: 'FAKE-PRIMARY-KEY-2' },
+                    before_sensitive: { blob_properties: BLOB_PROPERTIES_MIRROR, primary_access_key: true },
+                    after_sensitive: { blob_properties: BLOB_PROPERTIES_MIRROR, primary_access_key: true },
                 },
             },
         ],
