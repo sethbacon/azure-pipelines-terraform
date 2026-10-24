@@ -571,10 +571,16 @@ CI and local development both target Node 24 LTS (Active LTS, EOL April 2028). N
 **Node 20 is load-only for most tasks, but a real behavioral gate for verifying ones (#654,
 #720):** every task ships a `Node20_1` fallback handler (see above), and each task's CI leg has a
 "Set up Node 20 for Node20_1 handler smoke test" step that runs the already-compiled
-`src/index.js` under Node 20 with no ADO inputs supplied — this proves the compiled module graph
-parses and loads under Node 20 (a real, useful check: a Node-20-incompatible dependency or syntax
-construct would fail it), but the task's own try/catch converts the resulting "input required"
-error into a caught failure before any real command, credential, or verification logic executes.
+`src/index.js` under Node 20 with no ADO inputs supplied, through `scripts/smoke-compiled-task.js` —
+this proves the compiled module graph parses and loads under Node 20 (a real, useful check: a
+Node-20-incompatible dependency or syntax construct would fail it), but the task's own try/catch
+converts the resulting "input required" error into a caught failure before any real command,
+credential, or verification logic executes. The exit code alone cannot carry that proof:
+`azure-pipelines-task-lib`'s process-wide `uncaughtException` listener records a load failure as
+`Unhandled: <message>` and lets the process exit 0, which is how undici 8 passed a bare
+`node src/index.js` in both of `azure-pipelines-packer`'s tasks while neither could load on Node 20.
+The script also fails when a recorded result came from an uncaught path, and
+`scripts/test-smoke-compiled-task.js` proves it does.
 For most tasks the full mocha/L0 assertion suite only ever runs under Node 24 — Node 24 is the
 sole behavioral gate for them, and Node 20 is deliberately load-only. This is an intentional scope
 decision (not an oversight): running the full test suite twice per task would roughly double CI
