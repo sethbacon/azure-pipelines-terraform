@@ -22,10 +22,10 @@
     "@4cloudguru/pipeline-task-core": "^0.9.3",
     "azure-pipelines-task-lib": "^5.280.3",
     "azure-pipelines-tool-lib": "^2.281.0",
-    "undici": "^6.28.1"
+    "undici": "^6.29.1"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.0",
+    "serialize-javascript": "^7.1.3",
     "diff": "^8.0.3",
     "js-yaml": "^4.3.2",
     "adm-zip": "^0.6.1",
