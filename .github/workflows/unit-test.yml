@@ -73,6 +73,8 @@ jobs:
         run: node scripts/test-check-yaml-examples.js
       - name: Self-test check-per-file-coverage.js
         run: node scripts/test-check-per-file-coverage.js
+      - name: Self-test smoke-compiled-task.js
+        run: node scripts/test-smoke-compiled-task.js
       - name: Self-test for-each-task.js
         # Through `npm run`, deliberately, unlike its neighbours: npmCli()
         # resolves the child npm from npm_execpath, which only an `npm run`
@@ -347,16 +349,25 @@ jobs:
       # always converts the resulting "input required" error into a caught
       # tasks.setResult(Failed, ...) and the process exits 0 (verified
       # locally, every task follows the same run()/try-catch/void run()
-      # idiom) -- so the exit code alone is a reliable signal: zero means
-      # Node 20 loaded and ran the compiled module graph successfully,
-      # non-zero means a real incompatibility (e.g. a parse-time syntax error)
-      # surfaced before that catch could run.
+      # idiom).
+      #
+      # The exit code ALONE is not a reliable signal, though, and this step
+      # used to treat it as one. azure-pipelines-task-lib registers a
+      # process-wide uncaughtException listener when index.ts imports it,
+      # records the error as `Unhandled: <message>` and lets the process exit
+      # 0 -- so a dependency that cannot load on Node 20 passes a bare
+      # `node src/index.js`. undici 8 did exactly that in both of
+      # azure-pipelines-packer's tasks. scripts/smoke-compiled-task.js runs
+      # the same entry point and also fails when any recorded result came from
+      # an uncaught path rather than the task's own catch;
+      # scripts/test-smoke-compiled-task.js proves it does. Every Node 20
+      # smoke step below calls it.
       - name: Set up Node 20 for Node20_1 handler smoke test
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
       # The smoke check above only proves the compiled module graph loads
       # under Node 20 -- with no ADO inputs, the task's own try/catch always
       # short-circuits into a caught failure before any real command,
@@ -574,7 +585,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
       # This task's entire security value is verifying a downloaded binary
       # (GPG signature over SHA256SUMS via gpg-verifier.ts, plus cosign via
       # cosign-verifier.ts) -- the load-only smoke check above only proves the
@@ -690,7 +701,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-publish-v1:
     name: Build and Test Module Publish V1 (${{ matrix.os }})
@@ -794,7 +805,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-policy-installer-v1:
     name: Build and Test Policy Agent Installer V1 (${{ matrix.os }})
@@ -920,7 +931,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
       # This task's entire security value is verifying a downloaded binary
       # (GPG signature over SHA256SUMS via gpg-verifier.ts for Sentinel, or
       # sha256 via tool-integrity.ts for OPA) -- the load-only smoke check
@@ -1036,7 +1047,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-driftreport-v1:
     name: Build and Test Drift Report V1 (${{ matrix.os }})
@@ -1140,7 +1151,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-docs-installer-v1:
     name: Build and Test terraform-docs Installer V1 (${{ matrix.os }})
@@ -1266,7 +1277,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
       # This task's entire security value is verifying a downloaded binary
       # (sha256 via tool-integrity.ts, verified against the same GitHub
       # release origin -- there is no detached GPG/cosign signature for
@@ -1383,7 +1394,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-markdown2html-v1:
     name: Build and Test Markdown2Html V1 (${{ matrix.os }})
@@ -1487,7 +1498,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-publishkbarticle-v1:
     name: Build and Test Publish KB Article V1 (${{ matrix.os }})
@@ -1591,7 +1602,7 @@ jobs:
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
-        run: node src/index.js
+        run: node ../../../scripts/smoke-compiled-task.js
 
   build-and-test-tab:
     name: Build and Test Tab (${{ matrix.os }})
