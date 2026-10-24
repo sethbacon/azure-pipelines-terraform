@@ -4,6 +4,14 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.3...v1.20.4) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** patch undici and three transitive deps ([#1246](https://github.com/sethbacon/azure-pipelines-terraform/issues/1246)) ([2727842](https://github.com/sethbacon/azure-pipelines-terraform/commit/272784290572f185989e8103c131cb523388d5ac))
+* **TerraformDriftReport:** per-path attrs, mask only marked values ([#1245](https://github.com/sethbacon/azure-pipelines-terraform/issues/1245)) ([93f3a94](https://github.com/sethbacon/azure-pipelines-terraform/commit/93f3a94a00dfeeed21ac6e3609157e261582e0b1))
+
 ## [1.20.3](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.2...v1.20.3) (2026-10-22)
 
 
