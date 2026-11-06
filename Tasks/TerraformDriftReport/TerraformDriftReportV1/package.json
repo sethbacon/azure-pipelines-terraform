@@ -30,7 +30,9 @@
     "js-yaml": "^4.3.2",
     "adm-zip": "^0.6.1",
     "brace-expansion": "5.0.12",
-    "shelljs": "0.8.5"
+    "shelljs": "0.8.5",
+    "glob@>=9.0.0 <14.0.2": "^14.0.2",
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
