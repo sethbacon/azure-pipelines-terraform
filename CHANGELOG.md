@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.20.5](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.4...v1.20.5) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deps:** patch follow-redirects and qs, and move glob and minimatch past their advisories ([#1251](https://github.com/sethbacon/azure-pipelines-terraform/issues/1251)) ([539c853](https://github.com/sethbacon/azure-pipelines-terraform/commit/539c853874a2b93c7e228124c05c0a7520c0dce4))
+
 ## [1.20.4](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.3...v1.20.4) (2026-10-24)
 
 
