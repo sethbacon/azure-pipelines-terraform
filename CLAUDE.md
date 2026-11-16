@@ -687,7 +687,11 @@ checks would leave that window unguarded rather than shrink it.
 - **Dependabot automated security fixes** — enabled
 - **Dependabot version updates** — configured via `.github/dependabot.yml` for:
   - GitHub Actions (weekly)
-  - npm: all 11 task directories + root (weekly)
+  - npm: all 11 task directories + root (weekly). The tasks share one entry
+    (`directories:`) grouped with `group-by: dependency-name`, so each dependency
+    update is one PR across every task that uses it; the root keeps its own entry
+    and its single dev-dependency group. `scripts/check-task-list.js` fails CI if
+    a task is missing from that list.
 
 ### Code Ownership
 

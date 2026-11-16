@@ -79,20 +79,40 @@ function taskDirsFromReleaseSbom() {
     return dirs.sort();
 }
 
-// .github/dependabot.yml: each per-task npm update entry sets
-// `directory: "/Tasks/<Family>/<Task>"`. The github-actions and root-npm entries
-// use `directory: "/"`, so filtering to /Tasks/ paths selects exactly the tasks
-// (and ignores the non-task ecosystems). The leading slash is dropped to match
-// the Tasks/... form every other source uses.
+// .github/dependabot.yml: a task is covered either by its own npm update entry
+// (`directory: "/Tasks/<Family>/<Task>"`) or as an item of an entry's
+// `directories:` list, the form the tasks share so `group-by: dependency-name`
+// can open one PR per dependency across all of them. The github-actions and
+// root-npm entries use `directory: "/"`, so filtering to /Tasks/ paths selects
+// exactly the tasks (and ignores the non-task ecosystems). The leading slash is
+// dropped to match the Tasks/... form every other source uses.
 function taskDirsFromDependabot() {
     const text = readText('.github/dependabot.yml');
-    const re = /directory:\s*"(\/Tasks\/[^"]+)"/g;
     const dirs = [];
+    const re = /directory:\s*"(\/Tasks\/[^"]+)"/g;
     let m;
     while ((m = re.exec(text))) {
-        dirs.push(m[1].replace(/^\//, ''));
+        dirs.push(m[1]);
     }
-    return dirs.sort();
+    // A `directories:` list runs until the first line indented no deeper than
+    // the key itself; only its items count, so a quoted /Tasks/ path elsewhere
+    // in the file is not mistaken for coverage.
+    let listIndent = -1;
+    for (const line of text.split(/\r?\n/)) {
+        const key = line.match(/^(\s*)directories:\s*$/);
+        if (key) {
+            listIndent = key[1].length;
+            continue;
+        }
+        if (listIndent < 0 || line.trim() === '' || /^\s*#/.test(line)) continue;
+        const item = line.match(/^(\s*)-\s*"(\/Tasks\/[^"]+)"\s*$/);
+        if (item && item[1].length > listIndent) {
+            dirs.push(item[2]);
+        } else if (line.match(/^(\s*)/)[1].length <= listIndent || !/^\s*-/.test(line)) {
+            listIndent = -1;
+        }
+    }
+    return dirs.map((d) => d.replace(/^\//, '')).sort();
 }
 
 // .github/workflows/unit-test.yml: each per-task 'Build and Test <Task>' job
@@ -239,7 +259,7 @@ console.log(`Discovered ${canonical.length} task directories under Tasks/: ${can
 const sources = {
     "azure-devops-extension.json 'contributions'": taskDirsFromExtensionManifest(),
     ".github/workflows/release.yml 'Generate SBOM' steps": taskDirsFromReleaseSbom(),
-    ".github/dependabot.yml 'directory' entries": taskDirsFromDependabot(),
+    ".github/dependabot.yml 'directory'/'directories' entries": taskDirsFromDependabot(),
     ".github/workflows/unit-test.yml 'working-directory' entries": taskDirsFromUnitTestJobs(),
 };
 

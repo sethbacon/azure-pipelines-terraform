@@ -123,14 +123,18 @@ function buildRepo(caseDir, opts = {}) {
         `jobs:\n  sbom-and-sign:\n    steps:\n${sbomSteps}      - name: Generate SBOM for tab\n        run: npx --no-install cyclonedx-npm --output-file sbom-tab.cdx.json\n${attestSteps}`,
     );
 
-    // .github/dependabot.yml — one npm update entry per task
-    // (`directory: "/Tasks/..."`) plus the non-task github-actions and root-npm
-    // entries (`directory: "/"`) that must be ignored.
-    const dependabotEntries = dependabotTasks
-        .map(
-            (t) => `  - package-ecosystem: "npm"\n    directory: "/${t}"\n    schedule:\n      interval: "weekly"\n`,
-        )
-        .join('');
+    // .github/dependabot.yml — the tasks as one npm update entry per task
+    // (`directory: "/Tasks/..."`), or with `dependabotForm: 'directories'` as a
+    // single entry listing them under `directories:`, plus the non-task
+    // github-actions and root-npm entries (`directory: "/"`) that must be ignored.
+    const dependabotEntries =
+        opts.dependabotForm === 'directories'
+            ? `  - package-ecosystem: "npm"\n    directories:\n${dependabotTasks.map((t) => `      - "/${t}"\n`).join('')}    schedule:\n      interval: "weekly"\n    ignore:\n      - dependency-name: "typescript"\n`
+            : dependabotTasks
+                  .map(
+                      (t) => `  - package-ecosystem: "npm"\n    directory: "/${t}"\n    schedule:\n      interval: "weekly"\n`,
+                  )
+                  .join('');
     fs.writeFileSync(
         path.join(caseDir, '.github', 'dependabot.yml'),
         `version: 2\nupdates:\n  - package-ecosystem: "github-actions"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n${dependabotEntries}  - package-ecosystem: "npm"\n    directory: "/"\n    schedule:\n      interval: "weekly"\n`,
@@ -316,6 +320,36 @@ try {
             failed = true;
         } else {
             console.log('OK: exits non-zero when no root-file copy pattern can be read from webpack.config.js.');
+        }
+    }
+
+    // --- Case 11: one npm entry lists every task under `directories:` -> exit 0.
+    // The tasks share a single entry so `group-by: dependency-name` can open one
+    // PR per dependency across all of them; that form must read as complete. ---
+    {
+        const dir = buildRepo(makeCaseDir(), { dependabotForm: 'directories' });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status !== 0 || !out.includes('all hand-maintained task lists agree')) {
+            console.error('FAIL: check-task-list.js did not accept one dependabot.yml entry listing every task under directories:.');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: exits 0 when one dependabot.yml npm entry lists every task under directories:.');
+        }
+    }
+
+    // --- Case 12: the `directories:` list is missing a task -> fail. ---
+    {
+        const dir = buildRepo(makeCaseDir(), { dependabotForm: 'directories', dependabotTasks: CANONICAL.slice(1) });
+        const res = runCheck(dir);
+        const out = `${res.stdout}${res.stderr}`;
+        if (res.status === 0 || !out.includes('dependabot.yml')) {
+            console.error('FAIL: check-task-list.js did not flag a dependabot.yml directories: list missing a task.');
+            console.error(`status=${res.status}`, out);
+            failed = true;
+        } else {
+            console.log('OK: exits non-zero when the dependabot.yml directories: list is missing a task.');
         }
     }
 } finally {
