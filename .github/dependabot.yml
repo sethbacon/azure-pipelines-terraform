@@ -24,9 +24,23 @@ updates:
       actions-minor-patch:
         update-types: ["minor", "patch"]
 
-  # npm — TerraformTaskV5
+  # npm — every task, as one entry
   - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformTask/TerraformTaskV5"
+    # One entry, not one per task, because `group-by: dependency-name` only
+    # groups across the directories of a single entry. scripts/check-task-list.js
+    # reads this list, so a task missing from it fails CI.
+    directories:
+      - "/Tasks/TerraformTask/TerraformTaskV5"
+      - "/Tasks/TerraformInstaller/TerraformInstallerV1"
+      - "/Tasks/TerraformProviderMirror/TerraformProviderMirrorV1"
+      - "/Tasks/TerraformModulePublish/TerraformModulePublishV1"
+      - "/Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
+      - "/Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
+      - "/Tasks/TerraformDriftReport/TerraformDriftReportV1"
+      - "/Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
+      - "/Tasks/TerraformDocs/TerraformDocsV1"
+      - "/Tasks/Markdown2Html/Markdown2HtmlV1"
+      - "/Tasks/PublishKbArticle/PublishKbArticleV1"
     schedule:
       interval: "weekly"
       day: monday
@@ -42,266 +56,17 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      # Batch low-risk devDependency minor/patch bumps into one PR per task so
-      # the moderate/low-severity triage path SECURITY.md describes stays
-      # tractable for a solo maintainer across 11 task ecosystems (issue #639).
-      # Runtime dependencies (e.g. azure-pipelines-task-lib) and any major bump
-      # stay ungrouped for individual review.
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
+      # One pull request per dependency, covering every task that uses it,
+      # instead of one per task: an azure-pipelines-task-lib release arrives as a
+      # single PR for all eleven tasks, so they cannot drift onto different
+      # versions. Per-task entries turned one week's updates into 28 PRs on
+      # 2026-11-16, eleven of them the same task-lib bump. Runtime dependencies
+      # still get a PR each, as #639 wanted, and majors stay out via `allow`.
+      task-dependencies:
+        patterns: ["*"]
+        group-by: dependency-name
     ignore:
       # ts-node (the test transpiler) does not support TypeScript 6 yet.
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformInstallerV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformInstaller/TerraformInstallerV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformProviderMirrorV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformProviderMirror/TerraformProviderMirrorV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformModulePublishV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformModulePublish/TerraformModulePublishV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — PolicyAgentInstallerV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformPolicyCheckV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformDriftReportV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformDriftReport/TerraformDriftReportV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformDocsInstallerV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — TerraformDocsV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/TerraformDocs/TerraformDocsV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — Markdown2HtmlV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/Markdown2Html/Markdown2HtmlV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
-  # npm — PublishKbArticleV1
-  - package-ecosystem: "npm"
-    directory: "/Tasks/PublishKbArticle/PublishKbArticleV1"
-    schedule:
-      interval: "weekly"
-      day: monday
-      time: "09:00"
-      timezone: UTC
-    cooldown:
-      default-days: 7
-    allow:
-      - dependency-type: "direct"
-        update-types:
-          - "version-update:semver-minor"
-          - "version-update:semver-patch"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        update-types: ["minor", "patch"]
-    ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
