@@ -12,8 +12,9 @@ import fs = require('fs');
 const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
-const testDir = path.join(os.tmpdir(), 'tpc-sentinel-logging-commands');
-fs.rmSync(testDir, { recursive: true, force: true });
+// Unique per-run temp dir via fs.mkdtempSync instead of a predictable os.tmpdir()
+// path, to avoid the insecure-temp-file symlink-race class (CodeQL js/insecure-temporary-file).
+const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpc-sentinel-logging-commands-'));
 const policyDir = path.join(testDir, 'policies');
 fs.mkdirSync(policyDir, { recursive: true });
 fs.writeFileSync(path.join(policyDir, 'require-tags.sentinel'), 'main = rule { true }\n');
