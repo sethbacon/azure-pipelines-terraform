@@ -19,7 +19,9 @@ async function verifyTerraformDocs() {
     const toolPath = tasks.which("terraform-docs", true);
     const toolRunner: ToolRunner = tasks.tool(toolPath);
     toolRunner.arg("version");
-    return toolRunner.exec();
+    // externalOutput: the agent would otherwise run any `##vso[` line the binary
+    // prints as a logging command; task-lib shows it as `##_vso[` instead.
+    return toolRunner.exec({ externalOutput: { source: 'childProcess' } });
 }
 
 async function run() {

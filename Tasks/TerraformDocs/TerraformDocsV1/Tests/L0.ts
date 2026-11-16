@@ -72,6 +72,17 @@ describe('TerraformDocs Test Suite', function () {
   expectSuccess('ConsoleOutputSuccess');
   expectSuccess('AdditionalArgsSuccess');
 
+  it('ConsoleOutputLoggingCommandsBlocked — logging commands in terraform-docs output never reach the agent', async () => {
+    const tr = new ttm.MockTestRunner(path.join(__dirname, 'ConsoleOutputLoggingCommandsBlocked.js'));
+    await tr.runAsync();
+    assert(tr.succeeded, `an injected task.complete must not fail the run\n${tr.stdout}`);
+    assert.strictEqual(tr.warningIssues.length, 0, `an injected task.issue must not raise a warning: ${tr.warningIssues}`);
+    for (const marker of [/^##vso\[task\.setvariable variable=injected/m, /^##vso\[task\.issue type=warning;\]injected/m, /^##vso\[task\.complete result=Failed;\]injected/m]) {
+      assert(!marker.test(tr.stdout), `${marker} reached the agent unfiltered`);
+    }
+    assert(tr.stdout.includes('##_vso[task.setvariable variable=injected]pwned'), 'the line stays visible in the log, neutralized');
+  });
+
   // Exercises the real fs.statSync wiring in index.ts (the pure unit tests inject
   // a fake stat): an existing config file is forwarded, and the working-directory
   // artifact from an unset optional filePath input is dropped.

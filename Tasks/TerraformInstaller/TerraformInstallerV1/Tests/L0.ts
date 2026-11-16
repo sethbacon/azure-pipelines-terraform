@@ -87,6 +87,19 @@ describe('TerraformInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('EntryPointVersionLoggingCommandsBlocked — logging commands in `terraform version` output never reach the agent', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointVersionLoggingCommandsBlocked.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'an injected task.complete must not fail the install. errors: ' + tr.errorIssues);
+            assert.strictEqual(tr.warningIssues.length, 0, 'an injected task.issue must not raise a warning: ' + tr.warningIssues);
+            for (const marker of [/^##vso\[task\.setvariable variable=injected/m, /^##vso\[task\.issue type=warning;\]injected/m, /^##vso\[task\.complete result=Failed;\]injected/m]) {
+                assert.ok(!marker.test(tr.stdout), marker + ' reached the agent unfiltered');
+            }
+            assert.ok(tr.stdout.includes('##_vso[task.setvariable variable=injected]pwned'), 'the line stays visible in the log, neutralized');
+        }, tr);
+    });
+
     it('EntryPointVerifyFail', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointVerifyFail.js'));
         await tr.runAsync();

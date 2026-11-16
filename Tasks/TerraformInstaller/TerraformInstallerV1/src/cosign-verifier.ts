@@ -395,7 +395,9 @@ export async function verifyCosignSignature(
         toolRunner.arg(['--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com']);
         toolRunner.arg(sha256SumsPath);
 
-        const result = await toolRunner.exec();
+        // externalOutput: cosign prints details from the signing certificate, which
+        // arrives with the download; a `##vso[` line there must not reach the agent.
+        const result = await toolRunner.exec({ externalOutput: { source: 'childProcess' } });
         if (result !== 0) {
             throw new Error('Cosign verification failed with non-zero exit code');
         }

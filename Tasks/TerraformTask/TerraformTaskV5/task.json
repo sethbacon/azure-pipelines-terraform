@@ -191,6 +191,14 @@
             "helpMarkDown": "Maximum wall-clock time, in minutes, to wait for the terraform/az CLI to finish before it is killed and the step fails. Guards against a hung or deadlocked subprocess (e.g. a stalled provider plugin, an unreachable state backend, or an `az login` that never returns) blocking the job indefinitely. Set to 0 (the default) to disable and rely solely on the pipeline/agent's own job timeout."
         },
         {
+            "name": "allowTerraformLoggingCommands",
+            "type": "boolean",
+            "label": "Allow logging commands in Terraform output",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Off by default. terraform's output carries text this pipeline does not control -- provider messages, provisioner output, values from configuration or remote state -- and the agent runs any line that starts with `##vso[` as a logging command. The task therefore shows such lines as `##_vso[` so they cannot set pipeline variables, raise issues or change the task's result. Set to **true** only if a pipeline relies on Terraform printing logging commands on purpose, for example a `local-exec` provisioner echoing `##vso[task.setvariable ...]`. The task then streams terraform's output unfiltered, as before, and warns on every run. Output variables the task sets itself (such as `changesPresent` or the `TF_OUT_*` variables) are not affected either way."
+        },
+        {
             "name": "publishPlanResults",
             "type": "string",
             "label": "Publish plan results",
@@ -1217,6 +1225,7 @@
         "OutputSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Set 'cleanupOutputFile' to true to delete the file automatically instead of failing, or disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsStrictFailure": "%s contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; the file will be deleted at the end of this step. Disable 'failOnSensitiveOutputs' to downgrade this to a warning.",
         "ShowSensitiveOutputsConsoleStrictFailure": "The captured 'terraform show -json' output contains %d sensitive Terraform output(s) in cleartext (%s) and 'failOnSensitiveOutputs' is enabled; failing before the output is echoed to the console. Disable 'failOnSensitiveOutputs' to downgrade this to a warning, or set outputTo to 'file' for the existing file-based handling.",
+        "TerraformLoggingCommandsAllowed": "allowTerraformLoggingCommands is true: logging commands that terraform, its providers or its provisioners print reach the agent unfiltered, so any value that appears in terraform's output can set pipeline variables or change this task's result.",
         "TerraformCommandTimedOut": "Terraform command timed out after %d minute(s) and was terminated. Increase 'commandTimeoutMinutes' if this operation is expected to take longer.",
         "TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
         "TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",

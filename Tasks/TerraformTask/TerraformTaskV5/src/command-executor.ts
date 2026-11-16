@@ -40,11 +40,46 @@ export const MAX_CAPTURED_MESSAGE_BYTES = 64 * 1024; // 64 KiB
  * class hierarchy.
  *
  * Holds no state and takes no dependencies: each method is a function of its
- * arguments plus the task inputs. It is a class rather than loose functions so
- * the four members stay addressable as one unit -- including by the tests that
- * spy on {@link execWithTimeout} through the prototype.
+ * arguments plus the task inputs. The one exception is the module-level flag
+ * that prints the `allowTerraformLoggingCommands` warning once per run rather
+ * than once per terraform invocation. It is a class rather than loose
+ * functions so the members stay addressable as one unit -- including by the
+ * tests that spy on {@link execWithTimeout} through the prototype.
  */
+let warnedLoggingCommandsAllowed = false;
+
 export class CommandExecutor {
+    /**
+     * Adds azure-pipelines-task-lib's `externalOutput` filter to a terraform/az
+     * invocation, so a `##vso[...]` logging command in what the child prints
+     * reaches the agent as `##_vso[...]` instead of being executed. terraform's
+     * output carries text the pipeline does not control -- provider messages,
+     * provisioner output, values from configuration or remote state -- and
+     * without this a crafted value could set a pipeline variable, raise issues
+     * or mark the task Failed just by being printed. The paths that re-print
+     * captured output already neutralize it (results-publisher.ts's
+     * echoSafeConsoleLine, #678/#869); this covers everything ToolRunner
+     * streams itself. Captured bytes are untouched, so `-json` parsing is
+     * unaffected. A caller that sets its own `externalOutput` keeps it.
+     *
+     * `allowTerraformLoggingCommands` is the opt-out for pipelines that print
+     * logging commands on purpose (a `local-exec` provisioner echoing
+     * `task.setvariable`, say): it restores the unfiltered stream and warns once.
+     */
+    withLoggingCommandFilter(options: IExecOptions): IExecOptions {
+        if (options.externalOutput) {
+            return options;
+        }
+        if (tasks.getBoolInput('allowTerraformLoggingCommands', false)) {
+            if (!warnedLoggingCommandsAllowed) {
+                warnedLoggingCommandsAllowed = true;
+                tasks.warning(tasks.loc('TerraformLoggingCommandsAllowed'));
+            }
+            return options;
+        }
+        return { ...options, externalOutput: { source: 'childProcess' } };
+    }
+
     /**
      * Reads the optional `commandTimeoutMinutes` input and returns the
      * configured minutes, or `undefined` when unset/0/invalid -- the default,
@@ -84,9 +119,12 @@ export class CommandExecutor {
      *    sensible default message for an arbitrary caller-chosen duration.
      *  - Omitted (every pre-existing call site, the main terraform command
      *    path): falls back to the `commandTimeoutMinutes` input. When that is
-     *    unset/0/invalid (the default), this is a pure passthrough to
-     *    `tool.execAsync(options)` -- no timer, no Promise.race -- so every
-     *    pre-existing call site's behavior is byte-for-byte unchanged.
+     *    unset/0/invalid (the default), this calls `tool.execAsync` directly
+     *    -- no timer, no Promise.race -- so the deadline adds nothing to a
+     *    call site that never asked for one.
+     *
+     * Either way the options pass through {@link withLoggingCommandFilter}
+     * first, so every terraform/az invocation's streamed output is filtered.
      */
     async execWithTimeout(
         tool: ToolRunner,
@@ -94,6 +132,7 @@ export class CommandExecutor {
         explicitTimeoutMs?: number,
         explicitTimeoutMessage?: string,
     ): Promise<number> {
+        const execOptions = this.withLoggingCommandFilter(options);
         let timeoutMs: number;
         let timeoutMessage: string;
         if (explicitTimeoutMs !== undefined) {
@@ -102,7 +141,7 @@ export class CommandExecutor {
         } else {
             const minutes = this.getCommandTimeoutMinutes();
             if (!minutes) {
-                return tool.execAsync(options);
+                return tool.execAsync(execOptions);
             }
             timeoutMs = minutes * 60_000;
             timeoutMessage = tasks.loc('TerraformCommandTimedOut', minutes);
@@ -114,7 +153,7 @@ export class CommandExecutor {
                 reject(new Error(timeoutMessage));
             }, timeoutMs);
         });
-        const exec = tool.execAsync(options);
+        const exec = tool.execAsync(execOptions);
         // Swallow a late rejection from the killed child once the deadline has
         // already won the race below -- otherwise it surfaces as an unhandled
         // promise rejection.

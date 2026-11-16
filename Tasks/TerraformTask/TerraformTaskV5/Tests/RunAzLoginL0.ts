@@ -116,7 +116,9 @@ describe('runAzLogin — opt-in az login gate, argv shape & secret masking (#635
         // The federated token placed on argv must be registered as a secret so it
         // is masked in any log output.
         assert.ok(setSecretCalls.includes('fed-oidc-token'), 'the federated token on argv must be setSecret()-masked');
-        assert.deepStrictEqual(createdTools[0].execOptions, [{ silent: true }], 'az login runs silent so argv is not echoed');
+        // externalOutput is added by CommandExecutor.execWithTimeout for every
+        // invocation (LoggingCommandFilterL0); silent is what keeps argv out of the log.
+        assert.deepStrictEqual(createdTools[0].execOptions, [{ silent: true, externalOutput: { source: 'childProcess' } }], 'az login runs silent so argv is not echoed');
     });
 
     it('ServicePrincipal branch: builds the --password argv and masks the secret before use', async () => {
