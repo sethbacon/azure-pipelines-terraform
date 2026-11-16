@@ -20,7 +20,7 @@
   "dependencies": {
     "@4cloudguru/pipeline-task-ado": "^0.11.1",
     "@4cloudguru/pipeline-task-core": "^0.9.3",
-    "azure-pipelines-task-lib": "^5.2.10",
+    "azure-pipelines-task-lib": "^5.283.0",
     "cheerio": "^1.2.0",
     "sanitize-html": "^2.18.1",
     "undici": "^6.29.1"
@@ -38,14 +38,14 @@
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^24",
-    "@types/sanitize-html": "^2.16.1",
+    "@types/sanitize-html": "^2.16.2",
     "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
-    "mocha": "^11.2.0",
-    "nock": "^14.0.15",
+    "mocha": "^11.8.0",
+    "nock": "^14.0.17",
     "nyc": "^18.0.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.72.2"
   }
 }
