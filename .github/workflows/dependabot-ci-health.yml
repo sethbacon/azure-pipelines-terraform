@@ -21,4 +21,4 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: 4cloudguru/shared-workflows/.github/workflows/dependabot-ci-health.yml@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/dependabot-ci-health.yml@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
