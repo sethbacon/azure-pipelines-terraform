@@ -32,10 +32,10 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
@@ -106,10 +106,10 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
@@ -126,7 +126,7 @@ jobs:
       # Its mutation self-test moved with it and runs in that repository's CI
       # beside the implementation, rather than here beside a fork of it.
       - name: Shared-module pins in lockstep (#1108 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-shared-module-pins@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-shared-module-pins@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-09-11: node .github/actions/check-shared-module-pins/check-shared-module-pins.js . --json
           #             -> scanned 11
@@ -142,7 +142,7 @@ jobs:
       # build-and-test-installer-v1, build-and-test-policy-installer-v1 and
       # build-and-test-docs-installer-v1 below.
       - name: Validate egress authorization (SSRF class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
           #             -> sites 48
@@ -160,7 +160,7 @@ jobs:
       # "looked and found none" apart from "looked nowhere". A legitimate move
       # in the count is a one-line edit in the same PR that moved it.
       - name: Validate enforced disciplines (documented-but-unenforced class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-enforced-disciplines@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-enforced-disciplines@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
       # NO `Self-test check-proxy-parity.js` STEP HERE ANY MORE, and the absence
       # is deliberate rather than an omission. That gate has been wrong twice --
       # once reporting no call sites for a task that makes them, once
@@ -172,19 +172,19 @@ jobs:
       # against the bytes every consumer actually calls -- one place instead of
       # three hand-copies.
       - name: Validate outbound proxy parity (sibling packer #196 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
       - name: Validate artifact trust (#65/#78/#136/#198/#204 class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-10-06: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
           #             -> sites 69, scanned 108
           min-scanned: 108
           min-sites: 69
       - name: Validate provider auth parity (#97 fail-open class signature)
-        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
           #             -> cells 95, scanned 89
@@ -195,7 +195,7 @@ jobs:
       # that repository's CI. Four hand-copies of this 844-line script existed
       # across the estate and had already drifted three ways.
       - name: Validate documented claims against the code
-        uses: 4cloudguru/shared-workflows/.github/actions/check-docs-claims@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/check-docs-claims@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           # 2026-09-11: node .github/actions/check-docs-claims/check-docs-claims.js . --json
           #             -> enumerated controls 6 + ciJobs 17 + fileTables 7 + pathRefs 67
@@ -220,14 +220,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -310,13 +310,13 @@ jobs:
       # NOT inherit it -- without it each gate would analyse the task directory
       # instead of the repository.
       - name: Provide the outbound proxy parity gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-proxy-parity@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/check-proxy-parity/check-proxy-parity.js . --json -> sites 22
           min-sites: 22
       - name: Provide the provider auth parity gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/auth-parity-matrix@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-09-10: node .github/actions/auth-parity-matrix/auth-parity-matrix.cjs . --json
@@ -329,7 +329,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-task-v5-${{ matrix.os }}
           path: Tasks/TerraformTask/TerraformTaskV5/coverage/
@@ -363,7 +363,7 @@ jobs:
       # scripts/test-smoke-compiled-task.js proves it does. Every Node 20
       # smoke step below calls it.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -413,14 +413,14 @@ jobs:
       #   so no endpoint baseline exists and a block policy written without one fails
       #   closed on its first run; audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -448,7 +448,7 @@ jobs:
       #   repository, so no endpoint baseline exists and a block policy written
       #   without one fails closed on its first run; audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Verify all V5 smoke matrix legs passed
@@ -473,14 +473,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -549,7 +549,7 @@ jobs:
       # explicit because a composite action's steps do not inherit this job's
       # `defaults.run.working-directory`.
       - name: Provide the artifact trust gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-artifact-trust@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-10-06: node .github/actions/check-artifact-trust/check-artifact-trust.js . --json
@@ -561,7 +561,7 @@ jobs:
       # composite hands the suite a PATH through
       # SHARED_GATE_CHECK_EGRESS_AUTHORIZATION exactly as the one above does.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
@@ -573,7 +573,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-installer-v1-${{ matrix.os }}
           path: Tasks/TerraformInstaller/TerraformInstallerV1/coverage/
@@ -581,7 +581,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -617,14 +617,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -689,7 +689,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-provider-mirror-v1-${{ matrix.os }}
           path: Tasks/TerraformProviderMirror/TerraformProviderMirrorV1/coverage/
@@ -697,7 +697,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -721,14 +721,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -793,7 +793,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-module-publish-v1-${{ matrix.os }}
           path: Tasks/TerraformModulePublish/TerraformModulePublishV1/coverage/
@@ -801,7 +801,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -825,14 +825,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -907,7 +907,7 @@ jobs:
       # inherit it -- without it the gate would analyse the task directory instead
       # of the repository.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
@@ -919,7 +919,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-policy-agent-installer-v1-${{ matrix.os }}
           path: Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/coverage/
@@ -927,7 +927,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -963,14 +963,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1035,7 +1035,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-policy-check-v1-${{ matrix.os }}
           path: Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/coverage/
@@ -1043,7 +1043,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1067,14 +1067,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1139,7 +1139,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-drift-report-v1-${{ matrix.os }}
           path: Tasks/TerraformDriftReport/TerraformDriftReportV1/coverage/
@@ -1147,7 +1147,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1171,14 +1171,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1253,7 +1253,7 @@ jobs:
       # inherit it -- without it the gate would analyse the task directory instead
       # of the repository.
       - name: Provide the egress authorization gate to the L0 suite
-        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@2c1ffdbaab2a55eb273b9a9e7cb4864e4e0a02c8 # v1.29.1
+        uses: 4cloudguru/shared-workflows/.github/actions/check-egress-authorization@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           root: ${{ github.workspace }}
           # 2026-09-11: node .github/actions/check-egress-authorization/check-egress-authorization.js . --json
@@ -1265,7 +1265,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-docs-installer-v1-${{ matrix.os }}
           path: Tasks/TerraformDocsInstaller/TerraformDocsInstallerV1/coverage/
@@ -1273,7 +1273,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1310,14 +1310,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1382,7 +1382,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-terraform-docs-v1-${{ matrix.os }}
           path: Tasks/TerraformDocs/TerraformDocsV1/coverage/
@@ -1390,7 +1390,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1414,14 +1414,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1486,7 +1486,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-markdown2html-v1-${{ matrix.os }}
           path: Tasks/Markdown2Html/Markdown2HtmlV1/coverage/
@@ -1494,7 +1494,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1518,14 +1518,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1590,7 +1590,7 @@ jobs:
         run: npm run test:coverage
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-publish-kb-article-v1-${{ matrix.os }}
           path: Tasks/PublishKbArticle/PublishKbArticleV1/coverage/
@@ -1598,7 +1598,7 @@ jobs:
       # See build-and-test-v5's identical step above for the full rationale
       # (issue #654): this task.json also declares a Node20_1 handler.
       - name: Set up Node 20 for Node20_1 handler smoke test
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
       - name: Verify compiled output runs under Node 20 (Node20_1 handler)
@@ -1619,14 +1619,14 @@ jobs:
       #   exists and a block policy written without one fails closed on its first run;
       #   audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
       - name: Install dependencies
@@ -1667,7 +1667,7 @@ jobs:
         run: npm run test:tab
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-tab-${{ matrix.os }}
           path: coverage/
@@ -1694,7 +1694,7 @@ jobs:
       #   repository, so no endpoint baseline exists and a block policy written
       #   without one fails closed on its first run; audit is what produces that list
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Verify all Tab matrix legs passed
@@ -1707,7 +1707,7 @@ jobs:
   # not because there was nothing to report. The shared job scans the repository.
   workflow-security:
     name: Workflow Security
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security.yml@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
     with:
       # release.yml calls this workflow at the commit it is about to publish;
       # the linters have to read that commit, not the run's default.
@@ -1733,5 +1733,5 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+    uses: 4cloudguru/shared-workflows/.github/workflows/workflow-security-record.yml@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
 

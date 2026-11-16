@@ -116,7 +116,7 @@ jobs:
       #   has no recorded endpoint baseline yet for this workflow and a block policy
       #   written without one fails closed on its first run
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -125,7 +125,7 @@ jobs:
       # rather than from the event payload, so it needs nothing from this
       # repository's tree.
       - name: Grade the release pull request
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           mode: pull-request
           gh-token: ${{ secrets.GITHUB_TOKEN }}
@@ -152,12 +152,12 @@ jobs:
       #   api.github.com only, no long-lived credential, and no endpoint baseline
       #   exists yet for this workflow to write a block policy from
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
       - name: Re-grade every open pull request and republish the verdict
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           mode: link-regrade
           gh-token: ${{ secrets.GITHUB_TOKEN }}
@@ -183,12 +183,12 @@ jobs:
       #   api.github.com only, no long-lived credential, and no endpoint baseline
       #   exists yet for this workflow to write a block policy from
       - name: Harden the runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
       - name: Grade the merge and reopen anything it closed by mistake
-        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@c52ee27a03d06eee94e13c7bb56385d4edfb94d4 # v1.28.0
+        uses: 4cloudguru/shared-workflows/.github/actions/release-pr-closing-keywords@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
         with:
           mode: merge-backstop
           gh-token: ${{ secrets.GITHUB_TOKEN }}
