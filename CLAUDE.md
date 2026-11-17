@@ -707,7 +707,7 @@ checks would leave that window unguarded rather than shrink it.
 - Code scanning: enabled (CodeQL for TypeScript)
 - Secret scanning: enabled
 - Secret scanning push protection: enabled
-- `npm audit --audit-level=moderate` in CI, over production and development dependencies
+- `npm audit --audit-level=moderate` in CI, over production and development dependencies. The development and root-tooling passes run through `scripts/npm-audit-gate.js`, which accepts only the advisories in `scripts/lib/npm-audit-exceptions.json`, each until it expires or its affected range changes (SECURITY.md)
 - All GitHub Actions pinned to full commit SHAs
 
 ### Repository Topics

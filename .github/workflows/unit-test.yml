@@ -63,6 +63,8 @@ jobs:
         run: node scripts/check-yaml-examples.js
       - name: Self-test check-versions.js
         run: node scripts/test-check-versions.js
+      - name: Self-test npm-audit-gate.js
+        run: node scripts/test-npm-audit-gate.js
       - name: Self-test check-minor-bumps.js
         run: node scripts/test-check-minor-bumps.js
       - name: Self-test bump-minor-versions.js
@@ -262,14 +264,17 @@ jobs:
       # the Lint/Compile/Test steps below the same as a production dependency
       # would, so they need the same gate (issue #753): a second, deliberately
       # overlapping audit with no --omit=dev, repeated identically in every
-      # build-and-test-* job in this file.
+      # build-and-test-* job in this file. It runs through
+      # scripts/npm-audit-gate.js, which is npm audit at the same level except
+      # for the advisories scripts/lib/npm-audit-exceptions.json accepts, each
+      # until it expires or its affected range changes (SECURITY.md).
       - name: Audit development dependencies
         shell: pwsh
         run: |
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -518,7 +523,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -662,7 +667,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -766,7 +771,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -870,7 +875,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1008,7 +1013,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1112,7 +1117,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1216,7 +1221,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1355,7 +1360,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1459,7 +1464,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1563,7 +1568,7 @@ jobs:
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-dev-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
@@ -1637,12 +1642,13 @@ jobs:
         # jest, …) is a devDependency, so --omit=dev (used by the per-task
         # audits below) would audit nothing. This is the one CI job that
         # installs the root toolchain, so it is the natural place to gate it.
+        # Same gate as the per-task development audits: scripts/npm-audit-gate.js.
         shell: pwsh
         run: |
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $logFile = Join-Path $env:RUNNER_TEMP "npm-audit-tooling-$attempt.log"
-            & npm audit --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
+            & node "$env:GITHUB_WORKSPACE/scripts/npm-audit-gate.js" --audit-level=moderate 2>&1 | Tee-Object -FilePath $logFile
             $exitCode = $LASTEXITCODE
             $outputText = Get-Content -Path $logFile -Raw
 
