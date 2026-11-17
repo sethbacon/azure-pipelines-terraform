@@ -172,13 +172,18 @@ export async function runSentinelPolicySet(
     tempFiles: string[],
 ): Promise<PolicyResult> {
     const setConfigPath = path.join(policyDir, SET_CONFIG);
-    if (!fs.existsSync(setConfigPath)) {
+    // Read, then interpret a missing file: an existence check before the read
+    // would let the file change between the two.
+    let setConfig: string;
+    try {
+        setConfig = fs.readFileSync(setConfigPath, 'utf-8');
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
         throw new Error(
             `hcpPolicySet is enabled but ${setConfigPath} does not exist. The policy source must be the root of an ` +
             `HCP Terraform Sentinel policy set, which holds ${SET_CONFIG} (use policyRepoSubdir if the set is in a subdirectory).`,
         );
     }
-    const setConfig = fs.readFileSync(setConfigPath, 'utf-8');
     assertNoTerraformImportOverride(setConfig);
 
     // The policy set is never written to: the combined configuration goes to the

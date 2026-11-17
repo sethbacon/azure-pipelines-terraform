@@ -184,15 +184,24 @@ export function violationsOf(policy: OpaSetPolicy, decision: unknown): string[] 
  * and re-serialized: OPA is the one that validates it.
  */
 function writeHcpInput(planJsonPath: string, tempFiles: string[]): string {
-    const size = fs.statSync(planJsonPath).size;
-    if (size > MAX_PLAN_JSON_BYTES) {
-        throw new Error(`${planJsonPath} is ${size} bytes; hcpPolicySet can wrap a plan JSON of at most ${MAX_PLAN_JSON_BYTES} bytes.`);
+    // One descriptor for the size check and the read, so the file checked is the
+    // file read.
+    let plan: string;
+    const fd = fs.openSync(planJsonPath, 'r');
+    try {
+        const size = fs.fstatSync(fd).size;
+        if (size > MAX_PLAN_JSON_BYTES) {
+            throw new Error(`${planJsonPath} is ${size} bytes; hcpPolicySet can wrap a plan JSON of at most ${MAX_PLAN_JSON_BYTES} bytes.`);
+        }
+        plan = fs.readFileSync(fd, 'utf-8');
+    } finally {
+        fs.closeSync(fd);
     }
     const inputDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `opa-input-${uuidV4()}`);
     tempFiles.push(inputDir);
     fs.mkdirSync(inputDir, { recursive: true });
     const inputPath = path.join(inputDir, 'input.json');
-    writeSecretFile(inputPath, `{"plan":${fs.readFileSync(planJsonPath, 'utf-8')}}`);
+    writeSecretFile(inputPath, `{"plan":${plan}}`);
     return inputPath;
 }
 
@@ -203,13 +212,19 @@ export async function runOpaPolicySet(
     tempFiles: string[],
 ): Promise<PolicyResult> {
     const setConfigPath = path.join(policyDir, SET_CONFIG);
-    if (!fs.existsSync(setConfigPath)) {
+    // Read, then interpret a missing file: an existence check before the read
+    // would let the file change between the two.
+    let setConfig: string;
+    try {
+        setConfig = fs.readFileSync(setConfigPath, 'utf-8');
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
         throw new Error(
             `hcpPolicySet is enabled but ${setConfigPath} does not exist. The policy source must be the root of an ` +
             `HCP Terraform OPA policy set, which holds ${SET_CONFIG} (use policyRepoSubdir if the set is in a subdirectory).`,
         );
     }
-    const policies = parsePoliciesFile(fs.readFileSync(setConfigPath, 'utf-8'));
+    const policies = parsePoliciesFile(setConfig);
     const hcpInput = writeHcpInput(inputFile, tempFiles);
 
     const cases: PolicyCase[] = [];

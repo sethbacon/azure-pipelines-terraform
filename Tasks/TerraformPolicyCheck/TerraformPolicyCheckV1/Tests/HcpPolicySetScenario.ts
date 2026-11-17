@@ -15,8 +15,9 @@ const tp = path.join(__dirname, '..', 'src', 'index.js');
 const tr: tmrm.TaskMockRunner = new tmrm.TaskMockRunner(tp);
 
 const FIXED_UUID = 'fixed-policy-set-uuid';
-const testDir = path.join(os.tmpdir(), `tpc-hcp-policy-set-${scenario}`);
-fs.rmSync(testDir, { recursive: true, force: true });
+// A fresh, unpredictable directory (mkdtemp), removed when the run ends.
+const testDir = fs.mkdtempSync(path.join(os.tmpdir(), `tpc-hcp-policy-set-${scenario}-`));
+process.on('exit', () => fs.rmSync(testDir, { recursive: true, force: true }));
 const policyDir = path.join(testDir, 'set');
 fs.mkdirSync(policyDir, { recursive: true });
 const planFile = path.join(testDir, 'plan.json');
