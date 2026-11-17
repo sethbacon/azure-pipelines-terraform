@@ -1,0 +1,11 @@
+{
+  "exceptions": [
+    {
+      "advisory": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "range": "<=4.0.7",
+      "expires": "2026-12-17",
+      "reason": "ReDoS in glob patterns with single-branch repeated extglobs. Every published picomatch is affected and none is patched (upstream micromatch/picomatch#194). It reaches only build and test tooling: typescript-eslint (every 8.x, through tinyglobby or fast-glob), ts-loader 9.6.2, jest and copy-webpack-plugin, all matching patterns written in this repository. See SECURITY.md."
+    }
+  ]
+}
