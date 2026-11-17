@@ -539,10 +539,15 @@ function findLocKeyHelpers(sources) {
     let m
     while ((m = re.exec(source)) !== null) {
       const [name, paramText] = [m[1], m[2]]
+      // Only the parameter NAME goes into the pattern below. A type, a default
+      // value or an optional marker is dropped: a default such as
+      // `title = \`Check (${engine})\`` carries regex metacharacters, and used
+      // raw it made `new RegExp` throw and crash this whole gate. Anything left
+      // that is not an identifier (a destructured parameter) cannot be a key.
       const params = paramText
         .split(',')
-        .map((p) => p.trim().split(':')[0].trim())
-        .filter(Boolean)
+        .map((p) => p.trim().split(/[:=]/)[0].replace(/\?$/, '').trim())
+        .filter((p) => /^[A-Za-z_$][\w$]*$/.test(p))
       const body = source.slice(m.index, m.index + 1200)
       for (let i = 0; i < params.length; i += 1) {
         if (new RegExp(`\\bloc\\(\\s*${params[i]}\\b`).test(body)) helpers.set(name, i)
