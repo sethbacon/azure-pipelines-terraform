@@ -33,11 +33,21 @@ export async function execWithTimeout(
       reject(new Error(timeoutMessage));
     }, timeoutMs);
   });
+  // The tool's output is not under the pipeline's control: Sentinel prints what
+  // policies print(), and a policy can print values taken from the plan;
+  // terraform-docs prints a module's own descriptions. The agent runs any line
+  // starting with `##vso[` as a logging command, so azure-pipelines-task-lib's
+  // externalOutput filter rewrites it to `##_vso[` before it reaches the log.
+  // Captured stdout/stderr (output-cap.ts) keep the raw bytes. A caller that sets
+  // its own externalOutput keeps it.
+  const execOptions: IExecOptions = options.externalOutput
+    ? options
+    : { ...options, externalOutput: { source: 'childProcess' } };
   // If the deadline wins the race, killChildProcess() makes this promise reject
   // later; attach a no-op catch so that late rejection is swallowed intentionally
   // rather than surfacing as an unhandled promise rejection (these tasks have no
   // process-level unhandledRejection handler).
-  const exec = tool.execAsync(options);
+  const exec = tool.execAsync(execOptions);
   exec.catch(() => { /* swallowed: the timeout is reported via the deadline branch */ });
   try {
     return await Promise.race([exec, deadline]);

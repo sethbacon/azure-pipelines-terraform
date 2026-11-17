@@ -20,7 +20,9 @@ async function verifyPolicyAgent() {
     const agentPath = tasks.which(agent, true);
     const agentTool: ToolRunner = tasks.tool(agentPath);
     agentTool.arg("version");
-    return agentTool.exec();
+    // externalOutput: the agent would otherwise run any `##vso[` line the binary
+    // prints as a logging command; task-lib shows it as `##_vso[` instead.
+    return agentTool.exec({ externalOutput: { source: 'childProcess' } });
 }
 
 async function run() {

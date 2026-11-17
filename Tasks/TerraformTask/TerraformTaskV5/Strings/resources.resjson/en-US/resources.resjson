@@ -66,6 +66,7 @@
   "loc.messages.TerraformApplyFailed": "Terraform apply failed with exit code %s",
   "loc.messages.TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
   "loc.messages.TerraformDestroyPlanForSummaryFailed": "Could not build the destroy plan summary: 'terraform plan -destroy' failed with exit code %s. The real destroy was not attempted.",
+  "loc.messages.TerraformLoggingCommandsAllowed": "allowTerraformLoggingCommands is true: logging commands that terraform, its providers or its provisioners print reach the agent unfiltered, so any value that appears in terraform's output can set pipeline variables or change this task's result.",
   "loc.messages.TerraformCommandTimedOut": "Terraform command timed out after %d minute(s) and was terminated. Increase 'commandTimeoutMinutes' if this operation is expected to take longer.",
   "loc.messages.TerraformAzLoginTimedOut": "'az login'/'az account set' timed out after %d minute(s) and was terminated. This call is expected to complete quickly; a hang usually indicates the Azure CLI is unresponsive or an identity/metadata endpoint (e.g. for managed identity) is unreachable.",
   "loc.messages.TerraformFmtNotFormatted": "%d file(s) are not correctly formatted; run terraform fmt",

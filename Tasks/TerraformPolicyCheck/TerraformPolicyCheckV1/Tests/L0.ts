@@ -122,6 +122,19 @@ describe('TerraformPolicyCheck Test Suite', function () {
     expectSuccess('SentinelSoftOverride');
     expectFailure('SentinelUnrecognizedExitFail');
 
+    it('SentinelLoggingCommandsBlocked — logging commands in engine output never reach the agent', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'SentinelLoggingCommandsBlocked.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert(tr.succeeded, 'an injected task.complete must not fail a passing policy check');
+            assert.strictEqual(tr.warningIssues.length, 0, `an injected task.issue must not raise a warning: ${tr.warningIssues}`);
+            for (const marker of [/^##vso\[task\.setvariable variable=injected/m, /^##vso\[task\.issue type=warning;\]injected/m, /^##vso\[task\.complete result=Failed;\]injected/m]) {
+                assert(!marker.test(tr.stdout), `${marker} reached the agent unfiltered`);
+            }
+            assert(tr.stdout.includes('##_vso[task.setvariable variable=injected]pwned'), 'the line stays visible in the log, neutralized');
+        }, tr);
+    });
+
     it('SentinelConfigTempDir — generated config and results land in Agent.TempDirectory', async () => {
         const agentTemp = path.join(os.tmpdir(), 'tpc-sentinel-tempdir', 'agent-temp');
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'SentinelConfigTempDir.js'));

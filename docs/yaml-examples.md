@@ -446,6 +446,27 @@ With a Workload Identity Federation service connection, the default is to export
     commandTimeoutMinutes: '30'
 ```
 
+#### Letting Terraform's output run logging commands
+
+The task rewrites any line of Terraform's output that starts with `##vso[` to `##_vso[`, so the
+agent does not run it as a logging command: that output relays provider messages, provisioner
+output and values from configuration or remote state, none of which the pipeline controls. If a
+pipeline relies on Terraform printing a logging command on purpose, for example a `local-exec`
+provisioner that echoes `##vso[task.setvariable ...]`, set `allowTerraformLoggingCommands` to stream
+the output unfiltered. The task warns on every run while it is set. Prefer passing the value as a
+Terraform output and reading the `output` command's `TF_OUT_<output name>` variable instead.
+
+```yaml
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Apply (provisioner sets a pipeline variable)'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+    environmentServiceNameAzureRM: 'my-azure-service-connection'
+    allowTerraformLoggingCommands: true
+```
+
 #### Refresh-only plan (drift detection)
 
 `refreshOnly: true` runs Terraform in refresh-only mode: it compares the state with the real infrastructure and reports drift without proposing any resource change. It is available on `plan` and `apply`.

@@ -6,9 +6,9 @@ Common issues and their solutions when using Pipeline Tasks for Terraform.
 
 ## Behaviour changes that can break a pipeline that used to work
 
-Recent hardening changes turn three previously-silent conditions into failures, and one changes
-which provider versions `terraform init` can select. If a pipeline that worked yesterday fails today,
-check here first.
+Recent hardening changes turn three previously-silent conditions into failures, one changes which
+provider versions `terraform init` can select, and one stops tool output from running logging
+commands. If a pipeline that worked yesterday fails today, check here first.
 
 ### A service connection with no authorization scheme now fails instead of running as WIF
 
@@ -69,6 +69,31 @@ configuration needs a version the mirror does not list, publish or approve it on
 install a provider from the origin registry instead, list it in `mirrorExcludePatterns`. If the
 mirror is a pull-through cache that fetches any upstream version on request, set
 `allowDirectForMirroredProviders: true` to get the previous configuration back.
+
+### `##vso` lines printed by Terraform no longer run as logging commands
+
+**Symptom:** A pipeline variable that Terraform used to set by printing
+`##vso[task.setvariable ...]`, typically from a `local-exec` provisioner, is no longer set. The line
+still appears in the log, as `##_vso[task.setvariable ...]`. The same happens to any `##vso[` line
+printed by `opa` or `sentinel` in `PipelineTerraformPolicyCheck@1`, by `terraform-docs` in
+`PipelineTerraformDocs@1`, and by the version check or `cosign` run by
+`PipelineTerraformInstaller@1`, `PipelinePolicyAgentInstaller@1` and
+`PipelineTerraformDocsInstaller@1`.
+
+**Cause:** The agent runs any line a task prints that starts with `##vso[` as a logging command.
+These tools print text the pipeline does not control: Terraform relays provider messages,
+provisioner output, and values from configuration or remote state, and a policy engine prints what
+policies print. A crafted value could set pipeline variables, raise warnings or errors, or mark the
+task Failed simply by being printed. Every task that runs a tool now has azure-pipelines-task-lib
+rewrite such a line to `##_vso[` before it reaches the agent. Variables the task sets itself, such
+as `changesPresent` and the `output` command's `TF_OUT_<output name>` variables, are unaffected.
+
+**Fix:** Pass the value as a Terraform output instead, and read it in later steps as
+`$(<step name>.TF_OUT_<output name>)` after an `output` step (see
+[docs/yaml-examples.md](yaml-examples.md)). If a pipeline must keep printing logging commands from
+Terraform, set `allowTerraformLoggingCommands: true` on `PipelineTerraformTask@5`: the task then
+streams Terraform's output unfiltered, as before, and warns on every run. The other tasks have no
+such option.
 
 ---
 

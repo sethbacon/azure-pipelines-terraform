@@ -214,6 +214,24 @@ describe('cosign-verifier: verifyCosignSignature behavior', () => {
         assert.strictEqual(args[issIdx + 1], 'https://token.actions.githubusercontent.com');
     });
 
+    it('runs cosign with the externalOutput filter, so its output cannot issue logging commands', async () => {
+        // cosign prints details from the signing certificate, which arrives with
+        // the download. azure-pipelines-task-lib only neutralizes a `##vso[` line
+        // in a child's output when the exec options ask for it.
+        stubLogging();
+        t.which = () => '/usr/bin/cosign';
+        hc.fetchBufferAllow404 = async () => new Uint8Array([1, 2, 3]);
+        let execOptions: { externalOutput?: unknown } | undefined;
+        t.tool = (_path: string) => ({
+            arg() { return this; },
+            exec: async (options?: { externalOutput?: unknown }) => { execOptions = options; return 0; },
+        });
+
+        await verifyCosignSignature('sums-content', 'https://x.example/sig', 'https://x.example/pem', VERSION, true, undefined, 'ambient');
+
+        assert.deepStrictEqual(execOptions?.externalOutput, { source: 'childProcess' });
+    });
+
     it('logs the resolved cosign path so a shadowed binary is auditable', async () => {
         stubLogging();
         t.which = () => '/usr/bin/cosign';

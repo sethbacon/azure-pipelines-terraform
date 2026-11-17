@@ -112,6 +112,9 @@ import './SignalHandlerL0';
 // string-unaware comment pre-pass and missing heredoc support, plus the legacy
 // plan-results attachment publishing unscrubbed plan stdout.
 import './SecretUnmaskedSurfaceClassL0';
+// Logging commands in terraform's own output are neutralized on every invocation,
+// with allowTerraformLoggingCommands as the opt-out.
+import './LoggingCommandFilterL0';
 
 describe('Terraform Test Suite', function () {
 

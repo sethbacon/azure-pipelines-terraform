@@ -21,7 +21,9 @@ async function verifyTerraform() {
     const binaryPath = tasks.which(binary, true);
     const binaryTool: ToolRunner = tasks.tool(binaryPath);
     binaryTool.arg("version");
-    return binaryTool.exec();
+    // externalOutput: the agent would otherwise run any `##vso[` line the binary
+    // prints as a logging command; task-lib shows it as `##_vso[` instead.
+    return binaryTool.exec({ externalOutput: { source: 'childProcess' } });
 }
 
 async function run() {
