@@ -4,19 +4,22 @@ import { PolicyResult, PolicyCase } from './types';
 import { attachBoundedCapture } from './output-cap';
 import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
 
-/**
- * Evaluates OPA policies against Terraform plan/state JSON using `opa exec`.
- *
- * Runs `opa exec --decision <decisionPath> --bundle <policyDir> <inputFile>`,
- * parses the JSON result, and gates per `failMode`:
- *   - nonEmpty (default): fail when the decision is a non-empty set/array
- *     (the standard `deny` convention where each element is a violation message).
- *   - defined: fail when the decision is defined and truthy.
- */
-export async function runOpa(opaPath: string, policyDir: string, inputFile: string): Promise<PolicyResult> {
-    const decisionPath = tasks.getInput('decisionPath') || 'terraform/deny';
-    const failMode = validateFailMode(tasks.getInput('failMode') || 'nonEmpty');
+/** One entry of `opa exec`'s `result` array: the decision for one input file. */
+export interface OpaExecEntry { path?: string; result?: unknown; error?: unknown; }
 
+/**
+ * Runs `opa exec --decision <decisionPath> --bundle <policyDir> <inputFile>` and
+ * returns its parsed result entries. Throws on anything that is not a decision:
+ * a non-zero exit, output that is not JSON, or an entry carrying an evaluation
+ * error -- which is how OPA reports a decision that is undefined, so a decision
+ * path naming no rule fails here rather than reading as "no violations".
+ */
+export async function execOpaDecision(
+    opaPath: string,
+    policyDir: string,
+    inputFile: string,
+    decisionPath: string,
+): Promise<{ results: OpaExecEntry[]; stdout: string }> {
     const tool = tasks.tool(opaPath);
     tool.arg('exec');
     tool.arg(['--decision', decisionPath]);
@@ -50,7 +53,7 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
         throw new Error(`'opa exec' failed (exit code ${code}): ${detail.slice(0, 500)}`);
     }
 
-    let parsed: { result?: Array<{ path?: string; result?: unknown; error?: unknown }> };
+    let parsed: { result?: OpaExecEntry[] };
     try {
         parsed = JSON.parse(stdout);
     } catch (err) {
@@ -67,7 +70,23 @@ export async function runOpa(opaPath: string, policyDir: string, inputFile: stri
         const detail = errored.map(r => `${r.path ?? '(unknown path)'}: ${JSON.stringify(r.error)}`).join('; ');
         throw new Error(`OPA evaluation error for ${errored.length} of ${results.length} result(s): ${detail}`);
     }
+    return { results, stdout };
+}
 
+/**
+ * Evaluates OPA policies against Terraform plan/state JSON using `opa exec`.
+ *
+ * Runs `opa exec --decision <decisionPath> --bundle <policyDir> <inputFile>`,
+ * parses the JSON result, and gates per `failMode`:
+ *   - nonEmpty (default): fail when the decision is a non-empty set/array
+ *     (the standard `deny` convention where each element is a violation message).
+ *   - defined: fail when the decision is defined and truthy.
+ */
+export async function runOpa(opaPath: string, policyDir: string, inputFile: string): Promise<PolicyResult> {
+    const decisionPath = tasks.getInput('decisionPath') || 'terraform/deny';
+    const failMode = validateFailMode(tasks.getInput('failMode') || 'nonEmpty');
+
+    const { results, stdout } = await execOpaDecision(opaPath, policyDir, inputFile, decisionPath);
     const entry = results[0];
 
     const decision = entry ? entry.result : undefined;

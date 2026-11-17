@@ -30,6 +30,8 @@ import './CloneRetryL0';
 // Class row: credentials embedded in policyRepoUrl reach git's argv, a surface
 // the agent masker does not cover (#1105).
 import './PolicyRepoUrlUserInfoL0';
+// hcpPolicySet: HCP Terraform policy sets, by that platform's rules.
+import './PolicySetL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
@@ -134,6 +136,43 @@ describe('TerraformPolicyCheck Test Suite', function () {
             assert(tr.stdout.includes('##_vso[task.setvariable variable=injected]pwned'), 'the line stays visible in the log, neutralized');
         }, tr);
     });
+
+    // hcpPolicySet through the real entry point (Tests/HcpPolicySetScenario.ts).
+    const hcpPolicySetScenarios: Array<[string, boolean, string[], string[]]> = [
+        // [scenario, task succeeds, stdout must contain, error issues must contain]
+        ['sentinel-blocking', false,
+            ['FAIL - no-forbidden [hard-mandatory]', 'FAIL - advisory-fail [advisory]', 'PASS - has-files [soft-mandatory]', 'variable=violationCount;isOutput=true;issecret=false;]2', 'variable=policyResult;isOutput=true;issecret=false;]failed'],
+            ['[hard-mandatory] Policy failed: no-forbidden.']],
+        ['sentinel-advisory', true,
+            ['FAIL - advisory-fail [advisory]', 'variable=policyResult;isOutput=true;issecret=false;]passed', 'Policy check passed (1 non-blocking finding(s)).'],
+            []],
+        ['opa-blocking', false,
+            ['FAIL - no-forbidden [mandatory]', 'FAIL - tagging [advisory]', 'variable=violationCount;isOutput=true;issecret=false;]2'],
+            ["[mandatory] no-forbidden: local_file.bad: content must not be 'forbidden'"]],
+        ['opa-advisory', true,
+            ['PASS - no-forbidden [mandatory]', 'FAIL - tagging [advisory]', 'variable=policyResult;isOutput=true;issecret=false;]passed'],
+            []],
+        ['sentinel-with-config', false,
+            [],
+            ['hcpPolicySet and sentinelConfigPath cannot be combined']],
+    ];
+    for (const [scenario, succeeds, stdout, errors] of hcpPolicySetScenarios) {
+        it(`hcpPolicySet: ${scenario}`, async () => {
+            process.env['HCP_POLICY_SET_SCENARIO'] = scenario;
+            try {
+                const tr = new ttm.MockTestRunner(path.join(__dirname, 'HcpPolicySetScenario.js'));
+                await tr.runAsync();
+                runValidations(() => {
+                    assert.strictEqual(tr.succeeded, succeeds, `task should have ${succeeds ? 'succeeded' : 'failed'}. errors: ${tr.errorIssues}`);
+                    for (const text of stdout) assert.ok(tr.stdout.includes(text), `stdout should contain ${text}`);
+                    for (const text of errors) assert.ok(tr.errorIssues.some(e => e.includes(text)), `an error issue should contain ${text}: ${tr.errorIssues}`);
+                    if (succeeds) assert.strictEqual(tr.errorIssues.length, 0, `a non-blocking failure must not raise an error: ${tr.errorIssues}`);
+                }, tr);
+            } finally {
+                delete process.env['HCP_POLICY_SET_SCENARIO'];
+            }
+        });
+    }
 
     it('SentinelConfigTempDir — generated config and results land in Agent.TempDirectory', async () => {
         const agentTemp = path.join(os.tmpdir(), 'tpc-sentinel-tempdir', 'agent-temp');

@@ -1,0 +1,4 @@
+{
+ "exitCode": 0,
+ "stdout": "{\"result\": true, \"error\": null, \"policies\": [{\"policy\": {\"enforcement_level\": \"hard-mandatory\", \"name\": \"has-files.sentinel\"}, \"result\": true, \"error\": null}]}"
+}

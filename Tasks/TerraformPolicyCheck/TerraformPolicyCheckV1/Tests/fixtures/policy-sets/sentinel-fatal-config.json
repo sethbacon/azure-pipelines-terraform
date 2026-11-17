@@ -1,0 +1,4 @@
+{
+ "exitCode": 1,
+ "stdout": "{\"result\": null, \"error\": \"Fatal: could not read configuration file\", \"policies\": []}"
+}

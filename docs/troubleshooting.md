@@ -407,9 +407,27 @@ matches the `import` statement in your policy.
 
 ### Sentinel: policies written for HCP Terraform don't work
 
-This task wires the **raw** `terraform show -json` document as the static import.
-HCP Terraform exposes a different `tfplan/v2` mock schema. Adapt the import paths
-in your policies, or supply your own `sentinelConfigPath` with matching mock data.
+By default this task wires the **raw** `terraform show -json` document as a static
+import, which is not the `tfplan/v2` import HCP Terraform policies use. Set
+`hcpPolicySet: true` and point the policy source at the directory holding the
+set's `sentinel.hcl`: the task then supplies `tfplan/v2`, `tfconfig/v2` and
+`tfstate/v2` and applies each policy's enforcement level. A policy that imports
+`tfrun` still cannot run, because a pipeline has no HCP Terraform run to describe.
+
+### hcpPolicySet: "configures the 'tfplan/v2' import itself"
+
+The set's `sentinel.hcl` contains an `import` or `mock` block for `tfplan/v2`,
+`tfconfig/v2` or `tfstate/v2`. HCP Terraform supplies those, and so does the task,
+from `inputFile`. Such blocks belong in a test configuration (for example under
+`test/<policy>/`), not in the set's root `sentinel.hcl`.
+
+### OPA hcpPolicySet: "requires a query to return an array"
+
+HCP Terraform decides a policy from the array its query returns: empty passes,
+anything else fails. Write the rule as a set (`deny contains msg if { ... }`, or
+`deny[msg] { ... }` in Rego v0). A boolean rule such as `allow` cannot be used as
+a policy query. A query whose rule does not exist is reported as an undefined
+decision.
 
 ### Private policy repo clone fails (gitUrl source)
 

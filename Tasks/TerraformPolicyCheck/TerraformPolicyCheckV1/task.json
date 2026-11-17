@@ -130,6 +130,14 @@
             "helpMarkDown": "Optional token for a private repo. Pass a pipeline secret variable; it is injected via http.extraheader and never written to the clone URL or logs."
         },
         {
+            "name": "hcpPolicySet",
+            "type": "boolean",
+            "label": "HCP Terraform policy set",
+            "defaultValue": "false",
+            "required": false,
+            "helpMarkDown": "Treat the policy source as the root of an HCP Terraform policy set and evaluate it by that platform's rules, so a policy set written for HCP Terraform runs unchanged.<br><br>Sentinel: the set's own sentinel.hcl is used (its policies, a level per policy, parameters and modules), and the task supplies the tfplan/v2, tfconfig/v2 and tfstate/v2 imports from the plan JSON. An advisory failure warns, a soft-mandatory failure fails the step unless 'Override soft-mandatory failures' is set, a hard-mandatory failure always fails it. tfrun is not available. Requires a Sentinel release with the built-in Terraform plugins (verified with 0.41.0).<br><br>OPA: policies.hcl is used, the plan is passed as input.plan, each query must return an array and passes when it is empty, and a failure fails the step only for a mandatory policy. input.run is not provided.<br><br>The decision path, fail mode, default enforcement level, import name and custom sentinel.hcl inputs do not apply."
+        },
+        {
             "name": "decisionPath",
             "type": "string",
             "label": "Decision path",
