@@ -2071,11 +2071,60 @@ The task generates a `sentinel.hcl` that wires the plan JSON in as a static
 import (`import "static" "tfplan" { source = "...", format = "json" }`) and lists
 every `*.sentinel` policy at the chosen enforcement level. **Policies are
 evaluated against the raw `terraform show -json` schema, not the TFC/TFE
-`tfplan/v2` mock schema** — policies written for HCP Terraform need adaptation.
+`tfplan/v2` mock schema** — to run policies written for HCP Terraform, see
+[Run an HCP Terraform policy set](#run-an-hcp-terraform-policy-set).
 `sentinelImportName` (default `tfplan`) is the name of that static import and must
 be a valid identifier. `defaultEnforcementLevel` decides what a failed policy
 does: `advisory` only warns, `soft-mandatory` (the default) fails the task unless
 `overrideSoftMandatory` is `true`, and `hard-mandatory` always fails.
+
+#### Run an HCP Terraform policy set
+
+`hcpPolicySet: true` runs a policy set written for HCP Terraform without changing
+it. Point the policy source at the root of the set, the directory that holds its
+`sentinel.hcl` (Sentinel) or `policies.hcl` (OPA); with a git source,
+`policyRepoSubdir` selects it. The task then evaluates the set the way HCP
+Terraform does:
+
+- **Sentinel.** The set's own `sentinel.hcl` decides the policies, their
+  parameters, the modules they import and each policy's enforcement level. The
+  task adds the `tfplan/v2`, `tfconfig/v2` and `tfstate/v2` imports, all read
+  from `inputFile` (the plan, its `configuration` and its `prior_state`), so
+  `import "tfplan/v2" as tfplan` works as it does on HCP Terraform. An advisory
+  failure warns, a soft-mandatory failure fails the step unless
+  `overrideSoftMandatory` is `true`, and a hard-mandatory failure always fails it.
+  A `sentinel.hcl` that configures one of those three imports itself, which only a
+  local test configuration does, is refused. Install a Sentinel release with the
+  built-in Terraform plugins; this was verified with 0.41.0.
+- **OPA.** `policies.hcl` lists the policies, each a `query` and an optional
+  `enforcement_level` (`advisory` by default, or `mandatory`). The plan is passed
+  as `input.plan`, each query must return an array, and a policy passes when the
+  array is empty. Only a `mandatory` failure fails the step. Install the OPA
+  version the set is written for: OPA 1.0 and later read Rego v1 syntax by
+  default.
+
+Two things HCP Terraform provides have no pipeline equivalent and are not
+supplied: Sentinel's `tfrun` import and OPA's `input.run` (workspace,
+organization and run details). A policy that reads them fails or finds nothing.
+Policy overrides are `overrideSoftMandatory` for Sentinel; OPA `mandatory`
+failures cannot be overridden here.
+
+`decisionPath`, `failMode`, `defaultEnforcementLevel`, `sentinelImportName` and
+`sentinelConfigPath` do not apply; combining `sentinelConfigPath` with
+`hcpPolicySet` is refused.
+
+```yaml
+- task: PipelineTerraformPolicyCheck@1
+  inputs:
+    engine: 'sentinel'                     # or 'opa'
+    inputFile: '$(tfshow.showFilePath)'
+    policySource: 'gitUrl'
+    policyRepoUrl: 'https://github.com/example/policy-sets'
+    policyRepoRef: '0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3'
+    policyRepoSubdir: 'aws-baseline'      # the directory holding sentinel.hcl
+    policyRepoToken: '$(POLICY_REPO_PAT)'
+    hcpPolicySet: true
+```
 
 #### Bring your own Sentinel configuration
 
@@ -2084,7 +2133,10 @@ does: `advisory` only warns, `soft-mandatory` (the default) fails the task unles
 policies, their enforcement levels and the static import of the plan JSON are
 yours to declare, and `inputFile` is not wired in for you. The task then gates
 purely on the exit code of `sentinel apply`, so `defaultEnforcementLevel`,
-`overrideSoftMandatory` and `sentinelImportName` have no effect. `policyPath` is
+`overrideSoftMandatory` and `sentinelImportName` have no effect. Sentinel exits
+non-zero when any policy fails, whatever its level, so an advisory failure in
+your configuration fails the step; use `hcpPolicySet` to have each policy's
+level applied. `policyPath` is
 still required with `policySource: 'path'`, although it is not used to find the
 policies. `traceOutput: true` runs `sentinel apply -trace` for verbose debugging
 output.

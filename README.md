@@ -352,7 +352,7 @@ Installs a policy engine — **OPA** (sha256-verified binary from the `open-poli
 
 Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terraform show -json` output) and gates the pipeline on the result.
 
-> **Note:** Sentinel here runs as a standalone CLI, not inside HCP Terraform/Terraform Enterprise. Policies see the **raw** `terraform show -json` document, not HCP Terraform's `tfplan/v2` mock, and `enforcement_level` is applied by this task (see `defaultEnforcementLevel`/`overrideSoftMandatory` below), not natively enforced by the CLI. An existing HCP Terraform Sentinel policy set will likely need adapting before it works here — see [docs/troubleshooting.md](docs/troubleshooting.md#sentinel-policies-written-for-hcp-terraform-dont-work).
+> **Note:** Sentinel here runs as a standalone CLI, not inside HCP Terraform/Terraform Enterprise. By default policies see the **raw** `terraform show -json` document as a static import, and one `enforcement_level` (`defaultEnforcementLevel`) is applied by this task to every policy. To run a policy set written for HCP Terraform unchanged, set `hcpPolicySet: true` — see [Run an HCP Terraform policy set](docs/yaml-examples.md#run-an-hcp-terraform-policy-set).
 
 | Input                     | Default          | Description                                                                                                                           |
 | ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -362,6 +362,7 @@ Evaluates **OPA** or **Sentinel** policies against Terraform plan JSON (`terrafo
 | `policySource`            | `path`           | `path` (local directory) or `gitUrl` (HTTPS shallow clone / ref checkout).                                                            |
 | `policyPath`              | —                | Policy directory when `policySource=path`.                                                                                            |
 | `policyRepoUrl`           | —                | Policy repo URL when `policySource=gitUrl`. Pairs with `policyRepoRef`/`policyRepoSubdir`/`policyRepoToken`.                          |
+| `hcpPolicySet`            | `false`          | Treat the policy source as the root of an HCP Terraform policy set and evaluate it by that platform's rules: Sentinel uses the set's `sentinel.hcl` with `tfplan/v2`, `tfconfig/v2` and `tfstate/v2`; OPA uses `policies.hcl` with the plan at `input.plan`; each policy's own enforcement level applies. `tfrun` and `input.run` are not available. |
 | `decisionPath`            | `terraform/deny` | OPA decision path to query.                                                                                                           |
 | `failMode`                | `nonEmpty`       | OPA gate: fail when the decision is `nonEmpty` or `defined`.                                                                          |
 | `defaultEnforcementLevel` | `soft-mandatory` | Sentinel enforcement level (`advisory`/`soft-mandatory`/`hard-mandatory`).                                                            |

@@ -4,6 +4,8 @@ import fs = require('fs');
 import { resolvePolicyDir } from './policy-source';
 import { runOpa } from './opa-engine';
 import { runSentinel } from './sentinel-engine';
+import { runOpaPolicySet } from './opa-policy-set';
+import { runSentinelPolicySet } from './sentinel-policy-set';
 import { writeResultsFile, writeJUnit, publishJUnit, writeSarif } from './results';
 import { PolicyResult } from './types';
 
@@ -63,11 +65,23 @@ async function run() {
         const agentPath = tasks.getInput('policyAgentPath') || tasks.which(engine, true);
         const policyDir = await resolvePolicyDir(tempDirs);
 
+        // hcpPolicySet: the policy source is an HCP Terraform policy set, evaluated
+        // by that platform's rules -- its own sentinel.hcl / policies.hcl, the data
+        // model its policies are written against, and a level per policy.
+        const policySet = tasks.getBoolInput('hcpPolicySet', false);
+        if (policySet && tasks.getInput('sentinelConfigPath')) {
+            throw new Error("hcpPolicySet and sentinelConfigPath cannot be combined: a policy set is configured by the sentinel.hcl at its own root.");
+        }
+
         let result: PolicyResult;
         if (engine === 'sentinel') {
-            result = await runSentinel(agentPath, policyDir, inputFile, tempDirs);
+            result = policySet
+                ? await runSentinelPolicySet(agentPath, policyDir, inputFile, tempDirs)
+                : await runSentinel(agentPath, policyDir, inputFile, tempDirs);
         } else {
-            result = await runOpa(agentPath, policyDir, inputFile);
+            result = policySet
+                ? await runOpaPolicySet(agentPath, policyDir, inputFile, tempDirs)
+                : await runOpa(agentPath, policyDir, inputFile);
         }
 
         const resultsFilePath = writeResultsFile(result.rawOutput);

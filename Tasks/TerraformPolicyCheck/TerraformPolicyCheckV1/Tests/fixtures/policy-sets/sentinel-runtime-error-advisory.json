@@ -1,0 +1,4 @@
+{
+ "exitCode": 2,
+ "stdout": "{\"result\": true, \"error\": null, \"policies\": [{\"policy\": {\"enforcement_level\": \"hard-mandatory\", \"name\": \"ok.sentinel\"}, \"result\": true, \"error\": null}, {\"policy\": {\"enforcement_level\": \"advisory\", \"name\": \"rt.sentinel\"}, \"result\": false, \"error\": \"Result value was 'undefined'.\\n\\nThis means that undefined behavior was experienced at one or more locations\\nand the result of your policy ultimately resulted in \\\"undefined\\\". This usually\\nrepresents a policy which doesn't handle all possible cases and should be\\ncorrected.\\n\\nThe locations where the undefined behavior happened are:\\n\\nrt.sentinel:2:15\"}]}"
+}

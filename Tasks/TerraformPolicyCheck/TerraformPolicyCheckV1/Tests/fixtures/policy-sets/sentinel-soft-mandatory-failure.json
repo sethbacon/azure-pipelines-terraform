@@ -1,0 +1,4 @@
+{
+ "exitCode": 1,
+ "stdout": "{\"result\": false, \"error\": null, \"policies\": [{\"policy\": {\"enforcement_level\": \"soft-mandatory\", \"name\": \"soft.sentinel\"}, \"result\": false, \"error\": null}]}"
+}
