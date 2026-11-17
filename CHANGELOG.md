@@ -4,6 +4,23 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.21.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.6...v1.21.0) (2026-11-17)
+
+
+### Features
+
+* publish Terraform Policy results to the Tests tab ([#1289](https://github.com/sethbacon/azure-pipelines-terraform/issues/1289)) ([6ea24fd](https://github.com/sethbacon/azure-pipelines-terraform/commit/6ea24fd904114a44ac8c07524ca29c8b986d5d90))
+* run HCP Terraform policy sets unchanged ([#1290](https://github.com/sethbacon/azure-pipelines-terraform/issues/1290)) ([c551e9d](https://github.com/sethbacon/azure-pipelines-terraform/commit/c551e9d94938bd47934d645a5a9f7f5c36b6221a))
+* run policy repositories' own tests ([#1291](https://github.com/sethbacon/azure-pipelines-terraform/issues/1291)) ([5f00b76](https://github.com/sethbacon/azure-pipelines-terraform/commit/5f00b7673369ebde0895e2f537d12bd95709d9b3))
+* Terraform Policy for HCP backends ([#1287](https://github.com/sethbacon/azure-pipelines-terraform/issues/1287)) ([9a8ff95](https://github.com/sethbacon/azure-pipelines-terraform/commit/9a8ff955a17ebe60a2070a11c16d66ed45aee0cb))
+
+
+### Bug Fixes
+
+* clear Sentinel's cache around every run ([#1294](https://github.com/sethbacon/azure-pipelines-terraform/issues/1294)) ([a76f880](https://github.com/sethbacon/azure-pipelines-terraform/commit/a76f880b198f6855d9ab58be07480f14e9ce431a))
+* report failed policies as failures, not as unchecked ([#1293](https://github.com/sethbacon/azure-pipelines-terraform/issues/1293)) ([239b322](https://github.com/sethbacon/azure-pipelines-terraform/commit/239b32230dd7260c2974d9c7ac8715da8369420b))
+* version check survives default parameters ([#1292](https://github.com/sethbacon/azure-pipelines-terraform/issues/1292)) ([406f0a3](https://github.com/sethbacon/azure-pipelines-terraform/commit/406f0a3d8bfdcc9d16f4452643464fcb8ec093db))
+
 ## [1.20.6](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.5...v1.20.6) (2026-11-17)
 
 
