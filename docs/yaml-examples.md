@@ -1312,9 +1312,16 @@ Three things have to be true, and the task stops the step before running Terrafo
 - **The policy engine is on the agent.** Terraform launches a separate binary, `tfpolicy-plugin`. Install it with `PipelinePolicyAgentInstaller@1`, which also sets `TF_POLICY_PLUGIN` to the verified binary so Terraform runs that one. It is proprietary HashiCorp software under HashiCorp's own licence terms, which ship inside the download.
 - **The binary is Terraform 1.17 or later.** Older versions reject the flag themselves; OpenTofu has no equivalent and the task refuses it.
 
-Terraform itself does not fail `plan`, `apply` or `destroy` when the policy engine cannot start or cannot load the policies: it prints an error, carries on without any policy, and exits successfully. Only `init` stops. So on a step that asks for policies, the task fails the step whenever Terraform printed an error and still exited successfully. For `apply` and `destroy` the changes have already been made by then; the failure tells you they were not checked. The same checks apply when `-policies` is passed through `commandOptions`, or through the `custom` command.
+**Terraform reports a failed policy but does not enforce it when it runs on the agent.** HCP Terraform enforces policies for the runs it executes itself; a pipeline runs Terraform itself, and then `plan`, `apply` and `destroy` print `Error: Condition not met` for a failed `mandatory` or `mandatory_overridable` policy and still exit successfully. Measured with an HCP Terraform workspace in Local execution mode: `plan` exited 2 (changes present), and `apply` created the resource the policy forbade and exited 0, from a saved plan and without one. Only `init` stops, for a provider or module a policy rejects. Terraform also carries on without any policy, exiting successfully, when its policy engine cannot start or cannot load the policies.
 
-Set `policyPaths` on every step that should be checked. A saved plan does not carry policies to the step that applies it, and policies that read values known only after apply are evaluated during `apply`.
+So on a step that asks for policies, the task fails the step whenever Terraform printed an error and still exited successfully, and says which:
+
+- **A failed mandatory policy** (`mandatory` or `mandatory_overridable`, since a pipeline has no one to override it): the message lists the policies, and with `-json` the resources they failed on.
+- **Policies that were not checked**: the message quotes Terraform's error.
+
+An `advisory` failure is a warning and the step passes. A policy whose values are not known until apply is reported as not yet known at `plan` and evaluated during `apply`.
+
+**Make the `plan` step the gate.** Set `policyPaths` on it, save the plan with `-out`, and apply that saved plan in a later step that runs only when the plan step succeeded. An `apply` without a saved plan evaluates resource policies only after it has made the changes, and a failure then cannot undo them. Set `policyPaths` on the `apply` step as well, to check the values known only after apply. The same checks apply when `-policies` is passed through `commandOptions`, or through the `custom` command.
 
 ```yaml
 steps:

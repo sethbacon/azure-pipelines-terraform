@@ -19,17 +19,25 @@ import { PolicyEvent, parsePolicyEvent } from './policy-results';
  *     backend can supply one ("entitlement check failed: client did not supply
  *     entitlement information", tfpolicy-plugin 0.5.0).
  *
- *  2. plan, apply and destroy FAIL OPEN. When the engine cannot start -- plugin
- *     missing, not entitled, a policy file that does not load -- Terraform prints
- *     an error diagnostic and carries on without policies, exiting 0 (or 2 from
- *     `plan -detailed-exitcode`). Verified against Terraform 1.17.2: an apply
- *     created the very resource a mandatory policy forbade and reported success.
- *     Only init stops.
+ *  2. plan, apply and destroy never stop for a policy. Terraform reports a
+ *     policy result through its UI and nothing else (internal/terraform/
+ *     node_policy_resource.go hands it to a hook and returns no error), so:
+ *       - a MANDATORY or mandatory_overridable failure prints `Error: Condition
+ *         not met` and the command still succeeds. Measured against Terraform
+ *         1.17.2 with an HCP Terraform workspace in Local execution mode: plan
+ *         exited 2 (changes present) and apply created the forbidden resource
+ *         and exited 0, from a saved plan and without one. HCP Terraform
+ *         enforces for the runs it executes itself; a pipeline runs Terraform
+ *         itself, so nothing does.
+ *       - when the engine cannot start -- plugin missing, not entitled, a policy
+ *         file that does not load -- Terraform prints an error and carries on
+ *         WITHOUT policies, again exiting 0 (or 2 from `plan -detailed-exitcode`).
+ *     Only init stops, for a provider or module a policy rejects.
  *
- * So the task refuses up front what can never work, and afterwards refuses to
- * report success for a run in which Terraform printed an error yet exited
- * cleanly -- a combination Terraform otherwise never produces, and the only
- * signal that the policies a pipeline asked for were not enforced.
+ * So the task refuses up front what can never work, and afterwards fails a run
+ * in which Terraform printed an error yet exited cleanly -- which Terraform
+ * otherwise never does -- telling a policy that failed apart from policies that
+ * were never checked. An advisory failure is a warning, and passes.
  */
 
 /**
@@ -93,6 +101,13 @@ export function isErrorDiagnosticLine(stream: 'stdout' | 'stderr', line: string)
         : /^\{"@level":"error"/.test(text);
 }
 
+/** `Error: Condition not met` is how Terraform reports a failed mandatory policy. */
+const VIOLATION_SUMMARY = 'Condition not met';
+/** The location line under it names the policy: `on <file> line N, in resource_policy "<type>" "<name>":`. */
+const POLICY_LOCATION = /\bin (resource_policy|provider_policy|module_policy) "([^"]+)" "([^"]+)"/;
+/** Policies named in a failure message; the count is always exact. */
+const MAX_NAMED_VIOLATIONS = 10;
+
 /** The readable part of a diagnostic line: a `-json` event's `@message`, else the line without colour or box. */
 function diagnosticSummary(line: string): string {
     const text = line.replace(ANSI_SGR, '').trim();
@@ -108,7 +123,13 @@ export class PolicyEnforcement {
     /** No policies requested: adds nothing, watches nothing, never fails. */
     static readonly inactive = new PolicyEnforcement([], false);
 
+    /** The first error that is not a policy failure: an engine that did not start, a policy that did not load. */
     private errorLine: string | undefined;
+    /** Failed mandatory policies, as `<policy> on <object>` where Terraform says which object. */
+    private readonly violations: string[] = [];
+    private violationCount = 0;
+    /** A human-format `Error: Condition not met` whose location line has not been read yet. */
+    private awaitingPolicyLocation = false;
     private readonly pending = { stdout: '', stderr: '' };
     private readonly collected: PolicyEvent[] = [];
     private dropped = 0;
@@ -148,13 +169,40 @@ export class PolicyEnforcement {
         this.pending[stream] = buffered.length > MAX_PENDING_LINE_CHARS ? '' : buffered;
     }
 
+    private recordViolation(name: string): void {
+        this.violationCount++;
+        if (this.violations.length < MAX_NAMED_VIOLATIONS) this.violations.push(name.slice(0, MAX_REPORTED_LINE_CHARS));
+    }
+
     private inspect(stream: 'stdout' | 'stderr', line: string): void {
         const event = stream === 'stdout' ? parsePolicyEvent(line) : undefined;
         if (event) {
             if (this.collected.length < MAX_POLICY_EVENTS) this.collected.push(event); else this.dropped++;
+            // -json: a failed mandatory policy is an error-severity diagnostic with a DenyResult.
+            if (event.type === 'policy_diagnostic' && event.severity === 'error' && event.result === 'DenyResult') {
+                this.recordViolation(`${event.policy ?? 'a policy'}${event.target ? ` on ${event.target}` : ''}`);
+                return;
+            }
         }
-        if (this.errorLine === undefined && isErrorDiagnosticLine(stream, line)) {
-            this.errorLine = diagnosticSummary(line).slice(0, MAX_REPORTED_LINE_CHARS);
+        if (this.awaitingPolicyLocation) {
+            const location = POLICY_LOCATION.exec(line.replace(ANSI_SGR, ''));
+            if (location) {
+                this.awaitingPolicyLocation = false;
+                this.recordViolation(`${location[1]}.${location[2]}.${location[3]}`);
+                return;
+            }
+        }
+        if (isErrorDiagnosticLine(stream, line)) {
+            if (stream === 'stderr' && diagnosticSummary(line) === `Error: ${VIOLATION_SUMMARY}`) {
+                // The policy is named a few lines further on. A previous failure
+                // whose location never came is still counted, under no name.
+                if (this.awaitingPolicyLocation) this.recordViolation('a policy');
+                this.awaitingPolicyLocation = true;
+                return;
+            }
+            if (this.errorLine === undefined) {
+                this.errorLine = diagnosticSummary(line).slice(0, MAX_REPORTED_LINE_CHARS);
+            }
         }
     }
 
@@ -175,14 +223,24 @@ export class PolicyEnforcement {
     verify(command: string): void {
         if (!this.active) return;
         this.flush();
-        if (this.errorLine === undefined) return;
-        throw new Error(
+        if (this.awaitingPolicyLocation) {
+            this.awaitingPolicyLocation = false;
+            this.recordViolation('a policy');
+        }
+        if (this.errorLine === undefined && this.violationCount === 0) return;
+
+        const consequence = command === 'plan'
+            ? 'Do not apply a plan saved by this step.'
+            : 'The changes this step made stand.';
+        const failed = this.violationCount === 0 ? '' :
+            `${this.violationCount} mandatory policy check(s) failed: ${this.violations.join('; ')}` +
+            `${this.violationCount > this.violations.length ? `; and ${this.violationCount - this.violations.length} more` : ''}. ` +
+            `Terraform reports a failed policy but carries on with the ${command} when it runs Terraform on the agent, so this task fails the step. `;
+        const unchecked = this.errorLine === undefined ? '' :
             `Terraform ${command} reported an error but still exited successfully while policies were requested: ` +
             `'${this.errorLine}'. Terraform continues without policy enforcement when its policy engine cannot start ` +
-            `or load the policies, so this run was NOT checked against them` +
-            (command === 'plan' ? '; do not apply a plan saved by this step.' : ', and any changes it made stand.') +
-            ` See docs/yaml-examples.md#terraform-policy.`,
-        );
+            `or load the policies, so this run was NOT fully checked against them. `;
+        throw new Error(`${unchecked}${failed}${consequence} See docs/yaml-examples.md#terraform-policy.`);
     }
 }
 

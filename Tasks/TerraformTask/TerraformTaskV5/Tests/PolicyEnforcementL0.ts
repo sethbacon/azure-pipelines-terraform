@@ -88,7 +88,7 @@ describe('Terraform Policy: the fail-open check', function () {
         it(`fails a run that printed an error on ${stream} and still returned`, () => {
             const { tool, policy } = watched();
             tool.emit(stream, `first line\n${line}\nlast line\n`);
-            assert.throws(() => policy.verify('apply'), /NOT checked against them, and any changes it made stand/);
+            assert.throws(() => policy.verify('apply'), /NOT fully checked against them\. The changes this step made stand\./);
         });
     }
 
@@ -96,11 +96,11 @@ describe('Terraform Policy: the fail-open check', function () {
         const split = watched();
         split.tool.emit('stderr', Buffer.from('\nErr'));
         split.tool.emit('stderr', Buffer.from('or: Failed to connect to policy engine\n'));
-        assert.throws(() => split.policy.verify('plan'), /Failed to connect to policy engine.*do not apply a plan saved by this step/);
+        assert.throws(() => split.policy.verify('plan'), /Failed to connect to policy engine.*Do not apply a plan saved by this step/);
 
         const unterminated = watched();
         unterminated.tool.emit('stderr', HUMAN_PLAIN);
-        assert.throws(() => unterminated.policy.verify('destroy'), /NOT checked/);
+        assert.throws(() => unterminated.policy.verify('destroy'), /NOT fully checked/);
     });
 
     it('does nothing when no policies were requested', () => {
@@ -108,6 +108,88 @@ describe('Terraform Policy: the fail-open check', function () {
         assert.strictEqual(tool.listenerCount('stderr'), 0, 'an inactive run must not attach listeners');
         tool.emit('stderr', `${HUMAN_PLAIN}\n`);
         assert.doesNotThrow(() => policy.verify('plan'));
+    });
+});
+
+/**
+ * Real runs against HCP Terraform (Terraform 1.17.2, tfpolicy-plugin 0.5.0, a
+ * workspace in Local execution mode, 2026-11-17) of one configuration and one
+ * policy file with a mandatory, a mandatory_overridable and an advisory policy.
+ * Recorded unedited apart from the agent path. They pin what the measurement
+ * found: Terraform exits successfully from plan (2) and apply (0) however many
+ * mandatory policies fail, so the step must fail on the diagnostic -- and must
+ * say a policy failed, not that the policies were never checked.
+ */
+describe('Terraform Policy: real HCP Terraform runs', function () {
+    function fixture(name: string): { command: string; exitCode: number; stdout: string; stderr: string } {
+        return JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'terraform-policy', `${name}.json`), 'utf-8'));
+    }
+
+    function verified(name: string): void {
+        const run = fixture(name);
+        const tool = new EventEmitter();
+        const policy = new PolicyEnforcement([], true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an EventEmitter is all watch() uses of a ToolRunner
+        policy.watch(tool as any);
+        tool.emit('stdout', run.stdout);
+        tool.emit('stderr', run.stderr);
+        policy.verify(run.command);
+    }
+
+    const cases: Array<[string, RegExp | null]> = [
+        ['plan-clean-human', null],
+        // Advisory: a Warning, not an Error. The step passes.
+        ['plan-advisory-human', null],
+        ['plan-advisory-json', null],
+        ['plan-mandatory-human', /^1 mandatory policy check\(s\) failed: resource_policy\.local_file\.no_forbidden_content\. .*Do not apply a plan saved by this step\./],
+        ['plan-mandatory-json', /^1 mandatory policy check\(s\) failed: resource_policy\.local_file\.no_forbidden_content on local_file\.bad\[0\]\. /],
+        // mandatory_overridable fails like mandatory: a pipeline has no one to override it.
+        ['plan-overridable-and-mandatory-colour', /^2 mandatory policy check\(s\) failed: resource_policy\.local_file\.short_content; resource_policy\.local_file\.no_forbidden_content\. /],
+        // apply without a saved plan: the policy is evaluated after the change.
+        ['apply-mandatory-human', /^1 mandatory policy check\(s\) failed: .*The changes this step made stand\./],
+    ];
+    for (const [name, failure] of cases) {
+        it(`${name}: ${failure ? 'fails the step, naming the policy' : 'passes'}`, () => {
+            if (!failure) {
+                assert.doesNotThrow(() => verified(name));
+                return;
+            }
+            assert.throws(() => verified(name), (err: Error) => {
+                assert.match(err.message, failure);
+                assert.ok(!/NOT fully checked/.test(err.message), `a failed policy is not an unchecked run: ${err.message}`);
+                return true;
+            });
+        });
+    }
+
+    it('a policy failure and an engine that did not start are both reported', () => {
+        const run = fixture('plan-mandatory-human');
+        const tool = new EventEmitter();
+        const policy = new PolicyEnforcement([], true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an EventEmitter is all watch() uses of a ToolRunner
+        policy.watch(tool as any);
+        tool.emit('stderr', `${run.stderr}${HUMAN_PLAIN}\n`);
+        assert.throws(() => policy.verify('plan'), /Failed to connect to policy engine.*NOT fully checked.*1 mandatory policy check\(s\) failed/s);
+    });
+
+    it('names at most ten policies but counts every failure', () => {
+        const tool = new EventEmitter();
+        const policy = new PolicyEnforcement([], true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an EventEmitter is all watch() uses of a ToolRunner
+        policy.watch(tool as any);
+        for (let i = 0; i < 12; i++) {
+            tool.emit('stderr', `│ Error: Condition not met\n│   on p.policy.hcl line 1, in resource_policy "t" "p${i}":\n`);
+        }
+        assert.throws(() => policy.verify('plan'), /12 mandatory policy check\(s\) failed: resource_policy\.t\.p0; .*resource_policy\.t\.p9; and 2 more\./);
+    });
+
+    it('a failure whose location never arrives is still counted', () => {
+        const tool = new EventEmitter();
+        const policy = new PolicyEnforcement([], true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an EventEmitter is all watch() uses of a ToolRunner
+        policy.watch(tool as any);
+        tool.emit('stderr', '│ Error: Condition not met\n│ Error: Condition not met\n');
+        assert.throws(() => policy.verify('plan'), /2 mandatory policy check\(s\) failed: a policy; a policy\./);
     });
 });
 
@@ -217,14 +299,14 @@ describe('Terraform Policy: guards and wiring for every command that accepts -po
             it('fails when terraform printed an error and still exited successfully', async () => {
                 await assert.rejects(
                     () => handlerEmitting(`${HUMAN_COLOUR}\n`).executeCommand(command),
-                    new RegExp(`Terraform ${command} reported an error but still exited successfully.*NOT checked`),
+                    new RegExp(`Terraform ${command} reported an error but still exited successfully.*NOT fully checked`),
                 );
             });
 
             it('fails the same way when the policies came from commandOptions', async () => {
                 inputs.policyPaths = undefined;
                 inputs.commandOptions = '-policies=policies';
-                await assert.rejects(() => handlerEmitting(`${HUMAN_PLAIN}\n`).executeCommand(command), /NOT checked/);
+                await assert.rejects(() => handlerEmitting(`${HUMAN_PLAIN}\n`).executeCommand(command), /NOT fully checked/);
             });
 
             it('ignores the same output when no policies were requested', async () => {
@@ -268,7 +350,7 @@ describe('Terraform Policy: guards and wiring for every command that accepts -po
             });
 
             it('fails when terraform printed an error and still exited successfully', async () => {
-                await assert.rejects(() => handlerEmitting(`${HUMAN_COLOUR}\n`).executeCommand('custom'), /NOT checked/);
+                await assert.rejects(() => handlerEmitting(`${HUMAN_COLOUR}\n`).executeCommand('custom'), /NOT fully checked/);
             });
 
             it('passes a clean run, adding no flag of its own', async () => {
