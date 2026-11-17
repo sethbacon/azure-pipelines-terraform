@@ -5,6 +5,7 @@ import { Digest } from './results/digest-schema';
 import { serializeDigest, maskHasSensitiveLeaf } from './results/redact';
 import { buildApplyDigest, ApplyDigestOptions, parseNdjsonLines } from './results/apply-digest';
 import { scrubSecrets } from './results/secret-scrub';
+import { PolicyEvent, buildPolicyCases, renderPolicyJUnit, summarizePolicyCases } from './policy-results';
 import { EnvironmentVariableHelper } from '@4cloudguru/pipeline-task-ado';
 import tasks = require('azure-pipelines-task-lib/task');
 import path = require('path');
@@ -194,6 +195,50 @@ export class ResultsPublisher {
     echoSafeConsoleLine(message: string): void {
         for (const line of message.split(/\r\n|[\r\n\u2028\u2029]/)) {
             console.log(line.replace(/^(\s*)##/, '$1# #'));
+        }
+    }
+
+    /**
+     * Publishes the Terraform Policy outcomes of one command (`publishPolicyResults`)
+     * as a JUnit report on the pipeline's Tests tab, and sets the `policyResult` /
+     * `policyViolationCount` output variables.
+     *
+     * A published test report is not agent-masked the way the console is, so every
+     * message is scrubbed of the task's tracked secret values first -- the same
+     * treatment the plan attachment and the apply digest get.
+     *
+     * Never throws: this runs in a `finally` after the command, where an error of
+     * its own would replace the command's.
+     */
+    publishPolicyResults(command: string, events: readonly PolicyEvent[], droppedEvents: number): void {
+        try {
+            const knownSecrets = EnvironmentVariableHelper.getTrackedSecretValues();
+            const cases = buildPolicyCases(events)
+                .map(c => ({ ...c, messages: c.messages.map(m => scrubSecrets(m, knownSecrets)) }));
+            const summary = summarizePolicyCases(cases);
+
+            const result = cases.length === 0 ? 'none' : summary.failed > 0 ? 'failed' : 'passed';
+            tasks.setVariable('policyResult', result, false, true);
+            tasks.setVariable('policyViolationCount', String(summary.failed), false, true);
+
+            if (cases.length === 0) {
+                console.log(tasks.loc("PolicyResultsNone", command));
+                return;
+            }
+            if (droppedEvents > 0) {
+                tasks.warning(tasks.loc("PolicyResultsTruncated", droppedEvents));
+            }
+
+            const runTitle = `Terraform Policy (${command})`;
+            const tempDir = tasks.getVariable("Agent.TempDirectory") || os.tmpdir();
+            const xmlPath = path.join(tempDir, `terraform-policy-${uuidV4()}.xml`);
+            // Not tracked for cleanup: the agent reads the file after this task
+            // returns, and purges Agent.TempDirectory at job end.
+            writeSecretFile(xmlPath, renderPolicyJUnit(cases, runTitle));
+            tasks.command('results.publish', { type: 'JUnit', mergeResults: 'true', runTitle }, xmlPath);
+            console.log(tasks.loc("PolicyResultsPublished", summary.passed, summary.failed, summary.unknown));
+        } catch (error) {
+            tasks.warning(`Could not publish the Terraform Policy results: ${String(error)}`);
         }
     }
 

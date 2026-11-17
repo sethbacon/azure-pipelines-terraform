@@ -337,6 +337,15 @@
             }
         },
         {
+            "name": "publishPolicyResults",
+            "type": "boolean",
+            "label": "Publish Terraform Policy results",
+            "defaultValue": "false",
+            "visibleRule": "command = plan || command = apply || command = destroy",
+            "required": false,
+            "helpMarkDown": "With 'Terraform Policy paths' set, publish each policy's outcome to the pipeline's Tests tab and set the policyResult and policyViolationCount output variables. Terraform only reports policy outcomes as data in its -json output, so the command is run with -json and the log shows one line per event instead of Terraform's usual rendering of the plan; use 'publishPlanSummary' to see the plan in the Terraform tab. Cannot be combined with 'publishPlanResults'."
+        },
+        {
             "name": "testJunitXmlPath",
             "type": "string",
             "label": "JUnit XML output path",
@@ -1224,11 +1233,23 @@
         {
             "name": "customFilePath",
             "description": "The location of the file containing the terraform custom command output.<br><br>Note: This variable will only be set if 'command' is 'custom' and 'outputTo' is 'file'."
+        },
+        {
+            "name": "policyResult",
+            "description": "Set when 'publishPolicyResults' is enabled: 'passed' when every reported Terraform Policy outcome passed or was not yet known, 'failed' when any failed (at any enforcement level, or because the policy engine could not start), 'none' when Terraform reported no policy outcome."
+        },
+        {
+            "name": "policyViolationCount",
+            "description": "Set when 'publishPolicyResults' is enabled: the number of failed Terraform Policy outcomes."
         }
     ],
     "messages": {
         "TerraformToolNotFound": "Could not locate the terraform/tofu binary. Run PipelineTerraformInstaller in the same job as this task, or ensure the binary is installed on the agent's PATH.",
         "TerraformPlanFailed": "Terraform plan failed with exit code %s",
+        "PolicyResultsNotSupportedWithPublishPlanResults": "publishPolicyResults cannot be combined with publishPlanResults: policy results need Terraform's -json output, and publishPlanResults publishes its human-readable plan text. Use publishPlanSummary for a structured plan in the Terraform tab instead.",
+        "PolicyResultsNone": "Terraform %s reported no Terraform Policy outcome: no policy applied to anything in this run.",
+        "PolicyResultsTruncated": "%d Terraform Policy event(s) were not included in the published results: the run reported more than this task collects.",
+        "PolicyResultsPublished": "Terraform Policy results published to the Tests tab: %d passed, %d failed, %d not yet known.",
         "TerraformApplyFailed": "Terraform apply failed with exit code %s",
         "TerraformDestroyFailed": "Terraform destroy failed with exit code %s",
         "TerraformDestroyPlanForSummaryFailed": "Could not build the destroy plan summary: 'terraform plan -destroy' failed with exit code %s. The real destroy was not attempted.",

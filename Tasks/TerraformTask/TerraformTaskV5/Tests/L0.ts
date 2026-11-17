@@ -39,6 +39,7 @@ import './EmergencyCleanupNoHandlerL0';
 import './ResolveToolPathL0';
 import './AutomationEnvL0';
 import './PolicyEnforcementL0';
+import './PolicyResultsL0';
 // Direct unit tests for OCI WIF synthetic-config field validation.
 import './OciWifConfigValidationL0';
 // Direct unit tests for the generated OCI backend config file's secret-file write.

@@ -4,6 +4,7 @@ import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { splitCommandOptions, splitNonEmptyLines } from './argument-builder';
 import { detectBackendCloud } from './backend-detection';
+import { PolicyEvent, parsePolicyEvent } from './policy-results';
 
 /**
  * Terraform Policy (`-policies`, generally available from Terraform 1.17).
@@ -38,6 +39,9 @@ import { detectBackendCloud } from './backend-detection';
  */
 export const POLICY_COMMANDS: ReadonlySet<string> = new Set(['init', 'plan', 'apply', 'destroy']);
 
+/** Commands that take `publishPolicyResults`: the ones this task can run with `-json`. */
+export const POLICY_RESULT_COMMANDS: ReadonlySet<string> = new Set(['plan', 'apply', 'destroy']);
+
 /** Terraform reads the policy engine's path from this variable, falling back to PATH. */
 export const POLICY_PLUGIN_ENV = 'TF_POLICY_PLUGIN';
 const POLICY_PLUGIN_BINARY = 'tfpolicy-plugin';
@@ -45,6 +49,8 @@ const POLICY_PLUGIN_BINARY = 'tfpolicy-plugin';
 /** A partial line longer than this is not a diagnostic header; stop buffering it. */
 const MAX_PENDING_LINE_CHARS = 64 * 1024;
 const MAX_REPORTED_LINE_CHARS = 300;
+/** Bound on collected policy events, so a huge configuration cannot grow the list without limit. */
+export const MAX_POLICY_EVENTS = 20_000;
 
 const ANSI_SGR = /\u001b\[[0-9;]*m/g;
 
@@ -104,6 +110,18 @@ export class PolicyEnforcement {
 
     private errorLine: string | undefined;
     private readonly pending = { stdout: '', stderr: '' };
+    private readonly collected: PolicyEvent[] = [];
+    private dropped = 0;
+
+    /** The policy events Terraform reported, when the run used `-json`; empty otherwise. */
+    get events(): readonly PolicyEvent[] {
+        return this.collected;
+    }
+
+    /** How many policy events arrived after {@link MAX_POLICY_EVENTS} was reached. */
+    get droppedEvents(): number {
+        return this.dropped;
+    }
 
     constructor(
         /** `-policies=<path>` tokens for the `policyPaths` input, one per path. */
@@ -121,7 +139,6 @@ export class PolicyEnforcement {
     }
 
     private consume(stream: 'stdout' | 'stderr', chunk: string): void {
-        if (this.errorLine !== undefined) return;
         let buffered = this.pending[stream] + chunk;
         let nl: number;
         while ((nl = buffered.indexOf('\n')) !== -1) {
@@ -132,8 +149,21 @@ export class PolicyEnforcement {
     }
 
     private inspect(stream: 'stdout' | 'stderr', line: string): void {
+        const event = stream === 'stdout' ? parsePolicyEvent(line) : undefined;
+        if (event) {
+            if (this.collected.length < MAX_POLICY_EVENTS) this.collected.push(event); else this.dropped++;
+        }
         if (this.errorLine === undefined && isErrorDiagnosticLine(stream, line)) {
             this.errorLine = diagnosticSummary(line).slice(0, MAX_REPORTED_LINE_CHARS);
+        }
+    }
+
+    /** Reads the final line of each stream, which may have arrived without a trailing newline. */
+    flush(): void {
+        for (const stream of ['stdout', 'stderr'] as const) {
+            const line = this.pending[stream];
+            this.pending[stream] = '';
+            if (line) this.inspect(stream, line);
         }
     }
 
@@ -144,9 +174,7 @@ export class PolicyEnforcement {
      */
     verify(command: string): void {
         if (!this.active) return;
-        // The final line may have arrived without a trailing newline.
-        this.inspect('stdout', this.pending.stdout);
-        this.inspect('stderr', this.pending.stderr);
+        this.flush();
         if (this.errorLine === undefined) return;
         throw new Error(
             `Terraform ${command} reported an error but still exited successfully while policies were requested: ` +

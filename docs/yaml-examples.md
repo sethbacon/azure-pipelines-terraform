@@ -1368,6 +1368,33 @@ steps:
 
 As with any HCP Terraform backend used from this task, set the workspace's execution mode to Local so Terraform runs on the agent.
 
+#### Publish policy results to the Tests tab
+
+`publishPolicyResults` publishes one test result per policy and object it was evaluated against to the pipeline's **Tests** tab, for `plan`, `apply` and `destroy`. A failed policy is a failed test whatever its enforcement level, with the level at the start of its message, because an advisory failure does not fail the Terraform run. A policy whose values are not known until apply is reported as not run.
+
+Two output variables are set: `policyResult` (`passed`, `failed`, or `none` when no policy applied to anything in the run) and `policyViolationCount`.
+
+Terraform only reports policy outcomes as data in its `-json` output, so the task runs the command with `-json`. The log then shows one line per event instead of Terraform's usual rendering of the plan; set `publishPlanSummary` to read the plan in the **Terraform** tab. `publishPolicyResults` cannot be combined with `publishPlanResults`, which publishes that human-readable text.
+
+```yaml
+- task: PipelineTerraformTask@5
+  name: terraformPlan
+  displayName: 'Terraform Plan (policy results)'
+  inputs:
+    provider: 'azurerm'
+    command: 'plan'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+    commandOptions: '-out=tfplan'
+    environmentServiceNameAzureRM: 'my-azure-service-connection'
+    backendHCPToken: '$(HCP_TOKEN)'
+    policyPaths: '$(System.DefaultWorkingDirectory)/policies'
+    publishPolicyResults: true
+    publishPlanSummary: 'MyPlan'
+
+- script: echo "$(terraformPlan.policyViolationCount) policy violation(s), result $(terraformPlan.policyResult)"
+  displayName: 'Show the policy outcome'
+```
+
 ---
 
 ### Generic and local backends

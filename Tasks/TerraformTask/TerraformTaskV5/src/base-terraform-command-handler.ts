@@ -12,7 +12,7 @@ import {
 } from './argument-builder';
 import { CommandExecutor } from './command-executor';
 import { ResultsPublisher } from './results-publisher';
-import { PolicyEnforcement, preparePolicyEnforcement } from './policy-enforcement';
+import { POLICY_RESULT_COMMANDS, PolicyEnforcement, preparePolicyEnforcement } from './policy-enforcement';
 import { buildPlanDigest } from './results/plan-digest';
 import { buildStateDigest } from './results/state-digest';
 import { maskHasSensitiveLeaf } from './results/redact';
@@ -257,6 +257,35 @@ export abstract class BaseTerraformCommandHandler {
         this.policyEnforcement.watch(terraformTool);
     }
 
+    /**
+     * True when this plan, apply or destroy asked for policies and for their
+     * results (`publishPolicyResults`). Terraform only reports policy outcomes as
+     * data in its `-json` stream, so such a run is given `-json` and its console
+     * output becomes each event's one-line message instead of the human rendering.
+     */
+    private wantsPolicyResults(): boolean {
+        return this.policyEnforcement.active && tasks.getBoolInput("publishPolicyResults", false);
+    }
+
+    /**
+     * Runs a tool that was given `-json` silently, echoing each event's `@message`
+     * as it arrives (the same console treatment `publishApplyResults` gives apply).
+     * Never rejects on a non-zero exit: `details` is what the caller's failure
+     * message should carry, since nothing else of Terraform's error reaches the log.
+     */
+    private async execJsonEchoingMessages(terraformTool: ToolRunner, cwd: string): Promise<{ code: number; details: string[] }> {
+        const output = await this.commandExecutor.execWithStdoutCapture(terraformTool, {
+            cwd,
+            silent: true,
+            ignoreReturnCode: true,
+        }, undefined, line => this.resultsPublisher.echoApplyMessageLine(line));
+        const stderr = output.stderr.trim();
+        return {
+            code: output.code,
+            details: [...this.resultsPublisher.extractApplyErrorDiagnostics(output.stdout), ...(stderr ? [stderr] : [])],
+        };
+    }
+
     protected getWorkingDirectory(): string {
         return tasks.getInput("workingDirectory") || '';
     }
@@ -388,7 +417,17 @@ export abstract class BaseTerraformCommandHandler {
         if (!fn) {
             throw new Error(`Invalid command: ${command}. Valid: ${[...commands.keys()].join(', ')}`);
         }
-        const code = await fn();
+        let code: number;
+        try {
+            code = await fn();
+        } finally {
+            // Also on failure: a run a mandatory policy stopped is the one whose
+            // results matter most.
+            if (POLICY_RESULT_COMMANDS.has(command) && this.wantsPolicyResults()) {
+                this.policyEnforcement.flush();
+                this.resultsPublisher.publishPolicyResults(command, this.policyEnforcement.events, this.policyEnforcement.droppedEvents);
+            }
+        }
         // Terraform exits successfully from plan, apply and destroy even when its
         // policy engine never started; a run that asked for policies must not.
         this.policyEnforcement.verify(command);
@@ -682,6 +721,16 @@ export abstract class BaseTerraformCommandHandler {
         // the file) actually runs. Only the task's OWN tempfile *injection*
         // remains gated on publishPlanSummary; the digest/attachment behavior
         // below, which separately checks publishPlanSummary, is unchanged.
+        const policyJson = this.wantsPolicyResults();
+        if (policyJson) {
+            // publishPlanResults publishes Terraform's human-readable plan text, which
+            // a -json run does not produce.
+            if (publishPlanResults) {
+                throw new Error(tasks.loc("PolicyResultsNotSupportedWithPublishPlanResults"));
+            }
+            if (!commandOptionsContainsJsonFlag(commandOptions)) terraformTool.arg("-json");
+        }
+
         let planFilePath: string | undefined = extractOutFlagPath(commandOptions);
         if (publishPlanSummary && !planFilePath) {
             planFilePath = path.join(tempDir, `terraform-plan-${uuidV4()}.tfplan`);
@@ -721,6 +770,10 @@ export abstract class BaseTerraformCommandHandler {
             result = commandOutput.code;
             planStdout = commandOutput.stdout;
             planStderr = commandOutput.stderr.trim() || undefined;
+        } else if (policyJson) {
+            const output = await this.execJsonEchoingMessages(terraformTool, planCommand.workingDirectory);
+            result = output.code;
+            planStderr = output.details.join('\n') || undefined;
         } else {
             result = await this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: planCommand.workingDirectory,
@@ -1014,7 +1067,9 @@ export abstract class BaseTerraformCommandHandler {
         // per line AS IT ARRIVES below instead (#1189), preserving the live-log
         // experience while the structured (secret-bearing) fields are consumed
         // only by the redaction pipeline, never printed.
-        this.applyAutoApprove(terraformTool, publishApplyResults ? ["-json"] : []);
+        const policyJson = this.wantsPolicyResults();
+        const addJson = publishApplyResults || (policyJson && !commandOptionsContainsJsonFlag(this.getCommandOptions()));
+        this.applyAutoApprove(terraformTool, addJson ? ["-json"] : []);
         this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
         this.argumentBuilder.appendTerraformVariables(terraformTool);
 
@@ -1022,6 +1077,13 @@ export abstract class BaseTerraformCommandHandler {
         await this.warnIfMultipleProviders();
 
         if (!publishApplyResults) {
+            if (policyJson) {
+                const output = await this.execJsonEchoingMessages(terraformTool, applyCommand.workingDirectory);
+                if (output.code !== 0) {
+                    this.commandExecutor.throwCommandFailure("TerraformApplyFailed", output.code, output.details);
+                }
+                return output.code;
+            }
             return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: applyCommand.workingDirectory
             });
@@ -1078,7 +1140,8 @@ export abstract class BaseTerraformCommandHandler {
         this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,
         }));
-        this.applyAutoApprove(terraformTool);
+        const policyJson = this.wantsPolicyResults();
+        this.applyAutoApprove(terraformTool, policyJson && !commandOptionsContainsJsonFlag(this.getCommandOptions()) ? ["-json"] : []);
         this.argumentBuilder.applyTokens(terraformTool, this.argumentBuilder.parallelismTokens());
         this.argumentBuilder.appendTerraformVariables(terraformTool);
 
@@ -1130,6 +1193,13 @@ export abstract class BaseTerraformCommandHandler {
         }
 
         if (!publishPlanSummary) {
+            if (policyJson) {
+                const output = await this.execJsonEchoingMessages(terraformTool, destroyCommand.workingDirectory);
+                if (output.code !== 0) {
+                    this.commandExecutor.throwCommandFailure("TerraformDestroyFailed", output.code, output.details);
+                }
+                return output.code;
+            }
             return this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
                 cwd: destroyCommand.workingDirectory
             });
@@ -1141,10 +1211,18 @@ export abstract class BaseTerraformCommandHandler {
         // pattern for the same reason (design D2). Destroy still auto-approves
         // and still fails the task on a non-zero exit exactly as the
         // non-structured path above.
-        const result = await this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
-            cwd: destroyCommand.workingDirectory,
-            ignoreReturnCode: true,
-        });
+        let result: number;
+        let failureDetails: string[] = [];
+        if (policyJson) {
+            const output = await this.execJsonEchoingMessages(terraformTool, destroyCommand.workingDirectory);
+            result = output.code;
+            failureDetails = output.details;
+        } else {
+            result = await this.commandExecutor.execWithTimeout(terraformTool, <IExecOptions>{
+                cwd: destroyCommand.workingDirectory,
+                ignoreReturnCode: true,
+            });
+        }
 
         // #675 follow-up: same reasoning as plan()'s call above. Also covers
         // the user-supplied `-out=` case (#612, above) that
@@ -1156,7 +1234,7 @@ export abstract class BaseTerraformCommandHandler {
         await this.publishPlanSummaryAttachment(planFilePath!, destroyCommand.workingDirectory, publishPlanSummary, tempDir, 'destroy');
 
         if (result !== 0) {
-            this.commandExecutor.throwCommandFailure("TerraformDestroyFailed", result);
+            this.commandExecutor.throwCommandFailure("TerraformDestroyFailed", result, failureDetails);
         }
         return result;
     }
