@@ -129,9 +129,9 @@ azure-pipelines-terraform/
 │   ├── TerraformTask/
 │   │   └── TerraformTaskV5/             # Current development target
 │   ├── PolicyAgentInstaller/
-│   │   └── PolicyAgentInstallerV1/      # OPA / Sentinel / tfpolicy-plugin installer
+│   │   └── PolicyAgentInstallerV1/      # OPA / Sentinel / tfpolicy-plugin / tfpolicy installer
 │   ├── TerraformPolicyCheck/
-│   │   └── TerraformPolicyCheckV1/      # OPA / Sentinel policy evaluation
+│   │   └── TerraformPolicyCheckV1/      # OPA / Sentinel policy evaluation, and policy tests
 │   ├── TerraformDriftReport/
 │   │   └── TerraformDriftReportV1/      # Plan-JSON drift summary + TSM callback
 │   ├── TerraformModulePublish/
@@ -329,17 +329,18 @@ Source: `Tasks/TerraformDocs/TerraformDocsV1/src/`. Runs terraform-docs to gener
 
 ## PolicyAgentInstaller Task (PolicyAgentInstallerV1)
 
-Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** or **tfpolicy-plugin** (each a GPG-signed zip from releases.hashicorp.com; the latter is the engine Terraform 1.17+ launches for `-policies`, and installing it also sets `TF_POLICY_PLUGIN`) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1 (the last of which is now a thin adapter over `@4cloudguru/pipeline-task-core`'s client). `latest` resolves via the checkpoint API (Sentinel, tfpolicy-plugin) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
+Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel**, **tfpolicy-plugin** or **tfpolicy** (each a GPG-signed zip from releases.hashicorp.com; tfpolicy-plugin is the engine Terraform 1.17+ launches for `-policies`, and installing it also sets `TF_POLICY_PLUGIN`; tfpolicy is Terraform Policy's CLI, used by the check task's `mode: test`) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1 (the last of which is now a thin adapter over `@4cloudguru/pipeline-task-core`'s client). `latest` resolves via the checkpoint API (Sentinel, tfpolicy-plugin, tfpolicy) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
 
 ## TerraformPolicyCheck Task (TerraformPolicyCheckV1)
 
-Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates policies against Terraform plan JSON (`terraform show -json` output). Engine dispatch in `index.ts`:
+Source: `Tasks/TerraformPolicyCheck/TerraformPolicyCheckV1/src/`. Evaluates policies against Terraform plan JSON (`terraform show -json` output), or with `mode: test` runs a policy repository's own tests. Engine dispatch in `index.ts`:
 
 | File                 | Role                                                                                                                                                                                                                                                                      |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `index.ts`           | Orchestrator — resolves source, runs engine, sets outputs, publishes JUnit, cleans up temp dirs                                                                                                                                                                           |
 | `sentinel-policy-set.ts` | `hcpPolicySet` for Sentinel: runs the set's own `sentinel.hcl` plus the `terraform` feature and the `tfplan/v2`/`tfconfig/v2`/`tfstate/v2` plugin imports (keys `plan_path`/`path`/`path`, all fed the plan JSON) with `sentinel apply -json`, and gates on each policy's level from the JSON report. Verified against Sentinel 0.41.0: the CLI exits 1 when ANY policy fails, advisory included, so the exit code cannot gate a set |
 | `opa-policy-set.ts`  | `hcpPolicySet` for OPA: a strict reader for `policies.hcl` (policy blocks, quoted `query`/`enforcement_level`/`description` only), the plan wrapped as `{"plan": ...}`, one `opa exec` per query, and HCP's rule that a query returns an array that passes when empty |
+| `policy-tests.ts`    | `mode: test`: runs `sentinel test -json`, `opa test --bundle --format=json` or `tfpolicy test` (human output only, always coloured) and reads one case per test. Fails a run that ran no test (all three engines exit 0 for it) and any run whose exit code disagrees with its cases; OPA also exits 2 for a merely skipped test |
 | `opa-engine.ts`      | `opa exec --decision <path> --bundle <dir> <input>`; parses JSON result, gates on `failMode` (nonEmpty/defined)                                                                                                                                                           |
 | `sentinel-engine.ts` | Generates `sentinel.hcl` (static import + policies), runs `sentinel apply`, maps exit code (0/1/2/3/9), applies enforcement level (advisory/soft/hard + override)                                                                                                         |
 | `policy-source.ts`   | `path` (local dir) or `gitUrl` (HTTPS shallow clone / SHA checkout, token delivered as an `http.extraheader` Authorization header via per-invocation `GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` env vars, not argv, so it never appears in the child process's command line) |

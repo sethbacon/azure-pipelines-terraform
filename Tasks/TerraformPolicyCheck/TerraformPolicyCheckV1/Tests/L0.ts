@@ -32,6 +32,8 @@ import './CloneRetryL0';
 import './PolicyRepoUrlUserInfoL0';
 // hcpPolicySet: HCP Terraform policy sets, by that platform's rules.
 import './PolicySetL0';
+// mode: test -- a policy repository's own tests.
+import './PolicyTestsL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
@@ -136,6 +138,37 @@ describe('TerraformPolicyCheck Test Suite', function () {
             assert(tr.stdout.includes('##_vso[task.setvariable variable=injected]pwned'), 'the line stays visible in the log, neutralized');
         }, tr);
     });
+
+    // mode: test through the real entry point (Tests/PolicyTestsScenario.ts).
+    const policyTestScenarios: Array<[string, boolean, string[], string]> = [
+        // [scenario, task succeeds, stdout must contain, error issue must contain]
+        ['sentinel-pass', true, ['PASS - no-forbidden.sentinel - test/no-forbidden/pass.hcl', 'runTitle=Policy tests (sentinel);', 'variable=policyResult;isOutput=true;issecret=false;]passed', 'variable=violationCount;isOutput=true;issecret=false;]0'], ''],
+        ['sentinel-fail', false, ['FAIL - has-tag.sentinel - test/has-tag/wrong-owner.hcl', 'variable=violationCount;isOutput=true;issecret=false;]2'], '2 of 5 policy test(s) failed.'],
+        ['opa-pass', true, ['PASS - data.terraform.files_test - test_fine_allowed', 'runTitle=Policy tests (opa);'], ''],
+        ['opa-fail', false, ['SKIP - data.terraform.files_test - todo_test_later', 'variable=policyResult;isOutput=true;issecret=false;]failed'], '2 of 4 policy test(s) failed.'],
+        ['tfpolicy-pass', true, ['PASS - tests/providers.policytest.hcl - provider.local #2', 'runTitle=Policy tests (tfpolicy);'], ''],
+        ['tfpolicy-fail', false, ['FAIL - tests/files.policytest.hcl - resource.local_file.bad_unexpected'], '1 of 5 policy test(s) failed.'],
+        ['tfpolicy-evaluate', false, [], "engine tfpolicy is only for mode 'test'"],
+        ['regula-evaluate', false, [], "Invalid engine 'regula' for mode 'evaluate'"],
+        ['opa-badmode', false, [], "Invalid mode 'audit'"],
+    ];
+    for (const [scenario, succeeds, stdout, error] of policyTestScenarios) {
+        it(`mode test: ${scenario}`, async () => {
+            process.env['POLICY_TESTS_SCENARIO'] = scenario;
+            try {
+                const tr = new ttm.MockTestRunner(path.join(__dirname, 'PolicyTestsScenario.js'));
+                await tr.runAsync();
+                runValidations(() => {
+                    assert.strictEqual(tr.succeeded, succeeds, `task should have ${succeeds ? 'succeeded' : 'failed'}. errors: ${tr.errorIssues}`);
+                    for (const text of stdout) assert.ok(tr.stdout.includes(text), `stdout should contain ${text}`);
+                    if (error) assert.ok(tr.errorIssues.some(e => e.includes(error)), `an error issue should contain ${error}: ${tr.errorIssues}`);
+                    if (succeeds) assert.strictEqual(tr.errorIssues.length, 0, `errors: ${tr.errorIssues}`);
+                }, tr);
+            } finally {
+                delete process.env['POLICY_TESTS_SCENARIO'];
+            }
+        });
+    }
 
     // hcpPolicySet through the real entry point (Tests/HcpPolicySetScenario.ts).
     const hcpPolicySetScenarios: Array<[string, boolean, string[], string[]]> = [

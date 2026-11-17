@@ -3,7 +3,7 @@
     "id": "f9b4b4b7-7199-4884-ad45-591f491217fc",
     "name": "PipelinePolicyAgentInstaller",
     "friendlyName": "Pipeline policy agent installer",
-    "description": "Find in cache or download a specific version of a policy engine (OPA, Sentinel or Terraform's tfpolicy-plugin) and prepend it to the PATH",
+    "description": "Find in cache or download a specific version of a policy engine (OPA, Sentinel, or Terraform Policy's tfpolicy-plugin and tfpolicy) and prepend it to the PATH",
     "author": "sethbacon",
     "helpMarkDown": "[Learn more about this task](https://github.com/sethbacon/azure-pipelines-terraform)",
     "category": "Tool",
@@ -26,11 +26,12 @@
             "label": "Policy agent",
             "defaultValue": "opa",
             "required": true,
-            "helpMarkDown": "Which policy engine to install. tfpolicy-plugin is the engine Terraform 1.17 or later launches for Terraform Policy (PipelineTerraformTask's policyPaths input); it is not run on its own, needs an HCP Terraform or Terraform Enterprise backend, and is proprietary HashiCorp software distributed under HashiCorp's own licence terms, which ship inside the download.",
+            "helpMarkDown": "Which policy engine to install. tfpolicy-plugin is the engine Terraform 1.17 or later launches for Terraform Policy (PipelineTerraformTask's policyPaths input); it is not run on its own and needs an HCP Terraform or Terraform Enterprise backend. tfpolicy is Terraform Policy's CLI, for testing policies (PipelineTerraformPolicyCheck mode test). Both are proprietary HashiCorp software distributed under HashiCorp's own licence terms, which ship inside the download.",
             "options": {
                 "opa": "Open Policy Agent (OPA)",
                 "sentinel": "HashiCorp Sentinel",
-                "tfpolicy-plugin": "Terraform Policy engine (tfpolicy-plugin)"
+                "tfpolicy-plugin": "Terraform Policy engine (tfpolicy-plugin)",
+                "tfpolicy": "Terraform Policy CLI (tfpolicy)"
             }
         },
         {
@@ -47,7 +48,7 @@
             "label": "Download source",
             "defaultValue": "official",
             "required": true,
-            "helpMarkDown": "Where to download the policy agent from. Sentinel and tfpolicy-plugin install from releases.hashicorp.com; OPA from GitHub releases.",
+            "helpMarkDown": "Where to download the policy agent from. Sentinel, tfpolicy-plugin and tfpolicy install from releases.hashicorp.com; OPA from GitHub releases.",
             "options": {
                 "official": "Official releases (HashiCorp / GitHub)",
                 "registry": "Private registry (terraform-registry-backend)",
@@ -106,7 +107,7 @@
             "defaultValue": "true",
             "required": false,
             "visibleRule": "policyAgent != opa && downloadSource != registry",
-            "helpMarkDown": "Sentinel and tfpolicy-plugin only. When enabled, fail if the GPG signature of SHA256SUMS is unavailable. Disable for mirrors that do not serve .sig files."
+            "helpMarkDown": "Sentinel, tfpolicy-plugin and tfpolicy only. When enabled, fail if the GPG signature of SHA256SUMS is unavailable. Disable for mirrors that do not serve .sig files."
         },
         {
             "name": "requireChecksum",
@@ -182,8 +183,8 @@
         "ResolvingLatestFromRegistry": "Resolving latest version from registry: %s",
         "ResolvedVersionFromRegistry": "Resolved latest version from registry: %s",
         "RegistryDownloadHostNotAllowed": "Registry download_url host '%s' is not in registryAllowedHosts: %s",
-        "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). Integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature is verified on this path. The official and mirror sources of Sentinel and tfpolicy-plugin verify SHA256SUMS against the pinned HashiCorp GPG key; requireGpgSignature does not apply to downloadSource=registry. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Use downloadSource official, or a mirror that publishes a signed SHA256SUMS, if you need signature-anchored trust.",
-        "SignatureToggleInertForAgent": "'%s' was set, but it has no effect for policyAgent=%s -- OPA has no GPG signature anchor on any download source. This setting only applies to Sentinel and tfpolicy-plugin. Remove it.",
+        "RegistryTrustAnchorIsChecksumOnly": "Installed from the private registry (%s). Integrity rests on the SHA256 the registry itself asserts, delivered over the same TLS session as the archive -- no signature is verified on this path. The official and mirror sources of Sentinel, tfpolicy-plugin and tfpolicy verify SHA256SUMS against the pinned HashiCorp GPG key; requireGpgSignature does not apply to downloadSource=registry. A compromised or misconfigured registry can serve a modified archive whose recorded hash matches it. Use downloadSource official, or a mirror that publishes a signed SHA256SUMS, if you need signature-anchored trust.",
+        "SignatureToggleInertForAgent": "'%s' was set, but it has no effect for policyAgent=%s -- OPA has no GPG signature anchor on any download source. This setting only applies to Sentinel, tfpolicy-plugin and tfpolicy. Remove it.",
         "RegistryDownloadHostIsPrivate": "Registry download_url host '%s' is, or resolves to, a private/link-local address, which is refused by default (a common SSRF target, e.g. the cloud metadata service). Set registryAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostIsPrivate": "Mirror download host '%s' is, or resolves to, a private/link-local address, which is refused (a common SSRF target, e.g. the cloud metadata service). Set mirrorAllowedHosts to explicitly allow this host if it is a legitimate internal mirror.",
         "MirrorDownloadHostNotAllowed": "Mirror download host '%s' is not in mirrorAllowedHosts: %s",

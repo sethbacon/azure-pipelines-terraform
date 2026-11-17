@@ -152,6 +152,27 @@ describe('PolicyAgentInstaller Test Suite', function () {
         }, tr);
     });
 
+    it('TfPolicyCliOfficialLatestSuccess', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'TfPolicyCliOfficialLatestSuccess.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            const base = 'https://releases.hashicorp.com/tfpolicy/0.5.0/tfpolicy_0.5.0_';
+            for (const expected of [
+                'fetchJson(https://checkpoint-api.hashicorp.com/v1/check/tfpolicy)',
+                `downloadTool(${base}linux_amd64.zip)`,
+                `fetchText(${base}SHA256SUMS)`,
+                `verifyGpgSignature(${base}SHA256SUMS.sig, required=true)`,
+                'extractZip(/tmp/tfpolicy.zip)',
+            ]) {
+                assert.ok(tr.stdout.includes(expected), `expected stdout to include ${expected}. stdout: ${tr.stdout}`);
+            }
+            // The CLI is not the engine Terraform launches.
+            assert.ok(!tr.stdout.includes('TF_POLICY_PLUGIN'), 'only tfpolicy-plugin sets TF_POLICY_PLUGIN. stdout: ' + tr.stdout);
+            assert.ok(!/tfpolicy-plugin|sentinel|open-policy-agent/i.test(tr.stdout), 'must not touch another agent\'s artifacts. stdout: ' + tr.stdout);
+        }, tr);
+    });
+
     it('EntryPointTfPolicyPluginVerify', async () => {
         const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointTfPolicyPluginVerify.js'));
         await tr.runAsync();

@@ -1,0 +1,4 @@
+{
+ "exitCode": 1,
+ "stdout": "{\"policies\": {\"noimport.sentinel\": {\"path\": \"noimport.sentinel\", \"status\": \"FAIL\", \"errors\": null, \"cases\": {\"test/noimport/case.hcl\": {\"path\": \"test/noimport/case.hcl\", \"status\": \"ERROR\", \"errors\": [\"noimport.sentinel:1:1: Import \\\"tfplan/v2\\\" is not available\"], \"rule_detail\": {}, \"config_warnings\": null, \"config_legacy\": false}}, \"duration\": 0}}, \"duration\": 0}"
+}
