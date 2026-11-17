@@ -2102,7 +2102,11 @@ Terraform does:
   `overrideSoftMandatory` is `true`, and a hard-mandatory failure always fails it.
   A `sentinel.hcl` that configures one of those three imports itself, which only a
   local test configuration does, is refused. Install a Sentinel release with the
-  built-in Terraform plugins; this was verified with 0.41.0.
+  built-in Terraform plugins; this was verified with 0.41.0. Sentinel caches the
+  paths of the modules and policies it loads in a `.sentinel` directory and
+  reuses them on the next run in that directory, so the task removes that
+  directory from the policy set before and after the run, and every run reads
+  the set's own files, as HCP Terraform does.
 - **OPA.** `policies.hcl` lists the policies, each a `query` and an optional
   `enforcement_level` (`advisory` by default, or `mandatory`). The plan is passed
   as `input.plan`, each query must return an array, and a policy passes when the
@@ -2146,7 +2150,9 @@ your configuration fails the step; use `hcpPolicySet` to have each policy's
 level applied. `policyPath` is
 still required with `policySource: 'path'`, although it is not used to find the
 policies. `traceOutput: true` runs `sentinel apply -trace` for verbose debugging
-output.
+output. The task removes Sentinel's `.sentinel` cache from that directory before
+and after the run, so the modules and policies come from your files rather than
+from paths an earlier run recorded.
 
 ```yaml
 - task: PipelineTerraformPolicyCheck@1
@@ -2193,7 +2199,8 @@ inputs do not apply, and no SARIF report is written.
 
 - **Sentinel** runs `sentinel test` from the policy source, which finds each
   policy's cases in `test/<policy>/*.hcl`. A policy with no test cases is
-  reported as a warning.
+  reported as a warning. The task removes Sentinel's `.sentinel` cache from the
+  policy source before and after the run.
 - **OPA** runs `opa test --bundle` on the policy source, the same loading as
   evaluation; tests are the rules whose names start with `test_`. A skipped
   (`todo_`) test is reported as skipped, not failed.
