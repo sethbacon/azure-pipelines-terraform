@@ -250,9 +250,9 @@ export abstract class BaseTerraformCommandHandler {
      * `options` is the free text that can carry a `-policies` of its own:
      * commandOptions, and for `custom` the command text as well.
      */
-    protected applyPolicies(command: string, terraformTool: ToolRunner, options = this.getCommandOptions()): void {
+    protected applyPolicies(command: string, terraformTool: ToolRunner, options?: string): void {
         this.policyEnforcement = preparePolicyEnforcement(
-            command, options, this.getWorkingDirectory(), getBinaryName(tasks));
+            command, options ?? this.getCommandOptions(), this.getWorkingDirectory(), getBinaryName(tasks));
         this.argumentBuilder.applyTokens(terraformTool, [...this.policyEnforcement.tokens]);
         this.policyEnforcement.watch(terraformTool);
     }

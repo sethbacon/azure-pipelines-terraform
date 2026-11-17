@@ -1,5 +1,6 @@
 import fs = require('fs');
 import tasks = require('azure-pipelines-task-lib/task');
+import { readUrlInput } from '@4cloudguru/pipeline-task-ado';
 import { ToolRunner } from 'azure-pipelines-task-lib/toolrunner';
 import { splitCommandOptions, splitNonEmptyLines } from './argument-builder';
 import { detectBackendCloud } from './backend-detection';
@@ -181,7 +182,10 @@ export function preparePolicyEnforcement(
     workingDirectory: string,
     binaryName: string,
 ): PolicyEnforcement {
-    const inputPaths = POLICY_COMMANDS.has(command) ? splitNonEmptyLines(tasks.getInput('policyPaths', false)) : [];
+    // Read through the package's silent reader, like every other path-shaped input:
+    // task-lib's getInput debug-logs the raw value before anything can register a
+    // credential embedded in it.
+    const inputPaths = POLICY_COMMANDS.has(command) ? splitNonEmptyLines(readUrlInput('policyPaths', false)) : [];
     if (inputPaths.length === 0 && policyPathsInCommandOptions(commandOptions).length === 0) {
         return PolicyEnforcement.inactive;
     }
