@@ -144,6 +144,24 @@ describe('Terraform Policy results: reading the -json events', function () {
     });
 });
 
+describe('Terraform Policy results: a real HCP Terraform run', function () {
+    // fixtures/terraform-policy/plan-mandatory-json: `terraform plan -json -policies`
+    // against HCP Terraform (Terraform 1.17.2, tfpolicy-plugin 0.5.0), one mandatory
+    // failure, a policy whose value is not known until apply, and the rest passing.
+    it('reads every policy result Terraform reported, with its level and message', () => {
+        const run = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'terraform-policy', 'plan-mandatory-json.json'), 'utf-8'));
+        const events = run.stdout.split('\n').map(parsePolicyEvent).filter((e: unknown) => e);
+        const cases = buildPolicyCases(events);
+        assert.deepStrictEqual(summarizePolicyCases(cases), { passed: 6, failed: 1, unknown: 2 });
+        const failed = cases.find(c => c.outcome === 'failed')!;
+        assert.strictEqual(failed.name, 'resource_policy.local_file.no_forbidden_content on local_file.bad[0]');
+        assert.strictEqual(failed.enforcementLevel, 'mandatory');
+        assert.deepStrictEqual(failed.messages, ["Condition not met: A file must not contain 'forbidden'."]);
+        assert.ok(cases.some(c => c.name === 'provider_policy.local.supported_version on provider["registry.terraform.io/hashicorp/local"]' && c.outcome === 'passed'));
+        assert.ok(cases.filter(c => c.outcome === 'unknown').every(c => c.name.startsWith('resource_policy.local_file.has_id on ')));
+    });
+});
+
 describe('Terraform Policy results: publishing from plan, apply and destroy', function () {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- monkeypatch the shared task-lib module
     const t = tasks as any;
@@ -262,7 +280,7 @@ describe('Terraform Policy results: publishing from plan, apply and destroy', fu
             });
 
             it('reports a setup failure as a failed result, and the step fails', async () => {
-                await assert.rejects(() => handlerPrinting([SETUP_ERROR]).executeCommand(command), /NOT checked/);
+                await assert.rejects(() => handlerPrinting([SETUP_ERROR]).executeCommand(command), /NOT fully checked/);
                 assert.ok(published[0].xml.includes('name="Policy engine setup"') && published[0].xml.includes('failures="1"'), published[0].xml);
                 assert.strictEqual(variables.policyResult, 'failed');
             });

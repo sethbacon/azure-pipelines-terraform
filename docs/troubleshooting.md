@@ -355,6 +355,18 @@ variables:
 Add the `PipelinePolicyAgentInstaller@1` task before `PipelineTerraformPolicyCheck@1`,
 or set the check task's `policyAgentPath` to the binary explicitly.
 
+### Terraform Policy: "mandatory policy check(s) failed"
+
+A `mandatory` or `mandatory_overridable` policy failed. Terraform prints
+`Error: Condition not met` for it but completes the command anyway when it runs
+on the agent, so the task fails the step instead; the message names each policy
+(and, with `-json`, the resource). Fix the configuration or the policy. A
+pipeline has no override; `mandatory_overridable` behaves like `mandatory`.
+
+If the failing step was an `apply` without a saved plan, the changes were made
+before the policy was evaluated. Make a `plan` step with `policyPaths` the gate
+and apply its saved plan; see [Terraform Policy](yaml-examples.md#terraform-policy).
+
 ### Terraform Policy: "reported an error but still exited successfully while policies were requested"
 
 The step set `policyPaths` (or `-policies` in `commandOptions`) and Terraform could
