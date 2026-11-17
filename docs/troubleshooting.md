@@ -380,6 +380,25 @@ Terraform's policy engine only runs for an HCP Terraform or Terraform Enterprise
 backend. With any other backend, evaluate OPA or Sentinel policies against the plan
 JSON with `PipelineTerraformPolicyCheck@1`.
 
+### Policy tests: "ran no tests; refusing to treat that as a pass"
+
+`mode: test` found no test case to run. Each engine exits 0 in that case, so
+the task fails the step itself. Check where the engine looks:
+
+- Sentinel: `test/<policy>/*.hcl` beside each `.sentinel` file, under the policy
+  source.
+- OPA: rules named `test_...` in `.rego` files under the policy source.
+- Terraform Policy: `.policytest.hcl` files directly in `tfpolicyTestsDir`
+  (default `tests`); `tfpolicy` does not search subdirectories.
+
+### Policy tests: tfpolicy "Could not load provider schemas"
+
+`tfpolicy test` downloads the providers declared in each policy's
+`required_providers` to check test data against their schemas. Give each
+provider a bounded `version` constraint (an unbounded one can select a release
+too old to load), and give the agent registry access or a provider mirror
+(`PipelineTerraformProviderMirror@1` earlier in the job).
+
 ### OPA: no violations reported when you expect some
 
 - Confirm `decisionPath` matches your package/rule (e.g. `terraform/deny` →

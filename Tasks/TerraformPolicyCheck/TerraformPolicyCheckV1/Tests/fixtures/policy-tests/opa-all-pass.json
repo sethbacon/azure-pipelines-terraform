@@ -1,0 +1,4 @@
+{
+ "exitCode": 0,
+ "stdout": "[\n  {\n    \"location\": {\n      \"file\": \"opa-pass/files_test.rego\",\n      \"row\": 10,\n      \"col\": 1\n    },\n    \"package\": \"data.terraform.files_test\",\n    \"name\": \"test_fine_allowed\",\n    \"duration\": 262070\n  },\n  {\n    \"location\": {\n      \"file\": \"opa-pass/files_test.rego\",\n      \"row\": 6,\n      \"col\": 1\n    },\n    \"package\": \"data.terraform.files_test\",\n    \"name\": \"test_forbidden_denied\",\n    \"duration\": 335570\n  }\n]\n"
+}

@@ -56,10 +56,13 @@ const DOWNLOAD_RETRY = { retries: 2, baseDelayMs: 250, maxBackoffMs: 2000 };
  *
  * `tfpolicy-plugin` is the engine Terraform itself launches for Terraform Policy
  * (`terraform plan -policies=...`, Terraform 1.17+); it is not run directly.
+ * `tfpolicy` is Terraform Policy's own CLI, which validates and tests policies
+ * (PipelineTerraformPolicyCheck `mode: test`).
  */
 const HASHICORP_AGENTS: ReadonlyMap<string, string> = new Map([
     ["sentinel", "Sentinel"],
     ["tfpolicy-plugin", "tfpolicy-plugin"],
+    ["tfpolicy", "tfpolicy"],
 ]);
 
 /** Terraform reads the path of its policy engine from this variable. */

@@ -59,14 +59,18 @@ function xmlEscape(value: string): string {
  * resource values, so this is written via the same writeSecretFile primitive
  * as writeResultsFile above.
  */
-export function writeJUnit(cases: PolicyCase[], engine: string): string {
-    const failures = cases.filter(c => !c.passed).length;
-    const suiteName = `Terraform Policy Check (${engine})`;
+export function writeJUnit(cases: PolicyCase[], engine: string, title?: string): string {
+    const suiteName = title ?? `Terraform Policy Check (${engine})`;
+    const failures = cases.filter(c => !c.passed && !c.skipped).length;
+    const skipped = cases.filter(c => c.skipped).length;
 
     const body = cases.map(c => {
-        const open = `    <testcase classname="${xmlEscape(suiteName)}" name="${xmlEscape(c.name)}">`;
+        const open = `    <testcase classname="${xmlEscape(c.group ?? suiteName)}" name="${xmlEscape(c.name)}">`;
         if (c.passed) {
             return `${open}</testcase>`;
+        }
+        if (c.skipped) {
+            return `${open}\n      <skipped/>\n    </testcase>`;
         }
         const message = xmlEscape(c.message || `Policy ${c.name} failed`);
         return `${open}\n      <failure message="${message}">${message}</failure>\n    </testcase>`;
@@ -74,7 +78,7 @@ export function writeJUnit(cases: PolicyCase[], engine: string): string {
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
-  <testsuite name="${xmlEscape(suiteName)}" tests="${cases.length}" failures="${failures}">
+  <testsuite name="${xmlEscape(suiteName)}" tests="${cases.length}" failures="${failures}"${skipped ? ` skipped="${skipped}"` : ''}>
 ${body}
   </testsuite>
 </testsuites>
@@ -86,11 +90,11 @@ ${body}
 }
 
 /** Publishes the JUnit XML so policy outcomes appear in the pipeline Tests tab. */
-export function publishJUnit(xmlPath: string, engine: string): void {
+export function publishJUnit(xmlPath: string, engine: string, title?: string): void {
     tasks.command('results.publish', {
         type: 'JUnit',
         mergeResults: 'true',
-        runTitle: `Terraform Policy Check (${engine})`
+        runTitle: title ?? `Terraform Policy Check (${engine})`
     }, xmlPath);
 }
 

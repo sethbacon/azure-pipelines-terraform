@@ -15,7 +15,7 @@
 - [Cross-cloud state backends](#cross-cloud-state-backends) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
 - [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON, with an optional SARIF report
   - [`PipelinePolicyAgentInstaller@1`](#pipelinepolicyagentinstaller1) — Install OPA, Sentinel or Terraform's `tfpolicy-plugin` from the official release, a private registry or a mirror
-  - [`PipelineTerraformPolicyCheck@1`](#pipelineterraformpolicycheck1) — Evaluate OPA or Sentinel policies against plan JSON
+  - [`PipelineTerraformPolicyCheck@1`](#pipelineterraformpolicycheck1) — Evaluate OPA or Sentinel policies against plan JSON, or run a policy repository's own tests
 - [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
 - [`PipelineTerraformDocsInstaller@1`](#pipelineterraformdocsinstaller1) — Install terraform-docs
@@ -1820,7 +1820,7 @@ OPA's `.sha256` file only proves the download arrived intact, not who published 
 # OPA from GitHub releases (default)
 - task: PipelinePolicyAgentInstaller@1
   inputs:
-    policyAgent: 'opa'              # opa | sentinel | tfpolicy-plugin
+    policyAgent: 'opa'              # opa | sentinel | tfpolicy-plugin | tfpolicy
     version: 'latest'
     downloadSource: 'official'      # official | registry | mirror
 
@@ -2173,6 +2173,53 @@ enforced. `policyRepoSubdir` selects a folder inside the clone and cannot point
 outside it. `policyRepoToken` authenticates a private repository without putting
 the token in the URL or in the git command line, so it must be a secret variable,
 and `policyRepoUrl` must not carry a `user:password@` part.
+
+#### Test policies in their own pipeline
+
+`mode: test` runs a policy repository's own tests, so a broken policy fails the
+pipeline of the repository that holds it rather than an infrastructure pipeline
+later. The default, `mode: evaluate`, is the plan evaluation every other
+example on this page uses. Each test case is published to the **Tests** tab under "Policy tests
+(<engine>)"; `policyResult` is `passed` when no test failed, and
+`violationCount` is the number of failed tests. `inputFile` and the evaluation
+inputs do not apply, and no SARIF report is written.
+
+- **Sentinel** runs `sentinel test` from the policy source, which finds each
+  policy's cases in `test/<policy>/*.hcl`. A policy with no test cases is
+  reported as a warning.
+- **OPA** runs `opa test --bundle` on the policy source, the same loading as
+  evaluation; tests are the rules whose names start with `test_`. A skipped
+  (`todo_`) test is reported as skipped, not failed.
+- **Terraform Policy** (`engine: tfpolicy`) runs `tfpolicy test`. It does not
+  search subdirectories, so `tfpolicyPoliciesDir` and `tfpolicyTestsDir` name the
+  directories of `.policy.hcl` and `.policytest.hcl` files, relative to the policy
+  source. The defaults, `policies` and `tests`, match HashiCorp's recommended
+  layout. `tfpolicy` downloads the providers the policies declare to check test
+  data against their schemas, so the agent needs registry access or a provider
+  mirror (`PipelineTerraformProviderMirror@1` earlier in the job), and each
+  provider needs a bounded version constraint.
+
+A run in which the engine ran no test fails the step: an empty test suite is
+not a passing one, although each engine exits 0 for it.
+
+```yaml
+# The policy repository's own pipeline: checked-out sources are the policy source.
+steps:
+  - task: PipelinePolicyAgentInstaller@1
+    inputs:
+      policyAgent: 'tfpolicy'        # or 'sentinel' / 'opa'
+      version: '0.5.0'
+
+  - task: PipelineTerraformPolicyCheck@1
+    displayName: 'Policy tests'
+    inputs:
+      mode: 'test'
+      engine: 'tfpolicy'             # or 'sentinel' / 'opa'
+      policySource: 'path'
+      policyPath: '$(Build.SourcesDirectory)'
+      tfpolicyPoliciesDir: 'policies'  # tfpolicy only; the defaults shown
+      tfpolicyTestsDir: 'tests'
+```
 
 #### Emit a SARIF report
 
