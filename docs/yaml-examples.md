@@ -10,10 +10,11 @@
   - [Additional commands](#additional-commands) — validate, fmt, get, output, show, workspace, state, refresh, import, forceunlock, custom, test
   - [Variables and var files](#variables-and-var-files) — inline variables, var files, secure var files
   - [HCP Terraform / Terraform Cloud backend](#hcp-terraform--terraform-cloud-backend), [generic and local backends](#generic-and-local-backends)
+  - [Terraform Policy](#terraform-policy) — have Terraform 1.17+ evaluate `.policy.hcl` policies during init, plan, apply and destroy (HCP Terraform backends)
   - [Full pipeline example (AzureRM)](#full-pipeline-example-azurerm)
 - [Cross-cloud state backends](#cross-cloud-state-backends) — AzureRM state with AWS/GCP resources; HCP Terraform with AzureRM resources
 - [Policy as code](#policy-as-code) — Install OPA/Sentinel and evaluate policies against plan JSON, with an optional SARIF report
-  - [`PipelinePolicyAgentInstaller@1`](#pipelinepolicyagentinstaller1) — Install OPA or Sentinel from the official release, a private registry or a mirror
+  - [`PipelinePolicyAgentInstaller@1`](#pipelinepolicyagentinstaller1) — Install OPA, Sentinel or Terraform's `tfpolicy-plugin` from the official release, a private registry or a mirror
   - [`PipelineTerraformPolicyCheck@1`](#pipelineterraformpolicycheck1) — Evaluate OPA or Sentinel policies against plan JSON
 - [`PipelineTerraformDriftReport@1`](#pipelineterraformdriftreport1) — Summarise plan drift, optional SARIF report + TSM callback
 - [`PipelineTerraformModulePublish@1`](#pipelineterraformmodulepublish1) — Publish a module version to HCP Terraform or a private registry
@@ -1301,6 +1302,74 @@ The file is downloaded from the Secure Files library to a temporary location, pa
 
 ---
 
+### Terraform Policy
+
+Terraform 1.17 and later can evaluate policies itself: `.policy.hcl` files, checked while Terraform runs rather than against plan JSON afterwards. `policyPaths` takes one policy directory or file per line, relative to `workingDirectory`, and passes each as `-policies=<path>`. It applies to `init` (provider and module sources, before they are downloaded), `plan`, `apply` and `destroy`.
+
+Three things have to be true, and the task stops the step before running Terraform when one of the first two is not:
+
+- **The state backend is HCP Terraform or Terraform Enterprise** (`backendType: hcp`), in an organization entitled to policy enforcement. Terraform's policy engine checks that entitlement through the backend and refuses to start with any other backend. For those, evaluate OPA or Sentinel policies with [`PipelineTerraformPolicyCheck@1`](#pipelineterraformpolicycheck1) instead.
+- **The policy engine is on the agent.** Terraform launches a separate binary, `tfpolicy-plugin`. Install it with `PipelinePolicyAgentInstaller@1`, which also sets `TF_POLICY_PLUGIN` to the verified binary so Terraform runs that one. It is proprietary HashiCorp software under HashiCorp's own licence terms, which ship inside the download.
+- **The binary is Terraform 1.17 or later.** Older versions reject the flag themselves; OpenTofu has no equivalent and the task refuses it.
+
+Terraform itself does not fail `plan`, `apply` or `destroy` when the policy engine cannot start or cannot load the policies: it prints an error, carries on without any policy, and exits successfully. Only `init` stops. So on a step that asks for policies, the task fails the step whenever Terraform printed an error and still exited successfully. For `apply` and `destroy` the changes have already been made by then; the failure tells you they were not checked. The same checks apply when `-policies` is passed through `commandOptions`, or through the `custom` command.
+
+Set `policyPaths` on every step that should be checked. A saved plan does not carry policies to the step that applies it, and policies that read values known only after apply are evaluated during `apply`.
+
+```yaml
+steps:
+  - task: PipelineTerraformInstaller@1
+    inputs:
+      binary: 'terraform'
+      terraformVersion: '1.17.2'
+
+  - task: PipelinePolicyAgentInstaller@1
+    displayName: 'Install the Terraform Policy engine'
+    inputs:
+      policyAgent: 'tfpolicy-plugin'
+      version: '0.5.0'
+
+  - task: PipelineTerraformTask@5
+    displayName: 'Terraform Init'
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+      backendType: 'hcp'
+      backendHCPToken: '$(HCP_TOKEN)'
+      backendHCPOrganization: 'my-org'
+      backendHCPWorkspace: 'azure-prod'
+      policyPaths: '$(System.DefaultWorkingDirectory)/policies'
+
+  - task: PipelineTerraformTask@5
+    name: terraformPlan
+    displayName: 'Terraform Plan'
+    inputs:
+      provider: 'azurerm'
+      command: 'plan'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+      commandOptions: '-out=tfplan'
+      environmentServiceNameAzureRM: 'my-azure-service-connection'
+      backendHCPToken: '$(HCP_TOKEN)'
+      policyPaths: '$(System.DefaultWorkingDirectory)/policies'
+
+  - task: PipelineTerraformTask@5
+    displayName: 'Terraform Apply'
+    condition: and(succeeded(), eq(variables['terraformPlan.changesPresent'], 'true'))
+    inputs:
+      provider: 'azurerm'
+      command: 'apply'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+      commandOptions: 'tfplan'
+      environmentServiceNameAzureRM: 'my-azure-service-connection'
+      backendHCPToken: '$(HCP_TOKEN)'
+      policyPaths: '$(System.DefaultWorkingDirectory)/policies'
+```
+
+As with any HCP Terraform backend used from this task, set the workspace's execution mode to Local so Terraform runs on the agent.
+
+---
+
 ### Generic and local backends
 
 `backendType: 'generic'` passes `backendConfigFile` and `backendConfigArgs` to `terraform init` as `-backend-config` options, which suits a backend that has no dedicated inputs, such as `http` or `pg`. The configuration must declare an empty block for that backend (for example `backend "http" {}`), and the values given here complete it. `backendConfigFile` is the path of a `.tfbackend` file, and every line of `backendConfigArgs` that is a `key=value` pair becomes its own flag; lines that start with `#` are ignored.
@@ -1698,6 +1767,11 @@ on each state command.
 `PipelineTerraformPolicyCheck@1` evaluates policies with it against Terraform plan
 JSON. The natural chain is plan → show -json → policy check.
 
+Terraform 1.17's own policy engine works differently: Terraform evaluates the
+policies while it runs, and only with an HCP Terraform backend. See
+[Terraform Policy](#terraform-policy); the installer below also installs its
+engine, `tfpolicy-plugin`.
+
 ### PipelinePolicyAgentInstaller@1
 
 Downloads OPA or Sentinel, verifies it, caches it in the agent tool cache and
@@ -1719,7 +1793,7 @@ OPA's `.sha256` file only proves the download arrived intact, not who published 
 # OPA from GitHub releases (default)
 - task: PipelinePolicyAgentInstaller@1
   inputs:
-    policyAgent: 'opa'              # opa | sentinel
+    policyAgent: 'opa'              # opa | sentinel | tfpolicy-plugin
     version: 'latest'
     downloadSource: 'official'      # official | registry | mirror
 
@@ -1729,7 +1803,19 @@ OPA's `.sha256` file only proves the download arrived intact, not who published 
     policyAgent: 'sentinel'
     version: '0.40.0'
     downloadSource: 'official'
+
+# Terraform Policy's engine, verified the same way as Sentinel. Also sets
+# TF_POLICY_PLUGIN, which is where Terraform looks for it.
+- task: PipelinePolicyAgentInstaller@1
+  inputs:
+    policyAgent: 'tfpolicy-plugin'
+    version: '0.5.0'
+    downloadSource: 'official'
 ```
+
+`tfpolicy-plugin` follows Sentinel everywhere on this page: the same signed
+`SHA256SUMS`, the same `requireGpgSignature`, and the same mirror layout with
+`tfpolicy-plugin` in place of `sentinel` in the file names.
 
 #### Install from an internal mirror
 

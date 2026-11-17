@@ -10,7 +10,7 @@ This extension provides:
 - **PipelineTerraformProviderMirror** -- Configure Terraform to download providers from a network mirror instead of the public registry
 - **PipelineTerraformTask** -- Execute Terraform commands with provider authentication and backend state management
 - **PipelineTerraformModulePublish** -- Publish a module version to HCP Terraform or a private Terraform registry
-- **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA or Sentinel) on the pipeline agent
+- **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA, Sentinel or Terraform's own `tfpolicy-plugin`) on the pipeline agent
 - **PipelineTerraformPolicyCheck** -- Evaluate OPA or Sentinel policies against Terraform plan JSON
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
@@ -51,7 +51,7 @@ Runs on **Windows**, **Linux**, and **macOS** agents.
 - **SARIF output**: PolicyCheck and DriftReport can emit a SARIF report for code-scanning / security dashboards
 - **Optional service connection for `test`**: run unit tests without provider auth, or provide a service connection for integration tests that provision real resources
 
-> **Download verification trust model:** Terraform and Sentinel downloads are verified against a GPG-signed `SHA256SUMS` (HashiCorp's pinned key); OpenTofu uses cosign keyless verification. OPA and terraform-docs publish no signature, so they are verified by their GitHub-release SHA256 checksum (same-origin — transport integrity, not independent authenticity), enforced fail-closed by default. See [SECURITY.md](SECURITY.md).
+> **Download verification trust model:** Terraform, Sentinel and tfpolicy-plugin downloads are verified against a GPG-signed `SHA256SUMS` (HashiCorp's pinned key); OpenTofu uses cosign keyless verification. OPA and terraform-docs publish no signature, so they are verified by their GitHub-release SHA256 checksum (same-origin — transport integrity, not independent authenticity), enforced fail-closed by default. See [SECURITY.md](SECURITY.md).
 
 ## Quick Start
 

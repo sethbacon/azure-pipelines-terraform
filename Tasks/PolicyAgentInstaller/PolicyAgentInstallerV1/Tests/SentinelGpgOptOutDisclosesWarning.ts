@@ -3,7 +3,7 @@ import tmrm = require('azure-pipelines-task-lib/mock-run');
 import path = require('path');
 
 // M12 mutation-coverage gap: the sentinel/official call site's
-// `if (!gpgVerified)` disclosure guard in downloadSentinelOfficial was never
+// `if (!gpgVerified)` disclosure guard in downloadHashicorpOfficial was never
 // asserted against its own message -- SentinelGpgSignatureUnavailable.ts
 // exercises the same permitted-skip shape but only asserts tr.succeeded, so a
 // mutation forcing gpgVerified to always read true survived unnoticed. The
