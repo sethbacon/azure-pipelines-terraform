@@ -18,9 +18,10 @@
 # everyone the gate is about its own shape rather than about the property.
 # Pinned at v1.3.0, which carries that fix.
 #
-# script-ref MUST equal the pin on the `uses:` line: the checker is taken from
-# shared-workflows at that commit, so this repo cannot weaken its own gate by
-# editing a local copy -- there is no local copy.
+# The checker is taken from shared-workflows at the commit on the `uses:` line,
+# so this repo cannot weaken its own gate by editing a local copy -- there is
+# no local copy. Since shared-workflows v1.30.0 the gate reads that commit from
+# this checkout, so no script-ref input is passed.
 name: Workflow Hardening
 
 "on":
@@ -40,5 +41,3 @@ concurrency:
 jobs:
   workflow-hardening:
     uses: 4cloudguru/shared-workflows/.github/workflows/workflow-hardening.yml@51b396a2f7035e9358ebbd942425cc31bb9b81c9 # v1.30.0
-    with:
-      script-ref: c52ee27a03d06eee94e13c7bb56385d4edfb94d4
