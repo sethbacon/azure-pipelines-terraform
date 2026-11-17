@@ -277,13 +277,15 @@ describe('mode test: running each engine', function () {
         // [engine, fixture, expected args, silent]
         ['sentinel', 'sentinel-failures', ['test', '-json'], true],
         ['opa', 'opa-failures', ['test', '--bundle', '--format=json', '<root>'], true],
-        ['tfpolicy', 'tfpolicy-failures', ['test', '--policies=<root>/policies', '--tests=<root>/tests'], false],
+        ['tfpolicy', 'tfpolicy-failures', ['test', '--policies=<root:policies>', '--tests=<root:tests>'], false],
     ];
     for (const [engine, name, args, silent] of engines) {
         it(`${engine}: runs from the policy source with the engine's arguments and reports each failure`, async () => {
             answer = fixture(name);
             const result = await runPolicyTests(engine, `/usr/bin/${engine}`, root);
-            assert.deepStrictEqual(runs[0].args, args.map(a => a.replace('<root>', root)));
+            // path.join, not '/': the task builds these with the platform separator.
+            const expected = args.map(a => a.replace(/<root(?::(\w+))?>/, (_m, sub) => (sub ? path.join(root, sub) : root)));
+            assert.deepStrictEqual(runs[0].args, expected);
             assert.strictEqual(runs[0].options.cwd, root);
             assert.strictEqual(runs[0].options.silent, silent, silent ? 'JSON reports stay out of the log' : 'tfpolicy\'s own output is the readable log');
             assert.strictEqual(result.passed, false);
