@@ -4,6 +4,10 @@ export interface PolicyCase {
     passed: boolean;
     message?: string;
     enforcementLevel?: string;
+    /** A test the engine skipped (`mode: test`); reported as skipped, never as a failure. */
+    skipped?: boolean;
+    /** The policy, package or test file the case belongs to; the JUnit classname. */
+    group?: string;
 }
 
 /** Aggregate result of an engine evaluation. */

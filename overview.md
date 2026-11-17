@@ -10,8 +10,8 @@ This extension provides:
 - **PipelineTerraformProviderMirror** -- Configure Terraform to download providers from a network mirror instead of the public registry
 - **PipelineTerraformTask** -- Execute Terraform commands with provider authentication and backend state management
 - **PipelineTerraformModulePublish** -- Publish a module version to HCP Terraform or a private Terraform registry
-- **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA, Sentinel or Terraform's own `tfpolicy-plugin`) on the pipeline agent
-- **PipelineTerraformPolicyCheck** -- Evaluate OPA or Sentinel policies against Terraform plan JSON
+- **PipelinePolicyAgentInstaller** -- Install a policy engine (OPA, Sentinel, or Terraform Policy's `tfpolicy-plugin` and `tfpolicy`) on the pipeline agent
+- **PipelineTerraformPolicyCheck** -- Evaluate OPA or Sentinel policies against Terraform plan JSON, or run a policy repository's own tests (OPA, Sentinel, Terraform Policy)
 - **PipelineTerraformDriftReport** -- Summarise plan-detected drift and optionally report it to Terraform State Manager
 - **PipelineTerraformDocsInstaller** -- Install a specific version of terraform-docs on the pipeline agent
 - **PipelineTerraformDocs** -- Generate Terraform module documentation with terraform-docs

@@ -1,0 +1,4 @@
+{
+ "exitCode": 1,
+ "stdout": "\u001b[31mFailure!\u001b[0m Failed to read Terraform Policy files and tests.\n"
+}

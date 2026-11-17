@@ -1,0 +1,4 @@
+{
+ "exitCode": 1,
+ "stdout": "No Sentinel files were found to test.\n\nSentinel files are expected to end in the extension \".sentinel\".\nYou may also specify explicit files on the command-line as arguments.\n"
+}

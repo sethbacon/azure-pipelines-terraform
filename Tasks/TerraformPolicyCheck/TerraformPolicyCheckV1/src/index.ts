@@ -6,6 +6,7 @@ import { runOpa } from './opa-engine';
 import { runSentinel } from './sentinel-engine';
 import { runOpaPolicySet } from './opa-policy-set';
 import { runSentinelPolicySet } from './sentinel-policy-set';
+import { runPolicyTests } from './policy-tests';
 import { writeResultsFile, writeJUnit, publishJUnit, writeSarif } from './results';
 import { PolicyResult } from './types';
 
@@ -56,9 +57,24 @@ async function run() {
 
     try {
         const engine = tasks.getInput('engine') || 'opa';
+        const mode = tasks.getInput('mode') || 'evaluate';
+        if (mode !== 'evaluate' && mode !== 'test') {
+            throw new Error(`Invalid mode '${mode}': must be evaluate or test.`);
+        }
+        // An engine name this task does not know used to fall through to OPA.
+        const engines = mode === 'test' ? ['opa', 'sentinel', 'tfpolicy'] : ['opa', 'sentinel'];
+        if (!engines.includes(engine)) {
+            throw new Error(engine === 'tfpolicy'
+                ? "engine tfpolicy is only for mode 'test'. Terraform evaluates Terraform Policy itself: set policyPaths on PipelineTerraformTask."
+                : `Invalid engine '${engine}' for mode '${mode}': must be one of ${engines.join(', ')}.`);
+        }
 
-        const inputFile = path.resolve(tasks.getInput('inputFile', true)!);
-        if (!fs.existsSync(inputFile)) {
+        // mode: test runs the policy repository's own tests. Its outcome goes
+        // through the same outputs below, counted in test cases: policyResult is
+        // passed when no test failed, violationCount is the number of failed tests.
+        const testMode = mode === 'test';
+        const inputFile = testMode ? '' : path.resolve(tasks.getInput('inputFile', true)!);
+        if (!testMode && !fs.existsSync(inputFile)) {
             throw new Error(`Input file does not exist: ${inputFile}. Provide the JSON output of 'terraform show -json <plan>'.`);
         }
 
@@ -74,7 +90,9 @@ async function run() {
         }
 
         let result: PolicyResult;
-        if (engine === 'sentinel') {
+        if (testMode) {
+            result = await runPolicyTests(engine, agentPath, policyDir);
+        } else if (engine === 'sentinel') {
             result = policySet
                 ? await runSentinelPolicySet(agentPath, policyDir, inputFile, tempDirs)
                 : await runSentinel(agentPath, policyDir, inputFile, tempDirs);
@@ -90,16 +108,26 @@ async function run() {
         tasks.setVariable('policyResult', result.passed ? 'passed' : 'failed', false, true);
 
         if (tasks.getBoolInput('publishTestResults', false) && result.cases.length > 0) {
-            const xmlPath = writeJUnit(result.cases, engine);
-            publishJUnit(xmlPath, engine);
+            const title = testMode ? `Policy tests (${engine})` : undefined;
+            const xmlPath = writeJUnit(result.cases, engine, title);
+            publishJUnit(xmlPath, engine, title);
         }
 
-        if (tasks.getBoolInput('sarifOutput', false)) {
+        if (testMode && tasks.getBoolInput('sarifOutput', false)) {
+            tasks.warning('sarifOutput applies to policy evaluation; no SARIF report is written for policy tests.');
+        } else if (tasks.getBoolInput('sarifOutput', false)) {
             const sarifFilePath = writeSarif(result, engine, tasks.getInput('sarifPath', false));
             tasks.setVariable('sarifFilePath', sarifFilePath, false, true);
         }
 
-        if (result.passed) {
+        if (testMode) {
+            const counted = result.cases.filter(c => !c.skipped).length;
+            if (result.passed) {
+                tasks.setResult(tasks.TaskResult.Succeeded, `${counted} policy test(s) passed.`);
+            } else {
+                tasks.setResult(tasks.TaskResult.Failed, `${result.violations.length} of ${counted} policy test(s) failed.`);
+            }
+        } else if (result.passed) {
             const summary = result.violations.length > 0
                 ? `Policy check passed (${result.violations.length} non-blocking finding(s)).`
                 : 'Policy check passed.';
