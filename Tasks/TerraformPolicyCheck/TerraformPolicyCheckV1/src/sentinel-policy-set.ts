@@ -9,6 +9,7 @@ import { PolicyResult, PolicyCase } from './types';
 import { attachBoundedCapture } from './output-cap';
 import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
 import { hcl } from './sentinel-engine';
+import { withFreshSentinelCache } from './sentinel-cache';
 
 /**
  * Evaluates an HCP Terraform Sentinel policy set as HCP Terraform would
@@ -38,6 +39,11 @@ import { hcl } from './sentinel-engine';
  *   - A config with no `policy` block exits 0 with `result: true`.
  *   - A second import block for the same name is a fatal configuration error.
  *   - `tfrun` is not a built-in plugin; a policy that imports it cannot run here.
+ *     Declaring a module that imports it is harmless while no policy imports
+ *     that module.
+ *   - Sentinel writes a cache, `.sentinel/`, into the working directory, and
+ *     trusts the module paths a cache already there records; see
+ *     sentinel-cache.ts.
  */
 
 const SET_CONFIG = 'sentinel.hcl';
@@ -186,8 +192,10 @@ export async function runSentinelPolicySet(
     }
     assertNoTerraformImportOverride(setConfig);
 
-    // The policy set is never written to: the combined configuration goes to the
-    // agent's private temp directory, which the agent purges at job end.
+    // The task writes nothing into the policy set: the combined configuration
+    // goes to the agent's private temp directory, which the agent purges at job
+    // end. Sentinel itself writes its .sentinel cache there; withFreshSentinelCache
+    // removes it before and after the run.
     const configDir = path.join(tasks.getVariable('Agent.TempDirectory') || os.tmpdir(), `sentinel-config-${uuidV4()}`);
     tempFiles.push(configDir);
     fs.mkdirSync(configDir, { recursive: true });
@@ -208,11 +216,11 @@ export async function runSentinelPolicySet(
     // silent: the JSON report carries the full trace, plan values included. The
     // per-policy summary below is what belongs in the log; the report itself is
     // kept, owner-only, as resultsFilePath.
-    const code = await execWithTimeout(
+    const code = await withFreshSentinelCache(policyDir, () => execWithTimeout(
         tool,
         <IExecOptions>{ cwd: policyDir, ignoreReturnCode: true, silent: true },
         tasks.loc('PolicyEngineTimedOut', 'sentinel apply', TOOL_EXEC_TIMEOUT_MS),
-    );
+    ));
     capture.assertWithinCap();
 
     let outcome: SentinelSetOutcome;

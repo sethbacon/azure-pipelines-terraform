@@ -5,6 +5,7 @@ import fs = require('fs');
 import { PolicyCase, PolicyResult } from './types';
 import { attachBoundedCapture } from './output-cap';
 import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
+import { withFreshSentinelCache } from './sentinel-cache';
 
 /**
  * `mode: test` -- runs a policy repository's own tests and reports each test
@@ -253,11 +254,13 @@ export async function runPolicyTests(engine: string, agentPath: string, policyDi
     const capture = attachBoundedCapture(tool, (stream, text) => {
         if (stream === 'stdout') stdout += text; else stderr += text;
     });
-    const code = await execWithTimeout(
+    const runTests = (): Promise<number> => execWithTimeout(
         tool,
         <IExecOptions>{ cwd: policyDir, ignoreReturnCode: true, silent },
         tasks.loc('PolicyEngineTimedOut', `${engine} test`, TOOL_EXEC_TIMEOUT_MS),
     );
+    // sentinel test keeps its cache (.sentinel/test-*) in the policy source too.
+    const code = engine === 'sentinel' ? await withFreshSentinelCache(policyDir, runTests) : await runTests();
     capture.assertWithinCap();
 
     let outcome: TestOutcome;

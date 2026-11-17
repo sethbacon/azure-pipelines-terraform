@@ -7,6 +7,7 @@ import { randomUUID as uuidV4 } from 'crypto';
 import { PolicyResult, PolicyCase } from './types';
 import { attachBoundedCapture } from './output-cap';
 import { execWithTimeout, TOOL_EXEC_TIMEOUT_MS } from './exec-timeout';
+import { withFreshSentinelCache } from './sentinel-cache';
 
 /**
  * Evaluates Sentinel policies against Terraform plan JSON.
@@ -55,11 +56,13 @@ export async function runSentinel(
     // Bounded by a wall-clock deadline (#782): the byte-cap above stops an OOM but
     // not a hang, so a misbehaving sentinel or a pathological policy set is killed
     // rather than blocking until the ADO job timeout.
-    const code = await execWithTimeout(
+    // With sentinelConfigPath the working directory is the user's own; the
+    // generated configuration's is new, so it has no cache to arrive with.
+    const code = await withFreshSentinelCache(workingDir, () => execWithTimeout(
         tool,
         <IExecOptions>{ cwd: workingDir, ignoreReturnCode: true },
         tasks.loc('PolicyEngineTimedOut', 'sentinel apply', TOOL_EXEC_TIMEOUT_MS),
-    );
+    ));
     capture.assertWithinCap();
 
     if (code === 3 || code === 9) {

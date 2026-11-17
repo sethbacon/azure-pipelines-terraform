@@ -34,6 +34,8 @@ import './PolicyRepoUrlUserInfoL0';
 import './PolicySetL0';
 // mode: test -- a policy repository's own tests.
 import './PolicyTestsL0';
+// Sentinel's .sentinel cache is removed around every run.
+import './SentinelCacheL0';
 
 describe('TerraformPolicyCheck Test Suite', function () {
 
@@ -203,6 +205,37 @@ describe('TerraformPolicyCheck Test Suite', function () {
                 }, tr);
             } finally {
                 delete process.env['HCP_POLICY_SET_SCENARIO'];
+            }
+        });
+    }
+
+    // Every Sentinel run whose working directory is the policy source starts
+    // without the .sentinel cache the source arrived with, and leaves none
+    // behind (Tests/SentinelCacheScenario.ts). The generated-config run works in
+    // a directory the task creates, so it has no cache to arrive with.
+    for (const scenario of ['hcp-policy-set', 'test-mode', 'own-config']) {
+        it(`Sentinel cache: ${scenario} removes the cache the policy source carried`, async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), `tpc-sentinel-cache-${scenario}-`));
+            const cacheDir = path.join(root, 'policy', '.sentinel');
+            fs.mkdirSync(path.join(cacheDir, 'modules'), { recursive: true });
+            fs.mkdirSync(path.join(root, 'agent-temp'), { recursive: true });
+            fs.writeFileSync(path.join(cacheDir, 'modules', 'manifest.json'),
+                JSON.stringify({ records: [{ key: 'functions', source: '../functions.sentinel', sourceSum: '', dest: '/elsewhere/functions.sentinel' }] }));
+            process.env['SENTINEL_CACHE_SCENARIO'] = scenario;
+            process.env['SENTINEL_CACHE_ROOT'] = root;
+            try {
+                const tr = new ttm.MockTestRunner(path.join(__dirname, 'SentinelCacheScenario.js'));
+                await tr.runAsync();
+                runValidations(() => {
+                    assert(tr.succeeded, `task should have succeeded. errors: ${tr.errorIssues}`);
+                    assert(tr.stdout.includes(`Removed Sentinel's cache ${cacheDir}`),
+                        `the run must report removing the cache it arrived with; stdout: ${tr.stdout}`);
+                    assert(!fs.existsSync(cacheDir), 'no .sentinel cache may remain in the policy source');
+                }, tr);
+            } finally {
+                delete process.env['SENTINEL_CACHE_SCENARIO'];
+                delete process.env['SENTINEL_CACHE_ROOT'];
+                fs.rmSync(root, { recursive: true, force: true });
             }
         });
     }

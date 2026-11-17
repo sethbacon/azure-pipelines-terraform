@@ -452,6 +452,17 @@ The set's `sentinel.hcl` contains an `import` or `mock` block for `tfplan/v2`,
 from `inputFile`. Such blocks belong in a test configuration (for example under
 `test/<policy>/`), not in the set's root `sentinel.hcl`.
 
+### Sentinel: "Could not remove Sentinel's cache ... before running Sentinel"
+
+Sentinel records the paths of the modules and policies it loads in a `.sentinel`
+directory where it runs, and a later run there loads from those paths, so a
+cache that arrives with the policy source can make Sentinel evaluate files other
+than the source's. The task removes the cache before every run and stops when it
+cannot. Give the agent's account write access to the directory the error names
+(the policy source, or the directory of `sentinelConfigPath`), or delete the
+`.sentinel` directory there. Add `.sentinel` to the policy repository's
+`.gitignore` so a local run's cache is never committed.
+
 ### OPA hcpPolicySet: "requires a query to return an array"
 
 HCP Terraform decides a policy from the array its query returns: empty passes,
