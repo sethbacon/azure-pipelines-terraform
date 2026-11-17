@@ -217,14 +217,19 @@ export class ResultsPublisher {
                 .map(c => ({ ...c, messages: c.messages.map(m => scrubSecrets(m, knownSecrets)) }));
             const summary = summarizePolicyCases(cases);
 
-            const result = cases.length === 0 ? 'none' : summary.failed > 0 ? 'failed' : 'passed';
-            tasks.setVariable('policyResult', result, false, true);
-            tasks.setVariable('policyViolationCount', String(summary.failed), false, true);
-
+            // Both variables are written only from literals and a count, never from
+            // text Terraform or a policy supplied: an output variable is expanded into
+            // later steps' scripts.
             if (cases.length === 0) {
+                tasks.setVariable('policyResult', 'none', false, true);
+                tasks.setVariable('policyViolationCount', '0', false, true);
                 console.log(tasks.loc("PolicyResultsNone", command));
                 return;
             }
+            const violationCount = summary.failed;
+            tasks.setVariable('policyResult', violationCount > 0 ? 'failed' : 'passed', false, true);
+            tasks.setVariable('policyViolationCount', String(violationCount), false, true);
+
             if (droppedEvents > 0) {
                 tasks.warning(tasks.loc("PolicyResultsTruncated", droppedEvents));
             }

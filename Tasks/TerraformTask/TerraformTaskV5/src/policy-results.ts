@@ -131,12 +131,12 @@ export function buildPolicyCases(events: readonly PolicyEvent[]): PolicyCase[] {
     };
 
     // A replaced resource is evaluated twice under one address; the row keeps the worse verdict.
-    const rank: Record<PolicyOutcome, number> = { passed: 0, unknown: 1, failed: 2 };
+    const rank = new Map<PolicyOutcome, number>([['passed', 0], ['unknown', 1], ['failed', 2]]);
     for (const event of events) {
         if (event.type === 'policy_result') {
             const outcome = outcomeOf(event.result);
             const entry = caseFor(event, outcome);
-            if (rank[outcome] > rank[entry.outcome]) entry.outcome = outcome;
+            if (rank.get(outcome)! > rank.get(entry.outcome)!) entry.outcome = outcome;
             entry.enforcementLevel = entry.enforcementLevel ?? event.enforcementLevel;
             entry.suite = event.policySet ?? entry.suite;
         }
@@ -158,9 +158,8 @@ export function buildPolicyCases(events: readonly PolicyEvent[]): PolicyCase[] {
 }
 
 export function summarizePolicyCases(cases: readonly PolicyCase[]): PolicySummary {
-    const summary: PolicySummary = { passed: 0, failed: 0, unknown: 0 };
-    for (const c of cases) summary[c.outcome]++;
-    return summary;
+    const count = (outcome: PolicyOutcome): number => cases.filter(c => c.outcome === outcome).length;
+    return { passed: count('passed'), failed: count('failed'), unknown: count('unknown') };
 }
 
 // XML 1.0 excludes every C0 control character except tab, LF and CR; they cannot
