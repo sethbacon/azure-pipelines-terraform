@@ -129,6 +129,46 @@ describe('PolicyAgentInstaller Test Suite', function () {
         }, tr);
     });
 
+    // Terraform Policy's engine: published like Sentinel, so it must be fetched and
+    // verified like Sentinel -- under its own product name -- and exported where
+    // Terraform looks for it.
+    it('TfPolicyPluginOfficialLatestSuccess', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'TfPolicyPluginOfficialLatestSuccess.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            const base = 'https://releases.hashicorp.com/tfpolicy-plugin/0.5.0/tfpolicy-plugin_0.5.0_';
+            for (const expected of [
+                'fetchJson(https://checkpoint-api.hashicorp.com/v1/check/tfpolicy-plugin)',
+                `downloadTool(${base}linux_amd64.zip)`,
+                `fetchText(${base}SHA256SUMS)`,
+                `verifyGpgSignature(${base}SHA256SUMS.sig, required=true)`,
+                'extractZip(/tmp/tfpolicy-plugin.zip)',
+                '##vso[task.setvariable variable=TF_POLICY_PLUGIN;isOutput=false;issecret=false;]/tmp/tfpolicy-plugin-cached/tfpolicy-plugin',
+            ]) {
+                assert.ok(tr.stdout.includes(expected), `expected stdout to include ${expected}. stdout: ${tr.stdout}`);
+            }
+            assert.ok(!/sentinel|open-policy-agent/i.test(tr.stdout), 'must not touch another agent\'s artifacts. stdout: ' + tr.stdout);
+        }, tr);
+    });
+
+    it('EntryPointTfPolicyPluginVerify', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'EntryPointTfPolicyPluginVerify.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+        }, tr);
+    });
+
+    it('SentinelOfficialSuccess does not export TF_POLICY_PLUGIN', async () => {
+        const tr = new ttm.MockTestRunner(path.join(__dirname, 'SentinelOfficialSuccess.js'));
+        await tr.runAsync();
+        runValidations(() => {
+            assert.ok(tr.succeeded, 'task should have succeeded. errors: ' + tr.errorIssues);
+            assert.ok(!tr.stdout.includes('TF_POLICY_PLUGIN'), 'only tfpolicy-plugin is Terraform\'s policy engine. stdout: ' + tr.stdout);
+        }, tr);
+    });
+
     expectSuccess('SentinelOfficialSuccess');
     expectSuccess('OpaOfficialSuccess');
     expectSuccess('OpaLatestSuccess');

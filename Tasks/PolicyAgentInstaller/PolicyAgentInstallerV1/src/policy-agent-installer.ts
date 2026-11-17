@@ -49,11 +49,32 @@ const isWindows = os.type().match(/^Win/);
 const DOWNLOAD_RETRY = { retries: 2, baseDelayMs: 250, maxBackoffMs: 2000 };
 
 /**
- * Downloads the requested policy agent (Sentinel or OPA), verifies it, caches it
- * via the tool cache, and returns the path to the executable. Sentinel ships as a
- * GPG-signed zip on releases.hashicorp.com; OPA ships as a raw, sha256-verified
- * binary on GitHub releases. Both also support a private registry and custom
- * mirror source.
+ * The agents HashiCorp publishes: a zip on releases.hashicorp.com named
+ * `<agent>_<version>_<os>_<arch>.zip`, beside a GPG-signed SHA256SUMS, with the
+ * latest version on the checkpoint API under the same product name. Everything
+ * else this task installs is OPA, a raw binary from GitHub releases.
+ *
+ * `tfpolicy-plugin` is the engine Terraform itself launches for Terraform Policy
+ * (`terraform plan -policies=...`, Terraform 1.17+); it is not run directly.
+ */
+const HASHICORP_AGENTS: ReadonlyMap<string, string> = new Map([
+    ["sentinel", "Sentinel"],
+    ["tfpolicy-plugin", "tfpolicy-plugin"],
+]);
+
+/** Terraform reads the path of its policy engine from this variable. */
+export const TERRAFORM_POLICY_PLUGIN_AGENT = "tfpolicy-plugin";
+
+function isHashicorpAgent(agent: string): boolean {
+    return HASHICORP_AGENTS.has(agent);
+}
+
+/**
+ * Downloads the requested policy agent (Sentinel, tfpolicy-plugin or OPA),
+ * verifies it, caches it via the tool cache, and returns the path to the
+ * executable. The HashiCorp agents ship as a GPG-signed zip on
+ * releases.hashicorp.com; OPA ships as a raw, sha256-verified binary on GitHub
+ * releases. All also support a private registry and custom mirror source.
  */
 export async function downloadPolicyAgent(inputVersion: string): Promise<string> {
     const agent = tasks.getInput("policyAgent") || "opa";
@@ -103,8 +124,8 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
         verified = artifact.verified;
 
         let toolDir: string;
-        if (agent === "sentinel") {
-            // Sentinel is distributed as a zip archive.
+        if (isHashicorpAgent(agent)) {
+            // HashiCorp agents are distributed as a zip archive.
             toolDir = await tools.extractZip(artifact.path);
         } else {
             // OPA is distributed as a single raw binary; place it in its own dir
@@ -147,6 +168,12 @@ export async function downloadPolicyAgent(inputVersion: string): Promise<string>
     }
 
     tasks.setVariable('policyAgentLocation', exePath);
+    if (agent === TERRAFORM_POLICY_PLUGIN_AGENT) {
+        // Terraform looks for its policy engine here before the PATH, so a later
+        // Terraform step in this job runs exactly the binary verified above rather
+        // than whichever `tfpolicy-plugin` a PATH lookup happens to reach first.
+        tasks.setVariable('TF_POLICY_PLUGIN', exePath);
+    }
     return exePath;
 }
 
@@ -171,22 +198,23 @@ async function resolveVersion(agent: string, downloadSource: string, inputVersio
             assertEgressHostAllowed(hostname, parseAllowedHosts(tasks.getInput("registryAllowedHosts", false)), REGISTRY_EGRESS_MESSAGES));
     }
 
-    if (agent === "sentinel") {
-        return resolveLatestSentinel();
+    if (isHashicorpAgent(agent)) {
+        return resolveLatestHashicorp(agent);
     }
     return resolveLatestOpa();
 }
 
-async function resolveLatestSentinel(): Promise<string> {
-    console.log(tasks.loc("GettingLatestVersion", "Sentinel"));
+async function resolveLatestHashicorp(agent: string): Promise<string> {
+    const displayName = HASHICORP_AGENTS.get(agent)!;
+    console.log(tasks.loc("GettingLatestVersion", displayName));
     // Fail closed: if 'latest' cannot be resolved, throw rather than silently
     // installing a hardcoded stale version (a selective outage of only the version
     // endpoint must not force a silent downgrade). Matches TerraformDocsInstaller.
     let data: { current_version: string };
     try {
-        data = await fetchJson<{ current_version: string }>('https://checkpoint-api.hashicorp.com/v1/check/sentinel');
+        data = await fetchJson<{ current_version: string }>(`https://checkpoint-api.hashicorp.com/v1/check/${agent}`);
     } catch (err) {
-        throw new Error(`Failed to resolve the latest Sentinel version from the HashiCorp checkpoint API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
+        throw new Error(`Failed to resolve the latest ${displayName} version from the HashiCorp checkpoint API (${err instanceof Error ? err.message : err}). Pin an explicit 'version' instead of 'latest', or retry — refusing to silently fall back to a stale version.`);
     }
     if (!data.current_version) {
         throw new Error("HashiCorp checkpoint API returned invalid response: missing current_version");
@@ -196,7 +224,7 @@ async function resolveLatestSentinel(): Promise<string> {
 
 async function resolveLatestOpa(): Promise<string> {
     console.log(tasks.loc("GettingLatestVersion", "OPA"));
-    // Fail closed (same as resolveLatestSentinel): a request failure or malformed
+    // Fail closed (same as resolveLatestHashicorp): a request failure or malformed
     // response throws rather than silently downgrading to a pinned version.
     let data: { tag_name: string };
     try {
@@ -234,8 +262,8 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
             return result;
         }
         default: { // "official"
-            const result = agent === "sentinel"
-                ? await downloadSentinelOfficial(version)
+            const result = isHashicorpAgent(agent)
+                ? await downloadHashicorpOfficial(agent, version)
                 : await downloadOpaOfficial(version);
             tasks.setVariable('policyAgentDownloadedFrom', 'official');
             return result;
@@ -243,15 +271,15 @@ async function downloadArtifact(agent: string, downloadSource: string, version: 
     }
 }
 
-async function downloadSentinelOfficial(version: string): Promise<{ path: string; verified: boolean }> {
+async function downloadHashicorpOfficial(agent: string, version: string): Promise<{ path: string; verified: boolean }> {
     const osPlatform = getPlatformString();
     const arch = getArchString();
-    const zipFileName = `sentinel_${version}_${osPlatform}_${arch}.zip`;
-    const downloadUrl = `https://releases.hashicorp.com/sentinel/${version}/${zipFileName}`;
+    const zipFileName = `${agent}_${version}_${osPlatform}_${arch}.zip`;
+    const downloadUrl = `https://releases.hashicorp.com/${agent}/${version}/${zipFileName}`;
 
-    const zipPath = await downloadTo(downloadUrl, `sentinel-${version}-${uuidV4()}.zip`);
+    const zipPath = await downloadTo(downloadUrl, `${agent}-${version}-${uuidV4()}.zip`);
 
-    const sha256SumsUrl = `https://releases.hashicorp.com/sentinel/${version}/sentinel_${version}_SHA256SUMS`;
+    const sha256SumsUrl = `https://releases.hashicorp.com/${agent}/${version}/${agent}_${version}_SHA256SUMS`;
     const sha256SumsContent = await fetchText(sha256SumsUrl);
     const requireGpg = getBoolInputDefaultTrue("requireGpgSignature");
     // A failed signature or checksum check DELETES the zip rather than leaving a
@@ -360,7 +388,7 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
     // host, not a complete DNS-rebinding defense.
     await assertEgressHostAllowed(initialHost, allowedHosts, REGISTRY_EGRESS_MESSAGES);
 
-    const ext = agent === "sentinel" ? ".zip" : (isWindows ? ".exe" : "");
+    const ext = isHashicorpAgent(agent) ? ".zip" : (isWindows ? ".exe" : "");
     const fileName = `${agent}-${version}-${uuidV4()}${ext}`;
     let filePath: string;
     try {
@@ -394,8 +422,8 @@ async function downloadFromRegistry(agent: string, version: string, registryUrl:
 
     if (data.sha256) {
         await discardArtifactOnFailure(filePath, () => verifySha256(filePath, data.sha256), discardLog);
-        if (agent === "sentinel") {
-            // Sentinel's official and mirror sources verify SHA256SUMS against the
+        if (isHashicorpAgent(agent)) {
+            // A HashiCorp agent's official and mirror sources verify SHA256SUMS against the
             // pinned HashiCorp GPG key; this path has no signature verifier at all, and
             // requireGpgSignature does not apply to it (task.json hides the input via
             // a UI-only visibleRule). OPA has no GPG anchor on ANY source, so this
@@ -444,12 +472,12 @@ async function downloadFromMirror(agent: string, version: string, mirrorBaseUrl:
     const osPlatform = getPlatformString();
     const arch = getArchString();
 
-    if (agent === "sentinel") {
-        const zipFileName = `sentinel_${version}_${osPlatform}_${arch}.zip`;
+    if (isHashicorpAgent(agent)) {
+        const zipFileName = `${agent}_${version}_${osPlatform}_${arch}.zip`;
         const downloadUrl = `${mirrorBaseUrl}/${version}/${zipFileName}`;
-        const zipPath = await downloadFromMirrorUrl(downloadUrl, `sentinel-${version}-${uuidV4()}.zip`);
+        const zipPath = await downloadFromMirrorUrl(downloadUrl, `${agent}-${version}-${uuidV4()}.zip`);
 
-        const sha256SumsUrl = `${mirrorBaseUrl}/${version}/sentinel_${version}_SHA256SUMS`;
+        const sha256SumsUrl = `${mirrorBaseUrl}/${version}/${agent}_${version}_SHA256SUMS`;
         const verified = await verifyMirrorChecksum(zipPath, sha256SumsUrl, zipFileName);
         return { path: zipPath, verified };
     }
@@ -683,7 +711,7 @@ async function reverifyUnmarkedCacheEntry(agent: string, downloadSource: string,
         tasks.setVariable('policyAgentDownloadedFrom', 'cache');
     }
     let freshExePath: string;
-    if (agent === "sentinel") {
+    if (isHashicorpAgent(agent)) {
         const freshDir = await tools.extractZip(artifact.path);
         freshExePath = findExecutable(freshDir, agent);
         if (!freshExePath) {

@@ -82,7 +82,7 @@ const SITE_ROWS: SiteRow[] = [
     { file: TF, fn: 'downloadZipFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TF, fn: 'downloadZipFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: TF, fn: 'downloadZipFromOpenTofu', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
-    { file: PA, fn: 'downloadSentinelOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
+    { file: PA, fn: 'downloadHashicorpOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: PA, fn: 'downloadOpaOfficial', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: PA, fn: 'downloadFromRegistry', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
     { file: PA, fn: 'downloadFromMirror', kind: 'DISCARD', verdict: 'REPORTS-DISCARD' },
@@ -150,9 +150,9 @@ const SITE_ROWS: SiteRow[] = [
 
     // ---------------- PolicyAgentInstallerV1: Sentinel (GPG) + OPA (sha256 only) ---
     { file: PA, fn: 'downloadPolicyAgent', kind: 'CACHE-ADMIT', verdict: 'REVERIFIES-AND-GATES' },
-    { file: PA, fn: 'downloadSentinelOfficial', kind: 'ACQUIRE', verdict: 'VERIFIED' },
-    { file: PA, fn: 'downloadSentinelOfficial', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
-    { file: PA, fn: 'downloadSentinelOfficial', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+    { file: PA, fn: 'downloadHashicorpOfficial', kind: 'ACQUIRE', verdict: 'VERIFIED' },
+    { file: PA, fn: 'downloadHashicorpOfficial', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
+    { file: PA, fn: 'downloadHashicorpOfficial', kind: 'VERIFY', verdict: 'DISCARDS-ON-FAILURE' },
     { file: PA, fn: 'downloadOpaOfficial', kind: 'ACQUIRE', verdict: 'VERIFIED' },
     // OPA ships no detached signature — its trust root is the sha256 published beside
     // the asset on the same GitHub release. There is no signature toggle to honor

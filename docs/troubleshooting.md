@@ -355,6 +355,31 @@ variables:
 Add the `PipelinePolicyAgentInstaller@1` task before `PipelineTerraformPolicyCheck@1`,
 or set the check task's `policyAgentPath` to the binary explicitly.
 
+### Terraform Policy: "reported an error but still exited successfully while policies were requested"
+
+The step set `policyPaths` (or `-policies` in `commandOptions`) and Terraform could
+not start its policy engine or load the policies. Terraform prints that as an error
+and then runs `plan`, `apply` or `destroy` without any policy, exiting successfully;
+the task fails the step so the run is not mistaken for a checked one. The quoted
+line is Terraform's own error. The usual causes:
+
+- `entitlement check failed`: the HCP Terraform organization is not entitled to
+  policy enforcement, or the step has no HCP credentials (`backendHCPToken`).
+- `Failed to connect to policy engine`: `tfpolicy-plugin` is missing or not
+  executable. Run `PipelinePolicyAgentInstaller@1` with
+  `policyAgent: 'tfpolicy-plugin'` earlier in the same job.
+- An error in a `.policy.hcl` file, or a Terraform version the policies do not allow.
+
+If the failing step was an `apply` or `destroy`, its changes were made and were not
+checked against the policies. See
+[Terraform Policy](yaml-examples.md#terraform-policy).
+
+### Terraform Policy: "requires an HCP Terraform or Terraform Enterprise backend"
+
+Terraform's policy engine only runs for an HCP Terraform or Terraform Enterprise
+backend. With any other backend, evaluate OPA or Sentinel policies against the plan
+JSON with `PipelineTerraformPolicyCheck@1`.
+
 ### OPA: no violations reported when you expect some
 
 - Confirm `decisionPath` matches your package/rule (e.g. `terraform/deny` →

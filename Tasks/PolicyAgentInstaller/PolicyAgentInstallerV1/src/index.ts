@@ -19,7 +19,9 @@ async function verifyPolicyAgent() {
     console.log(tasks.loc("VerifyInstallation", agent));
     const agentPath = tasks.which(agent, true);
     const agentTool: ToolRunner = tasks.tool(agentPath);
-    agentTool.arg("version");
+    // Sentinel and OPA have a `version` command; tfpolicy-plugin, which Terraform
+    // launches rather than a person, only has the flag.
+    agentTool.arg(agent === installer.TERRAFORM_POLICY_PLUGIN_AGENT ? "--version" : "version");
     // externalOutput: the agent would otherwise run any `##vso[` line the binary
     // prints as a logging command; task-lib shows it as `##_vso[` instead.
     return agentTool.exec({ externalOutput: { source: 'childProcess' } });

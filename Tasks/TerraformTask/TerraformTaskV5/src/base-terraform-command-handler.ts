@@ -12,6 +12,7 @@ import {
 } from './argument-builder';
 import { CommandExecutor } from './command-executor';
 import { ResultsPublisher } from './results-publisher';
+import { PolicyEnforcement, preparePolicyEnforcement } from './policy-enforcement';
 import { buildPlanDigest } from './results/plan-digest';
 import { buildStateDigest } from './results/state-digest';
 import { maskHasSensitiveLeaf } from './results/redact';
@@ -236,6 +237,26 @@ export abstract class BaseTerraformCommandHandler {
         return scheme;
     }
 
+    /** Terraform Policy state of the command this handler is running (see policy-enforcement.ts). */
+    private policyEnforcement = PolicyEnforcement.inactive;
+
+    /**
+     * Adds the `policyPaths` input's `-policies` flags to a freshly created init,
+     * plan, apply or destroy tool runner and starts watching its output, after
+     * refusing a run whose policies could not be enforced. Must be called before
+     * any positional argument is added: Terraform stops reading flags at the first
+     * one, so a `-policies` after a saved plan file would be rejected.
+     *
+     * `options` is the free text that can carry a `-policies` of its own:
+     * commandOptions, and for `custom` the command text as well.
+     */
+    protected applyPolicies(command: string, terraformTool: ToolRunner, options = this.getCommandOptions()): void {
+        this.policyEnforcement = preparePolicyEnforcement(
+            command, options, this.getWorkingDirectory(), getBinaryName(tasks));
+        this.argumentBuilder.applyTokens(terraformTool, [...this.policyEnforcement.tokens]);
+        this.policyEnforcement.watch(terraformTool);
+    }
+
     protected getWorkingDirectory(): string {
         return tasks.getInput("workingDirectory") || '';
     }
@@ -367,7 +388,11 @@ export abstract class BaseTerraformCommandHandler {
         if (!fn) {
             throw new Error(`Invalid command: ${command}. Valid: ${[...commands.keys()].join(', ')}`);
         }
-        return fn();
+        const code = await fn();
+        // Terraform exits successfully from plan, apply and destroy even when its
+        // policy engine never started; a run that asked for policies must not.
+        this.policyEnforcement.verify(command);
+        return code;
     }
 
     // --- Command implementations ---
@@ -386,6 +411,7 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(initCommand);
+        this.applyPolicies("init", terraformTool);
         await this.handleBackend(terraformTool);
 
         // #675 follow-up: afterInit() must run whether this execAsync resolves
@@ -608,6 +634,7 @@ export abstract class BaseTerraformCommandHandler {
     public async plan(): Promise<number> {
         const planCommand = this.createAuthCommand("plan");
         const terraformTool = this.terraformToolHandler.createToolRunner(planCommand);
+        this.applyPolicies("plan", terraformTool);
 
         this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             replaceFlag: true, refreshOnly: true, varFiles: true,
@@ -881,6 +908,9 @@ export abstract class BaseTerraformCommandHandler {
         );
 
         const terraformTool = this.terraformToolHandler.createToolRunner(customCommand);
+        // `customCommand: plan` with `-policies` reaches Terraform through this
+        // passthrough exactly as the plan command does, fail-open behaviour included.
+        this.applyPolicies("custom", terraformTool, `${customCommand.name} ${commandOptions ?? ''}`);
         await this.handleProvider(customCommand);
 
         // #675 sibling: `customCommand: plan` (or `plan -destroy`) plus a
@@ -964,6 +994,7 @@ export abstract class BaseTerraformCommandHandler {
     public async apply(): Promise<number> {
         const applyCommand = this.createAuthCommand("apply");
         const terraformTool = this.terraformToolHandler.createToolRunner(applyCommand);
+        this.applyPolicies("apply", terraformTool);
 
         this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             replaceFlag: true, refreshOnly: true, varFiles: true,
@@ -1042,6 +1073,7 @@ export abstract class BaseTerraformCommandHandler {
     public async destroy(): Promise<number> {
         const destroyCommand = this.createAuthCommand("destroy");
         const terraformTool = this.terraformToolHandler.createToolRunner(destroyCommand);
+        this.applyPolicies("destroy", terraformTool);
 
         this.argumentBuilder.applyTokens(terraformTool, await this.argumentBuilder.buildLeadingArgs({
             varFiles: true, targetResources: true, secureVarFile: true,

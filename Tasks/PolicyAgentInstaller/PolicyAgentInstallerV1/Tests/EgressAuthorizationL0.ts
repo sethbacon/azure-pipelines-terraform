@@ -199,7 +199,7 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
-        fn: "resolveLatestSentinel", sink: "fetchJson", verdict: "EXEMPT-CONSTANT-HOST",
+        fn: "resolveLatestHashicorp", sink: "fetchJson", verdict: "EXEMPT-CONSTANT-HOST",
         why: "compile-time constant host (releases.hashicorp.com / github.com / api.github.com / checkpoint-api.hashicorp.com) \u2014 nothing at run time can influence it",
     },
     {
@@ -209,12 +209,12 @@ const SITE_ROWS: SiteRow[] = [
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
-        fn: "downloadSentinelOfficial", sink: "downloadTo", verdict: "EXEMPT-CONSTANT-HOST",
+        fn: "downloadHashicorpOfficial", sink: "downloadTo", verdict: "EXEMPT-CONSTANT-HOST",
         why: "compile-time constant host (releases.hashicorp.com / github.com / api.github.com / checkpoint-api.hashicorp.com) \u2014 nothing at run time can influence it",
     },
     {
         file: "Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/policy-agent-installer.ts",
-        fn: "downloadSentinelOfficial", sink: "fetchText", verdict: "EXEMPT-CONSTANT-HOST",
+        fn: "downloadHashicorpOfficial", sink: "fetchText", verdict: "EXEMPT-CONSTANT-HOST",
         why: "compile-time constant host (releases.hashicorp.com / github.com / api.github.com / checkpoint-api.hashicorp.com) \u2014 nothing at run time can influence it",
     },
     {

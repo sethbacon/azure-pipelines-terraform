@@ -129,7 +129,7 @@ azure-pipelines-terraform/
 │   ├── TerraformTask/
 │   │   └── TerraformTaskV5/             # Current development target
 │   ├── PolicyAgentInstaller/
-│   │   └── PolicyAgentInstallerV1/      # OPA / Sentinel installer
+│   │   └── PolicyAgentInstallerV1/      # OPA / Sentinel / tfpolicy-plugin installer
 │   ├── TerraformPolicyCheck/
 │   │   └── TerraformPolicyCheckV1/      # OPA / Sentinel policy evaluation
 │   ├── TerraformDriftReport/
@@ -211,6 +211,7 @@ azure-pipelines-terraform/
 | `backend-detection.ts`                 | Maps a Terraform `backend.type` (from `.terraform/terraform.tfstate`) to the cloud whose credentials the backend needs — enables cross-cloud state-backend credential injection (bounded state-file read)                                                                                                                                                                                                                                                                                                                                                         |
 | `temp-dir.ts`                          | Resolves the directory for ephemeral WIF credential/token files (prefers agent-purged `Agent.TempDirectory` over `os.tmpdir()`); shared by the AWS/GCP/OCI handlers                                                                                                                                                                                                                                                                                                                                                                                               |
 | `credential-guards.ts`                 | Fail-closed credential guards: clears inherited identity-selecting env vars before a handler applies its own, and derives the per-run AWS role session name (`resolveRoleSessionName`) instead of a fixed constant. `readSecretEndpointDataParameter`/`maskSecretLines` (reads `ENDPOINT_DATA_*` service-connection parameters without the task-lib read path that logs the value) come from `@4cloudguru/pipeline-task-ado` rather than a local file (#1069)                                                                                                     |
+| `policy-enforcement.ts`                | Terraform Policy (`policyPaths` / `-policies`, Terraform 1.17+) for init, plan, apply and destroy: refuses a run whose policies could not be enforced (OpenTofu, a backend that is not HCP Terraform, no `tfpolicy-plugin`), and fails a run in which Terraform printed an error diagnostic yet exited successfully — plan, apply and destroy carry on WITHOUT policies when the policy engine cannot start, and only init stops |
 | `secure-var-file-masking.ts`           | Registers the values inside a downloaded secure var file as secrets, line-wise, before terraform can echo them                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 **`oci-token-exchange.ts` no longer lives here (#1074).** The OCI UPST exchange — the second hop of
@@ -327,7 +328,7 @@ Source: `Tasks/TerraformDocs/TerraformDocsV1/src/`. Runs terraform-docs to gener
 
 ## PolicyAgentInstaller Task (PolicyAgentInstallerV1)
 
-Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** (GPG-signed zip from releases.hashicorp.com) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1 (the last of which is now a thin adapter over `@4cloudguru/pipeline-task-core`'s client). `latest` resolves via the checkpoint API (Sentinel) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
+Source: `Tasks/PolicyAgentInstaller/PolicyAgentInstallerV1/src/`. Installs a policy engine — **Sentinel** or **tfpolicy-plugin** (each a GPG-signed zip from releases.hashicorp.com; the latter is the engine Terraform 1.17+ launches for `-policies`, and installing it also sets `TF_POLICY_PLUGIN`) or **OPA** (raw, sha256-verified binary from GitHub releases `open-policy-agent/opa`) — from `official`, `registry` (terraform-registry-backend), or `mirror` sources. Reuses `gpg-verifier.ts`/`hashicorp-gpg-key.ts`/`http-client.ts` from TerraformInstallerV1 (the last of which is now a thin adapter over `@4cloudguru/pipeline-task-core`'s client). `latest` resolves via the checkpoint API (Sentinel, tfpolicy-plugin) or the GitHub releases API (OPA). Output variables: `policyAgentLocation`, `policyAgentDownloadedFrom`. OPA only ships amd64/arm64.
 
 ## TerraformPolicyCheck Task (TerraformPolicyCheckV1)
 
