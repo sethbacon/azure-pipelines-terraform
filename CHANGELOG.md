@@ -4,6 +4,13 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.21.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.21.0...v1.21.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* keep SYSTEM_OIDCREQUESTURI for AzAPI in WIF refresh mode ([#1296](https://github.com/sethbacon/azure-pipelines-terraform/issues/1296)) ([788342b](https://github.com/sethbacon/azure-pipelines-terraform/commit/788342b8873ab87131013bd1cb8ce54be365fdd8))
+
 ## [1.21.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.20.6...v1.21.0) (2026-11-17)
 
 
