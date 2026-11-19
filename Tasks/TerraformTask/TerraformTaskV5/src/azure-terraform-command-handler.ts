@@ -104,9 +104,32 @@ export function getManagedIdentityClientId(serviceConnectionID: string): string 
 }
 
 export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler {
+    /**
+     * The validated OIDC request endpoint WIF refresh mode handed to the
+     * provider as ARM_OIDC_REQUEST_URL, if any. Restored under its ambient name
+     * after the #1026 clear: azidentity's AzurePipelinesCredential -- what AzAPI
+     * (via Azure/entrauth) builds for an ADO service connection -- reads ONLY
+     * SYSTEM_OIDCREQUESTURI, so without it AzAPI's sole credential source fails
+     * to build and it reports "sources must contain at least one TokenCredential".
+     */
+    private pinnedOidcRequestUrl: string | undefined;
+
     constructor() {
         super();
         this.providerName = "azurerm";
+    }
+
+    /**
+     * #1026: clears the agent's ambient OIDC names so a scheme that never asked
+     * for OIDC cannot fall back to them, then restores SYSTEM_OIDCREQUESTURI
+     * when this pass's WIF refresh mode already exported the same validated
+     * value as ARM_OIDC_REQUEST_URL -- no new endpoint reaches the child.
+     */
+    private clearAmbientOidcEnvironment(): void {
+        neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
+        if (this.pinnedOidcRequestUrl) {
+            EnvironmentVariableHelper.setEnvironmentVariable("SYSTEM_OIDCREQUESTURI", this.pinnedOidcRequestUrl, false, true);
+        }
     }
 
     /**
@@ -154,7 +177,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // without it. That is the aws/gcp/oci-provider + azurerm-backend
         // combination, which no test covered.
         if (isTerminalCredentialPass) {
-            neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
+            this.clearAmbientOidcEnvironment();
         }
 
         return authorizationScheme;
@@ -257,7 +280,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // branch (a SECOND, independent generateIdToken call for `az login
         // --federated-token`) -- clearing inside setCommonVariables would break
         // that second call, which runs after setCommonVariables has returned.
-        neutralizeEnvironmentVariables(['SYSTEM_ACCESSTOKEN', 'SYSTEM_OIDCREQUESTURI'], "Azure");
+        this.clearAmbientOidcEnvironment();
 
         tasks.debug("Finished up provider for authorization scheme: " + authorizationScheme + ".");
     }
@@ -376,6 +399,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // deliberately absent from this list -- the caller resolves and sets it
         // before calling this method.
         neutralizeEnvironmentVariables(ARM_CREDENTIAL_SELECTOR_ENV, "Azure");
+        this.pinnedOidcRequestUrl = undefined;
         // ARM_USE_CLI is cleared above like every other selector, but clearing
         // is not disabling: azurerm's own use_cli default is TRUE, so an absent
         // ARM_USE_CLI does not turn CLI auth off -- it restores azurerm's
@@ -476,6 +500,7 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     const oidcRequestUrl = resolveOidcRequestUrl();
                     if (oidcRequestUrl) {
                         EnvironmentVariableHelper.setEnvironmentVariable("ARM_OIDC_REQUEST_URL", oidcRequestUrl, false, true);
+                        this.pinnedOidcRequestUrl = oidcRequestUrl;
                     }
                 }
 

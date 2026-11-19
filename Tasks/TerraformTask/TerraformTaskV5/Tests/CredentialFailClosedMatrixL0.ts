@@ -583,9 +583,13 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
     // SYSTEM_OIDCREQUESTURI -- the agent sets SYSTEM_OIDCREQUESTURI on EVERY job
     // regardless of authorization scheme, so it must not survive into the
     // terraform child's environment for a scheme that never asked for OIDC.
+    // WIF refresh mode is the exception covered below: it restores the validated value.
     for (const base of ['azurerm.ManagedServiceIdentity', 'azurerm.ServicePrincipal', 'azurerm.WorkloadIdentityFederation']) {
         it(`clears SYSTEM_ACCESSTOKEN/SYSTEM_OIDCREQUESTURI: ${base}`, async () => {
             const fixture = clone(base);
+            if (base === 'azurerm.WorkloadIdentityFederation') {
+                fixture.bools = { environmentAzureRmUseIdTokenGeneration: true };
+            }
             fixture.env = { SYSTEM_ACCESSTOKEN: 'agent-oauth-token', SYSTEM_OIDCREQUESTURI: 'https://vstoken.dev.azure.com/oidc' };
             await run('azurerm', fixture);
             assert.strictEqual(process.env['SYSTEM_ACCESSTOKEN'], undefined,
@@ -601,12 +605,16 @@ describe('credential fail-closed matrix (handler x auth-branch x required-field)
     // provider fell through to the Azure CLI authorizer. The rows above can only
     // ever prove the variable is GONE; this one proves the capability that
     // depended on it survives, under a name the task itself owns.
-    it('pins ARM_OIDC_REQUEST_URL before clearing SYSTEM_OIDCREQUESTURI: azurerm.WorkloadIdentityFederation', async () => {
+    it('pins ARM_OIDC_REQUEST_URL and restores the validated SYSTEM_OIDCREQUESTURI: azurerm.WorkloadIdentityFederation', async () => {
         const fixture = clone('azurerm.WorkloadIdentityFederation');
-        fixture.env = { SYSTEM_OIDCREQUESTURI: 'https://vstoken.dev.azure.com/oidc' };
+        fixture.env = { SYSTEM_ACCESSTOKEN: 'agent-oauth-token', SYSTEM_OIDCREQUESTURI: 'https://vstoken.dev.azure.com/oidc' };
         await run('azurerm', fixture);
-        assert.strictEqual(process.env['SYSTEM_OIDCREQUESTURI'], undefined,
-            'the ambient name must still be cleared (#1026)');
+        assert.strictEqual(process.env['SYSTEM_ACCESSTOKEN'], undefined,
+            'the ambient access token must still be cleared (#1026)');
+        // AzAPI authenticates an ADO service connection through azidentity's
+        // AzurePipelinesCredential, which reads only SYSTEM_OIDCREQUESTURI.
+        assert.strictEqual(process.env['SYSTEM_OIDCREQUESTURI'], 'https://vstoken.dev.azure.com/oidc',
+            'refresh mode must leave AzAPI the endpoint it reads, set to the value already validated for ARM_OIDC_REQUEST_URL');
         assert.strictEqual(process.env['ARM_OIDC_REQUEST_URL'], 'https://vstoken.dev.azure.com/oidc',
             'refresh mode must keep an OIDC request endpoint: without it azurerm falls through to the Azure CLI authorizer');
         assert.ok(process.env['ARM_OIDC_REQUEST_TOKEN'],
