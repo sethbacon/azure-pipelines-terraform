@@ -415,7 +415,7 @@
               {
                 "id": "username",
                 "name": "Access key id",
-                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                "description": "Required for static credential auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
                 "inputMode": "textbox",
                 "isConfidential": false,
                 "validation": {
@@ -426,7 +426,7 @@
               {
                 "id": "password",
                 "name": "Secret access key",
-                "description": "Required for static credential auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                "description": "Required for static credential auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
                 "inputMode": "passwordbox",
                 "isConfidential": true,
                 "validation": {
@@ -460,7 +460,7 @@
       "properties": {
         "name": "PTTGoogleCloudServiceEndpoint",
         "displayName": "Pipeline GCP for Terraform",
-        "helpMarkDown": "For service account key auth: [Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts). For Workload Identity Federation (OIDC): create a placeholder connection — WIF configuration is set in the pipeline task inputs.",
+        "helpMarkDown": "For service account key auth: [Get JSON Key File](https://console.cloud.google.com/iam-admin/serviceaccounts). For Workload Identity Federation (OIDC): leave the key fields blank — WIF configuration is set in the pipeline task inputs.",
         "url": {
           "displayName": "Server Url",
           "helpText": "GCP homepage",
@@ -481,7 +481,7 @@
               {
                 "id": "Issuer",
                 "name": "Client email",
-                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                "description": "Required for service account key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
                 "inputMode": "textbox",
                 "isConfidential": false,
                 "validation": {
@@ -493,13 +493,24 @@
               {
                 "id": "Audience",
                 "name": "Token uri",
-                "description": "Required for service account key auth. For Workload Identity Federation (OIDC), enter any placeholder value — this field is ignored at runtime.",
+                "description": "Required for service account key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
                 "inputMode": "textbox",
                 "isConfidential": false,
                 "validation": {
                   "isRequired": false,
                   "dataType": "string",
                   "maxLength": 300
+                }
+              },
+              {
+                "id": "PrivateKey",
+                "name": "Private key",
+                "description": "The private_key field in the JSON key file. Required for service account key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
+                "inputMode": "textarea",
+                "isConfidential": true,
+                "validation": {
+                  "isRequired": false,
+                  "dataType": "string"
                 }
               }
             ]
@@ -530,7 +541,7 @@
       "properties": {
         "name": "PTTOCIServiceEndpoint",
         "displayName": "Pipeline OCI for Terraform",
-        "helpMarkDown": "",
+        "helpMarkDown": "For API key auth, fill in every field. For Workload Identity Federation (OIDC), leave them blank — WIF configuration is set in the pipeline task inputs.",
         "url": {
           "displayName": "Server Url",
           "helpText": "OCI homepage",
@@ -553,11 +564,11 @@
               {
                 "id": "privatekey",
                 "name": "Private key",
-                "description": "The OCI secret private key",
+                "description": "The OCI secret private key. Required for API key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
                 "inputMode": "passwordbox",
                 "isConfidential": true,
                 "validation": {
-                  "isRequired": true,
+                  "isRequired": false,
                   "dataType": "string"
                 }
               }
@@ -568,44 +579,44 @@
           {
             "id": "user",
             "name": "User OCID",
-            "description": "OCI user OCID",
+            "description": "OCI user OCID. Required for API key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
             "inputMode": "textbox",
             "isConfidential": false,
             "validation": {
-              "isRequired": true,
+              "isRequired": false,
               "dataType": "string"
             }
           },
           {
             "id": "tenancy",
             "name": "Tenancy OCID",
-            "description": "OCI tenancy OCID",
+            "description": "OCI tenancy OCID. Required for API key auth. Leave blank for Workload Identity Federation (OIDC), which takes the tenancy from the ociWifTenancyOcid task input.",
             "inputMode": "textbox",
             "isConfidential": false,
             "validation": {
-              "isRequired": true,
+              "isRequired": false,
               "dataType": "string"
             }
           },
           {
             "id": "region",
             "name": "Region",
-            "description": "OCI region",
+            "description": "OCI region. Required for API key auth. Leave blank for Workload Identity Federation (OIDC), which takes the region from the ociWifRegion task input.",
             "inputMode": "textbox",
             "isConfidential": false,
             "validation": {
-              "isRequired": true,
+              "isRequired": false,
               "dataType": "string"
             }
           },
           {
             "id": "fingerprint",
             "name": "Key fingerprint",
-            "description": "The OCI private key fingerprint",
+            "description": "The OCI private key fingerprint. Required for API key auth. Leave blank for Workload Identity Federation (OIDC) — this field is ignored at runtime.",
             "inputMode": "textbox",
             "isConfidential": false,
             "validation": {
-              "isRequired": true,
+              "isRequired": false,
               "dataType": "string"
             }
           }

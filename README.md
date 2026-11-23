@@ -608,6 +608,8 @@ This extension registers its own service connection types so it can be installed
 | GCP        | `PTTGoogleCloudServiceEndpoint` | Pipeline GCP for Terraform |
 | OCI        | `PTTOCIServiceEndpoint`         | Pipeline OCI for Terraform |
 
+Every credential field on these three forms is optional. For Workload Identity Federation, leave them blank: WIF mode reads only the task's WIF inputs. Static and API key auth still need them, and the task stops the run with an error naming any field that is empty.
+
 Azure uses the standard **Azure Resource Manager** service connection built into Azure DevOps.
 
 > **Note:** These are different from the service connection types registered by the Microsoft DevLabs extension (`AWSServiceEndpoint`, `GoogleCloudServiceEndpoint`, `OCIServiceEndpoint`). If you are migrating from the MS DevLabs extension, you will need to create new service connections using the Pipeline types above.
