@@ -16,6 +16,8 @@ import './RetryL0';
 import './ProxyConfigL0';
 import './ProxyParityL0';
 import './RoleSessionNameManifestL0';
+// The classic editor must show the backend group backendType selects (#1305).
+import './BackendGroupVisibilityL0';
 // Severity classification for the credential-neutralizing guard: the agent sets
 // SYSTEM_OIDCREQUESTURI on every job, so warning about it was noise by construction.
 import './NeutralizeSeverityL0';
