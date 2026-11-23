@@ -45,7 +45,7 @@
             "name": "backendAzureRm",
             "displayName": "AzureRM backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = azurerm && command = init"
+            "visibleRule": "backendType = azurerm && command = init"
         },
         {
             "name": "providerAzureRm",
@@ -57,19 +57,19 @@
             "name": "backendAWS",
             "displayName": "Amazon Web Services(AWS) S3 backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = aws && command = init"
+            "visibleRule": "backendType = s3 && command = init"
         },
         {
             "name": "backendGCP",
             "displayName": "Google Cloud Platform(GCP) GCS backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = gcp && command = init"
+            "visibleRule": "backendType = gcs && command = init"
         },
         {
             "name": "backendOCI",
             "displayName": "Oracle Cloud Infrastructure(OCI) backend configuration",
             "isExpanded": true,
-            "visibleRule": "provider = oci && command = init"
+            "visibleRule": "backendType = oci && command = init"
         },
         {
             "name": "backendHCP",
