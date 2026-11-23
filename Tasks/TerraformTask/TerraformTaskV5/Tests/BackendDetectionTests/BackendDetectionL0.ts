@@ -31,10 +31,13 @@ describe('detectBackendCloud', function () {
     }
   });
 
-  const cloudMappings: Array<[string, 'azurerm' | 'aws' | 'gcp' | 'hcp']> = [
+  const cloudMappings: Array<[string, 'azurerm' | 'aws' | 'gcp' | 'oci' | 'hcp']> = [
     ['azurerm', 'azurerm'],
     ['s3', 'aws'],
     ['gcs', 'gcp'],
+    // Terraform's native OCI Object Storage backend (#1304). The OCI PAR mode's
+    // backend is `http`, which stays undetected below.
+    ['oci', 'oci'],
     ['cloud', 'hcp'],
     ['remote', 'hcp'],
   ];
@@ -60,7 +63,7 @@ describe('detectBackendCloud', function () {
     });
   }
 
-  const noCredentialBackends = ['local', 'http', 'oci', 'pg', 'consul', 'kubernetes', 'oss'];
+  const noCredentialBackends = ['local', 'http', 'pg', 'consul', 'kubernetes', 'oss'];
   for (const backendType of noCredentialBackends) {
     it(`returns null for backend type '${backendType}' (no cloud credentials to inject)`, () => {
       const dir = makeWorkingDirectory();

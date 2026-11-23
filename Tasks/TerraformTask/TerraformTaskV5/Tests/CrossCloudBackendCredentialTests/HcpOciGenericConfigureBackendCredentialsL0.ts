@@ -8,10 +8,11 @@ import ado = require('@4cloudguru/pipeline-task-ado');
 
 /**
  * Direct unit tests for the HCP handler's cross-cloud
- * `configureBackendCredentials()`, and the OCI/generic no-ops (these backends
- * have no separate cloud identity to inject: OCI's http/PAR backend embeds
- * auth in its cached, pre-authenticated request URL; generic/local backends
- * are authenticated, if at all, via the user's own environment).
+ * `configureBackendCredentials()`, the generic no-op (generic/local backends
+ * are authenticated, if at all, via the user's own environment), and the OCI
+ * handler's cross-cloud requirement. OCI's identity paths are covered in
+ * OciNativeBackendL0.ts; its PAR mode's `http` backend is never detected, so
+ * this method is never reached for it.
  */
 describe('HCP/OCI/Generic configureBackendCredentials (cross-cloud)', function () {
   const originalGetInput = tasks.getInput;
@@ -62,9 +63,14 @@ describe('HCP/OCI/Generic configureBackendCredentials (cross-cloud)', function (
     await assert.rejects(() => handler.configureBackendCredentials(), /backendHCPToken/);
   });
 
-  it('OCI: is a no-op (no env vars set, does not throw)', async () => {
+  it('OCI: requires backendServiceOCI when the provider is another cloud (#1304)', async () => {
+    (tasks as any).getInput = (name: string, required?: boolean) => {
+      const value = name === 'provider' ? 'aws' : undefined;
+      if (required && !value) throw new Error(`Input required: ${name}`);
+      return value;
+    };
     const handler = new TerraformCommandHandlerOCI();
-    await assert.doesNotReject(() => handler.configureBackendCredentials());
+    await assert.rejects(() => handler.configureBackendCredentials(), /backendServiceOCI/);
   });
 
   it('Generic: is a no-op (no env vars set, does not throw)', async () => {

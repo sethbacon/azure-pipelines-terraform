@@ -766,7 +766,7 @@ The task builds external-account credentials from an Azure DevOps OIDC token, th
 
 #### Init with OCI backend
 
-The OCI backend is an HTTP backend that points at an Object Storage pre-authenticated request (PAR). With `backendOCIConfigGenerate: 'yes'` the task writes the `backend "http"` block from `backendOCIPar` into a `config-<uuid>.tf` file in the working directory, then overwrites and deletes that file when the step ends. The PAR URL is a bearer credential, so keep it in a secret variable.
+The default OCI backend (`backendOCIStateBackend: 'par'`) is an HTTP backend that points at an Object Storage pre-authenticated request (PAR). The PAR URL is its only credential, so it needs no service connection. With `backendOCIConfigGenerate: 'yes'` the task writes the `backend "http"` block from `backendOCIPar` into a `config-<uuid>.tf` file in the working directory, then overwrites and deletes that file when the step ends. The PAR URL is a bearer credential, so keep it in a secret variable.
 
 ```yaml
 - task: PipelineTerraformTask@5
@@ -775,7 +775,7 @@ The OCI backend is an HTTP backend that points at an Object Storage pre-authenti
     provider: 'oci'
     command: 'init'
     backendType: 'oci'
-    backendServiceOCI: 'my-oci-service-connection'
+    backendOCIStateBackend: 'par'     # default; an http backend at the PAR URL
     backendOCIConfigGenerate: 'yes'   # default; the task generates the backend block
     backendOCIPar: '$(ociBackendPar)'   # secret variable; the /p/<token>/ segment is a bearer credential
 ```
@@ -791,9 +791,60 @@ Use `backendOCIConfigGenerate: 'no'` when the configuration's own `.tf` files al
     provider: 'oci'
     command: 'init'
     backendType: 'oci'
-    backendServiceOCI: 'my-oci-service-connection'
     backendOCIConfigGenerate: 'no'
 ```
+
+#### Init with the OCI Object Storage backend
+
+`backendOCIStateBackend: 'objectStorage'` uses Terraform's native `oci` backend, which needs Terraform 1.12 or later; OpenTofu has no equivalent. Declare an empty backend block in the configuration, as for `s3` and `gcs`:
+
+```hcl
+terraform {
+  backend "oci" {}
+}
+```
+
+The task passes `bucket`, `namespace` and `key` as `-backend-config` and the identity as `OCI_*` environment variables only, so no credential is cached in `.terraform/terraform.tfstate`. With `backendAuthSchemeOCI: 'ServiceConnection'` the backend signs in with the connection's API key, in the connection's region.
+
+```yaml
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Init (OCI Object Storage)'
+  inputs:
+    provider: 'oci'
+    command: 'init'
+    backendType: 'oci'
+    backendOCIStateBackend: 'objectStorage'
+    backendServiceOCI: 'my-oci-service-connection'
+    backendAuthSchemeOCI: 'ServiceConnection'   # default; API key from the service connection
+    backendOCIBucket: 'tfstate'
+    backendOCINamespace: 'axaxnpcrorw5'
+    backendOCIKey: 'prod/terraform.tfstate'
+```
+
+#### Init with the OCI Object Storage backend (Workload Identity Federation)
+
+The backend exchanges the connection's Azure DevOps OIDC token for a short-lived OCI session token, using the Identity Domain set up in the [OCI WIF Setup Guide](setup/oci-wif-setup.md). The identity also needs a policy that lets it read and write objects in the state bucket.
+
+```yaml
+- task: PipelineTerraformTask@5
+  displayName: 'Terraform Init (OCI Object Storage, WIF)'
+  inputs:
+    provider: 'oci'
+    command: 'init'
+    backendType: 'oci'
+    backendOCIStateBackend: 'objectStorage'
+    backendServiceOCI: 'my-oci-service-connection'
+    backendAuthSchemeOCI: 'WorkloadIdentityFederation'
+    backendOCIWifTenancyOcid: 'ocid1.tenancy.oc1..aaaaaaaa...'
+    backendOCIWifRegion: 'us-ashburn-1'
+    backendOCIWifIdentityDomainUrl: 'https://idcs-abc123.identity.oraclecloud.com'
+    backendOCIWifClientId: 'my-identity-domain-app-client-id'
+    backendOCIBucket: 'tfstate'
+    backendOCINamespace: 'axaxnpcrorw5'
+    backendOCIKey: 'prod/terraform.tfstate'
+```
+
+On later state commands (`plan`, `apply` and the rest) the task supplies the Object Storage backend's credentials again. A step whose `provider` is `oci` uses the provider's identity unless it names `backendServiceOCI`, in which case it needs the backend inputs above. With any other provider, add the backend inputs to the step; see [Cross-cloud state backends](#cross-cloud-state-backends).
 
 #### Plan (OCI)
 
@@ -1509,7 +1560,8 @@ it differs from the `provider` input, automatically supplies that backend's
 credentials as environment variables on `plan`, `apply`, `destroy`, `refresh`,
 `import`, `output`, `state`, `workspace`, and `forceunlock` — so add the backend
 inputs (`backendServiceArm`/`backendAzureRm*`, `backendServiceAWS`/`backendAWS*`,
-`backendServiceGCP`/`backendGCP*`, or `backendHCP*`) to **every** step below that
+`backendServiceGCP`/`backendGCP*`, `backendServiceOCI`/`backendOCI*` for the OCI
+Object Storage backend, or `backendHCP*`) to **every** step below that
 runs one of those commands, not just `init`. (`show` and `custom` are not
 auto-injected — they commonly operate on a saved plan file or run backend-agnostic
 commands like `terraform providers`, so requiring backend inputs there would be
@@ -1792,6 +1844,11 @@ split.
 the provider never writes, so two service connections work with no extra
 configuration — just add `backendServiceGCP` alongside `environmentServiceNameGCP`
 on each state command.
+
+The OCI Object Storage backend (`backendOCIStateBackend: 'objectStorage'`) is exempt
+for the same reason: it reads `OCI_*` names the oci provider never writes. Add
+`backendServiceOCI` and its backend inputs alongside `environmentServiceNameOCI` on
+each state command; without them, the backend uses the provider's identity.
 
 ---
 

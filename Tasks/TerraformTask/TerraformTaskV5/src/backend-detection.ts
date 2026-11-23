@@ -3,7 +3,7 @@ import path = require('path');
 import tasks = require('azure-pipelines-task-lib/task');
 
 /** Cloud whose credentials a managed Terraform state backend needs. */
-export type BackendCloud = 'azurerm' | 'aws' | 'gcp' | 'hcp';
+export type BackendCloud = 'azurerm' | 'aws' | 'gcp' | 'oci' | 'hcp';
 
 /** What `terraform init` recorded about the backend in use. */
 export interface BackendRecord {
@@ -29,8 +29,9 @@ export const MAX_BACKEND_STATE_BYTES = 10 * 1024 * 1024; // 10 MB
  * Maps a Terraform `backend.type` (as recorded in `.terraform/terraform.tfstate`
  * by `terraform init`) to the cloud whose credentials that backend needs.
  * Backends with no cloud identity to inject (local, generic http/pg/consul/
- * kubernetes, oci's PAR-based http backend, ...) are intentionally absent —
- * `detectBackendCloud` returns null for them.
+ * kubernetes, the OCI PAR mode's http backend, ...) are intentionally absent —
+ * `detectBackendCloud` returns null for them. `oci` is Terraform's native OCI
+ * Object Storage backend (#1304), whose identity the OCI handler supplies.
  */
 // A Map (not an object literal) so a backend.type of '__proto__'/'constructor'/etc.
 // can never resolve to an inherited Object.prototype member instead of undefined.
@@ -38,6 +39,7 @@ const BACKEND_TYPE_TO_CLOUD: ReadonlyMap<string, BackendCloud> = new Map([
   ['azurerm', 'azurerm'],
   ['s3', 'aws'],
   ['gcs', 'gcp'],
+  ['oci', 'oci'],
   ['cloud', 'hcp'],
   ['remote', 'hcp'],
 ]);

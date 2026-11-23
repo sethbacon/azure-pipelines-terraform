@@ -204,5 +204,37 @@ describe('ParentCommandHandler backend credential injection', function () {
         },
       );
     });
+
+    // #1304: the provider pass cannot reach the native oci backend, so its
+    // credentials are supplied on every state command, even with no backend
+    // connection named and nothing bound at init.
+    it('oci backend with an oci provider injects even on one connection', async () => {
+      const workDir = makeWorkingDirectoryWithBackend('oci', { bucket: 'b', namespace: 'n', key: 'k', user_ocid: null });
+      mockInputs({ workingDirectory: workDir, provider: 'oci' }); // no environmentServiceNameOCI
+
+      await assert.rejects(
+        () => new ParentCommandHandler().execute('oci', 'plan'),
+        (err: Error) => {
+          assert.match(err.message, /the 'oci' backend needs its credentials on every state command/);
+          assert.match(err.message, /environmentServiceNameOCI/);
+          return true;
+        },
+      );
+    });
+  });
+
+  it('cross-cloud (aws provider + oci backend) names backendServiceOCI when it is missing (#1304)', async () => {
+    const workDir = makeWorkingDirectoryWithBackend('oci');
+    mockInputs({ workingDirectory: workDir, provider: 'aws' });
+
+    await assert.rejects(
+      () => new ParentCommandHandler().execute('aws', 'plan'),
+      (err: Error) => {
+        assert.match(err.message, /Cross-cloud state backend credential setup failed for command 'plan'/);
+        assert.match(err.message, /'oci'/);
+        assert.match(err.message, /backendServiceOCI/);
+        return true;
+      },
+    );
   });
 });

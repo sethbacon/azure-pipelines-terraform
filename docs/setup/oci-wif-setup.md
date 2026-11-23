@@ -125,6 +125,16 @@ The UPST and the tenancy's normal session-token lifetime apply — there is no s
 
 > **Audience scoping:** the OIDC token minted for OCI carries the same default `api://AzureADTokenExchange` audience used for every cloud in this extension — the task does not set a per-cloud custom audience or TTL, and cannot: the Azure DevOps OIDC request API does not expose per-exchange audience selection. It is the Identity Propagation Trust's `issuer`, `clientClaimName`/`clientClaimValues`, and `subjectClaimName` conditions (Step 3) that form the actual security boundary. Scope `clientClaimValues` to your audience and, where possible, add a `sub`-based condition restricting the trust to this specific service connection's `sc://<org>/<project>/<service-connection>` subject, mirroring the AWS/GCP guides' `sub` trust-policy condition — otherwise any service connection in the organization that can request an OIDC token could exchange it through this trust. This is an operator responsibility, not something the task enforces on your behalf.
 
+## Using Workload Identity Federation for the state backend
+
+The OCI Object Storage state backend (`backendType: 'oci'` with `backendOCIStateBackend: 'objectStorage'`, Terraform 1.12 or later) can use the same federation. Set `backendAuthSchemeOCI: 'WorkloadIdentityFederation'` and the four `backendOCIWif*` inputs, which mirror the provider's `ociWif*` inputs; see [Init with the OCI Object Storage backend (Workload Identity Federation)](../yaml-examples.md#init-with-the-oci-object-storage-backend-workload-identity-federation). The identity the trust maps to needs a policy on the state bucket, for example:
+
+```text
+Allow group TerraformCIDeployers to manage objects in compartment my-state-compartment where target.bucket.name = 'tfstate'
+```
+
+The task makes the same exchange as above. Terraform's `oci` backend ignores `OCI_CLI_CONFIG_FILE`, so the task writes the security-token profile to `.oci/config` in a per-run directory, points `OCI_HOME_OVERRIDE` at that directory, and sets `OCI_auth=SecurityToken`, `OCI_config_file_profile` and `OCI_region`. On later state commands it makes the exchange again: with the backend inputs when the step names `backendServiceOCI`, and with the provider's otherwise.
+
 ## Troubleshooting
 
 ### "OCI token exchange failed: HTTP 400"
