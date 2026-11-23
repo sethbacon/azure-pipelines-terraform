@@ -75,6 +75,34 @@ describe('TempFileManager (#878)', function () {
     assert.deepStrictEqual(m.trackedEmergencyOnly, []);
   });
 
+  it('removes tracked directories after their files, on both cleanup paths (#1304)', () => {
+    for (const run of ['cleanup', 'emergencyCleanup'] as const) {
+      const outer = path.join(scratch, `home-${run}`);
+      const inner = path.join(outer, '.oci');
+      fs.mkdirSync(inner, { recursive: true });
+      const config = path.join(inner, 'config');
+      fs.writeFileSync(config, 'secret-content');
+      const m = new TempFileManager();
+      m.trackDirectory(outer);
+      m.trackDirectory(inner);
+      m.track(config);
+      m[run]();
+      assert.strictEqual(fs.existsSync(outer), false, `${run}() must remove the directories once empty`);
+    }
+  });
+
+  it('never removes a tracked directory that still holds something it did not track', () => {
+    const dir = path.join(scratch, 'home');
+    fs.mkdirSync(dir);
+    const stranger = path.join(dir, 'not-ours');
+    fs.writeFileSync(stranger, 'keep');
+    const m = new TempFileManager();
+    m.trackDirectory(dir);
+    m.cleanup();
+    assert.strictEqual(fs.readFileSync(stranger, 'utf8'), 'keep');
+    assert.ok(warnings.some((w) => w.includes('Failed to remove temp directory')), 'the refusal is surfaced');
+  });
+
   it('is a safe no-op when nothing was tracked, and when a tracked path never existed', () => {
     const m = new TempFileManager();
     assert.doesNotThrow(() => m.emergencyCleanup());

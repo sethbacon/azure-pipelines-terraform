@@ -6,7 +6,7 @@ import { EnvironmentVariableHelper, readUrlInput, readSecretInput } from '@4clou
 import { generateIdToken } from '@4cloudguru/pipeline-task-ado';
 import { exchangeOidcForUpst, validateIdentityDomainUrl } from '@4cloudguru/pipeline-task-ado';
 import { writeSecretFile, tightenFilePermissions } from '@4cloudguru/pipeline-task-ado';
-import { normalizePem } from '@4cloudguru/pipeline-task-core';
+import { assertPlainUrlBase, normalizePem } from '@4cloudguru/pipeline-task-core';
 import { resolveWifTempDir } from './temp-dir';
 import {
     FINGERPRINT_PATTERN,
@@ -49,6 +49,58 @@ const OCI_API_KEY_TF_VAR_ENV = [
     'TF_VAR_fingerprint',
     'TF_VAR_private_key_path',
 ];
+
+/**
+ * Every variable Terraform's native `oci` state backend reads an identity from:
+ * `OCI_<attribute>` first, then the bare attribute name, plus OCI_HOME_OVERRIDE,
+ * which moves the `~/.oci/config` it reads a profile from (terraform 1.17.2,
+ * #1304). Cleared before a backend identity is applied, so an inherited value
+ * cannot replace or reshape it -- an inline private_key, for one, is preferred
+ * over private_key_path. Bare `region` is left alone: it is a generic name, and
+ * OCI_region, which outranks it, is always set.
+ */
+const OCI_BACKEND_CREDENTIAL_ENV = [
+    'OCI_auth', 'auth',
+    'OCI_tenancy_ocid', 'tenancy_ocid',
+    'OCI_user_ocid', 'user_ocid',
+    'OCI_fingerprint', 'fingerprint',
+    'OCI_private_key', 'private_key',
+    'OCI_private_key_path', 'private_key_path',
+    'OCI_private_key_password', 'private_key_password',
+    'OCI_config_file_profile', 'config_file_profile',
+    'OCI_region',
+    'OCI_HOME_OVERRIDE',
+] as const;
+
+/** One identity's validated WIF inputs: the provider's, or the state backend's. */
+interface OciWifInputs {
+    identityDomainUrl: string;
+    clientId: string;
+    tenancyOcid: string;
+    region: string;
+}
+
+/** A minted WIF session: what a security-token profile names. */
+interface OciWifSession {
+    sessionId: string;
+    tenancyOcid: string;
+    region: string;
+    privateKeyPath: string;
+    upstPath: string;
+    fingerprint: string;
+}
+
+/** The `[DEFAULT]` security-token profile both the provider and the backend read. */
+function sessionConfig(session: OciWifSession): string {
+    return [
+        '[DEFAULT]',
+        `tenancy=${session.tenancyOcid}`,
+        `region=${session.region}`,
+        `key_file=${session.privateKeyPath}`,
+        `fingerprint=${session.fingerprint}`,
+        `security_token_file=${session.upstPath}`,
+    ].join('\n') + '\n';
+}
 import path = require('path');
 import crypto = require('crypto');
 import { randomUUID as uuidV4 } from 'crypto';
@@ -71,17 +123,17 @@ const OCI_REGION_RE = /^[a-z0-9-]+$/;
  * introducing its own key_file= line). The character set matches the OCID
  * grammar OCI itself uses, so no legitimate tenancy OCID is rejected.
  */
-export function validateOciTenancyOcid(value: string): string {
+export function validateOciTenancyOcid(value: string, inputName = 'ociWifTenancyOcid'): string {
     if (!OCI_TENANCY_OCID_RE.test(value)) {
-        throw new Error(`Invalid ociWifTenancyOcid '${value}': must match the tenancy OCID grammar (ocid1.tenancy.<realm>...<unique-id>), with no embedded newlines or special characters.`);
+        throw new Error(`Invalid ${inputName} '${value}': must match the tenancy OCID grammar (ocid1.tenancy.<realm>...<unique-id>), with no embedded newlines or special characters.`);
     }
     return value;
 }
 
 /** Same INI-injection concern as validateOciTenancyOcid, for the region field. */
-export function validateOciRegion(value: string): string {
+export function validateOciRegion(value: string, inputName = 'ociWifRegion'): string {
     if (!OCI_REGION_RE.test(value)) {
-        throw new Error(`Invalid ociWifRegion '${value}': must contain only lowercase letters, digits, and hyphens.`);
+        throw new Error(`Invalid ${inputName} '${value}': must contain only lowercase letters, digits, and hyphens.`);
     }
     return value;
 }
@@ -161,7 +213,11 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         return privateKeyFilePath;
     }
 
-    private setupBackend(_backendServiceName: string) {
+    /**
+     * The PAR mode's `http` backend authenticates with the PAR URL alone, so it
+     * reads no service connection (#1304: it used to require one and ignore it).
+     */
+    private setupParBackend() {
         // Unfortunately this seems not to work with OCI provider for the tf statefile
         // https://developer.hashicorp.com/terraform/language/settings/backends/configuration#command-line-key-value-pairs
         //this.backendConfig.set('address', tasks.getInput("PAR url", true));
@@ -347,21 +403,103 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
     }
 
     public async handleBackend(terraformToolRunner: ToolRunner): Promise<void> {
-        const backendServiceName = tasks.getInput("backendServiceOCI", true)!;
-        this.setupBackend(backendServiceName);
+        if (this.resolveStateBackend() === 'objectStorage') {
+            const backendServiceName = tasks.getInput("backendServiceOCI", true)!;
+            // Where the state lives, not who may read it: terraform caches every
+            // -backend-config value in .terraform/terraform.tfstate, so the
+            // identity goes in OCI_* variables below instead (measured: values
+            // supplied that way are recorded as null in that cache).
+            this.backendConfig.set('bucket', tasks.getInput("backendOCIBucket", true)!);
+            this.backendConfig.set('namespace', tasks.getInput("backendOCINamespace", true)!);
+            this.backendConfig.set('key', tasks.getInput("backendOCIKey", true)!);
+            await this.applyObjectStorageCredentials('backend', backendServiceName);
+        } else {
+            this.setupParBackend();
+        }
         this.applyBackendConfig(terraformToolRunner);
     }
 
+    /** `par` (the default, an `http` backend) or `objectStorage` (Terraform's native `oci` backend). */
+    private resolveStateBackend(): 'par' | 'objectStorage' {
+        const value = tasks.getInput("backendOCIStateBackend", false) || 'par';
+        if (value !== 'par' && value !== 'objectStorage') {
+            throw new Error(`Invalid backendOCIStateBackend '${value}': expected 'par' or 'objectStorage'.`);
+        }
+        return value;
+    }
+
     /**
-     * Cross-cloud path: called instead of `handleBackend` on state-accessing
-     * commands (plan/apply/...) when this OCI backend is paired with a
-     * *different* cloud's `provider` input. No-op: OCI's http/PAR backend
-     * authentication is embedded in the pre-authenticated request URL, which
-     * was already generated into a cached backend config file at init — there
-     * is no separate cloud-credential identity to (re-)supply on later commands.
+     * Supplies the native `oci` backend's identity before a state command
+     * (plan/apply/...). backend-detection maps only the `oci` backend type here;
+     * the PAR mode's `http` backend is never detected, because its cached URL
+     * carries its own access.
+     *
+     * Uses the backend inputs when the step names backendServiceOCI. A same-cloud
+     * step that names none falls back to the provider's identity, which then reads
+     * state as it does for s3 and gcs. The provider pass cannot do that itself:
+     * the backend ignores the OCI_CLI_* variables its WIF branch sets (#1304).
+     * Every other step must name the backend connection.
      */
     public async configureBackendCredentials(): Promise<void> {
-        tasks.debug('OCI backend requires no cross-cloud credential injection (PAR URL is self-authenticating).');
+        const backendServiceName = tasks.getInput("backendServiceOCI", false);
+        if (backendServiceName) {
+            await this.applyObjectStorageCredentials('backend', backendServiceName);
+        } else if (tasks.getInput("provider", false) === 'oci') {
+            tasks.debug('No backendServiceOCI on this step; the oci state backend uses the provider identity.');
+            await this.applyObjectStorageCredentials('provider', tasks.getInput("environmentServiceNameOCI", true)!);
+        } else {
+            tasks.getInput("backendServiceOCI", true);
+        }
+    }
+
+    /**
+     * Gives Terraform's native `oci` backend one identity, through the variables
+     * it reads: `OCI_<attribute>` and, for a security token, a profile in
+     * `$OCI_HOME_OVERRIDE/.oci/config` (its only config-path override). Measured on
+     * terraform 1.17.2 against a local capture server (#1304). None of these names
+     * is one the provider pass sets or clears, so a backend identity applied here
+     * survives it.
+     */
+    private async applyObjectStorageCredentials(identity: 'backend' | 'provider', serviceName: string): Promise<void> {
+        const scheme = this.resolveAuthScheme(identity === 'backend' ? "backendAuthSchemeOCI" : "environmentAuthSchemeOCI");
+        if (scheme === "WorkloadIdentityFederation") {
+            // Validated before anything is minted (#1029), as in handleProviderWIF.
+            const wif = identity === 'backend' ? this.readBackendWifInputs() : this.readProviderWifInputs();
+            const oidcToken = await generateIdToken(serviceName);
+            EnvironmentVariableHelper.registerSecret(oidcToken);
+            const session = await this.exchangeWifSession(oidcToken, wif);
+            const home = path.join(resolveWifTempDir(), `oci-backend-home-${uuidV4()}`);
+            const configDir = path.join(home, '.oci');
+            fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+            this.trackTempDirectory(home);
+            this.trackTempDirectory(configDir);
+            const configPath = path.join(configDir, 'config');
+            writeSecretFile(configPath, sessionConfig(session));
+            this.trackTempFile(configPath);
+
+            neutralizeEnvironmentVariables(OCI_BACKEND_CREDENTIAL_ENV, "OCI Object Storage backend (Workload Identity Federation)");
+            EnvironmentVariableHelper.setEnvironmentVariable("OCI_auth", "SecurityToken");
+            EnvironmentVariableHelper.setEnvironmentVariable("OCI_config_file_profile", "DEFAULT");
+            EnvironmentVariableHelper.setEnvironmentVariable("OCI_region", session.region);
+            EnvironmentVariableHelper.setEnvironmentVariable("OCI_HOME_OVERRIDE", home, false, true);
+            return;
+        }
+
+        // The same reads, guards and grammars as handleProvider's API-key branch.
+        const rawPrivateKey = requireSecretField(serviceName, "privateKey", { source: 'auth-migrating-from-data' });
+        const tenancy = requireIdentityField(serviceName, "tenancy", { source: 'data', pattern: OCID_PATTERN, description: 'OCID' });
+        const user = requireIdentityField(serviceName, "user", { source: 'data', pattern: OCID_PATTERN, description: 'OCID' });
+        const region = requireIdentityField(serviceName, "region", { source: 'data', pattern: REGION_PATTERN, description: 'region identifier' });
+        const fingerprint = requireIdentityField(serviceName, "fingerprint", { source: 'data', pattern: FINGERPRINT_PATTERN, description: 'key fingerprint' });
+        const privateKeyFilePath = this.getPrivateKeyFilePath(rawPrivateKey);
+
+        neutralizeEnvironmentVariables(OCI_BACKEND_CREDENTIAL_ENV, "OCI Object Storage backend (API key)");
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_auth", "ApiKey");
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_tenancy_ocid", tenancy, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_user_ocid", user, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_fingerprint", fingerprint, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_private_key_path", privateKeyFilePath, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_region", region);
     }
 
     public async handleProvider(command: TerraformAuthorizationCommandInitializer): Promise<void> {
@@ -470,14 +608,41 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
             // service connection id.
             throw new Error("An OCI service connection is required for Workload Identity Federation. Set environmentServiceNameOCI.");
         }
-        // 0. Read and validate every WIF config input BEFORE anything is minted
-        // (#1029): a live federated OIDC assertion is a bearer credential the
-        // instant it exists, so a misconfigured input must be caught before
-        // step 1 requests one, not discovered after. No leak occurred either
-        // way -- exchangeOidcForUpst below already validated identityDomainUrl
-        // before transmitting anything -- but minting a credential that then
-        // goes unused because of a config error it should never have reached
-        // is itself worth avoiding.
+        const wif = this.readProviderWifInputs();
+
+        // 1. Get OIDC JWT from Azure DevOps
+        const oidcToken = await generateIdToken(command.serviceProviderName);
+        EnvironmentVariableHelper.registerSecret(oidcToken);
+
+        const session = await this.exchangeWifSession(oidcToken, wif);
+
+        const configPath = path.join(resolveWifTempDir(), `oci-wif-config-${session.sessionId}`);
+        writeSecretFile(configPath, sessionConfig(session));
+        this.trackTempFile(configPath);
+
+        // 6. Set environment variables for the OCI Terraform provider
+        neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
+        neutralizeEnvironmentVariables(OCI_API_KEY_TF_VAR_ENV, "OCI Workload Identity Federation");
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
+        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_AUTH", "security_token");
+
+        // Also set TF_VAR_ env vars for users who reference these in their provider block
+        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", session.tenancyOcid, false, true);
+        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", session.region);
+    }
+
+    /**
+     * 0. Reads and validates every provider WIF input BEFORE anything is minted
+     * (#1029): a live federated OIDC assertion is a bearer credential the
+     * instant it exists, so a misconfigured input must be caught before step 1
+     * requests one, not discovered after. No leak occurred either way --
+     * exchangeOidcForUpst already validated identityDomainUrl before
+     * transmitting anything -- but minting a credential that then goes unused
+     * because of a config error it should never have reached is itself worth
+     * avoiding.
+     */
+    private readProviderWifInputs(): OciWifInputs {
         const identityDomainUrl = validateIdentityDomainUrl(readUrlInput("ociWifIdentityDomainUrl", true)).href;
         // Charset-validated like its three siblings: the value is interpolated
         // into the token-exchange request body, and this was the one WIF input
@@ -485,11 +650,31 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const clientId = assertIdentityValue(tasks.getInput("ociWifClientId", true), "Input 'ociWifClientId'");
         const tenancyOcid = validateOciTenancyOcid(tasks.getInput("ociWifTenancyOcid", true)!);
         const region = validateOciRegion(tasks.getInput("ociWifRegion", true)!);
+        return { identityDomainUrl, clientId, tenancyOcid, region };
+    }
 
-        // 1. Get OIDC JWT from Azure DevOps
-        const oidcToken = await generateIdToken(command.serviceProviderName);
-        EnvironmentVariableHelper.registerSecret(oidcToken);
+    /**
+     * The native state backend's counterpart of {@link readProviderWifInputs}
+     * (#1304). The identity domain URL also goes through the shared URL-base
+     * guard: a query, fragment or userinfo has no meaning in it, so it is
+     * rejected outright rather than left for the token exchange to drop.
+     */
+    private readBackendWifInputs(): OciWifInputs {
+        const identityDomainUrl = validateIdentityDomainUrl(
+            assertPlainUrlBase('backendOCIWifIdentityDomainUrl', readUrlInput("backendOCIWifIdentityDomainUrl", true), 'reject')).href;
+        const clientId = assertIdentityValue(tasks.getInput("backendOCIWifClientId", true), "Input 'backendOCIWifClientId'");
+        const tenancyOcid = validateOciTenancyOcid(tasks.getInput("backendOCIWifTenancyOcid", true)!, "backendOCIWifTenancyOcid");
+        const region = validateOciRegion(tasks.getInput("backendOCIWifRegion", true)!, "backendOCIWifRegion");
+        return { identityDomainUrl, clientId, tenancyOcid, region };
+    }
 
+    /**
+     * Steps 2-5 of the OCI WIF exchange, shared by the provider and the native
+     * state backend (#1304), which differ only in the inputs they read and in
+     * where they put the resulting profile. Writes the ephemeral key and the
+     * UPST to tracked temp files; the caller writes the profile naming them.
+     */
+    private async exchangeWifSession(oidcToken: string, wif: OciWifInputs): Promise<OciWifSession> {
         // 2. Generate ephemeral RSA-2048 key pair
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
             modulusLength: 2048,
@@ -508,7 +693,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         }
 
         // 3. Exchange OIDC JWT for OCI UPST
-        const upst = await exchangeOidcForUpst(oidcToken, identityDomainUrl, clientId, publicKey);
+        const upst = await exchangeOidcForUpst(oidcToken, wif.identityDomainUrl, wif.clientId, publicKey);
         EnvironmentVariableHelper.registerSecret(upst);
 
         // 4. Compute fingerprint of ephemeral public key
@@ -517,7 +702,7 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         const md5 = crypto.createHash('md5').update(der).digest('hex');
         const fingerprint = md5.match(/.{2}/g)!.join(':');
 
-        // 5. Write ephemeral private key, UPST, and synthetic OCI config to temp files
+        // 5. Write the ephemeral private key and the UPST to temp files
         const tempDir = resolveWifTempDir();
         const sessionId = uuidV4();
 
@@ -529,28 +714,6 @@ export class TerraformCommandHandlerOCI extends BaseTerraformCommandHandler {
         writeSecretFile(upstPath, upst);
         this.trackTempFile(upstPath);
 
-        const configContent = [
-            '[DEFAULT]',
-            `tenancy=${tenancyOcid}`,
-            `region=${region}`,
-            `key_file=${privateKeyPath}`,
-            `fingerprint=${fingerprint}`,
-            `security_token_file=${upstPath}`,
-        ].join('\n') + '\n';
-
-        const configPath = path.join(tempDir, `oci-wif-config-${sessionId}`);
-        writeSecretFile(configPath, configContent);
-        this.trackTempFile(configPath);
-
-        // 6. Set environment variables for the OCI Terraform provider
-        neutralizeEnvironmentVariables(OCI_COMPETING_CREDENTIAL_ENV, "OCI Workload Identity Federation");
-        neutralizeEnvironmentVariables(OCI_API_KEY_TF_VAR_ENV, "OCI Workload Identity Federation");
-        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_CONFIG_FILE", configPath, false, true);
-        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_PROFILE", "DEFAULT");
-        EnvironmentVariableHelper.setEnvironmentVariable("OCI_CLI_AUTH", "security_token");
-
-        // Also set TF_VAR_ env vars for users who reference these in their provider block
-        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_tenancy_ocid", tenancyOcid, false, true);
-        EnvironmentVariableHelper.setEnvironmentVariable("TF_VAR_region", region);
+        return { sessionId, tenancyOcid: wif.tenancyOcid, region: wif.region, privateKeyPath, upstPath, fingerprint };
     }
 }

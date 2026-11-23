@@ -120,11 +120,16 @@ const SITE_ROWS: SiteRow[] = [
     {
         file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
         fn: 'handleProviderWIF', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
-        why: 'first hop of the OCI WIF flow; the second hop moved into the same package (#1074) and is covered by the row below',
+        why: 'first hop of the OCI WIF flow; the second hop moved into the same package (#1074) and is covered by the exchangeWifSession row below',
     },
     {
         file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
-        fn: 'handleProviderWIF', sink: 'exchangeOidcForUpst', verdict: 'PROXIED-BY-PACKAGE',
+        fn: 'applyObjectStorageCredentials', sink: 'generateIdToken', verdict: 'PROXIED-BY-PACKAGE',
+        why: 'first hop of the OCI WIF flow for the native Object Storage state backend (#1304); package-owned like the provider hop above',
+    },
+    {
+        file: 'Tasks/TerraformTask/TerraformTaskV5/src/oci-terraform-command-handler.ts',
+        fn: 'exchangeWifSession', sink: 'exchangeOidcForUpst', verdict: 'PROXIED-BY-PACKAGE',
         why: 'second hop of the OCI WIF flow; carries the federated JWT, so it needs the same proxy path. The implementation moved into pipeline-task-ado (#1074) -- there is no local fetchOptions left to inspect, so the site is held to a version floor like the other package-delegated sinks',
     },
     {

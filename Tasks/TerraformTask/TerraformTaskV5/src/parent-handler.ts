@@ -19,6 +19,7 @@ const BACKEND_CONNECTION_INPUT: ReadonlyMap<BackendCloud, string> = new Map([
     ['azurerm', 'backendServiceArm'],
     ['aws', 'backendServiceAWS'],
     ['gcp', 'backendServiceGCP'],
+    ['oci', 'backendServiceOCI'],
     ['hcp', 'backendHCPToken'],
 ]);
 
@@ -47,6 +48,22 @@ const PROVIDER_CONNECTION_INPUT: ReadonlyMap<string, string> = new Map([
  * the service connection the user actually named.
  */
 const SAME_CLOUD_INJECTABLE: ReadonlySet<BackendCloud> = new Set<BackendCloud>(['gcp']);
+
+/**
+ * Clouds whose backend the provider pass cannot authenticate at all, so the
+ * backend's credentials are supplied on every state command, same cloud or not.
+ *
+ * Only oci qualifies (#1304). Terraform's native `oci` backend reads
+ * `OCI_<attribute>` and `$OCI_HOME_OVERRIDE/.oci/config`. It ignores the
+ * `OCI_CLI_*` variables the provider's WIF branch sets, which leaves it with no
+ * credential, and it reaches the API-key branch's `TF_VAR_*` only through an
+ * undocumented SDK fallback (both measured on terraform 1.17.2).
+ * `configureBackendCredentials` uses the provider's identity when the step names
+ * no backend connection. Supplying it can never override a credential the
+ * pipeline author bound in the backend block: the backend reads an environment
+ * variable only for an attribute its configuration leaves unset (also measured).
+ */
+const SAME_CLOUD_ALWAYS_INJECT: ReadonlySet<BackendCloud> = new Set<BackendCloud>(['oci']);
 
 /**
  * Cached `backend.config` keys that mean `terraform init` already bound the
@@ -199,7 +216,11 @@ export class ParentCommandHandler implements IParentCommandHandler {
             await backendHandler.configureBackendCredentials();
         } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
-            throw new Error(sameCloud
+            throw new Error(sameCloud && SAME_CLOUD_ALWAYS_INJECT.has(backendCloud)
+                ? `State backend credential setup failed for command '${command}': the '${backendCloud}' backend needs its ` +
+                `credentials on every state command, from its own backend inputs or, when the step names no backend ` +
+                `connection, from the provider's. Underlying error: ${reason}.`
+                : sameCloud
                 ? `State backend credential setup failed for command '${command}': the '${backendCloud}' backend was given ` +
                 `its own service connection, but its inputs are incomplete. Add the '${backendCloud}' backend inputs to ` +
                 `this step. Underlying error: ${reason}. See ` +
@@ -207,7 +228,7 @@ export class ParentCommandHandler implements IParentCommandHandler {
                 : `Cross-cloud state backend credential setup failed for command '${command}': detected a '${backendCloud}' ` +
                 `state backend while the 'provider' input is '${providerName}'. Add the '${backendCloud}' backend inputs to ` +
                 `this step so its credentials can be supplied (e.g. backendServiceArm for azurerm, backendServiceAWS for ` +
-                `aws, backendServiceGCP for gcp, backendHCPToken for hcp). Underlying error: ${reason}. See ` +
+                `aws, backendServiceGCP for gcp, backendServiceOCI for oci, backendHCPToken for hcp). Underlying error: ${reason}. See ` +
                 `docs/yaml-examples.md#cross-cloud-state-backends for examples.`
             );
         }
@@ -218,10 +239,14 @@ export class ParentCommandHandler implements IParentCommandHandler {
      * authenticates both. Returns true only when the step nominated a
      * *separate* connection for the backend that the provider pass would
      * otherwise silently override, and throws when that separation cannot be
-     * expressed at all (see {@link SAME_CLOUD_INJECTABLE}).
+     * expressed at all (see {@link SAME_CLOUD_INJECTABLE}). Always true for a
+     * backend the provider pass cannot reach (see {@link SAME_CLOUD_ALWAYS_INJECT}).
      */
     private sameCloudNeedsInjection(backend: BackendRecord, providerName: string, command: string): boolean {
         const backendCloud = backend.cloud;
+        if (SAME_CLOUD_ALWAYS_INJECT.has(backendCloud)) {
+            return true;
+        }
         const backendInput = BACKEND_CONNECTION_INPUT.get(backendCloud);
         const backendConnection = readConnectionInput(backendInput);
         const providerInput = PROVIDER_CONNECTION_INPUT.get(providerName);

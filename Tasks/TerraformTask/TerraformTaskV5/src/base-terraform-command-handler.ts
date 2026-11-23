@@ -116,12 +116,12 @@ export abstract class BaseTerraformCommandHandler {
      * ONLY — never `-backend-config` args, never a tool-runner argument — so a
      * *different* cloud's state backend can authenticate on a state-accessing
      * command (plan/apply/destroy/refresh/import/output/state/workspace/
-     * forceunlock). Invoked by ParentCommandHandler exclusively when
-     * `backend-detection.ts` finds the initialized backend is a managed cloud
-     * backend that differs from the `provider` input — never during `init`
-     * (handleBackend already owns backend auth there) and never for the
-     * provider's own handler. Implementations that have no cloud identity to
-     * inject (OCI's PAR-based http backend, generic/local) are no-ops.
+     * forceunlock). Invoked by ParentCommandHandler when `backend-detection.ts`
+     * finds the initialized backend is a managed cloud backend that differs from
+     * the `provider` input, or that needs an identity the provider pass will not
+     * supply (a separate gcs connection; any native oci backend) — never during
+     * `init` (handleBackend already owns backend auth there). Implementations
+     * that have no cloud identity to inject (generic/local) are no-ops.
      */
     abstract configureBackendCredentials(): Promise<void>;
 
@@ -321,6 +321,11 @@ export abstract class BaseTerraformCommandHandler {
      */
     protected trackTempFile(filePath: string): void {
         this.tempFileManager.track(filePath);
+    }
+
+    /** Tracks a directory holding tracked temp files, removed once they are. */
+    protected trackTempDirectory(dirPath: string): void {
+        this.tempFileManager.trackDirectory(dirPath);
     }
 
     /** End-of-step cleanup (normal completion). */

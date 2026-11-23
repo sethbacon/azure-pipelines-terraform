@@ -1145,11 +1145,157 @@
             "groupName": "backendGeneric"
         },
         {
+            "name": "backendOCIStateBackend",
+            "type": "pickList",
+            "label": "State backend",
+            "defaultValue": "par",
+            "required": false,
+            "helpMarkDown": "How the task reaches OCI state.<br><br><b>PAR</b> (the default) writes an <code>http</code> backend whose address is the pre-authenticated request URL below. That URL is the only credential; the service connection is not used.<br><br><b>Object Storage</b> uses Terraform's native <code>oci</code> backend (Terraform 1.12 or later; OpenTofu has no equivalent) and signs in with the service connection or Workload Identity Federation. Declare <code>terraform { backend \"oci\" {} }</code> in the configuration. The task supplies the bucket, namespace and key, and passes the credentials as environment variables only, so none is cached in <code>.terraform</code>.",
+            "groupName": "backendOCI",
+            "options": {
+                "par": "PAR (http backend)",
+                "objectStorage": "Object Storage (oci backend, Terraform 1.12+)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
+            "name": "backendAuthSchemeOCI",
+            "type": "pickList",
+            "label": "Backend authentication scheme",
+            "defaultValue": "ServiceConnection",
+            "required": false,
+            "visibleRule": "backendOCIStateBackend = objectStorage",
+            "helpMarkDown": "Select how the Object Storage backend authenticates. 'Service connection' uses the connection's API key. 'Workload Identity Federation' exchanges an Azure DevOps OIDC token for a short-lived OCI session token (UPST), with no static key.",
+            "groupName": "backendOCI",
+            "options": {
+                "ServiceConnection": "Service connection (API key)",
+                "WorkloadIdentityFederation": "Workload Identity Federation (OIDC)"
+            },
+            "properties": {
+                "EditableOptions": "False"
+            }
+        },
+        {
             "name": "backendServiceOCI",
             "type": "connectedService:PTTOCIServiceEndpoint",
             "label": "Oracle Cloud Infrastructure connection",
             "required": true,
-            "helpMarkDown": "Oracle Cloud Infrastructure connection for the terraform backend configuration.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button.",
+            "visibleRule": "backendOCIStateBackend = objectStorage",
+            "helpMarkDown": "The OCI connection the Object Storage backend signs in with. With 'Service connection' authentication the backend uses the connection's signing key and region; with Workload Identity Federation, the OIDC exchange is made for this connection. Not used by the PAR backend.<br><br>Note: If your connection is not listed or if you want to use an existing connection, you can setup a Oracle Cloud Platform service connection using the 'Add' or 'Manage' button.",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCIBucket",
+            "type": "string",
+            "label": "Bucket",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage",
+            "helpMarkDown": "The Object Storage bucket that holds the state.",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCINamespace",
+            "type": "string",
+            "label": "Namespace",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage",
+            "helpMarkDown": "The tenancy's Object Storage namespace, shown on the bucket's details page.",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCIKey",
+            "type": "string",
+            "label": "Key",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage",
+            "helpMarkDown": "The state object's name inside the bucket.<br>For example, to store the state file terraform.tfstate in a folder named tf, give 'tf/terraform.tfstate'.",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCIWifTenancyOcid",
+            "type": "string",
+            "label": "Tenancy OCID",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage && backendAuthSchemeOCI = WorkloadIdentityFederation",
+            "helpMarkDown": "OCID of the OCI tenancy the backend's session is issued for. E.g. ocid1.tenancy.oc1..aaaa...",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCIWifRegion",
+            "type": "pickList",
+            "label": "OCI Region",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage && backendAuthSchemeOCI = WorkloadIdentityFederation",
+            "helpMarkDown": "Region of the state bucket. E.g. us-ashburn-1. Not yet listed? Type the region identifier directly.",
+            "groupName": "backendOCI",
+            "properties": {
+                "EditableOptions": "True"
+            },
+            "options": {
+                "us-ashburn-1": "US East (Ashburn)",
+                "us-phoenix-1": "US West (Phoenix)",
+                "us-chicago-1": "US Midwest (Chicago)",
+                "us-sanjose-1": "US West (San Jose)",
+                "ca-montreal-1": "Canada Southeast (Montreal)",
+                "ca-toronto-1": "Canada Southeast (Toronto)",
+                "sa-saopaulo-1": "Brazil East (Sao Paulo)",
+                "sa-vinhedo-1": "Brazil Southeast (Vinhedo)",
+                "sa-santiago-1": "Chile Central (Santiago)",
+                "sa-valparaiso-1": "Chile West (Valparaiso)",
+                "sa-bogota-1": "Colombia Central (Bogota)",
+                "mx-queretaro-1": "Mexico Central (Queretaro)",
+                "mx-monterrey-1": "Mexico Northeast (Monterrey)",
+                "eu-paris-1": "France Central (Paris)",
+                "eu-marseille-1": "France South (Marseille)",
+                "eu-frankfurt-1": "Germany Central (Frankfurt)",
+                "eu-milan-1": "Italy Northwest (Milan)",
+                "eu-turin-1": "Italy North (Turin)",
+                "eu-amsterdam-1": "Netherlands Northwest (Amsterdam)",
+                "eu-madrid-1": "Spain Central (Madrid)",
+                "eu-madrid-3": "Spain Central (Madrid 3)",
+                "eu-stockholm-1": "Sweden Central (Stockholm)",
+                "eu-zurich-1": "Switzerland North (Zurich)",
+                "uk-london-1": "UK South (London)",
+                "uk-cardiff-1": "UK West (Newport)",
+                "il-jerusalem-1": "Israel Central (Jerusalem)",
+                "me-abudhabi-1": "UAE Central (Abu Dhabi)",
+                "me-dubai-1": "UAE East (Dubai)",
+                "me-riyadh-1": "Saudi Arabia Central (Riyadh)",
+                "me-jeddah-1": "Saudi Arabia West (Jeddah)",
+                "af-casablanca-1": "Morocco West (Casablanca)",
+                "af-johannesburg-1": "South Africa Central (Johannesburg)",
+                "ap-mumbai-1": "India West (Mumbai)",
+                "ap-hyderabad-1": "India South (Hyderabad)",
+                "ap-singapore-1": "Singapore (Singapore)",
+                "ap-singapore-2": "Singapore West (Singapore)",
+                "ap-batam-1": "Indonesia North (Batam)",
+                "ap-kulai-2": "Malaysia West 2 (Kulai)",
+                "ap-seoul-1": "South Korea Central (Seoul)",
+                "ap-chuncheon-1": "South Korea North (Chuncheon)",
+                "ap-tokyo-1": "Japan East (Tokyo)",
+                "ap-osaka-1": "Japan Central (Osaka)",
+                "ap-sydney-1": "Australia East (Sydney)",
+                "ap-melbourne-1": "Australia Southeast (Melbourne)"
+            }
+        },
+        {
+            "name": "backendOCIWifIdentityDomainUrl",
+            "type": "string",
+            "label": "Identity Domain URL",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage && backendAuthSchemeOCI = WorkloadIdentityFederation",
+            "helpMarkDown": "URL of the OCI Identity Domain configured for OIDC federation. E.g. https://idcs-abc123.identity.oraclecloud.com",
+            "groupName": "backendOCI"
+        },
+        {
+            "name": "backendOCIWifClientId",
+            "type": "string",
+            "label": "Identity Domain Application Client ID",
+            "required": true,
+            "visibleRule": "backendOCIStateBackend = objectStorage && backendAuthSchemeOCI = WorkloadIdentityFederation",
+            "helpMarkDown": "Client ID of the OCI Identity Domains application configured for OIDC federation with Azure DevOps.",
             "groupName": "backendOCI"
         },
         {
@@ -1157,6 +1303,7 @@
             "type": "password",
             "label": "PAR for Terraform remote state file",
             "required": false,
+            "visibleRule": "backendOCIStateBackend = par",
             "helpMarkDown": "The OCI object storage PAR configuration for the Terraform remote state file (optional).<br><br>This PAR URL is a bearer credential (its /p/&lt;token&gt;/ path segment grants read/write to the state bucket). It is written into a generated <code>config-&lt;uuid&gt;.tf</code> file inside the 'Configuration directory' below -- Terraform only loads <code>*.tf</code> files from the working directory, so this file cannot be relocated to a purged temp directory like the task's other credential files. It is written with restrictive permissions and its contents are scrubbed (overwritten) before deletion at the end of the step, but a host crash before that cleanup runs can still leave it on disk. <b>Security-sensitive:</b> <code>terraform init</code> also copies this PAR URL into <code>&lt;Configuration directory&gt;/.terraform/terraform.tfstate</code>, a cache this task does not scrub by default because later plan/apply/etc. steps against the same working directory need it. See the 'Scrub cached backend PAR on cleanup' input (enable only on the last state-touching step), use short-lived/narrowly-scoped PARs, and prefer ephemeral working directories on self-hosted agents.",
             "groupName": "backendOCI"
         },
@@ -1165,6 +1312,7 @@
             "type": "pickList",
             "label": "Generate the Terraform remote state file config (Use Yes when not included in TF files)",
             "required": true,
+            "visibleRule": "backendOCIStateBackend = par",
             "defaultValue": "yes",
             "helpMarkDown": "Generates the Terraform remote state file config, select Yes when not included in TF files, othwerwise No.",
             "groupName": "backendOCI",

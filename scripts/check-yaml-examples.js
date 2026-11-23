@@ -70,7 +70,7 @@ const NOT_EXEMPLIFIED = new Map();
 
 // Pick-list inputs whose options are an open-ended region list; the document
 // describes them as "any region" rather than enumerating them.
-const OPEN_OPTION_LISTS = new Set(['awsRegion', 'backendAWSRegion', 'ociWifRegion']);
+const OPEN_OPTION_LISTS = new Set(['awsRegion', 'backendAWSRegion', 'ociWifRegion', 'backendOCIWifRegion']);
 
 // Inputs of which every option must appear as a value in at least one example,
 // because each option is a different code path an operator can take.

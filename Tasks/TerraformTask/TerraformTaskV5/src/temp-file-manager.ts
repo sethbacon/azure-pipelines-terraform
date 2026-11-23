@@ -24,10 +24,21 @@ export class TempFileManager {
   // Path of the downloaded secure var file, retained so it can be scrubbed
   // (zero-overwrite) before the securefiles-common helper unlinks it (#662).
   private secureFilePath: string | null = null;
+  private tempDirs: string[] = [];
 
   /** Tracks a path for scrub+delete on normal completion and on cancellation. */
   public track(filePath: string): void {
     this.tempFiles.push(filePath);
+  }
+
+  /**
+   * Tracks a directory created to hold tracked files (the OCI backend's per-run
+   * `OCI_HOME_OVERRIDE`). Removed after the files, newest first, and only once
+   * empty: rmdir is not recursive, so it can never delete anything it was not
+   * the container for.
+   */
+  public trackDirectory(dirPath: string): void {
+    this.tempDirs.push(dirPath);
   }
 
   /**
@@ -118,7 +129,21 @@ export class TempFileManager {
   public cleanup(): void {
     this.scrubAndUnlink(this.tempFiles);
     this.tempFiles = [];
+    this.removeDirectories();
     this.cleanupSecureFile();
+  }
+
+  private removeDirectories(): void {
+    for (const dirPath of [...this.tempDirs].reverse()) {
+      try {
+        if (fs.existsSync(dirPath)) {
+          fs.rmdirSync(dirPath);
+        }
+      } catch (err) {
+        tasks.warning(`Failed to remove temp directory ${dirPath}: ${err}`);
+      }
+    }
+    this.tempDirs = [];
   }
 
   /**
@@ -137,6 +162,7 @@ export class TempFileManager {
     this.tempFiles = [];
     this.scrubAndUnlink(this.emergencyOnlyTempFiles);
     this.emergencyOnlyTempFiles = [];
+    this.removeDirectories();
     this.cleanupSecureFile();
   }
 }
