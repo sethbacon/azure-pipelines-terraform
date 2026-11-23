@@ -107,7 +107,7 @@ Prefer resource-type-specific verbs/compartments over `manage all-resources` at 
     workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
 ```
 
-`environmentServiceNameOCI` still points at a `PTTOCIServiceEndpoint` service connection — WIF mode uses it only to request the Azure DevOps OIDC token (via the connection's federated-identity capability), not for any static credential it may also carry.
+`environmentServiceNameOCI` still points at a `PTTOCIServiceEndpoint` service connection — WIF mode uses it only to request the Azure DevOps OIDC token (via the connection's federated-identity capability), not for any static credential it may also carry. Its API key fields can be left blank.
 
 ## How It Works
 

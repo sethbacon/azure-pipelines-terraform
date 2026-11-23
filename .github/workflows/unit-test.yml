@@ -57,6 +57,11 @@ jobs:
         run: node scripts/check-task-list.js
       - name: Validate WIF audience parity across the setup guides
         run: node scripts/check-wif-audience-parity.js
+      - name: Validate WIF-capable service connections require no credential field
+        # Fails when a connection type a task can drive in WIF mode marks a
+        # field required, leaves a built-in scheme's required field undeclared,
+        # or stores a secret field unmasked (#1301, #1302).
+        run: node scripts/check-wif-connection-fields.js
       - name: Validate YAML examples documentation
         # Fails when an example in docs/yaml-examples.md uses a task, input or
         # option task.json no longer has, or an input task.json gained is not shown.
@@ -73,6 +78,8 @@ jobs:
         run: node scripts/test-check-task-list.js
       - name: Self-test check-yaml-examples.js
         run: node scripts/test-check-yaml-examples.js
+      - name: Self-test check-wif-connection-fields.js
+        run: node scripts/test-check-wif-connection-fields.js
       - name: Self-test check-per-file-coverage.js
         run: node scripts/test-check-per-file-coverage.js
       - name: Self-test smoke-compiled-task.js

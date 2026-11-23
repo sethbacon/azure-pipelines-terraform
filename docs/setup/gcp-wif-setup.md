@@ -149,6 +149,8 @@ You will need these values for the pipeline task configuration:
     workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
 ```
 
+`environmentServiceNameGCP` names a `PTTGoogleCloudServiceEndpoint` service connection. WIF mode uses it only to request the Azure DevOps OIDC token, so leave its key fields (Client email, Token uri, Private key, Project id) blank.
+
 ## How It Works
 
 At runtime, the task:
