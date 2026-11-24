@@ -93,7 +93,8 @@ const SAME_CLOUD_CONFLICT: ReadonlyMap<BackendCloud, { backendType: string; envP
         backendType: 'azurerm',
         envPrefix: 'ARM_*',
         initRemedy: "set backendAzureRmUseCliFlagsForAuthentication: true on the 'init' step, which caches the backend's own " +
-            'client_id/use_oidc in the backend config so it no longer reads ARM_* (workload identity federation only)',
+            'tenant_id/client_id/use_oidc in the backend config so it no longer reads ARM_* for them (workload identity federation ' +
+            'only, with the provider step in its default refresh mode)',
     }],
     ['aws', {
         backendType: 's3',

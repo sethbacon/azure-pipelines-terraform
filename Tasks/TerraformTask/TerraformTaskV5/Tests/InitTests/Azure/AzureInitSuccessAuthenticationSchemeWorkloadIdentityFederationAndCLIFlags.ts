@@ -32,7 +32,7 @@ let a: ma.TaskLibAnswers = <ma.TaskLibAnswers>{
         "terraform": true
     },
     "exec": {
-        "terraform init -backend-config=storage_account_name=DummyStorageAccount -backend-config=container_name=DummyContainer -backend-config=key=DummyKey -backend-config=use_azuread_auth=true -backend-config=client_id=DummyServicePrincipalId -backend-config=use_oidc=true -backend-config=ado_pipeline_service_connection_id=AzureRM": {
+        "terraform init -backend-config=storage_account_name=DummyStorageAccount -backend-config=container_name=DummyContainer -backend-config=key=DummyKey -backend-config=use_azuread_auth=true -backend-config=tenant_id=DummyTenantId -backend-config=client_id=DummyServicePrincipalId -backend-config=use_oidc=true -backend-config=ado_pipeline_service_connection_id=AzureRM": {
             "code": 0,
             "stdout": "Executed Successfully"
         }

@@ -1756,8 +1756,9 @@ There are three ways to get the split you want.
 #### Option 1 — bind the backend at `init` (azurerm, workload identity federation)
 
 `backendAzureRmUseCliFlagsForAuthentication: true` makes `init` persist the
-backend's own `client_id`/`use_oidc` into the backend config, so later commands
-stop resolving the backend's identity from `ARM_*`:
+backend's own `tenant_id`/`client_id`/`use_oidc` into the backend config, so later
+commands stop resolving the backend's identity from `ARM_*`. The two connections
+can be in different tenants:
 
 ```yaml
   - task: PipelineTerraformTask@5
@@ -1781,6 +1782,18 @@ stop resolving the backend's identity from `ARM_*`:
       command: 'plan'
       environmentServiceNameAzureRM: 'SC-PROVIDER'
 ```
+
+Both steps must use workload identity federation in its default refresh mode
+(`backendAzureRmUseIdTokenGeneration` and `environmentAzureRmUseIdTokenGeneration`
+left `false`). The backend still reads every credential it did not save from
+`ARM_*`: a client secret, certificate or one-time token on the provider step
+ranks ahead of the backend's own sign-in, and a one-time token used at `init` is
+not saved.
+
+A working directory kept from an earlier `init` that saved no `tenant_id` keeps
+its settings, because adding one would make `terraform init` fail with "Backend
+configuration changed". The task warns instead; run `init` in a clean workspace
+to save the tenant.
 
 #### Option 2 — configure the provider from input variables (any cloud, any scheme)
 
