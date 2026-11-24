@@ -237,4 +237,56 @@ describe('ParentCommandHandler backend credential injection', function () {
       },
     );
   });
+
+  // #1309: the caches above leave unset keys out; terraform never does. It
+  // writes every attribute of the backend's schema, null when unset (measured:
+  // the s3 fixture beside BackendDetectionL0 has every credential key as null).
+  // Against that shape the bound-at-init check used to answer yes for every
+  // backend, so none of the separate-connection handling above ever ran.
+  describe('same cloud, separate service connections, against the cache terraform writes (#1309)', () => {
+    const s3Cache = JSON.parse(fs.readFileSync(
+      path.join(__dirname, '..', 'BackendDetectionTests', 's3-backend-cache.json'), 'utf8')).backend.config;
+    const azurermCache = {
+      storage_account_name: 'sa', container_name: 'tfstate', key: 'prod.tfstate',
+      client_id: null, client_secret: null, oidc_token: null, ado_pipeline_service_connection_id: null,
+      access_key: null, sas_token: null, use_msi: null, use_cli: null,
+    };
+    const gcsCache = { bucket: 'tfstate', prefix: null, credentials: null, access_token: null, impersonate_service_account: null };
+
+    const rows = [
+      { cloud: 'azurerm', backendType: 'azurerm', config: azurermCache, backendInput: 'backendServiceArm', providerInput: 'environmentServiceNameAzureRM', expect: /Refusing to run 'plan'/ },
+      { cloud: 'aws', backendType: 's3', config: s3Cache, backendInput: 'backendServiceAWS', providerInput: 'environmentServiceNameAWS', expect: /Refusing to run 'plan'/ },
+      { cloud: 'gcp', backendType: 'gcs', config: gcsCache, backendInput: 'backendServiceGCP', providerInput: 'environmentServiceNameGCP', expect: /State backend credential setup failed for command 'plan'/ },
+    ];
+
+    for (const row of rows) {
+      it(`${row.backendType}: a different backend connection is acted on, not mistaken for one bound at init`, async () => {
+        const workDir = makeWorkingDirectoryWithBackend(row.backendType, row.config);
+        mockInputs({ workingDirectory: workDir, [row.backendInput]: 'SC-BACKEND', [row.providerInput]: 'SC-PROVIDER' });
+
+        await assert.rejects(
+          () => new ParentCommandHandler().execute(row.cloud, 'plan'),
+          (err: Error) => {
+            assert.match(err.message, row.expect);
+            return true;
+          },
+        );
+      });
+    }
+
+    it('azurerm: a credential init really bound still exempts the step', async () => {
+      const workDir = makeWorkingDirectoryWithBackend('azurerm', {
+        ...azurermCache, client_id: '00000000-0000-0000-0000-000000000000', use_oidc: true,
+      });
+      mockInputs({ workingDirectory: workDir, backendServiceArm: 'SC-BACKEND', environmentServiceNameAzureRM: 'SC-PROVIDER' });
+
+      await assert.rejects(
+        () => new ParentCommandHandler().execute('azurerm', 'plan'),
+        (err: Error) => {
+          assert.ok(!/Refusing to run/.test(err.message), `a backend bound at init must keep working, got: ${err.message}`);
+          return true;
+        },
+      );
+    });
+  });
 });

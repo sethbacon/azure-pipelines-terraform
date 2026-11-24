@@ -9,10 +9,10 @@ export type BackendCloud = 'azurerm' | 'aws' | 'gcp' | 'oci' | 'hcp';
 export interface BackendRecord {
   cloud: BackendCloud;
   /**
-   * Key NAMES from the cached `backend.config`, never values. Enough to tell
-   * whether init bound the backend to a credential of its own (`client_id`,
-   * `access_key`, ...) rather than leaving it to resolve one from the
-   * environment the provider also writes to.
+   * Names of the settings the cached `backend.config` actually sets, never
+   * their values. Enough to tell whether init bound the backend to a credential
+   * of its own (`client_id`, `access_key`, ...) rather than leaving it to
+   * resolve one from the environment the provider also writes to.
    */
   configKeys: ReadonlySet<string>;
 }
@@ -62,8 +62,8 @@ const BACKEND_TYPE_TO_CLOUD: ReadonlyMap<string, BackendCloud> = new Map([
  *  - the recorded `backend.type` is missing, or is not one of the backends
  *    that require injected cloud credentials.
  *
- * Of `backend.config`, only the KEY NAMES are ever read — never a value, and
- * no part of it is logged. Never throws: callers should let Terraform surface
+ * Of `backend.config`, only the key names and whether each value is set are
+ * ever read — never a value's content, and no part of it is logged. Never throws: callers should let Terraform surface
  * its own error (e.g. "not initialized") when something is genuinely wrong.
  */
 export function detectBackend(workingDirectory: string): BackendRecord | null {
@@ -130,8 +130,14 @@ export function detectBackend(workingDirectory: string): BackendRecord | null {
   const configKeys = new Set<string>(
     rawConfig && typeof rawConfig === 'object' && !Array.isArray(rawConfig)
       // Own keys only, so an inherited Object.prototype member cannot read as a
-      // cached backend setting.
-      ? Object.keys(rawConfig as Record<string, unknown>)
+      // cached backend setting. Terraform caches EVERY attribute of the
+      // backend's schema, null when the configuration left it unset (#1309,
+      // measured on terraform 1.17.2 for s3, oci and local), so a key alone says
+      // nothing. A setting counts only when it carries a value: null, false and
+      // an empty string bind no credential.
+      ? Object.entries(rawConfig as Record<string, unknown>)
+          .filter(([, value]) => value !== null && value !== undefined && value !== false && value !== '')
+          .map(([key]) => key)
       : [],
   );
 

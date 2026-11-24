@@ -68,8 +68,9 @@ const SAME_CLOUD_ALWAYS_INJECT: ReadonlySet<BackendCloud> = new Set<BackendCloud
 /**
  * Cached `backend.config` keys that mean `terraform init` already bound the
  * backend to a credential of its own, so it does NOT resolve one from the
- * environment the provider also writes to. Presence of any of these makes a
- * second service connection legitimate and the run correct as-is.
+ * environment the provider also writes to. Any of these set to a value makes a
+ * second service connection legitimate and the run correct as-is. A key alone
+ * means nothing: terraform caches every attribute, null when unset (#1309).
  *
  * `backendAzureRmUseCliFlagsForAuthentication` is the supported way to get
  * `client_id`/`ado_pipeline_service_connection_id` in here; the rest cover a
