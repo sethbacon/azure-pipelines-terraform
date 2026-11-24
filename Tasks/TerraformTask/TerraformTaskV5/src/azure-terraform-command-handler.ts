@@ -11,6 +11,7 @@ import {
     requireSecretField,
     resolveOidcRequestUrl,
 } from './credential-guards';
+import { detectBackend } from './backend-detection';
 
 /**
  * The `ARM_*` variables that make the azurerm provider choose a particular
@@ -389,6 +390,27 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         }
     }
 
+    /**
+     * Whether init may add `tenant_id` to the backend binding (#1311). Not when
+     * the working directory already holds an azurerm backend an earlier init
+     * bound to its own `client_id` without one: adding a setting to an
+     * initialized directory makes `terraform init` fail with "Backend
+     * configuration changed" until it is re-run with -reconfigure (measured on
+     * terraform 1.17.2). That workspace keeps its settings, with a warning.
+     */
+    private mayAddBackendTenant(): boolean {
+        const cached = detectBackend(this.getWorkingDirectory());
+        if (cached?.cloud === 'azurerm' && cached.configKeys.has('client_id') && !cached.configKeys.has('tenant_id')) {
+            tasks.warning(
+                "backendAzureRmUseCliFlagsForAuthentication: this working directory's backend was bound by an earlier " +
+                "init that did not save tenant_id, and adding it now would make 'terraform init' fail with 'Backend " +
+                "configuration changed'. tenant_id is not saved, so later commands sign the backend in to the tenant " +
+                "in ARM_TENANT_ID, which is the provider's when the provider uses another service connection. To save " +
+                "it, run this init in a clean workspace (delete the .terraform directory).");
+            return false;
+        }
+        return true;
+    }
 
     private async setCommonVariables(authorizationScheme: AuthorizationScheme, serviceConnectionID: string, fallbackToIdTokenGeneration: boolean, useCliFlagsForBackend: boolean): Promise<void> {
         // Clear EVERY ARM_* credential selector before any branch injects its own
@@ -412,7 +434,8 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
         // was unreachable (#194); requireIdentityField keeps the same fail-closed
         // contract while adding the charset validation the injected value never
         // had (#199) and a message that names the field.
-        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", requireIdentityField(serviceConnectionID, "tenantid"), false, true);
+        const tenantId = requireIdentityField(serviceConnectionID, "tenantid");
+        EnvironmentVariableHelper.setEnvironmentVariable("ARM_TENANT_ID", tenantId, false, true);
 
         switch (authorizationScheme) {
             case AuthorizationScheme.ManagedServiceIdentity: {
@@ -447,7 +470,11 @@ export class TerraformCommandHandlerAzureRM extends BaseTerraformCommandHandler 
                     "Azure Workload Identity Federation");
                 const workloadIdentityFederationCredentials = await this.getWorkloadIdentityFederationCredentials(serviceConnectionID, fallbackToIdTokenGeneration);
                 if (useCliFlagsForBackend) {
-                    // By persisting the client ID in the backend config, we can support multiple service connections for backend and provider auth.
+                    // By persisting the tenant and client ID in the backend config, we can support multiple service connections for backend and provider auth.
+                    // Without tenant_id the backend reads the provider's ARM_TENANT_ID on later commands, so one in another tenant signs in to the wrong one (#1311).
+                    if (this.mayAddBackendTenant()) {
+                        this.backendConfig.set("tenant_id", tenantId);
+                    }
                     this.backendConfig.set("client_id", workloadIdentityFederationCredentials.servicePrincipalId);
                     this.backendConfig.set("use_oidc", "true");
                 } else {

@@ -20,6 +20,8 @@ import './RoleSessionNameManifestL0';
 import './BackendGroupVisibilityL0';
 // Terraform's native OCI Object Storage state backend (#1304).
 import './OciNativeBackendL0';
+// A backend bound at init saves its tenant, so it signs in to its own (#1311).
+import './AzurermBackendTenantBindingL0';
 // Severity classification for the credential-neutralizing guard: the agent sets
 // SYSTEM_OIDCREQUESTURI on every job, so warning about it was noise by construction.
 import './NeutralizeSeverityL0';
