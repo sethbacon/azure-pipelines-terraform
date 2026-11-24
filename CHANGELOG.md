@@ -4,6 +4,21 @@ All notable changes to **Pipeline Tasks for Terraform** (`sethbacon.pipeline-tas
 
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [semantic versioning](https://semver.org/).
 
+## [1.22.0](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.21.1...v1.22.0) (2026-11-24)
+
+
+### Features
+
+* native OCI Object Storage state backend ([#1308](https://github.com/sethbacon/azure-pipelines-terraform/issues/1308)) ([8bfdd24](https://github.com/sethbacon/azure-pipelines-terraform/commit/8bfdd24812cabc630339d355a18493d68967acc4)), closes [#1304](https://github.com/sethbacon/azure-pipelines-terraform/issues/1304)
+
+
+### Bug Fixes
+
+* ignore unset settings in the cached backend ([#1310](https://github.com/sethbacon/azure-pipelines-terraform/issues/1310)) ([19f910b](https://github.com/sethbacon/azure-pipelines-terraform/commit/19f910b53ed7c72510a6d9fe5a085524f4706c31)), closes [#1309](https://github.com/sethbacon/azure-pipelines-terraform/issues/1309)
+* make WIF-ignored connection fields optional ([#1303](https://github.com/sethbacon/azure-pipelines-terraform/issues/1303)) ([5cbb1fc](https://github.com/sethbacon/azure-pipelines-terraform/commit/5cbb1fcd5383d1fc98c32c6601e242a05fdb5209))
+* save the backend's tenant at init ([#1312](https://github.com/sethbacon/azure-pipelines-terraform/issues/1312)) ([fd11d3a](https://github.com/sethbacon/azure-pipelines-terraform/commit/fd11d3a4408f8b48b0061c305f298ac3db3a1390)), closes [#1311](https://github.com/sethbacon/azure-pipelines-terraform/issues/1311)
+* show the backend section backendType picks ([#1306](https://github.com/sethbacon/azure-pipelines-terraform/issues/1306)) ([52a009e](https://github.com/sethbacon/azure-pipelines-terraform/commit/52a009e0fab647c8acc3ed9c97dc27fca183cf0a)), closes [#1305](https://github.com/sethbacon/azure-pipelines-terraform/issues/1305)
+
 ## [1.21.1](https://github.com/sethbacon/azure-pipelines-terraform/compare/v1.21.0...v1.21.1) (2026-11-19)
 
 
